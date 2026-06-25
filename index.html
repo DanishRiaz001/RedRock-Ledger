@@ -484,10 +484,17 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
 
 function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
   const[showEdit,setShowEdit]=useState(false);
+  const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isReversed=!!txn.reversedBy;
   const isReversal=!!txn.reversalOf;
   const contact=txn.contactId?contacts.find(c=>c.id===txn.contactId):null;
+
+  // Attachment stored in sessionStorage keyed by txn id
+  const attKey=`rr_att_${txn.id}`;
+  const[att,setAttState]=useState(()=>{try{const s=localStorage.getItem(attKey);return s?JSON.parse(s):null;}catch{return null;}});
+  const setAtt=(data)=>{setAttState(data);try{if(data)localStorage.setItem(attKey,JSON.stringify(data));else localStorage.removeItem(attKey);}catch{}};
+  const handleAttach=(file)=>{const r=new FileReader();r.onload=e=>setAtt({name:file.name,data:e.target.result,type:file.type});r.readAsDataURL(file);};
 
   if(showEdit)return(
     <EditModal
@@ -499,6 +506,17 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
   );
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      {attViewer&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:600,display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:12,color:"#fff",fontWeight:600}}>{att&&att.name}</div>
+            <button onClick={()=>setAttViewer(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer",padding:"6px 14px",fontWeight:600}}>✕ Close</button>
+          </div>
+          {att&&att.type&&att.type.startsWith("image")
+            ?<img src={att.data} style={{flex:1,objectFit:"contain",padding:10}}/>
+            :<iframe src={att.data} style={{flex:1,border:"none",background:"#fff"}}/>}
+        </div>
+      )}
       <div style={{background:T.bg,borderRadius:"20px 20px 0 0",padding:20,width:"100%",maxWidth:430,maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div>
@@ -545,6 +563,17 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
             <div style={{fontSize:11,color:T.sub,marginTop:2}}>{getName(txn.creditCode)}</div>
           </div>
         </div>
+        {/* Attachment row */}
+        <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
+          <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:12,color:T.blue,fontWeight:600}}>
+            📎 {att?"Replace attachment":"Attach file"}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(e.target.files[0]);}}/>
+          </label>
+          {att&&(
+            <button onClick={()=>setAttViewer(att)} style={{background:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center"}}>👁</button>
+          )}
+        </div>
+        {att&&<div style={{fontSize:10,color:T.muted,marginTop:4,paddingLeft:2}}>📎 {att.name}</div>}
       </div>
     </div>
   );
@@ -630,10 +659,10 @@ function MatchedGroups({matchedRows,getMovement}){
 
 // ─── Ledger Screen ────────────────────────────────────────────────────────────
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,filterFrom,filterTo}){
   const today=new Date().toISOString().split("T")[0];
-  const[from,setFrom]=useState("2026-01-01");
-  const[to,setTo]=useState(today);
+  const[from,setFrom]=useState(filterFrom||"2026-01-01");
+  const[to,setTo]=useState(filterTo||today);
   const[detailTxn,setDetailTxn]=useState(null);
   const[selected,setSelected]=useState([]);
   const[showMatched,setShowMatched]=useState(false);
@@ -739,8 +768,8 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           );
         })}
       </div>
-      {/* Footer: Incoming / Period / Outgoing */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.header,borderTop:"1px solid #2a3a5e",padding:"12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)"}}>
+      {/* Footer inline after entries */}
+      <div style={{background:T.header,borderTop:"1px solid #2a3a5e",padding:"12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)",marginTop:8,borderRadius:12}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           {[
             {label:"Incoming Bal",value:openingBal,color:"#93A8D0"},
@@ -760,11 +789,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 
 // ─── Bank Module ──────────────────────────────────────────────────────────────
 
-function BankModule({accounts,transactions,onOpenLedger}){
-  const _n=new Date();const _my=_n.getFullYear();const _mm=String(_n.getMonth()+1).padStart(2,"0");const _ml=new Date(_my,_n.getMonth()+1,0).getDate();
-  const[from,setFrom]=useState(`${_my}-${_mm}-01`);
-  const[to,setTo]=useState(`${_my}-${_mm}-${String(_ml).padStart(2,"0")}`);
-  const[attachments,setAttachments]=useState({});
+function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,attachments,onAttach}){
   const[viewing,setViewing]=useState(null);
   const banks=accounts.filter(a=>getSK(a.code)==="1900");
 
@@ -772,40 +797,35 @@ function BankModule({accounts,transactions,onOpenLedger}){
     .filter(t=>!beforeDate||t.date<beforeDate)
     .reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
 
-  const getMovement=(code,from,to)=>transactions
-    .filter(t=>t.date>=from&&t.date<=to)
-    .reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+  const getMovement=(code,f,t)=>transactions
+    .filter(tx=>tx.date>=f&&tx.date<=t)
+    .reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
 
   const handleAttach=(code,file)=>{
     const reader=new FileReader();
-    reader.onload=e=>setAttachments(p=>({...p,[code]:{name:file.name,data:e.target.result,type:file.type}}));
+    reader.onload=e=>onAttach(code,{name:file.name,data:e.target.result,type:file.type});
     reader.readAsDataURL(file);
   };
 
+  const activeBanks=banks.filter(a=>getBal(a.code)!==0);
+
   return(
     <div>
-      {/* PDF viewer modal */}
       {viewing&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:500,display:"flex",flexDirection:"column"}}>
-          <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:500,display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(0,0,0,0.5)"}}>
             <div style={{fontSize:13,color:"#fff",fontWeight:600}}>{viewing.name}</div>
-            <button onClick={()=>setViewing(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:16,cursor:"pointer",padding:"6px 12px"}}>✕ Close</button>
+            <button onClick={()=>setViewing(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:14,cursor:"pointer",padding:"6px 14px",fontWeight:600}}>✕ Close</button>
           </div>
-          <iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>
+          {viewing.type&&viewing.type.startsWith("image")
+            ?<img src={viewing.data} style={{flex:1,objectFit:"contain",padding:10}}/>
+            :<iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>
+          }
         </div>
       )}
-
-      {/* Period filter */}
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}>
-        <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
-        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-        <span style={{fontSize:11,color:T.muted,fontWeight:700}}>TO</span>
-        <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-      </div>
-
-      {banks.map(a=>{
-        const opening=getBal(a.code,from);
-        const movement=getMovement(a.code,from,to);
+      {activeBanks.map(a=>{
+        const opening=getBal(a.code,filterFrom);
+        const movement=getMovement(a.code,filterFrom,filterTo);
         const closing=opening+movement;
         const att=attachments[a.code];
         return(
@@ -817,7 +837,7 @@ function BankModule({accounts,transactions,onOpenLedger}){
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <label style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-                  📎 {att?"View":"Attach"}
+                  📎 {att?"Replace":"Attach"}
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(a.code,e.target.files[0]);}}/>
                 </label>
                 {att&&<button onClick={()=>setViewing(att)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600}}>👁 View</button>}
@@ -825,7 +845,7 @@ function BankModule({accounts,transactions,onOpenLedger}){
               </div>
             </div>
             {att&&<div style={{padding:"6px 16px",background:"rgba(0,87,184,0.06)",fontSize:11,color:T.blue,fontWeight:600}}>📎 {att.name}</div>}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr"}}>
               {[{label:"Opening",val:opening,color:T.sub},{label:"Movement",val:movement,color:movement>=0?T.green:T.red},{label:"Closing",val:closing,color:closing>=0?T.green:T.red}].map((col,i)=>(
                 <div key={i} style={{padding:"12px 10px",textAlign:"center",borderRight:i<2?`1px solid ${T.border}`:"none"}}>
                   <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{col.label}</div>
@@ -836,7 +856,7 @@ function BankModule({accounts,transactions,onOpenLedger}){
           </div>
         );
       })}
-      {!banks.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No bank accounts. Add 1900-series accounts in Settings.</div>}
+      {!activeBanks.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No bank accounts with balance.</div>}
     </div>
   );
 }
@@ -851,7 +871,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   const[selected,setSelected]=useState([]);
   const[showMatched,setShowMatched]=useState(false);
   const[detailTxn,setDetailTxn]=useState(null);
-  const[periodFrom,setPeriodFrom]=useState("2026-01-01");
+  const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
 
   const customers=contacts.filter(c=>c.type==="customer");
@@ -885,10 +905,13 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
     const isCustomer=view==="customer";
     const code=isCustomer?"1500":"2400";
 
-    // All txns for this type in period, sorted by contact then date
+    // All txns for this type in period — only AR/AP movements (1500 or 2400), sorted by contact then date
     const allTxns=transactions.filter(t=>{
       const c=contacts.find(x=>x.id===t.contactId);
-      return c&&c.type===view&&t.date>=periodFrom&&t.date<=periodTo;
+      if(!c||c.type!==view)return false;
+      if(t.date<periodFrom||t.date>periodTo)return false;
+      // Only show entries that touch the AR (1500) or AP (2400) account
+      return(t.debitCode===code||t.creditCode===code);
     }).sort((a,b)=>{
       const ca=contacts.find(x=>x.id===a.contactId);
       const cb=contacts.find(x=>x.id===b.contactId);
@@ -930,21 +953,6 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
         </div>
 
         <div style={{padding:16}}>
-          {/* Add new contact */}
-          <button style={{...btnRed,marginBottom:12}} onClick={()=>setShowNew(s=>!s)}>
-            {showNew?"✕ Cancel":`+ New ${isCustomer?"Customer":"Supplier"}`}
-          </button>
-          {showNew&&(
-            <Card style={{marginBottom:12}}>
-              <SL>New {isCustomer?"Customer":"Supplier"}</SL>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <input placeholder="Full Name / Company" value={newName} onChange={e=>setNewName(e.target.value)} style={inp}/>
-                <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"6px 10px"}}>ID auto-assigned: <strong>{nextId(view)}</strong></div>
-                <button style={btnRed} onClick={addContact}>Add {isCustomer?"Customer":"Supplier"}</button>
-              </div>
-            </Card>
-          )}
-
           {/* Match bar */}
           {selected.length>0&&(
             <div style={{background:T.header,borderRadius:12,padding:"12px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -972,37 +980,45 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           {openTxns.length>0&&(
             <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,overflow:"hidden"}}>
               {/* Header */}
-              <div style={{display:"grid",gridTemplateColumns:"22px 60px 44px 44px 1fr 68px",gap:3,padding:"8px 10px",background:T.bg,borderBottom:`2px solid ${T.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"22px 44px 44px 1fr 68px",gap:3,padding:"8px 10px",background:T.bg,borderBottom:`2px solid ${T.border}`}}>
                 <div/>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Contact</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Bilag</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
               </div>
-              {openTxns.map((t,i)=>{
-                const m=mv(t,code);
-                const isSel=selected.includes(t.id);
-                const c=contacts.find(x=>x.id===t.contactId);
-                const cname=c?c.name:"—";
-                const cid=c?c.id:"";
-                return(
-                  <div key={t.id} onClick={()=>toggleSel(t.id)} style={{display:"grid",gridTemplateColumns:"22px 60px 44px 44px 1fr 68px",gap:3,padding:"10px 10px",borderBottom:i<openTxns.length-1?`1px solid ${T.border}`:"none",alignItems:"center",background:isSel?"#EBF4FF":"#fff",cursor:"pointer"}}>
-                    <input type="checkbox" checked={isSel} onChange={()=>toggleSel(t.id)} onClick={e=>e.stopPropagation()} style={{width:13,height:13}}/>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:800,color:isCustomer?T.blue:T.red}}>{cid}</div>
-                      <div style={{fontSize:9,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cname}</div>
-                    </div>
-                    <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
-                    <div style={{fontSize:10,color:T.blue,fontWeight:700}}>{fmtB(t.bilag)}</div>
-                    <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} onClick={e=>{e.stopPropagation();setDetailTxn(t);}}>{t.description}</div>
-                    <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red}}>{m>=0?"+":"−"}{fmt(m)}</div>
-                  </div>
-                );
-              })}
+              {(()=>{
+                let lastCid=null;
+                return openTxns.map((t,i)=>{
+                  const m=mv(t,code);
+                  const isSel=selected.includes(t.id);
+                  const c=contacts.find(x=>x.id===t.contactId);
+                  const cid=c?c.id:"";
+                  const cname=c?c.name:"—";
+                  const showHeader=cid!==lastCid;
+                  if(showHeader)lastCid=cid;
+                  return(
+                    <React.Fragment key={t.id}>
+                      {showHeader&&(
+                        <div style={{padding:"7px 10px",background:isCustomer?T.blueBg:T.redLight,borderBottom:`1px solid ${isCustomer?T.blue+"33":T.red+"33"}`,display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:10,fontWeight:800,color:isCustomer?T.blue:T.red}}>{cid}</span>
+                          <span style={{fontSize:12,fontWeight:700,color:T.text}}>{cname}</span>
+                        </div>
+                      )}
+                      <div onClick={()=>toggleSel(t.id)} style={{display:"grid",gridTemplateColumns:"22px 44px 44px 1fr 68px",gap:3,padding:"10px 10px",borderBottom:i<openTxns.length-1?`1px solid ${T.border}`:"none",alignItems:"center",background:isSel?"#EBF4FF":"#fff",cursor:"pointer"}}>
+                        <input type="checkbox" checked={isSel} onChange={()=>toggleSel(t.id)} onClick={e=>e.stopPropagation()} style={{width:13,height:13}}/>
+                        <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
+                        <div onClick={e=>{e.stopPropagation();setDetailTxn(t);}} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(t.bilag)}</div>
+                        <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red}}>{m>=0?"+":"−"}{fmt(m)}</div>
+                      </div>
+                    </React.Fragment>
+                  );
+                });
+              })()}
               {/* Total row */}
-              <div style={{display:"grid",gridTemplateColumns:"22px 60px 44px 44px 1fr 68px",gap:3,padding:"10px 10px",background:T.bg,borderTop:`2px solid ${T.border}`}}>
-                <div/><div/><div/><div/>
+              <div style={{display:"grid",gridTemplateColumns:"22px 44px 44px 1fr 68px",gap:3,padding:"10px 10px",background:T.bg,borderTop:`2px solid ${T.border}`}}>
+                <div/><div/><div/>
                 <div style={{fontSize:11,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Total</div>
                 <div style={{fontSize:13,fontWeight:900,textAlign:"right",color:totalOpen>=0?T.green:T.red}}>{totalOpen>=0?"+":"−"}{fmt(totalOpen)}</div>
               </div>
@@ -1077,7 +1093,10 @@ function AccountPlanScreen({accounts,onSave,onBack}){
               <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6}}>
                 {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}><input value={list[ri].code} onChange={e=>{const n=[...list];n[ri]={...n[ri],code:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/><input value={list[ri].name} onChange={e=>{const n=[...list];n[ri]={...n[ri],name:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/></div>
-                  <div style={{display:"flex",gap:8}}><button style={{...btnRed,flex:1,padding:"8px"}} onClick={()=>setEditingIdx(null)}>✓ Done</button><button style={{...btnGhost,flex:1,padding:"8px"}} onClick={()=>setEditingIdx(null)}>Cancel</button></div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button style={{...btnRed,flex:2,padding:"8px"}} onClick={()=>{onSave(list);setEditingIdx(null);}}>✓ Done</button>
+                    <button style={{...btnGhost,flex:1,padding:"8px"}} onClick={()=>{setList(accounts.map(a=>({...a})));setEditingIdx(null);}}>Cancel</button>
+                  </div>
                 </div>):(
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800}}>{a.code}</span><span style={{fontSize:13,fontWeight:600}}>{a.name}</span></div>
@@ -1088,15 +1107,64 @@ function AccountPlanScreen({accounts,onSave,onBack}){
             );})}
           </div>);
         })}
-        <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnRed,padding:"10px 14px",fontSize:12}} onClick={()=>onSave(list)}>💾 Save</button><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>Cancel</button></div>
+        <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>← Back</button></div>
       </div>
     </div>
   );
 }
 
-function SettingsMenu({accounts,onSave,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,onBack}){
   const[screen,setScreen]=useState(null);
+  const[contactType,setContactType]=useState("customer");
+  const[newName,setNewName]=useState("");
+  const[showNew,setShowNew]=useState(false);
+
+  const nextId=type=>{
+    const prefix=type==="customer"?"C":"S";
+    const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
+    return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
+  };
+  const addContact=()=>{
+    if(!newName.trim())return;
+    setContacts([...contacts,{id:nextId(contactType),type:contactType,name:newName.trim(),notes:""}]);
+    setNewName("");setShowNew(false);
+  };
+  const deleteContact=id=>setContacts(contacts.filter(c=>c.id!==id));
+
   if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onBack={()=>setScreen(null)}/>);
+  if(screen==="contacts")return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>{setScreen(null);setShowNew(false);setNewName("");}}/>
+      <div style={{padding:16}}>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          {["customer","supplier"].map(t=>(
+            <button key={t} onClick={()=>setContactType(t)} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${contactType===t?T.red:T.border}`,background:contactType===t?T.red:"#fff",color:contactType===t?"#fff":T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t==="customer"?"Customers (AR)":"Suppliers (AP)"}</button>
+          ))}
+        </div>
+        <button style={{...btnRed,marginBottom:12}} onClick={()=>setShowNew(s=>!s)}>{showNew?"✕ Cancel":`+ New ${contactType==="customer"?"Customer":"Supplier"}`}</button>
+        {showNew&&(
+          <Card style={{marginBottom:12}}>
+            <SL>New {contactType==="customer"?"Customer":"Supplier"}</SL>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input placeholder="Full Name / Company" value={newName} onChange={e=>setNewName(e.target.value)} style={inp}/>
+              <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"6px 10px"}}>ID auto-assigned: <strong>{nextId(contactType)}</strong></div>
+              <button style={btnRed} onClick={addContact}>Add {contactType==="customer"?"Customer":"Supplier"}</button>
+            </div>
+          </Card>
+        )}
+        {contacts.filter(c=>c.type===contactType).map(c=>(
+          <div key={c.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:10,fontWeight:800,color:contactType==="customer"?T.blue:T.red,background:contactType==="customer"?T.blueBg:T.redLight,padding:"2px 7px",borderRadius:5}}>{c.id}</span>
+              <span style={{fontSize:13,fontWeight:600}}>{c.name}</span>
+            </div>
+            <button onClick={()=>deleteContact(c.id)} style={{background:T.redLight,border:"none",borderRadius:8,color:T.red,fontSize:12,cursor:"pointer",padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>🗑</button>
+          </div>
+        ))}
+        {!contacts.filter(c=>c.type===contactType).length&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No {contactType}s added yet.</div>}
+      </div>
+    </div>
+  );
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
       <BackHeader title="Settings" sub="MY FINANCE LEDGER" onBack={onBack}/>
@@ -1105,6 +1173,12 @@ function SettingsMenu({accounts,onSave,onBack}){
         <div onClick={()=>setScreen("plan")} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
           <div style={{background:T.blueBg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📋</div>
           <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>Account Plan</div><div style={{fontSize:11,color:T.sub,marginTop:2}}>Edit all accounts, codes and names</div></div>
+          <span style={{fontSize:20,color:T.muted}}>›</span>
+        </div>
+        <SL mt={16}>Reskontro Contacts</SL>
+        <div onClick={()=>setScreen("contacts")} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+          <div style={{background:T.redLight,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👥</div>
+          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>Manage Contacts</div><div style={{fontSize:11,color:T.sub,marginTop:2}}>Add or delete customers and suppliers</div></div>
           <span style={{fontSize:20,color:T.muted}}>›</span>
         </div>
       </div>
@@ -1120,7 +1194,8 @@ function BankSlider({accounts,transactions}){
   const bals=banks.map(a=>({
     ...a,
     bal:transactions.reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0)
-  }));
+  })).filter(a=>a.bal!==0);  // hide zero balance accounts
+  if(!bals.length)return null;
   return(
     <div style={{marginBottom:14,marginLeft:-16,marginRight:-16,paddingLeft:16,paddingRight:16}}>
       <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:4,paddingRight:16,scrollbarWidth:"none",msOverflowStyle:"none"}}>
@@ -1153,71 +1228,124 @@ function MiniBar({data,height=52}){
   );
 }
 
-// ─── Global Period Selector ────────────────────────────────────────────────────
+// ─── Global Period Selector with draggable handles ────────────────────────────
 function PeriodSelector({from,to,onChange}){
-  const[mode,setMode]=useState("month"); // "year" | "month" | "custom"
   const now=new Date();
   const curY=now.getFullYear();
   const curM=now.getMonth()+1;
-
   const[selYear,setSelYear]=useState(parseInt(from.slice(0,4))||curY);
-  const[selMonth,setSelMonth]=useState(parseInt(from.slice(5,7))||curM);
   const[showCustom,setShowCustom]=useState(false);
   const[customFrom,setCustomFrom]=useState(from);
   const[customTo,setCustomTo]=useState(to);
-
-  const years=[2024,2025,2026,2027];
+  const[dragging,setDragging]=useState(null); // "start"|"end"|null
+  const trackRef=React.useRef(null);
   const months=[1,2,3,4,5,6,7,8,9,10,11,12];
+  const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  // Parse current range into month indices (0-11)
+  const fromYear=parseInt(from.slice(0,4));
+  const fromMonth=parseInt(from.slice(5,7))-1; // 0-based
+  const toYear=parseInt(to.slice(0,4));
+  const toMonth=parseInt(to.slice(5,7))-1;
+
+  const startIdx=fromYear===selYear?Math.max(0,fromMonth):fromYear<selYear?0:11;
+  const endIdx=toYear===selYear?Math.min(11,toMonth):toYear>selYear?11:0;
+
+  const applyRange=(s,e)=>{
+    const sf=selYear+"-"+String(s+1).padStart(2,"0")+"-01";
+    const lastDay=new Date(selYear,e+1,0).getDate();
+    const et=selYear+"-"+String(e+1).padStart(2,"0")+"-"+String(lastDay).padStart(2,"0");
+    onChange(sf,et);
+  };
+
+  const getMonthFromX=(clientX)=>{
+    if(!trackRef.current)return 0;
+    const rect=trackRef.current.getBoundingClientRect();
+    const pct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
+    return Math.round(pct*11);
+  };
+
+  const startIdxRef=React.useRef(startIdx);
+  const endIdxRef=React.useRef(endIdx);
+  startIdxRef.current=startIdx;
+  endIdxRef.current=endIdx;
+
+  const handleTrackMouseDown=(e,handle)=>{
+    e.preventDefault();
+    setDragging(handle);
+    const onMove=(mv)=>{
+      const m=getMonthFromX(mv.touches?mv.touches[0].clientX:mv.clientX);
+      if(handle==="start")applyRange(Math.min(m,endIdxRef.current),endIdxRef.current);
+      else applyRange(startIdxRef.current,Math.max(m,startIdxRef.current));
+    };
+    const onUp=()=>{
+      setDragging(null);
+      document.removeEventListener("mousemove",onMove);
+      document.removeEventListener("mouseup",onUp);
+      document.removeEventListener("touchmove",onMove);
+      document.removeEventListener("touchend",onUp);
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+    document.addEventListener("touchmove",onMove,{passive:false});
+    document.addEventListener("touchend",onUp);
+  };
+
+  const handleTrackClick=(e)=>{
+    if(dragging)return;
+    const m=getMonthFromX(e.clientX);
+    const distStart=Math.abs(m-startIdx);
+    const distEnd=Math.abs(m-endIdx);
+    if(distStart<=distEnd)applyRange(Math.min(m,endIdx),endIdx);
+    else applyRange(startIdx,Math.max(m,startIdx));
+  };
 
   const selectYear=(y)=>{
     setSelYear(y);
-    const f=`${y}-01-01`;
-    const t=`${y}-12-31`;
-    onChange(f,t);
-    setMode("month");
+    onChange(`${y}-01-01`,`${y}-12-31`);
   };
 
-  const selectMonth=(m)=>{
-    setSelMonth(m);
-    const mm=String(m).padStart(2,"0");
-    const lastDay=new Date(selYear,m,0).getDate();
-    const f=`${selYear}-${mm}-01`;
-    const t=`${selYear}-${mm}-${String(lastDay).padStart(2,"0")}`;
-    onChange(f,t);
-    setShowCustom(false);
-  };
+  const applyCustom=()=>{if(customFrom&&customTo){onChange(customFrom,customTo);setShowCustom(false);}};
 
-  const applyCustom=()=>{
-    if(customFrom&&customTo){onChange(customFrom,customTo);setShowCustom(false);}
-  };
+  const startPct=(startIdx/11)*100;
+  const endPct=(endIdx/11)*100;
 
-  // Determine label
-  const fromMonth=parseInt(from.slice(5,7));
-  const fromYear=parseInt(from.slice(0,4));
-  const toMonth=parseInt(to.slice(5,7));
-  const toYear=parseInt(to.slice(0,4));
-  const isFullYear=from.endsWith("-01-01")&&to.endsWith("-12-31");
-  const isSingleMonth=fromMonth===toMonth&&fromYear===toYear&&!isFullYear;
-  const label=isFullYear?String(fromYear):isSingleMonth?`${String(fromMonth).padStart(2,"0")}/${fromYear}`:`${from} → ${to}`;
+  const isFullYear=from.endsWith("-01-01")&&to.endsWith("-12-31")&&fromYear===toYear;
+  const isSingleMonth=fromYear===toYear&&fromMonth===toMonth&&!isFullYear;
+  const label=isFullYear?String(fromYear):isSingleMonth?`${MNAMES[fromMonth]} ${fromYear}`:`${MNAMES[startIdx]} → ${MNAMES[endIdx]} ${selYear}`;
+  const years=[2024,2025,2026,2027];
 
   return(
     <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
       {/* Year row */}
-      <div style={{display:"flex",overflowX:"auto",padding:"8px 16px 4px",gap:6,scrollbarWidth:"none"}}>
+      <div style={{display:"flex",overflowX:"auto",padding:"8px 16px 6px",gap:6,scrollbarWidth:"none"}}>
         {years.map(y=>(
           <button key={y} onClick={()=>selectYear(y)} style={{flexShrink:0,padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selYear===y?T.red:T.border}`,background:selYear===y?T.red:"#fff",color:selYear===y?"#fff":T.sub,fontSize:12,fontWeight:selYear===y?800:500,cursor:"pointer",fontFamily:"inherit"}}>{y}</button>
         ))}
+        <button onClick={()=>setShowCustom(s=>!s)} style={{flexShrink:0,padding:"4px 12px",borderRadius:20,border:`1.5px solid ${showCustom?T.blue:T.border}`,background:showCustom?T.blueBg:"#fff",color:showCustom?T.blue:T.sub,fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Custom ⋯</button>
       </div>
-      {/* Month row */}
-      <div style={{display:"flex",overflowX:"auto",padding:"4px 16px 8px",gap:4,scrollbarWidth:"none"}}>
-        {months.map(m=>{
-          const active=isSingleMonth&&selMonth===m&&selYear===fromYear;
-          return(
-            <button key={m} onClick={()=>selectMonth(m)} style={{flexShrink:0,width:32,height:28,borderRadius:8,border:`1.5px solid ${active?T.red:T.border}`,background:active?T.redLight:"#fff",color:active?T.red:T.sub,fontSize:11,fontWeight:active?800:500,cursor:"pointer",fontFamily:"inherit"}}>{String(m).padStart(2,"0")}</button>
-          );
-        })}
-        <button onClick={()=>setShowCustom(s=>!s)} style={{flexShrink:0,padding:"4px 10px",borderRadius:8,border:`1.5px solid ${showCustom?T.blue:T.border}`,background:showCustom?T.blueBg:"#fff",color:showCustom?T.blue:T.sub,fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>⋯</button>
+
+      {/* Timeline track */}
+      <div style={{padding:"4px 20px 2px",userSelect:"none"}}>
+        {/* Month labels */}
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          {MNAMES.map((m,i)=>(
+            <div key={i} style={{fontSize:8,color:i>=startIdx&&i<=endIdx?T.red:T.muted,fontWeight:i>=startIdx&&i<=endIdx?800:400,textAlign:"center",width:"8.33%"}}>{m}</div>
+          ))}
+        </div>
+        {/* Track */}
+        <div ref={trackRef} onClick={handleTrackClick} style={{position:"relative",height:20,cursor:"pointer"}}>
+          {/* Background */}
+          <div style={{position:"absolute",top:"50%",left:0,right:0,height:6,borderRadius:3,background:T.bg,border:`1px solid ${T.border}`,transform:"translateY(-50%)"}}/>
+          {/* Selected range fill */}
+          <div style={{position:"absolute",top:"50%",left:`${startPct}%`,width:`${endPct-startPct}%`,height:6,borderRadius:3,background:T.red,transform:"translateY(-50%)",pointerEvents:"none"}}/>
+          {/* Start handle */}
+          <div onMouseDown={e=>handleTrackMouseDown(e,"start")} onTouchStart={e=>handleTrackMouseDown(e,"start")} style={{position:"absolute",top:"50%",left:`${startPct}%`,width:18,height:18,borderRadius:"50%",background:"#fff",border:`2.5px solid ${T.red}`,transform:"translate(-50%,-50%)",cursor:"grab",zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.18)"}}/>
+          {/* End handle */}
+          <div onMouseDown={e=>handleTrackMouseDown(e,"end")} onTouchStart={e=>handleTrackMouseDown(e,"end")} style={{position:"absolute",top:"50%",left:`${endPct}%`,width:18,height:18,borderRadius:"50%",background:T.red,border:`2.5px solid ${T.red}`,transform:"translate(-50%,-50%)",cursor:"grab",zIndex:2,boxShadow:"0 2px 6px rgba(208,2,27,0.3)"}}/>
+        </div>
       </div>
+
       {/* Custom range */}
       {showCustom&&(
         <div style={{padding:"8px 16px 10px",borderTop:`1px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
@@ -1472,7 +1600,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
   const[funds,setFunds]=useState((sinkingFunds&&sinkingFunds.length>0)?sinkingFunds:INIT_SF);
   const[showForm,setShowForm]=useState(false);
   const[editId,setEditId]=useState(null);
-  const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8"});
+  const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""});
   const[addAmt,setAddAmt]=useState({});
   const[menuOpen,setMenuOpen]=useState(false);
   const[cardMenu,setCardMenu]=useState(null);
@@ -1481,21 +1609,22 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
   const totalSaved=funds.reduce((s,f)=>s+f.saved,0);
   const overallPct=totalGoal>0?Math.min(Math.round((totalSaved/totalGoal)*100),100):0;
 
-  const openNew=()=>{setForm({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8"});setEditId(null);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
-  const openEdit=f=>{setForm({name:f.name,goal:String(f.goal),saved:String(f.saved),icon:f.icon,color:f.color});setEditId(f.id);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
+  const openNew=()=>{setForm({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""});setEditId(null);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
+  const openEdit=f=>{setForm({name:f.name,goal:String(f.goal),saved:String(f.saved),icon:f.icon,color:f.color,months:String(f.months||"")});setEditId(f.id);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
   const deleteFund=id=>{const newList=funds.filter(f=>f.id!==id);setFunds(newList);saveSinkingFunds(newList);setCardMenu(null);};
   const cancelForm=()=>{setShowForm(false);setEditId(null);};
 
   const save=()=>{
     if(!form.name.trim()||!parseFloat(form.goal))return;
     const savedVal=form.saved!==""?parseFloat(form.saved):0;
+    const monthsVal=form.months?parseInt(form.months):null;
     if(editId){
-      const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}:f);
+      const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}:f);
       setFunds(updated);
       saveSinkingFunds(updated);
     } else {
       const id="SF"+String(funds.length+1).padStart(3,"0");
-      const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}];
+      const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}];
       setFunds(newList);
       saveSinkingFunds(newList);
     }
@@ -1569,6 +1698,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
                 <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Goal (PKR)</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
                 <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Saved So Far</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
               </div>
+              <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Target Tenure (months)</div><input type="number" placeholder="e.g. 24 = 2 years" value={form.months} onChange={e=>setForm(p=>({...p,months:e.target.value}))} style={inp}/>{form.months&&parseInt(form.months)>0&&<div style={{fontSize:10,color:T.blue,marginTop:3}}>{parseInt(form.months)>=12?`${Math.floor(parseInt(form.months)/12)} yr${Math.floor(parseInt(form.months)/12)>1?"s":""} ${parseInt(form.months)%12?`${parseInt(form.months)%12} mo`:""}`:parseInt(form.months)+" months"}</div>}</div>
               {!editId&&(
                 <div>
                   <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.8}}>Icon & Color</div>
@@ -1601,7 +1731,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
                   <div style={{width:42,height:42,borderRadius:12,background:f.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,lineHeight:"1"}}>{f.icon}</div>
                   <div>
                     <div style={{fontSize:14,fontWeight:700,color:T.text}}>{f.name}</div>
-                    <div style={{fontSize:10,color:T.muted,marginTop:1}}>Goal: {fmt(f.goal)}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:1}}>Goal: {fmt(f.goal)}{f.months?` · ${f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?` ${f.months%12}mo`:""}`:f.months+"mo"}`:""}</div>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}>
@@ -1634,6 +1764,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
                   <button onClick={()=>deposit(f.id)} style={{background:f.color,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>+ Add</button>
                 </div>
               )}
+              {!done&&f.months&&f.months>0&&(()=>{const remaining2=f.goal-f.saved;const monthly=Math.ceil(remaining2/f.months);return(<div style={{fontSize:10,color:T.muted,marginTop:6}}>📅 {fmt(monthly)}/month needed to hit goal in {f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?` ${f.months%12}mo`:""}`:f.months+"mo"}</div>);})()}
             </div>
           );
         })}
@@ -1667,11 +1798,14 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 
 // ─── Reports Screen ───────────────────────────────────────────────────────────
 
-function ReportsScreen({accounts,transactions,getName}){
+function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod}){
   const[rTab,setRTab]=useState("resultat");
-  const[rFrom,setRFrom]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-01`;});
-  const[rTo,setRTo]=useState(()=>{const n=new Date();const y=n.getFullYear();const m=n.getMonth();const l=new Date(y,m+1,0).getDate();return `${y}-${String(m+1).padStart(2,"0")}-${String(l).padStart(2,"0")}`;});
+  const[rFrom,setRFrom]=useState(filterFrom);
+  const[rTo,setRTo]=useState(filterTo);
   const[selAcc,setSelAcc]=useState("");
+
+  // Sync when global period changes
+  useEffect(()=>{setRFrom(filterFrom);setRTo(filterTo);},[filterFrom,filterTo]);
 
   const rTxns=useMemo(()=>transactions.filter(t=>t.date>=rFrom&&t.date<=rTo),[transactions,rFrom,rTo]);
   const income=useMemo(()=>{const m={};rTxns.filter(t=>getSK(t.creditCode)==="3000").forEach(t=>{m[t.creditCode]=(m[t.creditCode]||0)+t.amount;});return m;},[rTxns]);
@@ -1683,6 +1817,34 @@ function ReportsScreen({accounts,transactions,getName}){
     const csv=rows.map(r=>r.join(",")).join("\n");
     const blob=new Blob([csv],{type:"text/csv"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  };
+
+  const exportResultatXLSX=()=>{
+    if(typeof XLSX==="undefined")return;
+    const wb=XLSX.utils.book_new();
+    const rows=[["Account","Name","Amount (PKR)"],
+      ...Object.entries(income).map(([c,a])=>[c,getName(c),a]),
+      ["","Total Income",totalInc],
+      ...Object.entries(expenses).map(([c,a])=>[c,getName(c),-a]),
+      ["","Total Expenses",-totalExp],
+      ["","Net P/L",totalInc-totalExp]
+    ];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb,ws,"Resultat");
+    XLSX.writeFile(wb,`Resultat_${rFrom}_${rTo}.xlsx`);
+  };
+
+  const exportBalanseXLSX=()=>{
+    if(typeof XLSX==="undefined")return;
+    const wb=XLSX.utils.book_new();
+    const rows=[["Code","Account","Balance (PKR)"]];
+    accounts.forEach(a=>{
+      const bal=transactions.reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+      rows.push([a.code,a.name,bal]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb,ws,"Balanse");
+    XLSX.writeFile(wb,`Balanserapport_${rTo}.xlsx`);
   };
 
   const exportResultat=()=>{
@@ -1723,12 +1885,6 @@ function ReportsScreen({accounts,transactions,getName}){
 
   return(
     <div>
-      {/* Period filter */}
-      <div style={{display:"flex",gap:8,marginBottom:14}}>
-        <input type="date" value={rFrom} onChange={e=>setRFrom(e.target.value)} style={{...inp,flex:1,fontSize:13,padding:"8px 10px"}}/>
-        <input type="date" value={rTo} onChange={e=>setRTo(e.target.value)} style={{...inp,flex:1,fontSize:13,padding:"8px 10px"}}/>
-      </div>
-
       {/* Tab switcher */}
       <div style={{display:"flex",gap:4,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
         {[["resultat","📊 Resultat"],["balanse","⚖️ Balanse"],["account","📒 Account"]].map(([id,label])=>(
@@ -1741,7 +1897,10 @@ function ReportsScreen({accounts,transactions,getName}){
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div style={{fontSize:14,fontWeight:800}}>Resultatregnskap</div>
-            <button onClick={exportResultat} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={exportResultat} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+              <button onClick={exportResultatXLSX} style={{...btnSm,fontSize:11,background:"#E6F3E6",color:"#1a6e1a"}}>⬇ XLS</button>
+            </div>
           </div>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.green,fontWeight:800,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Income</div>
@@ -1767,7 +1926,10 @@ function ReportsScreen({accounts,transactions,getName}){
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div style={{fontSize:14,fontWeight:800}}>Balanserapport</div>
-            <button onClick={exportBalanse} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={exportBalanse} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+              <button onClick={exportBalanseXLSX} style={{...btnSm,fontSize:11,background:"#E6F3E6",color:"#1a6e1a"}}>⬇ XLS</button>
+            </div>
           </div>
           {Object.entries(SERIES).map(([key,s])=>{
             const grp=accounts.filter(a=>getSK(a.code)===key);
@@ -1986,6 +2148,93 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
   );
 }
 
+// ─── Budget Module ────────────────────────────────────────────────────────────
+function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
+  const BKEY="rr_budgets";
+  const[budgets,setBudgetsState]=useState(()=>{try{const s=localStorage.getItem(BKEY);return s?JSON.parse(s):{}}catch{return{};}});
+  const[editing,setEditing]=useState(null);
+  const[editVal,setEditVal]=useState("");
+
+  const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
+  const periodTxns=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo);
+
+  const getActual=code=>periodTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
+
+  const saveBudgets=(b)=>{setBudgetsState(b);try{localStorage.setItem(BKEY,JSON.stringify(b));}catch{}};
+  const setBudget=(code,val)=>{const n={...budgets,[code]:parseFloat(val)||0};saveBudgets(n);setEditing(null);};
+
+  const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
+  const totalActual=expAccounts.reduce((s,a)=>s+getActual(a.code),0);
+  const totalRemaining=totalBudget-totalActual;
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Budget" sub="MONTHLY BUDGET vs ACTUAL" onBack={onBack}/>
+      <div style={{padding:16}}>
+        {/* Summary */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+          {[{label:"Budget",val:totalBudget,color:T.blue},{label:"Actual",val:totalActual,color:T.red},{label:"Remaining",val:totalRemaining,color:totalRemaining>=0?T.green:T.red}].map((c,i)=>(
+            <div key={i} style={{background:T.card,borderRadius:12,padding:"12px 10px",textAlign:"center",border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{c.label}</div>
+              <div style={{fontSize:13,fontWeight:900,color:c.color}}>{fmt(c.val)}</div>
+            </div>
+          ))}
+        </div>
+        {/* Overall progress */}
+        {totalBudget>0&&(
+          <div style={{marginBottom:16}}>
+            <div style={{background:T.bg,borderRadius:6,height:10,overflow:"hidden",border:`1px solid ${T.border}`}}>
+              <div style={{width:`${Math.min(100,(totalActual/totalBudget)*100)}%`,height:"100%",background:totalActual>totalBudget?T.red:T.blue,borderRadius:6,transition:"width 0.3s"}}/>
+            </div>
+            <div style={{fontSize:10,color:T.muted,marginTop:4,textAlign:"right"}}>{Math.round((totalActual/totalBudget)*100)}% of total budget used</div>
+          </div>
+        )}
+        <SL>Expense Budgets — {filterFrom.slice(0,7)}</SL>
+        {expAccounts.map(a=>{
+          const budget=budgets[a.code]||0;
+          const actual=getActual(a.code);
+          const pct=budget>0?Math.min(100,(actual/budget)*100):0;
+          const over=actual>budget&&budget>0;
+          const isE=editing===a.code;
+          return(
+            <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${over?T.redMid:T.border}`,padding:"12px 14px",marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:T.orangeBg,color:T.orange,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:800}}>{a.code}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:T.text}}>{a.name}</span>
+                </div>
+                {over&&<span style={{fontSize:9,background:T.redLight,color:T.red,padding:"2px 6px",borderRadius:5,fontWeight:800}}>OVER</span>}
+              </div>
+              {isE?(
+                <div style={{display:"flex",gap:6,marginBottom:8}}>
+                  <input type="number" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus placeholder="Budget amount" style={{...inp,flex:1,padding:"7px 10px",fontSize:13}}/>
+                  <button onClick={()=>setBudget(a.code,editVal)} style={{background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>✓</button>
+                  <button onClick={()=>setEditing(null)} style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,cursor:"pointer"}}>✕</button>
+                </div>
+              ):(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:11,color:T.muted}}>Budget: <span style={{fontWeight:700,color:T.text}}>{budget>0?fmt(budget):"Not set"}</span></div>
+                  <button onClick={()=>{setEditing(a.code);setEditVal(String(budget||""));}} style={{...btnSm,fontSize:10,padding:"4px 8px"}}>✏️ Set</button>
+                </div>
+              )}
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:11,color:T.muted}}>Actual: <span style={{fontWeight:700,color:over?T.red:T.text}}>{fmt(actual)}</span></span>
+                {budget>0&&<span style={{fontSize:10,color:T.muted}}>{Math.round(pct)}%</span>}
+              </div>
+              {budget>0&&(
+                <div style={{background:T.bg,borderRadius:4,height:5,overflow:"hidden"}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:over?T.red:T.green,borderRadius:4}}/>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!expAccounts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>Add expense accounts (4000s) first.</div>}
+      </div>
+    </div>
+  );
+}
+
 const MENU=[
   {id:"Dashboard",icon:"⊞",label:"Home"},
   {id:"Transactions",icon:"+",label:"Add Entry",isNew:true},
@@ -2000,6 +2249,7 @@ const SIDEBAR=[
   {id:"Bank",icon:"🏧",label:"Bank"},
   {id:"Reskontro",icon:"👥",label:"Reskontro"},
   {id:"SinkingFunds",icon:"🎯",label:"Sinking Funds"},
+  {id:"Budget",icon:"📐",label:"Budget"},
   {id:"Reports",icon:"↗",label:"Reports"},
   {id:"Import",icon:"📥",label:"Import Excel"},
   {id:"Settings",icon:"⚙",label:"Settings"},
@@ -2016,6 +2266,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
 
   const[entrySearch,setEntrySearch]=useState("");
+  const[bankAttachments,setBankAttachmentsState]=useState(()=>{try{const saved=localStorage.getItem("rr_bank_attachments");return saved?JSON.parse(saved):{}}catch{return{};}});
+  const setBankAttachments=(fn)=>{setBankAttachmentsState(prev=>{const next=typeof fn==="function"?fn(prev):fn;try{localStorage.setItem("rr_bank_attachments",JSON.stringify(next));}catch(e){}return next;});};
   const _now=new Date();
   const _y=_now.getFullYear();
   const _m=String(_now.getMonth()+1).padStart(2,"0");
@@ -2034,12 +2286,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
-  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions}/>);
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} onBack={()=>setTab("Dashboard")}/>);
+  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
+  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro")return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Import")return(<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="SinkingFunds")return(<SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Bank")return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc}/></div></div>);
+  if(tab==="Budget")return(<BudgetScreen accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Bank")return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(code,att)=>setBankAttachments(p=>({...p,[code]:att}))}/></div></div>);
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
@@ -2115,7 +2368,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   <span style={{fontSize:11,fontWeight:800,color:s.color,textTransform:"uppercase",letterSpacing:0.8}}>{s.name}</span>
                 </div>
                 {grp.map(a=>{
-                  const bal=transactions.reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                   const periodBal=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                   return(
                   <div key={a.code} onClick={()=>setLedgerAcc(a)} style={{background:T.card,borderRadius:12,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
@@ -2123,12 +2375,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                       <div style={{background:s.bg,borderRadius:7,padding:"4px 8px",fontSize:11,fontWeight:800,color:s.color,minWidth:36,textAlign:"center"}}>{a.code}</div>
                       <div>
                         <div style={{fontSize:13,fontWeight:600,color:T.text}}>{a.name}</div>
-                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>{s.name} · Period: <span style={{color:periodBal>=0?T.green:T.red,fontWeight:700}}>{periodBal>=0?"+":"−"}{fmt(periodBal)}</span></div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>{s.name}</div>
                       </div>
                     </div>
                     <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:13,fontWeight:800,color:bal>=0?T.green:T.red}}>{bal>=0?"+":"−"}{fmt(bal)}</div>
-                      <div style={{fontSize:9,color:T.muted,marginTop:1}}>All time</div>
+                      <div style={{fontSize:13,fontWeight:800,color:periodBal>=0?T.green:T.red}}>{periodBal>=0?"+":"−"}{fmt(periodBal)}</div>
                     </div>
                   </div>
                 );})}
@@ -2138,7 +2389,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Reports"&&(
-          <ReportsScreen accounts={accounts} transactions={transactions} getName={getName}/>
+          <ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
         )}
       </div>
 
