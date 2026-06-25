@@ -1336,7 +1336,7 @@ const INIT_SF=[
 ];
 
 function SinkingFundsScreen({onBack}){
-  const[funds,setFunds]=useState(INIT_SF);
+  const[funds,setFunds]=useState(sinkingFunds&&sinkingFunds.length>0?sinkingFunds:INIT_SF);
   const[showForm,setShowForm]=useState(false);
   const[editId,setEditId]=useState(null);
   const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8"});
@@ -1350,17 +1350,21 @@ function SinkingFundsScreen({onBack}){
 
   const openNew=()=>{setForm({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8"});setEditId(null);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
   const openEdit=f=>{setForm({name:f.name,goal:String(f.goal),saved:String(f.saved),icon:f.icon,color:f.color});setEditId(f.id);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
-  const deleteFund=id=>{setFunds(p=>p.filter(f=>f.id!==id));setCardMenu(null);};
+  const deleteFund=id=>{const newList=funds.filter(f=>f.id!==id);setFunds(newList);saveSinkingFunds(newList);setCardMenu(null);};
   const cancelForm=()=>{setShowForm(false);setEditId(null);};
 
   const save=()=>{
     if(!form.name.trim()||!parseFloat(form.goal))return;
     const savedVal=form.saved!==""?parseFloat(form.saved):0;
     if(editId){
-      _newFunds=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}:f));
+      const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}:f);
+      setFunds(updated);
+      saveSinkingFunds(updated);
     } else {
       const id="SF"+String(funds.length+1).padStart(3,"0");
-      setFunds(p=>[...p,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}]);
+      const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color}];
+      setFunds(newList);
+      saveSinkingFunds(newList);
     }
     cancelForm();
   };
@@ -1368,7 +1372,9 @@ function SinkingFundsScreen({onBack}){
   const deposit=(id)=>{
     const amt=parseFloat(addAmt[id]||"0");
     if(!amt||amt<=0)return;
-    setFunds(p=>p.map(f=>f.id===id?{...f,saved:Math.min(f.saved+amt,f.goal)}:f));
+    const newList=funds.map(f=>f.id===id?{...f,saved:Math.min(f.saved+amt,f.goal)}:f);
+    setFunds(newList);
+    saveSinkingFunds(newList);
     setAddAmt(p=>({...p,[id]:""}));
   };
 
