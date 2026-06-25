@@ -314,17 +314,6 @@ const INIT_CONTACTS=[
   {id:"S002",type:"supplier",name:"Khan & Co",notes:""},
 ];
 
-const INIT_TXN=[
-  {id:1,bilag:1,date:"2026-06-01",debitCode:"1901",creditCode:"3001",description:"June Salary",amount:80000},
-  {id:2,bilag:2,date:"2026-06-02",debitCode:"4001",creditCode:"1901",description:"June Rent",amount:25000},
-  {id:3,bilag:3,date:"2026-06-05",debitCode:"4002",creditCode:"1001",description:"Groceries",amount:8500},
-  {id:4,bilag:4,date:"2026-06-10",debitCode:"1901",creditCode:"3002",description:"Website Project",amount:35000},
-  {id:5,bilag:5,date:"2026-06-12",debitCode:"4003",creditCode:"1001",description:"Fuel",amount:4200},
-  {id:6,bilag:6,date:"2026-06-15",debitCode:"4004",creditCode:"1901",description:"Electricity Bill",amount:6800},
-  {id:7,bilag:7,date:"2026-06-18",debitCode:"2400",creditCode:"1901",description:"Supplier Payment Ali",amount:15000,contactId:"S001"},
-  {id:8,bilag:8,date:"2026-06-20",debitCode:"1500",creditCode:"3001",description:"Customer A Invoice",amount:22000,contactId:"C001"},
-  {id:9,bilag:9,date:"2026-06-22",debitCode:"1901",creditCode:"1500",description:"Customer A Payment",amount:22000,contactId:"C001"},
-];
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 
@@ -749,8 +738,9 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 // ─── Bank Module ──────────────────────────────────────────────────────────────
 
 function BankModule({accounts,transactions,onOpenLedger}){
-  const[from,setFrom]=useState("2026-06-01");
-  const[to,setTo]=useState(new Date().toISOString().split("T")[0]);
+  const _n=new Date();const _my=_n.getFullYear();const _mm=String(_n.getMonth()+1).padStart(2,"0");const _ml=new Date(_my,_n.getMonth()+1,0).getDate();
+  const[from,setFrom]=useState(`${_my}-${_mm}-01`);
+  const[to,setTo]=useState(`${_my}-${_mm}-${String(_ml).padStart(2,"0")}`);
   const banks=accounts.filter(a=>getSK(a.code)==="1900");
 
   const getBal=(code,beforeDate)=>transactions
@@ -1540,9 +1530,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
 
   const[entrySearch,setEntrySearch]=useState("");
-  const[filterFrom,setFilterFrom]=useState("2026-06-01");
-  const[filterTo,setFilterTo]=useState("2026-06-30");
-  const[reportPeriod,setReportPeriod]=useState({from:"2026-06-01",to:"2026-06-30"});
+  const _now=new Date();
+  const _y=_now.getFullYear();
+  const _m=String(_now.getMonth()+1).padStart(2,"0");
+  const _lastDay=new Date(_y,_now.getMonth()+1,0).getDate();
+  const[filterFrom,setFilterFrom]=useState(`${_y}-${_m}-01`);
+  const[filterTo,setFilterTo]=useState(`${_y}-${_m}-${String(_lastDay).padStart(2,"0")}`);
+  const[reportPeriod,setReportPeriod]=useState({from:`${_y}-${_m}-01`,to:`${_y}-${_m}-${String(_lastDay).padStart(2,"0")}`});
 
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
