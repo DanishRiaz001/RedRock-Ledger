@@ -664,6 +664,16 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   const selSum=selected.reduce((s,id)=>{const r=rows.find(x=>x.id===id);return r?s+r.movement:s;},0);
   const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;onMatchTxns(selected,Date.now().toString());setSelected([]);};
 
+  const exportLedger=()=>{
+    const csvRows=[["Date","Bilag","Description","Movement","Balance"]];
+    allRows.forEach(r=>{csvRows.push([r.date,fmtB(r.bilag),r.description,r.movement,r.balance]);});
+    const csv=csvRows.map(r=>r.join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Ledger_${account.code}_${from}_${to}.csv`;a.click();
+  };
+
+  const[exportMenu,setExportMenu]=useState(false);
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
@@ -671,7 +681,21 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
         onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}}
         onClose={()=>setDetailTxn(null)}/>}
-      <BackHeader title={account.name} sub={`${(series&&series.icon)||""} ${(series&&series.name)||""} · ${account.code}`} color={series&&series.color} onBack={onBack}/>
+      <BackHeader title={account.name} sub={`${(series&&series.icon)||""} ${(series&&series.name)||""} · ${account.code}`} color={series&&series.color} onBack={onBack}
+        right={
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setExportMenu(o=>!o)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:14,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,letterSpacing:1}}>•••</button>
+            {exportMenu&&(
+              <>
+                <div onClick={()=>setExportMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
+                <div style={{position:"absolute",right:0,top:44,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,minWidth:160,boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
+                  <div onClick={()=>{exportLedger();setExportMenu(false);}} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>⬇ Export CSV</div>
+                </div>
+              </>
+            )}
+          </div>
+        }
+      />
       <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",gap:8,alignItems:"center"}}>
         <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
         <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
@@ -741,6 +765,8 @@ function BankModule({accounts,transactions,onOpenLedger}){
   const _n=new Date();const _my=_n.getFullYear();const _mm=String(_n.getMonth()+1).padStart(2,"0");const _ml=new Date(_my,_n.getMonth()+1,0).getDate();
   const[from,setFrom]=useState(`${_my}-${_mm}-01`);
   const[to,setTo]=useState(`${_my}-${_mm}-${String(_ml).padStart(2,"0")}`);
+  const[attachments,setAttachments]=useState({});
+  const[viewing,setViewing]=useState(null);
   const banks=accounts.filter(a=>getSK(a.code)==="1900");
 
   const getBal=(code,beforeDate)=>transactions
@@ -751,8 +777,25 @@ function BankModule({accounts,transactions,onOpenLedger}){
     .filter(t=>t.date>=from&&t.date<=to)
     .reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
 
+  const handleAttach=(code,file)=>{
+    const reader=new FileReader();
+    reader.onload=e=>setAttachments(p=>({...p,[code]:{name:file.name,data:e.target.result,type:file.type}}));
+    reader.readAsDataURL(file);
+  };
+
   return(
     <div>
+      {/* PDF viewer modal */}
+      {viewing&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:500,display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:13,color:"#fff",fontWeight:600}}>{viewing.name}</div>
+            <button onClick={()=>setViewing(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:16,cursor:"pointer",padding:"6px 12px"}}>✕ Close</button>
+          </div>
+          <iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>
+        </div>
+      )}
+
       {/* Period filter */}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}>
         <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
@@ -765,23 +808,26 @@ function BankModule({accounts,transactions,onOpenLedger}){
         const opening=getBal(a.code,from);
         const movement=getMovement(a.code,from,to);
         const closing=opening+movement;
+        const att=attachments[a.code];
         return(
           <div key={a.code} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,marginBottom:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-            {/* Header */}
             <div style={{background:"linear-gradient(135deg,#1A3A6E,#0057B8)",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1,marginBottom:2}}>{a.code}</div>
                 <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>{a.name}</div>
               </div>
-              <button style={{...btnSm,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",fontSize:11}} onClick={()=>onOpenLedger(a)}>Ledger ›</button>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <label style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                  📎 {att?"View":"Attach"}
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(a.code,e.target.files[0]);}}/>
+                </label>
+                {att&&<button onClick={()=>setViewing(att)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600}}>👁 View</button>}
+                <button style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px"}} onClick={()=>onOpenLedger(a)}>Ledger ›</button>
+              </div>
             </div>
-            {/* Three balances */}
+            {att&&<div style={{padding:"6px 16px",background:"rgba(0,87,184,0.06)",fontSize:11,color:T.blue,fontWeight:600}}>📎 {att.name}</div>}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderBottom:`1px solid ${T.border}`}}>
-              {[
-                {label:"Opening",val:opening,color:T.sub},
-                {label:"Movement",val:movement,color:movement>=0?T.green:T.red},
-                {label:"Closing",val:closing,color:closing>=0?T.green:T.red},
-              ].map((col,i)=>(
+              {[{label:"Opening",val:opening,color:T.sub},{label:"Movement",val:movement,color:movement>=0?T.green:T.red},{label:"Closing",val:closing,color:closing>=0?T.green:T.red}].map((col,i)=>(
                 <div key={i} style={{padding:"12px 10px",textAlign:"center",borderRight:i<2?`1px solid ${T.border}`:"none"}}>
                   <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{col.label}</div>
                   <div style={{fontSize:13,fontWeight:800,color:col.color}}>{sign(col.val)}</div>
@@ -1043,7 +1089,7 @@ function AccountPlanScreen({accounts,onSave,onBack}){
             );})}
           </div>);
         })}
-        <button style={btnRed} onClick={()=>onSave(list)}>💾 Save All Changes</button>
+        <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnRed,padding:"10px 14px",fontSize:12}} onClick={()=>onSave(list)}>💾 Save</button><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>Cancel</button></div>
       </div>
     </div>
   );
@@ -1143,15 +1189,21 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
     <div>
       {/* KPI row */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div style={{background:T.greenBg,borderRadius:14,padding:"14px 16px",border:"1px solid #b7e4d4"}}>
-          <div style={{fontSize:10,color:T.green,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Income</div>
-          <div style={{fontSize:20,fontWeight:900,color:T.green,marginTop:4}}>+{fmt(totalIncome)}</div>
-          <div style={{fontSize:10,color:T.muted,marginTop:2}}>Period total</div>
+        <div style={{background:"linear-gradient(135deg,#00875A,#00A36C)",borderRadius:16,padding:"16px",boxShadow:"0 4px 14px rgba(0,135,90,0.2)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Income</div>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:6,padding:"2px 6px",fontSize:9,color:"#fff",fontWeight:700}}>▲</div>
+          </div>
+          <div style={{fontSize:22,fontWeight:900,color:"#fff"}}>{fmt(totalIncome)}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:4}}>Period total</div>
         </div>
-        <div style={{background:T.redLight,borderRadius:14,padding:"14px 16px",border:`1px solid ${T.redMid}`}}>
-          <div style={{fontSize:10,color:T.red,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Expenses</div>
-          <div style={{fontSize:20,fontWeight:900,color:T.red,marginTop:4}}>−{fmt(totalExpenses)}</div>
-          <div style={{fontSize:10,color:T.muted,marginTop:2}}>Period total</div>
+        <div style={{background:"linear-gradient(135deg,#D0021B,#E8284A)",borderRadius:16,padding:"16px",boxShadow:"0 4px 14px rgba(208,2,27,0.2)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Expenses</div>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:6,padding:"2px 6px",fontSize:9,color:"#fff",fontWeight:700}}>▼</div>
+          </div>
+          <div style={{fontSize:22,fontWeight:900,color:"#fff"}}>{fmt(totalExpenses)}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:4}}>Period total</div>
         </div>
       </div>
 
@@ -1189,31 +1241,31 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
 
       {/* Monthly trend */}
       <Card style={{marginBottom:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:T.sub,marginBottom:14}}>3-Month Trend</div>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text}}>3-Month Trend</div>
+          <div style={{display:"flex",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:2,background:T.green}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>In</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:2,background:T.red}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>Out</span></div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:12,alignItems:"flex-end"}}>
           {monthBars.map((mb,i)=>{
             const maxV=Math.max(mb.inc,mb.exp,1);
-            const incH=Math.max(Math.round((mb.inc/maxV)*56),3);
-            const expH=Math.max(Math.round((mb.exp/maxV)*56),3);
+            const incH=Math.max(Math.round((mb.inc/maxV)*70),4);
+            const expH=Math.max(Math.round((mb.exp/maxV)*70),4);
+            const isLast=i===monthBars.length-1;
             return(
-              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:0}}>
-                <div style={{fontSize:10,fontWeight:700,color:mb.net>=0?T.green:T.red,marginBottom:6}}>{sign(mb.net)}</div>
-                <div style={{display:"flex",gap:3,alignItems:"flex-end",height:60}}>
-                  <div style={{width:14,background:T.green,borderRadius:"3px 3px 0 0",height:incH,opacity:0.85}}/>
-                  <div style={{width:14,background:T.red,borderRadius:"3px 3px 0 0",height:expH,opacity:0.85}}/>
+              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{fontSize:9,fontWeight:800,color:mb.net>=0?T.green:T.red,marginBottom:5,whiteSpace:"nowrap"}}>{mb.net>=0?"+":""}{fmt(mb.net)}</div>
+                <div style={{display:"flex",gap:3,alignItems:"flex-end",height:74}}>
+                  <div style={{width:"100%",minWidth:16,background:isLast?"#00875A":"#b7e4d4",borderRadius:"4px 4px 0 0",height:incH}}/>
+                  <div style={{width:"100%",minWidth:16,background:isLast?"#D0021B":"#FFCDD3",borderRadius:"4px 4px 0 0",height:expH}}/>
                 </div>
-                <div style={{fontSize:11,fontWeight:700,color:T.sub,marginTop:5}}>{mb.label}</div>
-                <div style={{display:"flex",gap:3,marginTop:2}}>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:T.green}}/>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:T.red}}/>
-                </div>
+                <div style={{width:"100%",height:1,background:T.border,marginTop:0}}/>
+                <div style={{fontSize:11,fontWeight:isLast?800:600,color:isLast?T.text:T.muted,marginTop:5}}>{mb.label}</div>
               </div>
             );
           })}
-        </div>
-        <div style={{display:"flex",gap:12,marginTop:12,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.green}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>Income</span></div>
-          <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.red}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>Expenses</span></div>
         </div>
       </Card>
 
@@ -1292,12 +1344,12 @@ function NewEntryForm({accounts,contacts,nextBilag,onSave}){
         <div><SL>Amount (PKR)</SL><input type="number" placeholder="0" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <SL>Debit Account</SL>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Debit</div>
             <AccDrop value={form.debitCode} onChange={v=>setForm(p=>({...p,debitCode:v}))} accounts={accounts}/>
             {form.debitCode&&<div style={{fontSize:10,color:T.red,marginTop:5,fontWeight:600}}>{getName(form.debitCode)}</div>}
           </div>
           <div>
-            <SL>Credit Account</SL>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Credit</div>
             <AccDrop value={form.creditCode} onChange={v=>setForm(p=>({...p,creditCode:v}))} accounts={accounts}/>
             {form.creditCode&&<div style={{fontSize:10,color:T.green,marginTop:5,fontWeight:600}}>{getName(form.creditCode)}</div>}
           </div>
@@ -1325,8 +1377,8 @@ const INIT_SF=[
   {id:"SF003",name:"Vacation",goal:150000,saved:62000,color:"#7C3AED",icon:"✈️"},
 ];
 
-function SinkingFundsScreen({onBack}){
-  const[funds,setFunds]=useState(sinkingFunds&&sinkingFunds.length>0?sinkingFunds:INIT_SF);
+function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
+  const[funds,setFunds]=useState((sinkingFunds&&sinkingFunds.length>0)?sinkingFunds:INIT_SF);
   const[showForm,setShowForm]=useState(false);
   const[editId,setEditId]=useState(null);
   const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8"});
@@ -1499,6 +1551,171 @@ function SinkingFundsScreen({onBack}){
   );
 }
 
+function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
+  if(!selAcc)return null;
+  const accTxns=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&(t.debitCode===selAcc||t.creditCode===selAcc)).sort((a,b)=>a.date.localeCompare(b.date));
+  let running=transactions.filter(t=>t.date<rFrom&&(t.debitCode===selAcc||t.creditCode===selAcc)).reduce((s,t)=>t.debitCode===selAcc?s+t.amount:s-t.amount,0);
+  return(
+    <Card>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:12}}>{selAcc} · {getName(selAcc)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 64px",gap:4,padding:"6px 6px",borderBottom:`2px solid ${T.border}`}}>
+        {["Date","Bilag","Description","Amount"].map(h=><div key={h} style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+      </div>
+      {accTxns.map((t,i)=>{const mv=t.debitCode===selAcc?t.amount:-t.amount;running+=mv;return(
+        <div key={t.id} style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 64px",gap:4,padding:"8px 6px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:i%2===0?"#fff":T.bg}}>
+          <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
+          <div style={{fontSize:10,color:T.blue,fontWeight:700}}>{fmtB(t.bilag)}</div>
+          <div style={{fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+          <div style={{fontSize:11,fontWeight:800,textAlign:"right",color:mv>=0?T.green:T.red}}>{mv>=0?"+":"−"}{fmt(mv)}</div>
+        </div>
+      );})}
+      {!accTxns.length&&<div style={{textAlign:"center",color:T.muted,padding:20,fontSize:13}}>No transactions in this period</div>}
+    </Card>
+  );
+}
+
+// ─── Reports Screen ───────────────────────────────────────────────────────────
+
+function ReportsScreen({accounts,transactions,getName}){
+  const[rTab,setRTab]=useState("resultat");
+  const[rFrom,setRFrom]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-01`;});
+  const[rTo,setRTo]=useState(()=>{const n=new Date();const y=n.getFullYear();const m=n.getMonth();const l=new Date(y,m+1,0).getDate();return `${y}-${String(m+1).padStart(2,"0")}-${String(l).padStart(2,"0")}`;});
+  const[selAcc,setSelAcc]=useState("");
+
+  const rTxns=useMemo(()=>transactions.filter(t=>t.date>=rFrom&&t.date<=rTo),[transactions,rFrom,rTo]);
+  const income=useMemo(()=>{const m={};rTxns.filter(t=>getSK(t.creditCode)==="3000").forEach(t=>{m[t.creditCode]=(m[t.creditCode]||0)+t.amount;});return m;},[rTxns]);
+  const expenses=useMemo(()=>{const m={};rTxns.filter(t=>getSK(t.debitCode)==="4000").forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});return m;},[rTxns]);
+  const totalInc=Object.values(income).reduce((s,v)=>s+v,0);
+  const totalExp=Object.values(expenses).reduce((s,v)=>s+v,0);
+
+  const exportCSV=(rows,filename)=>{
+    const csv=rows.map(r=>r.join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  };
+
+  const exportResultat=()=>{
+    const rows=[["Account","Name","Amount"],
+      ...Object.entries(income).map(([c,a])=>[c,getName(c),a]),
+      ["","Total Income",totalInc],
+      ...Object.entries(expenses).map(([c,a])=>[c,getName(c),-a]),
+      ["","Total Expenses",-totalExp],
+      ["","Net P/L",totalInc-totalExp]
+    ];
+    exportCSV(rows,`Resultat_${rFrom}_${rTo}.csv`);
+  };
+
+  const exportBalanse=()=>{
+    const rows=[["Code","Account","Balance"]];
+    accounts.forEach(a=>{
+      const bal=transactions.reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+      rows.push([a.code,a.name,bal]);
+    });
+    exportCSV(rows,`Balanserapport_${rTo}.csv`);
+  };
+
+  const exportAccLedger=()=>{
+    if(!selAcc)return;
+    const rows=[["Date","Bilag","Description","Debit","Credit","Balance"]];
+    let running=0;
+    const accTxns=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&(t.debitCode===selAcc||t.creditCode===selAcc)).sort((a,b)=>a.date.localeCompare(b.date));
+    accTxns.forEach(t=>{
+      const dr=t.debitCode===selAcc?t.amount:0;
+      const cr=t.creditCode===selAcc?t.amount:0;
+      running+=dr-cr;
+      rows.push([t.date,fmtB(t.bilag),t.description,dr||"",cr||"",running]);
+    });
+    exportCSV(rows,`Ledger_${selAcc}_${rFrom}_${rTo}.csv`);
+  };
+
+  const TAB_STYLE=(active)=>({padding:"8px 16px",fontSize:12,fontWeight:active?800:600,color:active?"#fff":T.sub,background:active?T.blue:"transparent",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit"});
+
+  return(
+    <div>
+      {/* Period filter */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <input type="date" value={rFrom} onChange={e=>setRFrom(e.target.value)} style={{...inp,flex:1,fontSize:13,padding:"8px 10px"}}/>
+        <input type="date" value={rTo} onChange={e=>setRTo(e.target.value)} style={{...inp,flex:1,fontSize:13,padding:"8px 10px"}}/>
+      </div>
+
+      {/* Tab switcher */}
+      <div style={{display:"flex",gap:4,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
+        {[["resultat","📊 Resultat"],["balanse","⚖️ Balanse"],["account","📒 Account"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 4px",fontSize:11}}>{label}</button>
+        ))}
+      </div>
+
+      {/* Resultat (P&L) */}
+      {rTab==="resultat"&&(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:800}}>Resultatregnskap</div>
+            <button onClick={exportResultat} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:T.green,fontWeight:800,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Income</div>
+            {Object.entries(income).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.green}}>+{fmt(amt)}</span></div>))}
+            {!Object.keys(income).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No income entries</div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.green,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Income</span><span>+{fmt(totalInc)}</span></div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:T.orange,fontWeight:800,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Expenses</div>
+            {Object.entries(expenses).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.orange}}>−{fmt(amt)}</span></div>))}
+            {!Object.keys(expenses).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No expense entries</div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.orange,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Expenses</span><span>−{fmt(totalExp)}</span></div>
+          </div>
+          <div style={{background:totalInc-totalExp>=0?T.greenBg:T.redLight,borderRadius:10,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13,fontWeight:700}}>Net Profit / Loss</span>
+            <span style={{fontSize:20,fontWeight:900,color:totalInc-totalExp>=0?T.green:T.red}}>{sign(totalInc-totalExp)}</span>
+          </div>
+        </Card>
+      )}
+
+      {/* Balanserapport */}
+      {rTab==="balanse"&&(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:800}}>Balanserapport</div>
+            <button onClick={exportBalanse} style={{...btnSm,fontSize:11}}>⬇ CSV</button>
+          </div>
+          {Object.entries(SERIES).map(([key,s])=>{
+            const grp=accounts.filter(a=>getSK(a.code)===key);
+            if(!grp.length)return null;
+            const total=grp.reduce((sum,a)=>sum+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0);
+            return(
+              <div key={key} style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{fontSize:11,color:s.color,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>{s.icon} {s.name}</div>
+                  <div style={{fontSize:12,fontWeight:800,color:total>=0?T.green:T.red}}>{sign(total)}</div>
+                </div>
+                {grp.map(a=>{const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);return(
+                  <div key={a.code} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingLeft:12,paddingBottom:5,color:T.sub}}>
+                    <span>{a.code} · {a.name}</span>
+                    <span style={{fontWeight:700,color:bal>=0?T.green:T.red}}>{sign(bal)}</span>
+                  </div>
+                );})}
+                <div style={{height:1,background:T.border,marginTop:4}}/>
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
+      {/* Account Ledger */}
+      {rTab==="account"&&(
+        <div>
+          <Card style={{marginBottom:12}}>
+            <SL>Select Account</SL>
+            <AccDropFlat value={selAcc} onChange={setSelAcc} accounts={accounts}/>
+            {selAcc&&<button onClick={exportAccLedger} style={{...btnSm,marginTop:10,width:"100%",textAlign:"center"}}>⬇ Export Ledger CSV</button>}
+          </Card>
+          <AccLedgerTable selAcc={selAcc} transactions={transactions} rFrom={rFrom} rTo={rTo} getName={getName}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 
 const MENU=[
@@ -1551,7 +1768,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions}/>);
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro")return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="SinkingFunds")return(<SinkingFundsScreen onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="SinkingFunds")return(<SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Bank")return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc}/></div></div>);
 
   return(
@@ -1619,7 +1836,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} nextBilag={nextBilag} onSave={addTransaction}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} nextBilag={nextBilag} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
@@ -1641,46 +1858,28 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Reports"&&(
-          <div>
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <input type="date" value={reportPeriod.from} onChange={e=>setReportPeriod(p=>({...p,from:e.target.value}))} style={{...inp,flex:1}}/>
-              <input type="date" value={reportPeriod.to} onChange={e=>setReportPeriod(p=>({...p,to:e.target.value}))} style={{...inp,flex:1}}/>
-            </div>
-            <Card>
-              <div style={{fontSize:15,fontWeight:800,marginBottom:14,display:"flex",alignItems:"center",gap:8}}><Pill label="P&L" color={T.blue} bg={T.blueBg}/> Income Statement</div>
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:11,color:T.green,fontWeight:800,marginBottom:8}}>INCOME · 3000s</div>
-                {Object.entries(reportIncome).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.green}}>+{fmt(amt)}</span></div>))}
-                {!Object.keys(reportIncome).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No income entries</div>}
-                <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.green,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Income</span><span>+{fmt(totalRI)}</span></div>
-              </div>
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:11,color:T.orange,fontWeight:800,marginBottom:8}}>EXPENSES · 4000s</div>
-                {Object.entries(reportExpenses).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.orange}}>−{fmt(amt)}</span></div>))}
-                {!Object.keys(reportExpenses).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No expense entries</div>}
-                <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.orange,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Expenses</span><span>−{fmt(totalRE)}</span></div>
-              </div>
-              <div style={{background:totalRI-totalRE>=0?T.greenBg:T.redLight,borderRadius:10,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,fontWeight:700}}>Net Profit / Loss</span>
-                <span style={{fontSize:20,fontWeight:900,color:totalRI-totalRE>=0?T.green:T.red}}>{sign(totalRI-totalRE)}</span>
-              </div>
-            </Card>
-          </div>
+          <ReportsScreen accounts={accounts} transactions={transactions} getName={getName}/>
         )}
       </div>
 
-      {/* Bottom nav: Home | Add Entry | Accounts */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"#fff",borderTop:`1px solid ${T.border}`,display:"flex",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}}>
+      {/* Bottom nav */}
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"#fff",borderTop:"1px solid #E8ECF0",display:"flex",boxShadow:"0 -2px 16px rgba(0,0,0,0.06)",paddingBottom:"env(safe-area-inset-bottom)"}}>
         {MENU.map(t=>{
           const active=tab===t.id;
           const isNew=t.isNew;
           return(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:isNew?"6px 2px 10px":"9px 2px 11px",background:"none",border:"none",color:active?T.red:T.muted,fontSize:9,fontWeight:active?800:500,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-              {isNew
-                ?<span style={{background:T.red,color:"#fff",borderRadius:14,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900}}>+</span>
-                :<span style={{fontSize:17}}>{t.icon}</span>
-              }
-              <span>{t.label}</span>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,paddingTop:10,paddingBottom:12,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,position:"relative"}}>
+              {isNew?(
+                <div style={{background:T.red,borderRadius:16,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(208,2,27,0.35)"}}>
+                  <span style={{color:"#fff",fontSize:22,fontWeight:900,lineHeight:1}}>+</span>
+                </div>
+              ):(
+                <div style={{width:32,height:32,borderRadius:10,background:active?"#FFF0F2":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background 0.15s"}}>
+                  <span style={{fontSize:18}}>{t.icon}</span>
+                </div>
+              )}
+              <span style={{fontSize:10,fontWeight:active?800:500,color:active?T.red:T.muted,letterSpacing:0.2}}>{t.label}</span>
+              {active&&!isNew&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:20,height:2.5,background:T.red,borderRadius:2}}/>}
             </button>
           );
         })}
