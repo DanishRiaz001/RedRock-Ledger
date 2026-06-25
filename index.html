@@ -1571,10 +1571,10 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
   const ICONS=["🛡️","🚗","✈️","🏠","📚","💍","🎯","🏖️","🏥","💻"];
 
   return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:30}}>
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       {(menuOpen||cardMenu)&&<div onClick={()=>{setMenuOpen(false);setCardMenu(null);}} style={{position:"fixed",inset:0,zIndex:90}}/>}
 
-      {/* Header with ••• menu */}
+      {/* Header */}
       <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
         <div style={{flex:1}}>
@@ -1582,62 +1582,63 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
           <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>Sinking Funds</div>
         </div>
         <div style={{position:"relative"}}>
-          <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:16,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,letterSpacing:1}}>•••</button>
+          <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:16,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
           {menuOpen&&(
             <div style={{position:"absolute",right:0,top:44,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:160,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
-              <div onClick={openNew} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-                <span>➕</span> Add New Fund
-              </div>
+              <div onClick={openNew} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>➕ Add New Fund</div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Overall progress */}
-      <div style={{background:T.header,padding:"0 20px 16px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
+      {/* Summary bar */}
+      <div style={{background:T.header,padding:"0 20px 18px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
           <div>
-            <div style={{fontSize:10,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Total Saved</div>
-            <div style={{fontSize:20,fontWeight:900,color:"#4ade80"}}>{fmt(totalSaved)}</div>
+            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Saved</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#4ade80"}}>{fmt(totalSaved)}</div>
           </div>
           <div>
-            <div style={{fontSize:10,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Total Goal</div>
-            <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>{fmt(totalGoal)}</div>
+            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Goal</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff"}}>{fmt(totalGoal)}</div>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Overall</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#93A8D0"}}>{overallPct}%</div>
           </div>
         </div>
-        <div style={{background:"rgba(255,255,255,0.1)",borderRadius:6,height:8,overflow:"hidden"}}>
-          <div style={{width:`${overallPct}%`,height:"100%",background:"#4ade80",borderRadius:6}}/>
+        <div style={{background:"rgba(255,255,255,0.1)",borderRadius:4,height:5,overflow:"hidden"}}>
+          <div style={{width:`${overallPct}%`,height:"100%",background:"#4ade80",borderRadius:4}}/>
         </div>
-        <div style={{fontSize:10,color:"#6C7A9C",marginTop:5,textAlign:"right"}}>{overallPct}% of total goal</div>
       </div>
 
       <div style={{padding:16}}>
-        {/* Compact inline form */}
+        {/* Inline form */}
         {showForm&&(
-          <div style={{background:T.card,borderRadius:14,border:`1px solid ${editId?T.orange:T.blue}`,padding:"14px",marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:12,fontWeight:800,color:editId?T.orange:T.blue}}>{editId?"Edit Fund":"New Fund"}</span>
-              <button onClick={cancelForm} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:13,cursor:"pointer",width:26,height:26}}>✕</button>
+          <div style={{background:T.card,borderRadius:14,border:`1px solid ${editId?T.orange:T.blue}`,padding:"16px",marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <span style={{fontSize:13,fontWeight:800,color:editId?T.orange:T.blue}}>{editId?"Edit Fund":"New Fund"}</span>
+              <button onClick={cancelForm} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:13,cursor:"pointer",width:28,height:28}}>✕</button>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <input placeholder="Fund name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Goal (PKR)</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
-                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Saved So Far</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
+                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Goal (PKR)</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
+                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Saved So Far</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
               </div>
-              <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Target Tenure (months)</div><input type="number" placeholder="e.g. 24 = 2 years" value={form.months} onChange={e=>setForm(p=>({...p,months:e.target.value}))} style={inp}/>{form.months&&parseInt(form.months)>0&&<div style={{fontSize:10,color:T.blue,marginTop:3}}>{parseInt(form.months)>=12?`${Math.floor(parseInt(form.months)/12)} yr${Math.floor(parseInt(form.months)/12)>1?"s":""} ${parseInt(form.months)%12?`${parseInt(form.months)%12} mo`:""}`:parseInt(form.months)+" months"}</div>}</div>
+              <div>
+                <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Tenure (months)</div>
+                <input type="number" placeholder="e.g. 24 = 2 years" value={form.months} onChange={e=>setForm(p=>({...p,months:e.target.value}))} style={inp}/>
+                {form.months&&parseInt(form.months)>0&&<div style={{fontSize:10,color:T.blue,marginTop:3}}>{parseInt(form.months)>=12?`${Math.floor(parseInt(form.months)/12)}yr ${parseInt(form.months)%12?parseInt(form.months)%12+"mo":""}`.trim():parseInt(form.months)+" months"}</div>}
+              </div>
               {!editId&&(
                 <div>
-                  <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.8}}>Icon & Color</div>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase"}}>Icon & Color</div>
                   <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-                    {ICONS.map(ic=>(
-                      <button key={ic} onClick={()=>setForm(p=>({...p,icon:ic}))} style={{fontSize:18,lineHeight:"1",background:form.icon===ic?T.blueBg:"#f5f5f5",border:`2px solid ${form.icon===ic?T.blue:"transparent"}`,borderRadius:7,padding:"4px 6px",cursor:"pointer"}}>{ic}</button>
-                    ))}
+                    {ICONS.map(ic=><button key={ic} onClick={()=>setForm(p=>({...p,icon:ic}))} style={{fontSize:18,background:form.icon===ic?T.blueBg:"#f5f5f5",border:`2px solid ${form.icon===ic?T.blue:"transparent"}`,borderRadius:7,padding:"4px 6px",cursor:"pointer"}}>{ic}</button>)}
                   </div>
                   <div style={{display:"flex",gap:7}}>
-                    {COLORS.map(col=>(
-                      <button key={col} onClick={()=>setForm(p=>({...p,color:col}))} style={{width:24,height:24,borderRadius:"50%",background:col,border:`3px solid ${form.color===col?"#111":"transparent"}`,cursor:"pointer"}}/>
-                    ))}
+                    {COLORS.map(col=><button key={col} onClick={()=>setForm(p=>({...p,color:col}))} style={{width:24,height:24,borderRadius:"50%",background:col,border:`3px solid ${form.color===col?"#111":"transparent"}`,cursor:"pointer"}}/>)}
                   </div>
                 </div>
               )}
@@ -1646,55 +1647,60 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
           </div>
         )}
 
-        {/* Fund cards */}
+        {/* Fund cards — clean */}
         {funds.map(f=>{
           const pct=Math.min(Math.round((f.saved/f.goal)*100),100);
           const remaining=f.goal-f.saved;
           const done=pct>=100;
+          const monthly=f.months&&f.months>0&&!done?Math.ceil(remaining/f.months):null;
           return(
-            <div key={f.id} style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:42,height:42,borderRadius:12,background:f.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,lineHeight:"1"}}>{f.icon}</div>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{f.name}</div>
-                    <div style={{fontSize:10,color:T.muted,marginTop:1}}>Goal: {fmt(f.goal)}{f.months?` · ${f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?` ${f.months%12}mo`:""}`:f.months+"mo"}`:""}</div>
+            <div key={f.id} style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              {/* Top row: icon + name + ••• */}
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                <div style={{width:40,height:40,borderRadius:11,background:f.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{f.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:700,color:T.text}}>{f.name}</div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:1}}>
+                    {f.months?`${f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?" "+f.months%12+"mo":""}`:f.months+"mo"} tenure · `:""}Goal {fmt(f.goal)}
                   </div>
                 </div>
-                <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}>
-                  {done&&<span style={{fontSize:10,background:T.greenBg,color:T.green,padding:"2px 8px",borderRadius:6,fontWeight:800}}>✓ Done</span>}
-                  <button onClick={()=>setCardMenu(cardMenu===f.id?null:f.id)} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,color:T.sub,fontSize:14,cursor:"pointer",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,letterSpacing:1}}>•••</button>
+                <div style={{position:"relative",flexShrink:0}}>
+                  {done&&<span style={{fontSize:10,background:T.greenBg,color:T.green,padding:"3px 8px",borderRadius:6,fontWeight:800,marginRight:6}}>✓</span>}
+                  <button onClick={()=>setCardMenu(cardMenu===f.id?null:f.id)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.sub,fontSize:13,cursor:"pointer",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,letterSpacing:1}}>•••</button>
                   {cardMenu===f.id&&(
-                    <div style={{position:"absolute",right:0,top:36,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:140,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
-                      <div onClick={()=>openEdit(f)} style={{padding:"12px 14px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
-                        <span>✏️</span> Edit Fund
-                      </div>
-                      <div onClick={()=>deleteFund(f.id)} style={{padding:"12px 14px",fontSize:13,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-                        <span>🗑️</span> Delete
-                      </div>
+                    <div style={{position:"absolute",right:0,top:32,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:130,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
+                      <div onClick={()=>openEdit(f)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>✏️ Edit</div>
+                      <div onClick={()=>deleteFund(f.id)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>🗑️ Delete</div>
                     </div>
                   )}
                 </div>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <div style={{fontSize:18,fontWeight:900,color:f.color}}>{fmt(f.saved)}</div>
-                <div style={{fontSize:12,color:T.muted,fontWeight:600,alignSelf:"flex-end"}}>
-                  {pct}%{!done&&<span style={{color:T.orange}}> · {fmt(remaining)} to go</span>}
-                </div>
+
+              {/* Saved amount + pct */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                <div style={{fontSize:20,fontWeight:900,color:f.color}}>{fmt(f.saved)}</div>
+                <div style={{fontSize:12,color:done?T.green:T.muted,fontWeight:700}}>{pct}%{!done&&` · ${fmt(remaining)} left`}</div>
               </div>
-              <div style={{background:T.bg,borderRadius:6,height:8,overflow:"hidden",marginBottom:done?0:12}}>
-                <div style={{width:`${pct}%`,height:"100%",background:f.color,borderRadius:6}}/>
+
+              {/* Progress bar */}
+              <div style={{background:T.bg,borderRadius:5,height:7,overflow:"hidden",marginBottom:done?0:10}}>
+                <div style={{width:`${pct}%`,height:"100%",background:done?T.green:f.color,borderRadius:5,transition:"width 0.4s"}}/>
               </div>
+
+              {/* Deposit row + monthly hint */}
               {!done&&(
-                <div style={{display:"flex",gap:8,marginTop:4}}>
-                  <input type="number" placeholder="Add amount..." value={addAmt[f.id]||""} onChange={e=>setAddAmt(p=>({...p,[f.id]:e.target.value}))} style={{...inp,padding:"8px 12px",fontSize:16,flex:1}}/>
-                  <button onClick={()=>deposit(f.id)} style={{background:f.color,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>+ Add</button>
-                </div>
+                <>
+                  <div style={{display:"flex",gap:8}}>
+                    <input type="number" placeholder="Add amount…" value={addAmt[f.id]||""} onChange={e=>setAddAmt(p=>({...p,[f.id]:e.target.value}))} style={{...inp,padding:"8px 12px",fontSize:15,flex:1}}/>
+                    <button onClick={()=>deposit(f.id)} style={{background:f.color,color:"#fff",border:"none",borderRadius:10,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>+ Add</button>
+                  </div>
+                  {monthly&&<div style={{fontSize:10,color:T.muted,marginTop:6}}>📅 {fmt(monthly)}/month to reach goal</div>}
+                </>
               )}
-              {!done&&f.months&&f.months>0&&(()=>{const remaining2=f.goal-f.saved;const monthly=Math.ceil(remaining2/f.months);return(<div style={{fontSize:10,color:T.muted,marginTop:6}}>📅 {fmt(monthly)}/month needed to hit goal in {f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?` ${f.months%12}mo`:""}`:f.months+"mo"}</div>);})()}
             </div>
           );
         })}
+        {!funds.length&&<div style={{textAlign:"center",color:T.muted,padding:40,fontSize:13}}>No funds yet. Tap ••• to add one.</div>}
       </div>
     </div>
   );
@@ -2151,16 +2157,21 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const BKEY="rr_budgets";
   const[budgets,setBudgetsState]=useState(()=>{try{const s=localStorage.getItem(BKEY);return s?JSON.parse(s):{}}catch{return{};}});
-  const[editing,setEditing]=useState(null);
+  const[editModal,setEditModal]=useState(null); // {code, name}
   const[editVal,setEditVal]=useState("");
+  const[cardMenu,setCardMenu]=useState(null);
 
   const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
   const periodTxns=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo);
-
   const getActual=code=>periodTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
 
   const saveBudgets=(b)=>{setBudgetsState(b);try{localStorage.setItem(BKEY,JSON.stringify(b));}catch{}};
-  const setBudget=(code,val)=>{const n={...budgets,[code]:parseFloat(val)||0};saveBudgets(n);setEditing(null);};
+  const confirmEdit=()=>{
+    if(!editModal)return;
+    saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});
+    setEditModal(null);setEditVal("");
+  };
+  const openEdit=(a)=>{setEditVal(String(budgets[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
 
   const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
   const totalActual=expAccounts.reduce((s,a)=>s+getActual(a.code),0);
@@ -2168,63 +2179,79 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Budget" sub="MONTHLY BUDGET vs ACTUAL" onBack={onBack}/>
+      {cardMenu&&<div onClick={()=>setCardMenu(null)} style={{position:"fixed",inset:0,zIndex:90}}/>}
+
+      {/* Edit modal */}
+      {editModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:T.card,borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>{editModal.code} · {editModal.name}</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Set monthly budget in PKR</div>
+            <input
+              type="number"
+              placeholder="e.g. 50000"
+              value={editVal}
+              onChange={e=>setEditVal(e.target.value)}
+              autoFocus
+              style={{...inp,marginBottom:12}}
+            />
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={confirmEdit} style={{...btnRed,flex:2}}>Save Budget</button>
+              <button onClick={()=>setEditModal(null)} style={{...btnGhost,flex:1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BackHeader title="Budget" sub={filterFrom.slice(0,7)} onBack={onBack}/>
+
       <div style={{padding:16}}>
-        {/* Summary */}
+        {/* Summary row */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-          {[{label:"Budget",val:totalBudget,color:T.blue},{label:"Actual",val:totalActual,color:T.red},{label:"Remaining",val:totalRemaining,color:totalRemaining>=0?T.green:T.red}].map((c,i)=>(
+          {[{label:"Budget",val:totalBudget,color:T.blue},{label:"Actual",val:totalActual,color:T.red},{label:"Left",val:totalRemaining,color:totalRemaining>=0?T.green:T.red}].map((c,i)=>(
             <div key={i} style={{background:T.card,borderRadius:12,padding:"12px 10px",textAlign:"center",border:`1px solid ${T.border}`}}>
               <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{c.label}</div>
               <div style={{fontSize:13,fontWeight:900,color:c.color}}>{fmt(c.val)}</div>
             </div>
           ))}
         </div>
-        {/* Overall progress */}
-        {totalBudget>0&&(
-          <div style={{marginBottom:16}}>
-            <div style={{background:T.bg,borderRadius:6,height:10,overflow:"hidden",border:`1px solid ${T.border}`}}>
-              <div style={{width:`${Math.min(100,(totalActual/totalBudget)*100)}%`,height:"100%",background:totalActual>totalBudget?T.red:T.blue,borderRadius:6,transition:"width 0.3s"}}/>
-            </div>
-            <div style={{fontSize:10,color:T.muted,marginTop:4,textAlign:"right"}}>{Math.round((totalActual/totalBudget)*100)}% of total budget used</div>
-          </div>
-        )}
-        <SL>Expense Budgets — {filterFrom.slice(0,7)}</SL>
+
+        {/* Account cards */}
         {expAccounts.map(a=>{
           const budget=budgets[a.code]||0;
           const actual=getActual(a.code);
-          const pct=budget>0?Math.min(100,(actual/budget)*100):0;
+          const pct=budget>0?Math.min(100,Math.round((actual/budget)*100)):0;
           const over=actual>budget&&budget>0;
-          const isE=editing===a.code;
           return(
-            <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${over?T.redMid:T.border}`,padding:"12px 14px",marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{background:T.orangeBg,color:T.orange,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:800}}>{a.code}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:T.text}}>{a.name}</span>
+            <div key={a.code} style={{background:T.card,borderRadius:14,border:`1px solid ${over?T.redMid:T.border}`,padding:"14px 14px 12px",marginBottom:8}}>
+              {/* Header row */}
+              <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
+                <span style={{background:T.orangeBg,color:T.orange,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:800,marginRight:8}}>{a.code}</span>
+                <span style={{fontSize:13,fontWeight:600,color:T.text,flex:1}}>{a.name}</span>
+                {over&&<span style={{fontSize:9,background:T.redLight,color:T.red,padding:"2px 6px",borderRadius:5,fontWeight:800,marginRight:6}}>OVER</span>}
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setCardMenu(cardMenu===a.code?null:a.code)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
+                  {cardMenu===a.code&&(
+                    <div style={{position:"absolute",right:0,top:30,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
+                      <div onClick={()=>openEdit(a)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>✏️ Set Budget</div>
+                    </div>
+                  )}
                 </div>
-                {over&&<span style={{fontSize:9,background:T.redLight,color:T.red,padding:"2px 6px",borderRadius:5,fontWeight:800}}>OVER</span>}
               </div>
-              {isE?(
-                <div style={{display:"flex",gap:6,marginBottom:8}}>
-                  <input type="number" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus placeholder="Budget amount" style={{...inp,flex:1,padding:"7px 10px",fontSize:13}}/>
-                  <button onClick={()=>setBudget(a.code,editVal)} style={{background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>✓</button>
-                  <button onClick={()=>setEditing(null)} style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,cursor:"pointer"}}>✕</button>
-                </div>
-              ):(
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:11,color:T.muted}}>Budget: <span style={{fontWeight:700,color:T.text}}>{budget>0?fmt(budget):"Not set"}</span></div>
-                  <button onClick={()=>{setEditing(a.code);setEditVal(String(budget||""));}} style={{...btnSm,fontSize:10,padding:"4px 8px"}}>✏️ Set</button>
-                </div>
-              )}
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontSize:11,color:T.muted}}>Actual: <span style={{fontWeight:700,color:over?T.red:T.text}}>{fmt(actual)}</span></span>
-                {budget>0&&<span style={{fontSize:10,color:T.muted}}>{Math.round(pct)}%</span>}
+
+              {/* Budget vs Actual */}
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                <div style={{fontSize:11,color:T.muted}}>Budget <span style={{fontWeight:700,color:T.text}}>{budget>0?fmt(budget):"—"}</span></div>
+                <div style={{fontSize:11,color:T.muted}}>Actual <span style={{fontWeight:700,color:over?T.red:T.text}}>{fmt(actual)}</span>{budget>0&&<span style={{color:T.muted}}> · {pct}%</span>}</div>
               </div>
+
+              {/* Bar */}
               {budget>0&&(
                 <div style={{background:T.bg,borderRadius:4,height:5,overflow:"hidden"}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:over?T.red:T.green,borderRadius:4}}/>
+                  <div style={{width:`${pct}%`,height:"100%",background:over?T.red:T.green,borderRadius:4,transition:"width 0.3s"}}/>
                 </div>
               )}
+              {!budget&&<div style={{fontSize:10,color:T.muted,fontStyle:"italic"}}>No budget set — tap ••• to set one</div>}
             </div>
           );
         })}
