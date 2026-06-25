@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>My Finance Ledger</title>
+  <title>RedRock Accounting</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -77,7 +77,7 @@ function LoginScreen({onLogin}){
       <div style={{width:"100%",maxWidth:360}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:48,marginBottom:10}}>📒</div>
-          <div style={{fontSize:26,fontWeight:900,color:"#fff",marginBottom:6}}>My Finance Ledger</div>
+          <div style={{fontSize:26,fontWeight:900,color:"#fff",marginBottom:6}}>RedRock Accounting</div>
           <div style={{fontSize:13,color:"#6C7A9C"}}>{mode==="login"?"Sign in to continue":mode==="signup"?"Create your account":"Reset your password"}</div>
         </div>
         <div style={{background:"#fff",borderRadius:16,padding:24,display:"flex",flexDirection:"column",gap:14}}>
@@ -465,19 +465,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
             <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
           </div>
           <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
-          <button style={{...btnRed,opacity:valid?1:0.5}} onClick={()=>valid&&onSave({...form,amount:parseFloat(form.amount)})}>Save Changes</button>
-          {confirmDel?(
-            <div style={{background:T.redLight,borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.red,marginBottom:10}}>Delete this entry permanently?</div>
-              <div style={{display:"flex",gap:8}}>
-                <button style={{background:T.red,color:"#fff",border:"none",borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Yes, Delete</button>
-                <button style={{background:"#fff",color:T.red,border:`1.5px solid ${T.red}`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(false)}>Cancel</button>
-              </div>
-            </div>
-          ):(
-            <button style={{background:"#fff",color:T.red,border:`1.5px solid ${T.red}`,borderRadius:10,padding:"12px 18px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑 Delete Entry</button>
-          )}
-          <button style={btnGhost} onClick={onClose}>Cancel</button>
+          <div style={{display:"flex",gap:6,marginTop:4}}>
+            <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>valid&&onSave({...form,amount:parseFloat(form.amount)})}>💾 Save</button>
+            {confirmDel?(
+              <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
+            ):(
+              <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑</button>
+            )}
+            <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDel(false);onClose();}}>✕</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1157,6 +1153,86 @@ function MiniBar({data,height=52}){
   );
 }
 
+// ─── Global Period Selector ────────────────────────────────────────────────────
+function PeriodSelector({from,to,onChange}){
+  const[mode,setMode]=useState("month"); // "year" | "month" | "custom"
+  const now=new Date();
+  const curY=now.getFullYear();
+  const curM=now.getMonth()+1;
+
+  const[selYear,setSelYear]=useState(parseInt(from.slice(0,4))||curY);
+  const[selMonth,setSelMonth]=useState(parseInt(from.slice(5,7))||curM);
+  const[showCustom,setShowCustom]=useState(false);
+  const[customFrom,setCustomFrom]=useState(from);
+  const[customTo,setCustomTo]=useState(to);
+
+  const years=[2024,2025,2026,2027];
+  const months=[1,2,3,4,5,6,7,8,9,10,11,12];
+
+  const selectYear=(y)=>{
+    setSelYear(y);
+    const f=`${y}-01-01`;
+    const t=`${y}-12-31`;
+    onChange(f,t);
+    setMode("month");
+  };
+
+  const selectMonth=(m)=>{
+    setSelMonth(m);
+    const mm=String(m).padStart(2,"0");
+    const lastDay=new Date(selYear,m,0).getDate();
+    const f=`${selYear}-${mm}-01`;
+    const t=`${selYear}-${mm}-${String(lastDay).padStart(2,"0")}`;
+    onChange(f,t);
+    setShowCustom(false);
+  };
+
+  const applyCustom=()=>{
+    if(customFrom&&customTo){onChange(customFrom,customTo);setShowCustom(false);}
+  };
+
+  // Determine label
+  const fromMonth=parseInt(from.slice(5,7));
+  const fromYear=parseInt(from.slice(0,4));
+  const toMonth=parseInt(to.slice(5,7));
+  const toYear=parseInt(to.slice(0,4));
+  const isFullYear=from.endsWith("-01-01")&&to.endsWith("-12-31");
+  const isSingleMonth=fromMonth===toMonth&&fromYear===toYear&&!isFullYear;
+  const label=isFullYear?String(fromYear):isSingleMonth?`${String(fromMonth).padStart(2,"0")}/${fromYear}`:`${from} → ${to}`;
+
+  return(
+    <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+      {/* Year row */}
+      <div style={{display:"flex",overflowX:"auto",padding:"8px 16px 4px",gap:6,scrollbarWidth:"none"}}>
+        {years.map(y=>(
+          <button key={y} onClick={()=>selectYear(y)} style={{flexShrink:0,padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selYear===y?T.red:T.border}`,background:selYear===y?T.red:"#fff",color:selYear===y?"#fff":T.sub,fontSize:12,fontWeight:selYear===y?800:500,cursor:"pointer",fontFamily:"inherit"}}>{y}</button>
+        ))}
+      </div>
+      {/* Month row */}
+      <div style={{display:"flex",overflowX:"auto",padding:"4px 16px 8px",gap:4,scrollbarWidth:"none"}}>
+        {months.map(m=>{
+          const active=isSingleMonth&&selMonth===m&&selYear===fromYear;
+          return(
+            <button key={m} onClick={()=>selectMonth(m)} style={{flexShrink:0,width:32,height:28,borderRadius:8,border:`1.5px solid ${active?T.red:T.border}`,background:active?T.redLight:"#fff",color:active?T.red:T.sub,fontSize:11,fontWeight:active?800:500,cursor:"pointer",fontFamily:"inherit"}}>{String(m).padStart(2,"0")}</button>
+          );
+        })}
+        <button onClick={()=>setShowCustom(s=>!s)} style={{flexShrink:0,padding:"4px 10px",borderRadius:8,border:`1.5px solid ${showCustom?T.blue:T.border}`,background:showCustom?T.blueBg:"#fff",color:showCustom?T.blue:T.sub,fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>⋯</button>
+      </div>
+      {/* Custom range */}
+      {showCustom&&(
+        <div style={{padding:"8px 16px 10px",borderTop:`1px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
+          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{...selSm,flex:1,padding:"6px 8px",fontSize:13}}/>
+          <span style={{fontSize:11,color:T.muted,fontWeight:700}}>→</span>
+          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{...selSm,flex:1,padding:"6px 8px",fontSize:13}}/>
+          <button onClick={applyCustom} style={{background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>OK</button>
+        </div>
+      )}
+      {/* Current period label */}
+      <div style={{padding:"2px 16px 6px",fontSize:10,color:T.muted,fontWeight:600}}>{label}</div>
+    </div>
+  );
+}
+
 function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo}){
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
@@ -1243,34 +1319,6 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
       </div>
 
       {/* Monthly trend */}
-      <Card style={{marginBottom:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:800,color:T.text}}>3-Month Trend</div>
-          <div style={{display:"flex",gap:10}}>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:2,background:T.green}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>In</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:2,background:T.red}}/><span style={{fontSize:10,color:T.muted,fontWeight:600}}>Out</span></div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:12,alignItems:"flex-end"}}>
-          {monthBars.map((mb,i)=>{
-            const maxV=Math.max(mb.inc,mb.exp,1);
-            const incH=Math.max(Math.round((mb.inc/maxV)*70),4);
-            const expH=Math.max(Math.round((mb.exp/maxV)*70),4);
-            const isLast=i===monthBars.length-1;
-            return(
-              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
-                <div style={{fontSize:9,fontWeight:800,color:mb.net>=0?T.green:T.red,marginBottom:5,whiteSpace:"nowrap"}}>{mb.net>=0?"+":""}{fmt(mb.net)}</div>
-                <div style={{display:"flex",gap:3,alignItems:"flex-end",height:74}}>
-                  <div style={{width:"100%",minWidth:16,background:isLast?"#00875A":"#b7e4d4",borderRadius:"4px 4px 0 0",height:incH}}/>
-                  <div style={{width:"100%",minWidth:16,background:isLast?"#D0021B":"#FFCDD3",borderRadius:"4px 4px 0 0",height:expH}}/>
-                </div>
-                <div style={{width:"100%",height:1,background:T.border,marginTop:0}}/>
-                <div style={{fontSize:11,fontWeight:isLast?800:600,color:isLast?T.text:T.muted,marginTop:5}}>{mb.label}</div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
 
       {/* Period summary */}
       <Card>
@@ -1305,27 +1353,17 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
 
 // ─── New Entry Form ───────────────────────────────────────────────────────────
 
-function NewEntryForm({accounts,contacts,nextBilag,onSave}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:""};
   const[form,setForm]=useState(emptyTxn);
+  const[showAddContact,setShowAddContact]=useState(false);
+  const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
-  // When a contact is selected, suggest the control account on the correct side only
-  const handleContactChange=v=>{
-    const c=contacts.find(x=>x.id===v);
-    if(!c){setForm(f=>({...f,contactId:""}));return;}
-    const controlCode=c.type==="customer"?"1500":"2400";
-    setForm(f=>{
-      const updates={contactId:v};
-      // Customer → debit 1500 (invoice: Dr AR / Cr Income). Supplier → credit 2400 (invoice: Dr Expense / Cr AP)
-      if(c.type==="customer"){
-        if(!f.debitCode)updates.debitCode=controlCode;
-      } else {
-        if(!f.creditCode)updates.creditCode=controlCode;
-      }
-      return{...f,...updates};
-    });
-  };
+  // Determine if contact selector should show and what type
+  const needContact=form.debitCode==="1500"||form.creditCode==="1500"||form.debitCode==="2400"||form.creditCode==="2400";
+  const contactType=form.debitCode==="1500"||form.creditCode==="1500"?"customer":"supplier";
+  const filteredContacts=contacts.filter(c=>c.type===contactType);
 
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
 
@@ -1335,38 +1373,88 @@ function NewEntryForm({accounts,contacts,nextBilag,onSave}){
     setForm(emptyTxn);
   };
 
+  const saveNewContact=()=>{
+    if(!newContact.name.trim())return;
+    const prefix=contactType==="customer"?"C":"S";
+    const existing=contacts.filter(c=>c.type===contactType);
+    const nums=existing.map(c=>parseInt(c.id.slice(1))||0);
+    const nextNum=(nums.length?Math.max(...nums):0)+1;
+    const id=`${prefix}${String(nextNum).padStart(3,"0")}`;
+    const c={id,type:contactType,name:newContact.name,notes:[newContact.phone,newContact.email,newContact.address,newContact.accountNo].filter(Boolean).join(" | ")};
+    const updated=[...contacts,c];
+    setContacts(updated);
+    setForm(f=>({...f,contactId:id}));
+    setNewContact({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
+    setShowAddContact(false);
+  };
+
+  const inpSm={...inp,fontSize:14,padding:"9px 12px"};
+
   return(
     <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>NEXT ENTRY</div><div style={{fontSize:20,fontWeight:900}}>{fmtB(nextBilag)}</div></div>
-        <Pill label="Double Entry" color={T.red} bg={T.redLight}/>
+      {/* Bilag + Date in same row */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{background:T.blueBg,borderRadius:8,padding:"4px 10px"}}>
+          <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
+          <div style={{fontSize:15,fontWeight:900,color:T.blue}}>{fmtB(nextBilag)}</div>
+        </div>
+        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,flex:1}}/>
+        <Pill label="2x Entry" color={T.red} bg={T.redLight}/>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/></div>
-        <div><SL>Description</SL><input placeholder="e.g. Invoice to Customer A" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inp}/></div>
-        <div><SL>Amount (PKR)</SL><input type="number" placeholder="0" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
+        <input type="number" placeholder="Amount (PKR)" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inpSm}/>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <div>
-            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Debit</div>
-            <AccDrop value={form.debitCode} onChange={v=>setForm(p=>({...p,debitCode:v}))} accounts={accounts}/>
-            {form.debitCode&&<div style={{fontSize:10,color:T.red,marginTop:5,fontWeight:600}}>{getName(form.debitCode)}</div>}
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>Debit</div>
+            <AccDrop value={form.debitCode} onChange={v=>setForm(p=>({...p,debitCode:v,contactId:""}))} accounts={accounts}/>
+            {form.debitCode&&<div style={{fontSize:10,color:T.red,marginTop:3,fontWeight:600}}>{getName(form.debitCode)}</div>}
           </div>
           <div>
-            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.8}}>Credit</div>
-            <AccDrop value={form.creditCode} onChange={v=>setForm(p=>({...p,creditCode:v}))} accounts={accounts}/>
-            {form.creditCode&&<div style={{fontSize:10,color:T.green,marginTop:5,fontWeight:600}}>{getName(form.creditCode)}</div>}
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>Credit</div>
+            <AccDrop value={form.creditCode} onChange={v=>setForm(p=>({...p,creditCode:v,contactId:""}))} accounts={accounts}/>
+            {form.creditCode&&<div style={{fontSize:10,color:T.green,marginTop:3,fontWeight:600}}>{getName(form.creditCode)}</div>}
           </div>
         </div>
-        <div>
-          <SL>Link Customer / Supplier (optional)</SL>
-          <ContactSearch contacts={contacts} value={form.contactId} onChange={handleContactChange}/>
-          {form.contactId&&(
-            <div style={{fontSize:10,color:T.muted,marginTop:5,fontWeight:600}}>
-              Posts to {(contacts.find(c=>c.id===form.contactId)||{type:""}).type==="customer"?"1500 · Accounts Receivable":"2400 · Accounts Payable"}
+
+        {/* Smart contact selector — only when 1500 or 2400 */}
+        {needContact&&(
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
+              {contactType==="customer"?"Customer (1500)":"Supplier (2400)"}
             </div>
-          )}
-        </div>
-        <button style={{...btnRed,opacity:valid?1:0.5}} onClick={save}>Save Entry</button>
+            <div style={{display:"flex",gap:6}}>
+              <select value={form.contactId} onChange={e=>setForm(p=>({...p,contactId:e.target.value}))} style={{...selSm,flex:1}}>
+                <option value="">— Select {contactType} —</option>
+                {filteredContacts.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
+              </select>
+              <button onClick={()=>setShowAddContact(s=>!s)} style={{background:showAddContact?T.redLight:T.blueBg,color:showAddContact?T.red:T.blue,border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>+ Add</button>
+            </div>
+
+            {/* Add new contact inline */}
+            {showAddContact&&(
+              <div style={{background:T.bg,borderRadius:10,padding:"10px 12px",marginTop:6,border:`1px solid ${T.border}`}}>
+                <div style={{fontSize:10,fontWeight:800,color:T.blue,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>New {contactType}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <input placeholder="Name *" value={newContact.name} onChange={e=>setNewContact(p=>({...p,name:e.target.value}))} style={{...inp,fontSize:13,padding:"8px 10px"}}/>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    <input placeholder="Phone (opt)" value={newContact.phone} onChange={e=>setNewContact(p=>({...p,phone:e.target.value}))} style={{...inp,fontSize:12,padding:"7px 10px"}}/>
+                    <input placeholder="Email (opt)" value={newContact.email} onChange={e=>setNewContact(p=>({...p,email:e.target.value}))} style={{...inp,fontSize:12,padding:"7px 10px"}}/>
+                  </div>
+                  <input placeholder="Account No (opt)" value={newContact.accountNo} onChange={e=>setNewContact(p=>({...p,accountNo:e.target.value}))} style={{...inp,fontSize:12,padding:"7px 10px"}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={saveNewContact} style={{background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",flex:1,fontFamily:"inherit"}}>Save</button>
+                    <button onClick={()=>setShowAddContact(false)} style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4}} onClick={save}>Save Entry</button>
       </div>
     </Card>
   );
@@ -1968,7 +2056,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </div>
             );})}
           </div>
-          <div style={{padding:"14px 20px",borderTop:"1px solid #2A3A5E",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#6C7A9C"}}>PKR · v2.0</div><button onClick={onSignOut} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",padding:"4px 10px",fontWeight:600}}>Sign Out</button></div>
+          <div style={{padding:"14px 20px",borderTop:"1px solid #2A3A5E",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#6C7A9C"}}>PKR · RedRock Accounting v2.1</div><button onClick={onSignOut} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",padding:"4px 10px",fontWeight:600}}>Sign Out</button></div>
         </div>
       </>)}
 
@@ -1978,19 +2066,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           {[0,1,2].map(i=><div key={i} style={{width:16,height:1.5,background:"#fff",borderRadius:2}}/>)}
         </button>
         <div style={{flex:1}}>
-          <div style={{fontSize:10,color:"#6C7A9C",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>My Finance Ledger · PKR</div>
+          <div style={{fontSize:10,color:"#6C7A9C",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>RedRock Accounting</div>
           <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>{(SIDEBAR.find(m=>m.id===tab)||{label:tab}).label}</div>
         </div>
       </div>
 
-      {/* Period filter bar — shown above content for Dashboard */}
-      {tab==="Dashboard"&&(
-        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
-          <input type="date" value={filterFrom} onChange={e=>setFilterFrom(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-          <span style={{fontSize:11,color:T.muted,fontWeight:700}}>TO</span>
-          <input type="date" value={filterTo} onChange={e=>setFilterTo(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-        </div>
+      {(tab==="Dashboard"||tab==="Accounts"||tab==="Reports")&&(
+        <PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
       )}
 
       <div style={{padding:16}}>
@@ -2018,7 +2100,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} nextBilag={nextBilag} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
@@ -2026,12 +2108,28 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {Object.entries(SERIES).map(([key,s])=>{
               const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
               if(!grp.length)return null;
+              // Period balance uses filterFrom/filterTo
               return(<div key={key} style={{marginBottom:18}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:s.color,textTransform:"uppercase"}}>{s.name}</span><span style={{fontSize:11,color:T.muted}}>· {key}s</span></div>
-                {grp.map(a=>{const bal=transactions.reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);return(
-                  <div key={a.code} onClick={()=>setLedgerAcc(a)} style={{background:T.card,borderRadius:12,padding:"13px 16px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{background:s.bg,borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:800,color:s.color}}>{a.code}</div><div><div style={{fontSize:13,fontWeight:600}}>{a.name}</div><div style={{fontSize:11,color:bal>=0?T.green:T.red,fontWeight:700,marginTop:1}}>{sign(bal)}</div></div></div>
-                    <span style={{fontSize:20,color:T.red}}>›</span>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,paddingLeft:2}}>
+                  <span style={{fontSize:14}}>{s.icon}</span>
+                  <span style={{fontSize:11,fontWeight:800,color:s.color,textTransform:"uppercase",letterSpacing:0.8}}>{s.name}</span>
+                </div>
+                {grp.map(a=>{
+                  const bal=transactions.reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
+                  const periodBal=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
+                  return(
+                  <div key={a.code} onClick={()=>setLedgerAcc(a)} style={{background:T.card,borderRadius:12,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{background:s.bg,borderRadius:7,padding:"4px 8px",fontSize:11,fontWeight:800,color:s.color,minWidth:36,textAlign:"center"}}>{a.code}</div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600,color:T.text}}>{a.name}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>{s.name} · Period: <span style={{color:periodBal>=0?T.green:T.red,fontWeight:700}}>{periodBal>=0?"+":"−"}{fmt(periodBal)}</span></div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:13,fontWeight:800,color:bal>=0?T.green:T.red}}>{bal>=0?"+":"−"}{fmt(bal)}</div>
+                      <div style={{fontSize:9,color:T.muted,marginTop:1}}>All time</div>
+                    </div>
                   </div>
                 );})}
               </div>);
