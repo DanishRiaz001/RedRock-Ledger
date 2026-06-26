@@ -14,7 +14,7 @@
   <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-    body{margin:0;padding:0;background:#F7F8FA;font-family:system-ui,-apple-system,sans-serif;}
+    body{margin:0;padding:0;background:#FAF9F7;font-family:system-ui,-apple-system,sans-serif;}
     input,select,button{font-family:inherit;}
     ::-webkit-scrollbar{display:none;}
   </style>
@@ -47,7 +47,7 @@ function LoginScreen({onLogin}){
   const[err,setErr]=useState("");
   const[loading,setLoading]=useState(false);
   const[done,setDone]=useState(false);
-  const inp2={background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:12,color:"#0F172A",padding:"13px 16px",width:"100%",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+  const inp2={background:"#FAF9F7",border:`1px solid ${T.border}`,borderRadius:12,color:T.text,padding:"13px 16px",width:"100%",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
   const handle=async()=>{
     setErr("");setLoading(true);
     if(mode==="login"){
@@ -65,30 +65,30 @@ function LoginScreen({onLogin}){
   const onKey=e=>{if(e.key==="Enter")handle();};
 
   if(done)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F8FAFC",padding:24}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",padding:24}}>
       <div style={{textAlign:"center",maxWidth:340}}>
         <img src={LOGO_B64} style={{width:120,marginBottom:20}}/>
         <div style={{fontSize:18,fontWeight:800,marginBottom:8,color:"#0F172A"}}>{mode==="signup"?"Check your email":"Reset link sent"}</div>
         <div style={{fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.6}}>{mode==="signup"?"We sent a confirmation link. Click it then come back to sign in.":"Check your email for a reset link."}</div>
-        <button style={{background:"#1E3A8A",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
+        <button style={{background:"#0D7377",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
       </div>
     </div>
   );
 
   return(
-    <div style={{minHeight:"100vh",background:"#F8FAFC",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:"#FAF9F7",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:360}}>
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:32}}>
           <img src={LOGO_B64} style={{width:180,marginBottom:8}}/>
-          <div style={{fontSize:12,color:"#94A3B8",fontWeight:600,letterSpacing:1,textTransform:"uppercase"}}>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:1,textTransform:"uppercase"}}>
             {mode==="login"?"Sign in to continue":mode==="signup"?"Create your account":"Reset your password"}
           </div>
         </div>
 
         {/* Card */}
         <div style={{background:"#fff",borderRadius:20,padding:"28px 24px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",border:"1px solid #E2E8F0"}}>
-          {err&&<div style={{background:"#FFF0F2",border:"1px solid #FFCDD3",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#D0021B",marginBottom:16,fontWeight:600}}>{err}</div>}
+          {err&&<div style={{background:"#FFF0F2",border:"1px solid #FFCDD3",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#0D7377",marginBottom:16,fontWeight:600}}>{err}</div>}
 
           <div style={{marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:700,color:"#64748B",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Email</div>
@@ -105,7 +105,7 @@ function LoginScreen({onLogin}){
           <button
             onClick={handle}
             disabled={loading}
-            style={{background:"linear-gradient(135deg,#1E3A8A,#D0021B)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontWeight:800,fontSize:15,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:16,opacity:loading?0.7:1,letterSpacing:0.3}}
+            style={{background:"linear-gradient(135deg,#0D7377,#0A5C60)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontWeight:800,fontSize:15,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:16,opacity:loading?0.7:1,letterSpacing:0.3}}
           >
             {loading?"...":{login:"Sign In",signup:"Create Account",forgot:"Send Reset Link"}[mode]}
           </button>
@@ -113,12 +113,12 @@ function LoginScreen({onLogin}){
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"center"}}>
             {mode==="login"&&(
               <>
-                <button onClick={()=>{setMode("signup");setErr("");}} style={{background:"none",border:"none",color:"#1E3A8A",fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Don't have an account? Sign up</button>
-                <button onClick={()=>{setMode("forgot");setErr("");}} style={{background:"none",border:"none",color:"#94A3B8",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Forgot password?</button>
+                <button onClick={()=>{setMode("signup");setErr("");}} style={{background:"none",border:"none",color:T.accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Don't have an account? Sign up</button>
+                <button onClick={()=>{setMode("forgot");setErr("");}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Forgot password?</button>
               </>
             )}
             {mode!=="login"&&(
-              <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",color:"#1E3A8A",fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>← Back to Sign In</button>
+              <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",color:T.accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>← Back to Sign In</button>
             )}
           </div>
         </div>
@@ -251,7 +251,7 @@ function AppShell({user}){
   const isAdmin=profile&&profile.is_admin;
 
   if(loading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F7F8FA",flexDirection:"column",gap:16}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",gap:16}}>
       <div style={{fontSize:40}}>📒</div>
       <div style={{fontSize:14,color:"#6B7280",fontWeight:600}}>Loading your ledger…</div>
     </div>
@@ -290,28 +290,38 @@ function Root(){
 
 
 const T = {
-  bg:"#F7F8FA",card:"#FFFFFF",border:"#E8ECF0",
-  red:"#D0021B",redLight:"#FFF0F2",redMid:"#FFCDD3",
-  green:"#00875A",greenBg:"#E6F6F1",
-  blue:"#0057B8",blueBg:"#EBF2FF",
-  orange:"#B45309",orangeBg:"#FFF8EC",
+  // Backgrounds
+  bg:"#FAF9F7",
+  card:"#FFFFFF",
+  border:"#EEEBE6",
+  // Brand
+  header:"#0D7377",
+  sidebar:"#0A5C60",
+  accent:"#0D7377",
+  accentLight:"#E8F4F4",
+  accentMid:"#B2D8DA",
+  // Semantic
+  red:"#DC2626",redLight:"#FEF2F2",redMid:"#FECACA",
+  green:"#059669",greenBg:"#ECFDF5",
+  blue:"#0D7377",blueBg:"#E8F4F4",
+  orange:"#D97706",orangeBg:"#FFFBEB",
   purple:"#7C3AED",purpleBg:"#EDE9FE",
-  text:"#111827",sub:"#6B7280",muted:"#9CA3AF",
-  header:"#1A1A2E",sidebar:"#16213E",
+  // Typography
+  text:"#1A1A2A",sub:"#6B7280",muted:"#9CA3AF",
 };
-const inp={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"9px 12px",width:"100%",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
-const btnRed={background:T.red,color:"#fff",border:"none",borderRadius:10,padding:"11px 18px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"};
-const btnGhost={background:"#fff",color:T.red,border:`1.5px solid ${T.red}`,borderRadius:10,padding:"10px 18px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"};
-const btnSm={background:T.blueBg,color:T.blue,border:"none",borderRadius:8,padding:"6px 12px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"};
+const inp={background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,color:T.text,padding:"10px 13px",width:"100%",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+const btnRed={background:T.accent,color:"#fff",border:"none",borderRadius:12,padding:"11px 18px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"};
+const btnGhost={background:"#fff",color:T.accent,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"10px 18px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"};
+const btnSm={background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"6px 12px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"};
 
 const SERIES={
-  "1000":{name:"Assets",color:"#00875A",bg:"#E6F6F1",icon:"🏦"},
-  "1500":{name:"Accounts Receivable",color:"#0057B8",bg:"#EBF2FF",icon:"📥"},
-  "1900":{name:"Bank",color:"#1D4ED8",bg:"#DBEAFE",icon:"🏧"},
+  "1000":{name:"Assets",color:"#059669",bg:"#ECFDF5",icon:"🏦"},
+  "1500":{name:"Accounts Receivable",color:"#0D7377",bg:"#E8F4F4",icon:"📥"},
+  "1900":{name:"Bank",color:"#0D7377",bg:"#E8F4F4",icon:"🏧"},
   "2000":{name:"Equity",color:"#7C3AED",bg:"#EDE9FE",icon:"📊"},
-  "2400":{name:"Accounts Payable",color:"#D0021B",bg:"#FFF0F2",icon:"📤"},
-  "3000":{name:"Income",color:"#00875A",bg:"#E6F6F1",icon:"💰"},
-  "4000":{name:"Expenses",color:"#B45309",bg:"#FFF8EC",icon:"💸"},
+  "2400":{name:"Accounts Payable",color:"#DC2626",bg:"#FEF2F2",icon:"📤"},
+  "3000":{name:"Income",color:"#059669",bg:"#ECFDF5",icon:"💰"},
+  "4000":{name:"Expenses",color:"#D97706",bg:"#FFFBEB",icon:"💸"},
 };
 
 const getSK=(code)=>{
@@ -326,9 +336,11 @@ const getSK=(code)=>{
   return null;
 };
 
-const fmt=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
+const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
+const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
 const sign=(n)=>(n>=0?"+":"−")+fmt(n);
+const signRs=(n)=>(n>=0?"+":"−")+fmtRs(n);
 
 const INIT_ACCOUNTS=[
   {code:"1001",name:"Cash in Hand"},
@@ -355,15 +367,18 @@ const INIT_CONTACTS=[
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 
-function SL({children,mt}){return <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8,marginTop:mt||0}}>{children}</div>;}
-function Card({children,style}){return <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>;}
-function Pill({label,color,bg}){return <span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:6,background:bg,color}}>{label}</span>;}
+function SL({children,mt}){return <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:mt||0}}>{children}</div>;}
+function Card({children,style}){return <div style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...style}}>{children}</div>;}
+function Pill({label,color,bg}){return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6,background:bg,color}}>{label}</span>;}
 
-function BackHeader({title,sub,color,onBack}){
+function BackHeader({title,sub,onBack}){
   return(
-    <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
-      <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-      <div><div style={{fontSize:11,color:color||"#aaa",fontWeight:700,letterSpacing:1}}>{sub}</div><div style={{fontSize:18,fontWeight:800,color:"#fff"}}>{title}</div></div>
+    <div style={{background:T.header,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+      <button onClick={onBack} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+      <div>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{sub}</div>
+        <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>{title}</div>
+      </div>
     </div>
   );
 }
@@ -517,7 +532,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
+function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate,onClose}){
   const[showEdit,setShowEdit]=useState(false);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
@@ -564,7 +579,8 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
             {!isReversal&&!isReversed&&(
               <Menu3 items={[
                 {icon:"✏️",label:"Edit Entry",action:()=>setShowEdit(true)},
-                {icon:"↩️",label:"Reverse Entry",color:T.red,action:()=>{onReverse(txn);onClose();}},
+                {icon:"⧉",label:"Duplicate",action:()=>{if(onDuplicate)onDuplicate(txn);onClose();}},
+                {icon:"↩️",label:"Reverse Entry",action:()=>{onReverse(txn);onClose();}},
               ]}/>
             )}
             {isReversed&&!isReversal&&(
@@ -616,7 +632,7 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onClose}){
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse}){
+function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -630,6 +646,7 @@ function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse}){
         onEdit={u=>{onEdit(u);setDetail(false);}}
         onDelete={id=>{onDelete(id);setDetail(false);}}
         onReverse={tx=>{onReverse(tx);setDetail(false);}}
+        onDuplicate={onDuplicate}
         onClose={()=>setDetail(false)}/>}
       <div onClick={()=>setDetail(true)} style={{background:T.card,borderRadius:14,border:`1px solid ${isReversal?T.redMid:isReversed?T.border:T.border}`,padding:"13px 15px",marginBottom:8,cursor:"pointer",opacity:isReversed?0.5:1,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -898,6 +915,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,deleteTxn,accounts,onBack}){
   const[view,setView]=useState(null);
+  const[reskontroTab,setReskontroTab]=useState("contacts"); // "contacts" | "aging"
   const[editingId,setEditingId]=useState(null);
   const[showNew,setShowNew]=useState(false);
   const[newName,setNewName]=useState("");
@@ -1077,25 +1095,80 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   }
 
   // ── Reskontro home ──
+  const today=new Date().toISOString().split("T")[0];
+  const agingBuckets=(contactType)=>{
+    const code=contactType==="customer"?"1500":"2400";
+    return contacts.filter(c=>c.type===contactType).map(c=>{
+      const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
+      const bal=txns.reduce((s,t)=>t.debitCode===code?s+t.amount:s-t.amount,0);
+      if(Math.abs(bal)<1)return null;
+      // Find oldest unmatched txn date
+      const unmatched=txns.filter(t=>!t.matchedWith).sort((a,b)=>a.date.localeCompare(b.date));
+      const oldest=unmatched[0]?.date||today;
+      const days=Math.floor((new Date(today)-new Date(oldest))/(1000*60*60*24));
+      return{id:c.id,name:c.name,bal,days};
+    }).filter(Boolean).sort((a,b)=>b.days-a.days);
+  };
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
       <BackHeader title="Reskontro" sub="SUBLEDGER" onBack={onBack}/>
-      <div style={{padding:16}}>
-        <SL>Select Type</SL>
-        {[
-          {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.blue,bg:T.blueBg,count:customers.length},
-          {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.length}
-        ].map(item=>(
-          <div key={item.type} onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-            <div style={{background:item.bg,borderRadius:12,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{item.icon}</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:700}}>{item.label}</div>
-              <div style={{fontSize:11,color:T.sub,marginTop:2}}>{item.sub}</div>
-              <div style={{fontSize:11,color:item.color,fontWeight:600,marginTop:4}}>{item.count} contacts</div>
-            </div>
-            <span style={{fontSize:20,color:T.muted}}>›</span>
-          </div>
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,padding:"10px 16px 0",background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+        {[["contacts","Contacts"],["aging","Aging Report"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setReskontroTab(id)} style={{padding:"7px 14px",border:"none",background:"none",fontSize:12,fontWeight:reskontroTab===id?700:500,color:reskontroTab===id?T.accent:T.muted,borderBottom:reskontroTab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
         ))}
+      </div>
+      <div style={{padding:16}}>
+        {reskontroTab==="contacts"&&(
+          <>
+            <SL>Select Type</SL>
+            {[
+              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.length},
+              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.length}
+            ].map(item=>(
+              <div key={item.type} onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                <div style={{background:item.bg,borderRadius:12,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{item.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700}}>{item.label}</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{item.sub}</div>
+                  <div style={{fontSize:11,color:item.color,fontWeight:600,marginTop:4}}>{item.count} contacts</div>
+                </div>
+                <span style={{fontSize:20,color:T.muted}}>›</span>
+              </div>
+            ))}
+          </>
+        )}
+        {reskontroTab==="aging"&&(
+          <div>
+            {[{type:"customer",label:"Receivables (AR)",color:T.accent},{type:"supplier",label:"Payables (AP)",color:T.red}].map(({type,label,color})=>{
+              const rows=agingBuckets(type);
+              return(
+                <div key={type} style={{marginBottom:20}}>
+                  <SL>{label}</SL>
+                  {rows.length?(
+                    rows.map(r=>{
+                      const bucket=r.days<=30?"0-30d":r.days<=60?"31-60d":r.days<=90?"61-90d":"90d+";
+                      const bucketColor=r.days<=30?T.green:r.days<=60?T.orange:T.red;
+                      return(
+                        <div key={r.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600,color:T.text}}>{r.name}</div>
+                            <div style={{fontSize:10,color:T.muted,marginTop:2}}>{r.days} days outstanding</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:13,fontWeight:800,color}}>{fmt(r.bal)}</div>
+                            <span style={{fontSize:9,fontWeight:700,color:bucketColor,background:r.days<=30?T.greenBg:r.days<=60?T.orangeBg:T.redLight,borderRadius:5,padding:"1px 6px"}}>{bucket}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ):<div style={{textAlign:"center",color:T.muted,padding:20,fontSize:13}}>No outstanding {label}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1337,13 +1410,13 @@ function PeriodSelector({from,to,onChange}){
             return(
               <button key={i} onClick={()=>selectMonth(i)} style={{
                 flexShrink:0,width:active?MON_W_ACT:MON_W,height:26,
-                borderRadius:8,border:`1.5px solid ${active?T.red:T.border}`,
-                background:active?T.red:"#fff",color:active?"#fff":T.sub,
+                borderRadius:8,border:`1.5px solid ${active?T.accent:T.border}`,
+                background:active?T.accent:"#fff",color:active?"#fff":T.sub,
                 fontSize:11,fontWeight:active?700:400,
                 cursor:"pointer",fontFamily:"inherit",
                 transform:active?"translateY(-2px)":"none",
                 transition:"all 0.12s ease",
-                boxShadow:active?"0 2px 6px rgba(208,2,27,0.22)":"none",
+                boxShadow:active?"0 2px 6px rgba(13,115,119,0.3)":"none",
                 display:"flex",alignItems:"center",justifyContent:"center",
               }}>{name}</button>
             );
@@ -1366,98 +1439,188 @@ function PeriodSelector({from,to,onChange}){
 }
 
 
-function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo}){
+function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo,onNavigate,feat={}}){
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
+  const[kpiSlide,setKpiSlide]=useState(0); // 0=income, 1=expense
+  const[overviewTab,setOverviewTab]=useState("budget");
 
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo),[transactions,filterFrom,filterTo]);
   const totalIncome=useMemo(()=>periodTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[periodTxns]);
   const totalExpenses=useMemo(()=>periodTxns.filter(t=>getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0),[periodTxns]);
   const net=totalIncome-totalExpenses;
 
-  const cashBal=useMemo(()=>
-    accounts.filter(a=>getSK(a.code)==="1900")
-      .reduce((s,a)=>s+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0),
-  [accounts,transactions]);
+  // Previous period for % change
+  const periodMs=new Date(filterTo)-new Date(filterFrom);
+  const prevTo=new Date(new Date(filterFrom)-1).toISOString().split("T")[0];
+  const prevFrom=new Date(new Date(filterFrom)-periodMs-1).toISOString().split("T")[0];
+  const prevTxns=useMemo(()=>transactions.filter(t=>t.date>=prevFrom&&t.date<=prevTo),[transactions,prevFrom,prevTo]);
+  const prevIncome=useMemo(()=>prevTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[prevTxns]);
+  const prevExpenses=useMemo(()=>prevTxns.filter(t=>getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0),[prevTxns]);
+  const incomePct=prevIncome>0?Math.round(((totalIncome-prevIncome)/prevIncome)*100):null;
+  const expensePct=prevExpenses>0?Math.round(((totalExpenses-prevExpenses)/prevExpenses)*100):null;
 
+  const cashBal=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900").reduce((s,a)=>s+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0),[accounts,transactions]);
   const arBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="1500")return s+t.amount;if(t.creditCode==="1500")return s-t.amount;return s;},0),[transactions]);
   const apBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="2400")return s+t.amount;if(t.creditCode==="2400")return s-t.amount;return s;},0),[transactions]);
 
-  const monthBars=useMemo(()=>{
-    const months=[];
-    for(let i=2;i>=0;i--){
-      const d=new Date();d.setMonth(d.getMonth()-i);
-      const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
-      const from=`${y}-${m}-01`;
-      const last=new Date(y,d.getMonth()+1,0).getDate();
-      const to=`${y}-${m}-${String(last).padStart(2,"0")}`;
-      const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
-      const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0);
-      months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
-    }
-    return months;
-  },[transactions]);
+  // Budget data
+  const BKEY="rr_budgets";
+  const budgets=useMemo(()=>{try{return JSON.parse(localStorage.getItem(BKEY)||"{}")}catch{return{};}});
+  const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
+  const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
+  const totalActual=expAccounts.reduce((s,a)=>s+periodTxns.filter(t=>t.debitCode===a.code).reduce((ss,t)=>ss+t.amount,0),0);
+  const budgetPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
+
+  // Sinking funds
+  const sfData=useMemo(()=>{try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}});
+  const totalSaved=sfData.reduce((s,f)=>s+(f.saved||0),0);
+  const totalGoal=sfData.reduce((s,f)=>s+(f.goal||0),0);
+  const sfPct=totalGoal>0?Math.min(100,Math.round((totalSaved/totalGoal)*100)):0;
+
+  // Income/expense comparison bar pct
+  const total=totalIncome+totalExpenses;
+  const incPct=total>0?Math.round((totalIncome/total)*100):50;
+
+  const PctBadge=({pct,invert=false})=>{
+    if(pct===null)return null;
+    const good=invert?(pct<=0):(pct>=0);
+    return <span style={{fontSize:10,fontWeight:700,color:good?T.green:T.red,background:good?T.greenBg:T.redLight,borderRadius:6,padding:"2px 6px"}}>{pct>=0?"+":""}{pct}%</span>;
+  };
+
+  // Touch swipe for income/expense cards
+  const slideRef=React.useRef(null);
+  const touchStartX=React.useRef(null);
+  const onTouchStart=(e)=>{touchStartX.current=e.touches[0].clientX;};
+  const onTouchEnd=(e)=>{
+    if(touchStartX.current===null)return;
+    const dx=e.changedTouches[0].clientX-touchStartX.current;
+    if(Math.abs(dx)>40){setKpiSlide(dx<0?1:0);}
+    touchStartX.current=null;
+  };
 
   return(
     <div>
-      {/* KPI row */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div style={{background:"linear-gradient(135deg,#00875A,#00A36C)",borderRadius:16,padding:"16px",boxShadow:"0 4px 14px rgba(0,135,90,0.2)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Income</div>
-            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:6,padding:"2px 6px",fontSize:9,color:"#fff",fontWeight:700}}>▲</div>
-          </div>
-          <div style={{fontSize:22,fontWeight:900,color:"#fff"}}>{fmt(totalIncome)}</div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:4}}>Period total</div>
-        </div>
-        <div style={{background:"linear-gradient(135deg,#D0021B,#E8284A)",borderRadius:16,padding:"16px",boxShadow:"0 4px 14px rgba(208,2,27,0.2)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Expenses</div>
-            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:6,padding:"2px 6px",fontSize:9,color:"#fff",fontWeight:700}}>▼</div>
-          </div>
-          <div style={{fontSize:22,fontWeight:900,color:"#fff"}}>{fmt(totalExpenses)}</div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:4}}>Period total</div>
-        </div>
-      </div>
-
-      <BankSlider accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo}/>
-      <Card style={{marginBottom:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Net Profit / Loss</div>
-            <div style={{fontSize:26,fontWeight:900,color:net>=0?T.green:T.red}}>{sign(net)}</div>
-            <div style={{fontSize:10,color:T.muted,marginTop:2}}>{filterFrom} → {filterTo}</div>
-          </div>
-          <div style={{background:net>=0?T.greenBg:T.redLight,borderRadius:12,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:2}}>MARGIN</div>
-            <div style={{fontSize:18,fontWeight:900,color:net>=0?T.green:T.red}}>
-              {totalIncome>0?`${Math.round((net/totalIncome)*100)}%`:"—"}
+      {/* 1 ── Swipeable Income / Expense cards ── */}
+      <div ref={slideRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{marginBottom:12,position:"relative",userSelect:"none"}}>
+        {/* Cards container */}
+        <div style={{overflow:"hidden",borderRadius:18}}>
+          <div style={{display:"flex",transition:"transform 0.3s ease",transform:`translateX(${kpiSlide*-100}%)`}}>
+            {/* Income card */}
+            <div style={{minWidth:"100%",background:`linear-gradient(135deg,${T.accent},#0A9396)`,borderRadius:18,padding:"20px 18px",boxShadow:`0 6px 20px rgba(13,115,119,0.25)`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Total Income</div>
+                <PctBadge pct={incomePct}/>
+              </div>
+              <div style={{fontSize:30,fontWeight:900,color:"#fff",letterSpacing:-1,marginBottom:10}}>+{fmt(totalIncome)}</div>
+              <div style={{background:"rgba(255,255,255,0.15)",borderRadius:6,height:5,overflow:"hidden",marginBottom:8}}>
+                <div style={{width:`${incPct}%`,height:"100%",background:"rgba(255,255,255,0.8)",borderRadius:6}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>vs expenses: {fmt(totalExpenses)}</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.8)",fontWeight:700}}>Net {sign(net)}</span>
+              </div>
+            </div>
+            {/* Expense card */}
+            <div style={{minWidth:"100%",background:"linear-gradient(135deg,#B45309,#D97706)",borderRadius:18,padding:"20px 18px",boxShadow:"0 6px 20px rgba(180,83,9,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Total Expenses</div>
+                <PctBadge pct={expensePct} invert/>
+              </div>
+              <div style={{fontSize:30,fontWeight:900,color:"#fff",letterSpacing:-1,marginBottom:10}}>−{fmt(totalExpenses)}</div>
+              <div style={{background:"rgba(255,255,255,0.15)",borderRadius:6,height:5,overflow:"hidden",marginBottom:8}}>
+                <div style={{width:`${100-incPct}%`,height:"100%",background:"rgba(255,255,255,0.8)",borderRadius:6}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>vs income: {fmt(totalIncome)}</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.8)",fontWeight:700}}>{totalIncome>0?Math.round((totalExpenses/totalIncome)*100):"—"}% of income</span>
+              </div>
             </div>
           </div>
         </div>
-      </Card>
+        {/* Dot indicators */}
+        <div style={{display:"flex",justifyContent:"center",gap:5,marginTop:8}}>
+          {[0,1].map(i=>(
+            <div key={i} onClick={()=>setKpiSlide(i)} style={{width:i===kpiSlide?16:6,height:6,borderRadius:3,background:i===kpiSlide?T.accent:T.border,cursor:"pointer",transition:"all 0.2s"}}/>
+          ))}
+        </div>
+      </div>
 
-      {/* Cash + AR/AP */}
+      {/* 2 ── Bank cards slider ── */}
+      <BankSlider accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo}/>
+
+      {/* 3 ── KPI row: Cash, AR, AP ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
         {[
-          {label:"Cash & Bank",val:cashBal,color:T.blue,bg:T.blueBg,icon:"💵"},
-          {label:"Receivables",val:arBal,color:T.green,bg:T.greenBg,icon:"📥"},
-          {label:"Payables",val:Math.abs(apBal),color:T.orange,bg:T.orangeBg,icon:"📤"},
+          {label:"Cash & Bank",val:cashBal,color:T.accent,icon:"🏦"},
+          {label:"Receivables",val:arBal,color:T.green,icon:"📥"},
+          {label:"Payables",val:Math.abs(apBal),color:T.red,icon:"📤"},
         ].map((c,i)=>(
-          <div key={i} style={{background:c.bg,borderRadius:12,padding:"10px 10px",border:`1px solid ${T.border}`}}>
-            <div style={{fontSize:16,marginBottom:4}}>{c.icon}</div>
-            <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{c.label}</div>
-            <div style={{fontSize:13,fontWeight:900,color:c.color}}>{fmt(c.val)}</div>
+          <div key={i} style={{background:"#fff",borderRadius:14,padding:"12px 10px",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <div style={{fontSize:15,marginBottom:5}}>{c.icon}</div>
+            <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{c.label}</div>
+            <div style={{fontSize:13,fontWeight:800,color:c.color}}>{fmt(c.val)}</div>
           </div>
         ))}
       </div>
 
+      {/* 4 ── Net P/L ── */}
+      <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <div>
+          <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:3}}>Net Profit / Loss</div>
+          <div style={{fontSize:22,fontWeight:900,color:net>=0?T.green:T.red}}>{sign(net)}</div>
+        </div>
+        <div style={{background:net>=0?T.greenBg:T.redLight,borderRadius:12,padding:"8px 14px",textAlign:"center"}}>
+          <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:1}}>MARGIN</div>
+          <div style={{fontSize:20,fontWeight:900,color:net>=0?T.green:T.red}}>{totalIncome>0?`${Math.round((net/totalIncome)*100)}%`:"—"}</div>
+        </div>
+      </div>
+
+      
+      {/* ── Budget / Sinking tabs — tap to open full screen ── */}
+      {(feat.budget!==false||feat.sinkingFunds!==false)&&(
+        <div style={{background:"#fff",borderRadius:16,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          {/* Tab row — clicking navigates to full screen */}
+          <div style={{display:"flex"}}>
+            {[feat.budget!==false&&{id:"budget",label:"💰 Budget",nav:"Budget"},feat.sinkingFunds!==false&&{id:"sinking",label:"🎯 Sinking Funds",nav:"SinkingFunds"}].filter(Boolean).map(t=>(
+              <button key={t.id} onClick={()=>onNavigate(t.nav)} style={{flex:1,padding:"13px 8px",border:"none",background:"#fff",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                {t.label} <span style={{fontSize:10,color:T.muted}}>›</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Single progress bar per item */}
+          <div style={{padding:"0 16px 14px",borderTop:`1px solid ${T.border}`}}>
+            {feat.budget!==false&&totalBudget>0&&(
+              <div style={{paddingTop:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                  <span style={{fontSize:11,color:T.sub}}>Budget</span>
+                  <span style={{fontSize:11,fontWeight:700,color:totalActual>totalBudget?T.red:T.accent}}>{budgetPct}%</span>
+                </div>
+                <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden"}}>
+                  <div style={{width:`${budgetPct}%`,height:"100%",background:totalActual>totalBudget?T.red:T.accent,borderRadius:6,transition:"width 0.4s"}}/>
+                </div>
+              </div>
+            )}
+            {feat.sinkingFunds!==false&&sfData.length>0&&(
+              <div style={{paddingTop:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                  <span style={{fontSize:11,color:T.sub}}>Savings</span>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{sfPct}%</span>
+                </div>
+                <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden"}}>
+                  <div style={{width:`${sfPct}%`,height:"100%",background:T.accent,borderRadius:6,transition:"width 0.4s"}}/>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── New Entry Form ───────────────────────────────────────────────────────────
-
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:""};
   const[form,setForm]=useState(emptyTxn);
   const[showAddContact,setShowAddContact]=useState(false);
@@ -1492,23 +1655,52 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave}){
     setShowAddContact(false);
   };
 
+  const[calcExpr,setCalcExpr]=useState("");
+  const[calcResult,setCalcResult]=useState(null);
+
+  const handleAmountChange=(val)=>{
+    setForm(p=>({...p,amount:val}));
+    // Try evaluating expression
+    if(/[+\-*/]/.test(val)){
+      try{
+        // eslint-disable-next-line no-new-func
+        const result=Function(`"use strict";return(${val})`)();
+        if(isFinite(result)&&result>0)setCalcResult(result);
+        else setCalcResult(null);
+      }catch{setCalcResult(null);}
+    } else {setCalcResult(null);}
+  };
+
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
   return(
     <Card>
-      {/* Bilag + Date in same row */}
+      {/* Bilag + Date */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-        <div style={{background:T.blueBg,borderRadius:8,padding:"4px 10px"}}>
+        <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px"}}>
           <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
-          <div style={{fontSize:15,fontWeight:900,color:T.blue}}>{fmtB(nextBilag)}</div>
+          <div style={{fontSize:15,fontWeight:900,color:T.accent}}>{fmtB(nextBilag)}</div>
         </div>
         <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,flex:1}}/>
-        <Pill label="2x Entry" color={T.red} bg={T.redLight}/>
+        <Pill label="2x Entry" color={T.accent} bg={T.accentLight}/>
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
-        <input type="number" placeholder="Amount (PKR)" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inpSm}/>
+        <div>
+          <input
+            placeholder={feat.calcAmount!==false?"Amount or expression (e.g. 500+200)":"Amount (PKR)"}
+            value={form.amount}
+            onChange={e=>feat.calcAmount!==false?handleAmountChange(e.target.value):setForm(p=>({...p,amount:e.target.value}))}
+            style={inpSm}
+          />
+          {feat.calcAmount!==false&&calcResult&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5}}>
+              <span style={{fontSize:11,color:T.muted}}>= {fmt(calcResult)}</span>
+              <button onClick={()=>{setForm(p=>({...p,amount:String(calcResult)}));setCalcResult(null);}} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>Use this</button>
+            </div>
+          )}
+        </div>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <div>
@@ -1558,6 +1750,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave}){
           </div>
         )}
 
+        {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
         <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4}} onClick={save}>Save Entry</button>
       </div>
     </Card>
@@ -1616,8 +1809,26 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
     setAddAmt(p=>({...p,[id]:""}));
   };
 
-  const COLORS=["#00875A","#0057B8","#7C3AED","#B45309","#D0021B","#1D4ED8"];
+  const COLORS=["#00875A","#0057B8","#7C3AED","#B45309","#0D7377","#1D4ED8"];
   const ICONS=["🛡️","🚗","✈️","🏠","📚","💍","🎯","🏖️","🏥","💻"];
+
+  const SFArcGauge=({pct,saved,goal})=>{
+    const r=72;const cx=100;const cy=96;
+    const startX=cx-r;const startY=cy;const endX=cx+r;
+    const angle=Math.PI*(pct/100);
+    const px=cx+r*Math.cos(Math.PI-angle);const py=cy-r*Math.sin(Math.PI-angle);
+    const done=pct>=100;
+    return(
+      <svg width={200} height={110} style={{display:"block",margin:"0 auto"}}>
+        <path d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endX} ${startY}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
+        {pct>0&&<path d={`M ${startX} ${startY} A ${r} ${r} 0 ${pct>50?1:0} 1 ${px} ${py}`} fill="none" stroke={done?"#4ade80":"#3B82F6"} strokeWidth={14} strokeLinecap="round"/>}
+        {pct>0&&<circle cx={px} cy={py} r={7} fill="#fff" opacity={0.9}/>}
+        <text x={cx} y={cy-16} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" fontFamily="system-ui" letterSpacing={1} fontWeight={600}>SAVED</text>
+        <text x={cx} y={cy+8} textAnchor="middle" fontSize={22} fill="#fff" fontFamily="system-ui" fontWeight={900}>{fmt(saved)}</text>
+        <text x={cx} y={cy+24} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="system-ui">of {fmt(goal)}</text>
+      </svg>
+    );
+  };
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -1627,64 +1838,67 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
       <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
         <div style={{flex:1}}>
-          <div style={{fontSize:11,color:"#6C7A9C",fontWeight:700,letterSpacing:1}}>SAVINGS GOALS</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Savings Goals</div>
           <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>Sinking Funds</div>
         </div>
         <div style={{position:"relative"}}>
           <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:16,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
           {menuOpen&&(
             <div style={{position:"absolute",right:0,top:44,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:160,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
-              <div onClick={openNew} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>➕ Add New Fund</div>
+              <div onClick={openNew} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.accent,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>➕ Add New Fund</div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Summary bar */}
-      <div style={{background:T.header,padding:"0 20px 18px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
-          <div>
-            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Saved</div>
-            <div style={{fontSize:17,fontWeight:900,color:"#4ade80"}}>{fmt(totalSaved)}</div>
-          </div>
-          <div>
-            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Goal</div>
-            <div style={{fontSize:17,fontWeight:900,color:"#fff"}}>{fmt(totalGoal)}</div>
-          </div>
-          <div>
-            <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Overall</div>
-            <div style={{fontSize:17,fontWeight:900,color:"#93A8D0"}}>{overallPct}%</div>
-          </div>
-        </div>
-        <div style={{background:"rgba(255,255,255,0.1)",borderRadius:4,height:5,overflow:"hidden"}}>
-          <div style={{width:`${overallPct}%`,height:"100%",background:"#4ade80",borderRadius:4}}/>
-        </div>
-      </div>
-
       <div style={{padding:16}}>
+        {/* Arc gauge hero */}
+        <div style={{background:"#1A1A2E",borderRadius:20,padding:"20px 16px 16px",marginBottom:16,overflow:"hidden"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>Overall Savings</div>
+            <span style={{fontSize:10,fontWeight:700,color:overallPct>=100?"#4ade80":"#60a5fa",background:overallPct>=100?"rgba(74,222,128,0.15)":"rgba(96,165,250,0.15)",borderRadius:8,padding:"3px 10px"}}>{overallPct}% saved</span>
+          </div>
+          {funds.length>0
+            ?<SFArcGauge pct={overallPct} saved={totalSaved} goal={totalGoal}/>
+            :<div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.4)",fontSize:13}}>No funds yet — tap ••• to add one</div>
+          }
+          {funds.length>0&&(
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Goal</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{fmt(totalGoal)}</div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Remaining</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#60a5fa"}}>{fmt(Math.max(0,totalGoal-totalSaved))}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Inline form */}
         {showForm&&(
-          <div style={{background:T.card,borderRadius:14,border:`1px solid ${editId?T.orange:T.blue}`,padding:"16px",marginBottom:14}}>
+          <div style={{background:T.card,borderRadius:14,border:`1px solid ${editId?T.orange:T.accent}`,padding:"16px",marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <span style={{fontSize:13,fontWeight:800,color:editId?T.orange:T.blue}}>{editId?"Edit Fund":"New Fund"}</span>
+              <span style={{fontSize:13,fontWeight:800,color:editId?T.orange:T.accent}}>{editId?"Edit Fund":"New Fund"}</span>
               <button onClick={cancelForm} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:13,cursor:"pointer",width:28,height:28}}>✕</button>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <input placeholder="Fund name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Goal (PKR)</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
+                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Goal</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
                 <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Saved So Far</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
               </div>
               <div>
                 <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Tenure (months)</div>
                 <input type="number" placeholder="e.g. 24 = 2 years" value={form.months} onChange={e=>setForm(p=>({...p,months:e.target.value}))} style={inp}/>
-                {form.months&&parseInt(form.months)>0&&<div style={{fontSize:10,color:T.blue,marginTop:3}}>{parseInt(form.months)>=12?`${Math.floor(parseInt(form.months)/12)}yr ${parseInt(form.months)%12?parseInt(form.months)%12+"mo":""}`.trim():parseInt(form.months)+" months"}</div>}
+                {form.months&&parseInt(form.months)>0&&<div style={{fontSize:10,color:T.accent,marginTop:3}}>{parseInt(form.months)>=12?`${Math.floor(parseInt(form.months)/12)}yr ${parseInt(form.months)%12?parseInt(form.months)%12+"mo":""}`.trim():parseInt(form.months)+" months"}</div>}
               </div>
               {!editId&&(
                 <div>
                   <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase"}}>Icon & Color</div>
                   <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-                    {ICONS.map(ic=><button key={ic} onClick={()=>setForm(p=>({...p,icon:ic}))} style={{fontSize:18,background:form.icon===ic?T.blueBg:"#f5f5f5",border:`2px solid ${form.icon===ic?T.blue:"transparent"}`,borderRadius:7,padding:"4px 6px",cursor:"pointer"}}>{ic}</button>)}
+                    {ICONS.map(ic=><button key={ic} onClick={()=>setForm(p=>({...p,icon:ic}))} style={{fontSize:18,background:form.icon===ic?T.accentLight:"#f5f5f5",border:`2px solid ${form.icon===ic?T.accent:"transparent"}`,borderRadius:7,padding:"4px 6px",cursor:"pointer"}}>{ic}</button>)}
                   </div>
                   <div style={{display:"flex",gap:7}}>
                     {COLORS.map(col=><button key={col} onClick={()=>setForm(p=>({...p,color:col}))} style={{width:24,height:24,borderRadius:"50%",background:col,border:`3px solid ${form.color===col?"#111":"transparent"}`,cursor:"pointer"}}/>)}
@@ -1696,52 +1910,43 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
           </div>
         )}
 
-        {/* Fund cards — clean */}
+        {/* Fund cards */}
         {funds.map(f=>{
-          const pct=Math.min(Math.round((f.saved/f.goal)*100),100);
+          const pct=Math.min(Math.round(((f.saved||0)/(f.goal||1))*100),100);
           const remaining=f.goal-f.saved;
           const done=pct>=100;
           const monthly=f.months&&f.months>0&&!done?Math.ceil(remaining/f.months):null;
           return(
-            <div key={f.id} style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              {/* Top row: icon + name + ••• */}
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-                <div style={{width:40,height:40,borderRadius:11,background:f.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{f.icon}</div>
+            <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"13px 14px",marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
+                <div style={{width:36,height:36,borderRadius:10,background:f.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginRight:10,flexShrink:0}}>{f.icon}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:T.text}}>{f.name}</div>
-                  <div style={{fontSize:10,color:T.muted,marginTop:1}}>
-                    {f.months?`${f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?" "+f.months%12+"mo":""}`:f.months+"mo"} tenure · `:""}Goal {fmt(f.goal)}
-                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.text}}>{f.name}</div>
+                  {f.months&&<div style={{fontSize:10,color:T.muted,marginTop:1}}>{f.months>=12?`${Math.floor(f.months/12)}yr${f.months%12?" "+f.months%12+"mo":""}`:f.months+"mo"} tenure</div>}
                 </div>
-                <div style={{position:"relative",flexShrink:0}}>
-                  {done&&<span style={{fontSize:10,background:T.greenBg,color:T.green,padding:"3px 8px",borderRadius:6,fontWeight:800,marginRight:6}}>✓</span>}
-                  <button onClick={()=>setCardMenu(cardMenu===f.id?null:f.id)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.sub,fontSize:13,cursor:"pointer",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,letterSpacing:1}}>•••</button>
+                {done&&<span style={{fontSize:9,background:T.greenBg,color:T.green,padding:"2px 7px",borderRadius:6,fontWeight:800,marginRight:6}}>✓ DONE</span>}
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setCardMenu(cardMenu===f.id?null:f.id)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
                   {cardMenu===f.id&&(
-                    <div style={{position:"absolute",right:0,top:32,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:130,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
-                      <div onClick={()=>openEdit(f)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>✏️ Edit</div>
+                    <div style={{position:"absolute",right:0,top:30,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
+                      <div onClick={()=>openEdit(f)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>✏️ Edit</div>
                       <div onClick={()=>deleteFund(f.id)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>🗑️ Delete</div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Saved amount + pct */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-                <div style={{fontSize:20,fontWeight:900,color:f.color}}>{fmt(f.saved)}</div>
-                <div style={{fontSize:12,color:done?T.green:T.muted,fontWeight:700}}>{pct}%{!done&&` · ${fmt(remaining)} left`}</div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                <span style={{fontSize:11,color:T.muted}}>{fmt(f.saved)} <span style={{color:T.sub}}>of {fmt(f.goal)}</span></span>
+                <span style={{fontSize:11,fontWeight:700,color:done?T.green:f.color||T.accent}}>{pct}%</span>
               </div>
-
-              {/* Progress bar */}
-              <div style={{background:T.bg,borderRadius:5,height:7,overflow:"hidden",marginBottom:done?0:10}}>
-                <div style={{width:`${pct}%`,height:"100%",background:done?T.green:f.color,borderRadius:5,transition:"width 0.4s"}}/>
+              <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden",marginBottom:done?0:8}}>
+                <div style={{width:`${pct}%`,height:"100%",background:done?T.green:f.color||T.accent,borderRadius:6,transition:"width 0.3s"}}/>
               </div>
-
-              {/* Deposit row + monthly hint */}
               {!done&&(
                 <>
                   <div style={{display:"flex",gap:8}}>
-                    <input type="number" placeholder="Add amount…" value={addAmt[f.id]||""} onChange={e=>setAddAmt(p=>({...p,[f.id]:e.target.value}))} style={{...inp,padding:"8px 12px",fontSize:15,flex:1}}/>
-                    <button onClick={()=>deposit(f.id)} style={{background:f.color,color:"#fff",border:"none",borderRadius:10,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>+ Add</button>
+                    <input type="number" placeholder="Add amount…" value={addAmt[f.id]||""} onChange={e=>setAddAmt(p=>({...p,[f.id]:e.target.value}))} style={{...inp,padding:"7px 10px",fontSize:14,flex:1}}/>
+                    <button onClick={()=>deposit(f.id)} style={{background:f.color||T.accent,color:"#fff",border:"none",borderRadius:10,padding:"7px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>+ Add</button>
                   </div>
                   {monthly&&<div style={{fontSize:10,color:T.muted,marginTop:6}}>📅 {fmt(monthly)}/month to reach goal</div>}
                 </>
@@ -1778,8 +1983,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
   );
 }
 
-// ─── Reports Screen ───────────────────────────────────────────────────────────
-
+// ─── Reports Screen ──────────────────────────────────────────────────────────
 function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
@@ -1906,15 +2110,15 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       <div class="sub">Period: ${rFrom} → ${rTo} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString()}</div>
       <div class="section-hdr">Income (3000s)</div>
       <table><thead><tr><th>Code</th><th>Account</th><th class="right">Amount (PKR)</th></tr></thead><tbody>
-      ${Object.entries(income).map(([c,a])=>`<tr><td>${c}</td><td>${getName(c)}</td><td class="right">+${fmt(a)}</td></tr>`).join("")}
-      <tr class="total-row"><td></td><td>Total Income</td><td class="right">+${fmt(totalInc)}</td></tr>
+      ${Object.entries(income).map(([c,a])=>`<tr><td>${c}</td><td>${getName(c)}</td><td class="right">+${fmtRs(a)}</td></tr>`).join("")}
+      <tr class="total-row"><td></td><td>Total Income</td><td class="right">+${fmtRs(totalInc)}</td></tr>
       </tbody></table>
       <div class="section-hdr" style="margin-top:16px;">Expenses (4000s)</div>
       <table><thead><tr><th>Code</th><th>Account</th><th class="right">Amount (PKR)</th></tr></thead><tbody>
-      ${Object.entries(expenses).map(([c,a])=>`<tr><td>${c}</td><td>${getName(c)}</td><td class="right">−${fmt(a)}</td></tr>`).join("")}
-      <tr class="total-row"><td></td><td>Total Expenses</td><td class="right">−${fmt(totalExp)}</td></tr>
+      ${Object.entries(expenses).map(([c,a])=>`<tr><td>${c}</td><td>${getName(c)}</td><td class="right">−${fmtRs(a)}</td></tr>`).join("")}
+      <tr class="total-row"><td></td><td>Total Expenses</td><td class="right">−${fmtRs(totalExp)}</td></tr>
       </tbody></table>
-      <div class="net-box"><span>Net Profit / Loss</span><span>${sign(totalInc-totalExp)}</span></div>`;
+      <div class="net-box"><span>Net Profit / Loss</span><span>${signRs(totalInc-totalExp)}</span></div>`;
     printPDF(`Resultat ${rFrom} to ${rTo}`,rows);
   };
 
@@ -1927,9 +2131,9 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       rows+=`<div class="section-hdr">${s.name}</div><table><thead><tr><th>Code</th><th>Account</th><th class="right">Balance (PKR)</th></tr></thead><tbody>`;
       grp.forEach(a=>{
         const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);
-        rows+=`<tr><td>${a.code}</td><td>${a.name}</td><td class="right">${sign(bal)}</td></tr>`;
+        rows+=`<tr><td>${a.code}</td><td>${a.name}</td><td class="right">${signRs(bal)}</td></tr>`;
       });
-      rows+=`<tr class="total-row"><td></td><td>Total ${s.name}</td><td class="right">${sign(total)}</td></tr></tbody></table>`;
+      rows+=`<tr class="total-row"><td></td><td>Total ${s.name}</td><td class="right">${signRs(total)}</td></tr></tbody></table>`;
     });
     printPDF(`Balanserapport ${rTo}`,rows);
   };
@@ -1941,10 +2145,10 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
     let tRows=accTxns.map(t=>{
       const mv=t.debitCode===selAcc?t.amount:-t.amount;
       total+=mv;
-      const color=mv>=0?"#00875A":"#D0021B";
-      return`<tr><td>${t.date}</td><td>${fmtB(t.bilag)}</td><td>${t.description}</td><td class="right" style="color:${color};font-weight:700;">${mv>=0?"+":"-"}${fmt(Math.abs(mv))}</td></tr>`;
+      const color=mv>=0?"#00875A":"#0D7377";
+      return`<tr><td>${t.date}</td><td>${fmtB(t.bilag)}</td><td>${t.description}</td><td class="right" style="color:${color};font-weight:700;">${mv>=0?"+":"-"}${fmtRs(Math.abs(mv))}</td></tr>`;
     }).join("");
-    const totalColor=total>=0?"#00875A":"#D0021B";
+    const totalColor=total>=0?"#00875A":"#0D7377";
     const accName=getName(selAcc);
     const html=`<h1>${accName}</h1>
       <div class="sub">Period: ${rFrom} → ${rTo} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString()}</div>
@@ -1952,7 +2156,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       <tbody>
         ${tRows}
         ${!accTxns.length?'<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No transactions in this period</td></tr>':""}
-        <tr class="total-row"><td></td><td></td><td>TOTAL</td><td class="right" style="color:${totalColor};">${total>=0?"+":"-"}${fmt(Math.abs(total))}</td></tr>
+        <tr class="total-row"><td></td><td></td><td>TOTAL</td><td class="right" style="color:${totalColor};">${total>=0?"+":"-"}${fmtRs(Math.abs(total))}</td></tr>
       </tbody></table>`;
     printPDF(`${accName} ${rFrom} to ${rTo}`,html);
   };
@@ -1962,9 +2166,9 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   return(
     <div>
       {/* Tab switcher */}
-      <div style={{display:"flex",gap:4,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
-        {[["resultat","📊 Resultat"],["balanse","⚖️ Balanse"],["account","📒 Account"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 4px",fontSize:11}}>{label}</button>
+      <div style={{display:"flex",gap:3,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
+        {[["resultat","📊 P&L"],["balanse","⚖️ Balanse"],["account","📒 Ledger"],["analytics","📈 Analytics"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 2px",fontSize:10}}>{label}</button>
         ))}
       </div>
 
@@ -1981,19 +2185,19 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
           </div>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.green,fontWeight:800,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Income</div>
-            {Object.entries(income).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.green}}>+{fmt(amt)}</span></div>))}
+            {Object.entries(income).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.green}}>+{fmtRs(amt)}</span></div>))}
             {!Object.keys(income).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No income entries</div>}
-            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.green,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Income</span><span>+{fmt(totalInc)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.green,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Income</span><span>+{fmtRs(totalInc)}</span></div>
           </div>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.orange,fontWeight:800,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Expenses</div>
-            {Object.entries(expenses).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.orange}}>−{fmt(amt)}</span></div>))}
+            {Object.entries(expenses).map(([code,amt])=>(<div key={code} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5,paddingLeft:8}}><span style={{color:T.sub}}>{code} · {getName(code)}</span><span style={{fontWeight:700,color:T.orange}}>−{fmtRs(amt)}</span></div>))}
             {!Object.keys(expenses).length&&<div style={{fontSize:12,color:T.muted,paddingLeft:8}}>No expense entries</div>}
-            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.orange,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Expenses</span><span>−{fmt(totalExp)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,color:T.orange,borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:8}}><span>Total Expenses</span><span>−{fmtRs(totalExp)}</span></div>
           </div>
           <div style={{background:totalInc-totalExp>=0?T.greenBg:T.redLight,borderRadius:10,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:13,fontWeight:700}}>Net Profit / Loss</span>
-            <span style={{fontSize:20,fontWeight:900,color:totalInc-totalExp>=0?T.green:T.red}}>{sign(totalInc-totalExp)}</span>
+            <span style={{fontSize:20,fontWeight:900,color:totalInc-totalExp>=0?T.green:T.red}}>{signRs(totalInc-totalExp)}</span>
           </div>
         </Card>
       )}
@@ -2017,12 +2221,12 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
               <div key={key} style={{marginBottom:14}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontSize:11,color:s.color,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>{s.icon} {s.name}</div>
-                  <div style={{fontSize:12,fontWeight:800,color:total>=0?T.green:T.red}}>{sign(total)}</div>
+                  <div style={{fontSize:12,fontWeight:800,color:total>=0?T.green:T.red}}>{signRs(total)}</div>
                 </div>
                 {grp.map(a=>{const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);return(
                   <div key={a.code} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingLeft:12,paddingBottom:5,color:T.sub}}>
                     <span>{a.code} · {a.name}</span>
-                    <span style={{fontWeight:700,color:bal>=0?T.green:T.red}}>{sign(bal)}</span>
+                    <span style={{fontWeight:700,color:bal>=0?T.green:T.red}}>{signRs(bal)}</span>
                   </div>
                 );})}
                 <div style={{height:1,background:T.border,marginTop:4}}/>
@@ -2049,13 +2253,97 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
           <AccLedgerTable selAcc={selAcc} transactions={transactions} rFrom={rFrom} rTo={rTo} getName={getName}/>
         </div>
       )}
+
+      {rTab==="analytics"&&(()=>{
+        // Top expenses for period
+        const expMap={};
+        transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&getSK(t.debitCode)==="4000").forEach(t=>{
+          expMap[t.debitCode]=(expMap[t.debitCode]||0)+t.amount;
+        });
+        const topExp=Object.entries(expMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+        const maxExp=topExp.length?topExp[0][1]:1;
+
+        // Month over month — last 6 months
+        const months=[];
+        for(let i=5;i>=0;i--){
+          const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
+          const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
+          const from=`${y}-${m}-01`;
+          const last=new Date(y,d.getMonth()+1,0).getDate();
+          const to=`${y}-${m}-${String(last).padStart(2,"0")}`;
+          const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
+          const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0);
+          months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
+        }
+        const maxBar=Math.max(...months.map(m=>Math.max(m.inc,m.exp)),1);
+
+        return(
+          <div>
+            {/* Top Expenses */}
+            <Card style={{marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Top Expenses — {rFrom.slice(0,7)}</div>
+              {topExp.length?(
+                topExp.map(([code,amt])=>(
+                  <div key={code} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,color:T.sub,fontWeight:600}}>{getName(code)}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:T.orange}}>{fmtRs(amt)}</span>
+                    </div>
+                    <div style={{background:T.border,borderRadius:4,height:6,overflow:"hidden"}}>
+                      <div style={{width:`${Math.round((amt/maxExp)*100)}%`,height:"100%",background:T.orange,borderRadius:4}}/>
+                    </div>
+                  </div>
+                ))
+              ):<div style={{textAlign:"center",color:T.muted,padding:20,fontSize:13}}>No expense data for this period</div>}
+            </Card>
+
+            {/* Month over Month */}
+            <Card>
+              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Month over Month — Last 6 Months</div>
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",height:100,marginBottom:8}}>
+                {months.map((m,i)=>(
+                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:80}}>
+                      <div style={{flex:1,background:T.accent,borderRadius:"3px 3px 0 0",height:`${Math.round((m.inc/maxBar)*80)}px`,minHeight:m.inc?2:0,transition:"height 0.3s"}}/>
+                      <div style={{flex:1,background:T.orange,borderRadius:"3px 3px 0 0",height:`${Math.round((m.exp/maxBar)*80)}px`,minHeight:m.exp?2:0,transition:"height 0.3s"}}/>
+                    </div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:600}}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:14,justifyContent:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.accent,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Income</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.orange,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Expenses</span></div>
+              </div>
+              {/* MoM table */}
+              <div style={{marginTop:14,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+                {months.slice(-3).map((m,i,arr)=>{
+                  const prev=arr[i-1];
+                  const chg=prev&&prev.net!==0?Math.round(((m.net-prev.net)/Math.abs(prev.net))*100):null;
+                  return(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                      <span style={{fontSize:12,fontWeight:600,color:T.sub}}>{m.label}</span>
+                      <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                        <span style={{fontSize:11,color:T.green}}>+{fmtRs(m.inc)}</span>
+                        <span style={{fontSize:11,color:T.orange}}>-{fmtRs(m.exp)}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:m.net>=0?T.green:T.red}}>{signRs(m.net)}</span>
+                        {chg!==null&&<span style={{fontSize:10,fontWeight:700,color:chg>=0?T.green:T.red,background:chg>=0?T.greenBg:T.redLight,borderRadius:6,padding:"1px 6px"}}>{chg>=0?"+":""}{chg}%</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 
-// ─── Import Excel Screen ───────────────────────────────────────────────────────
+// ─── Import Excel Screen ──────────────────────────────────────────────────────────────────────────────────────────────────
 function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
   const[rows,setRows]=useState([]);
   const[status,setStatus]=useState("idle"); // idle | preview | importing | done | error
@@ -2236,25 +2524,47 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const BKEY="rr_budgets";
   const[budgets,setBudgetsState]=useState(()=>{try{const s=localStorage.getItem(BKEY);return s?JSON.parse(s):{}}catch{return{};}});
-  const[editModal,setEditModal]=useState(null); // {code, name}
+  const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
 
   const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
   const periodTxns=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo);
   const getActual=code=>periodTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
-
   const saveBudgets=(b)=>{setBudgetsState(b);try{localStorage.setItem(BKEY,JSON.stringify(b));}catch{}};
-  const confirmEdit=()=>{
-    if(!editModal)return;
-    saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});
-    setEditModal(null);setEditVal("");
-  };
+  const confirmEdit=()=>{if(!editModal)return;saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});setEditModal(null);setEditVal("");};
   const openEdit=(a)=>{setEditVal(String(budgets[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
 
   const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
   const totalActual=expAccounts.reduce((s,a)=>s+getActual(a.code),0);
   const totalRemaining=totalBudget-totalActual;
+  const totalPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
+  const over=totalActual>totalBudget&&totalBudget>0;
+
+  // Arc SVG gauge — half circle like image
+  const ArcGauge=({pct,spent,budget,over})=>{
+    const r=72;const cx=100;const cy=96;
+    const fillColor=over?"#EF4444":"#3B82F6";
+    const startX=cx-r;const startY=cy;
+    const endX=cx+r;
+    const angle=Math.PI*(pct/100);
+    const px=cx+r*Math.cos(Math.PI-angle);
+    const py=cy-r*Math.sin(Math.PI-angle);
+    return(
+      <svg width={200} height={110} style={{display:"block",margin:"0 auto"}}>
+        {/* Track */}
+        <path d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endX} ${startY}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
+        {/* Progress */}
+        {pct>0&&<path d={`M ${startX} ${startY} A ${r} ${r} 0 ${pct>50?1:0} 1 ${px} ${py}`} fill="none" stroke={fillColor} strokeWidth={14} strokeLinecap="round"/>}
+        {/* End dot */}
+        {pct>0&&<circle cx={px} cy={py} r={7} fill="#fff" opacity={0.9}/>}
+        {/* Center text */}
+        <text x={cx} y={cy-16} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" fontFamily="system-ui" letterSpacing={1} fontWeight={600}>SPENT</text>
+        <text x={cx} y={cy+8} textAnchor="middle" fontSize={22} fill="#fff" fontFamily="system-ui" fontWeight={900}>{fmt(spent)}</text>
+        <text x={cx} y={cy+24} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="system-ui">of {fmt(budget)}</text>
+      </svg>
+    );
+  };
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -2266,14 +2576,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
           <div style={{background:T.card,borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>{editModal.code} · {editModal.name}</div>
             <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Set monthly budget in PKR</div>
-            <input
-              type="number"
-              placeholder="e.g. 50000"
-              value={editVal}
-              onChange={e=>setEditVal(e.target.value)}
-              autoFocus
-              style={{...inp,marginBottom:12}}
-            />
+            <input type="number" placeholder="e.g. 50000" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus style={{...inp,marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={confirmEdit} style={{...btnRed,flex:2}}>Save Budget</button>
               <button onClick={()=>setEditModal(null)} style={{...btnGhost,flex:1}}>Cancel</button>
@@ -2285,52 +2588,63 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
       <BackHeader title="Budget" sub={filterFrom.slice(0,7)} onBack={onBack}/>
 
       <div style={{padding:16}}>
-        {/* Summary row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-          {[{label:"Budget",val:totalBudget,color:T.blue},{label:"Actual",val:totalActual,color:T.red},{label:"Left",val:totalRemaining,color:totalRemaining>=0?T.green:T.red}].map((c,i)=>(
-            <div key={i} style={{background:T.card,borderRadius:12,padding:"12px 10px",textAlign:"center",border:`1px solid ${T.border}`}}>
-              <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{c.label}</div>
-              <div style={{fontSize:13,fontWeight:900,color:c.color}}>{fmt(c.val)}</div>
+        {/* Arc gauge hero card */}
+        <div style={{background:"#1A1A2E",borderRadius:20,padding:"20px 16px 16px",marginBottom:16,overflow:"hidden",position:"relative"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>Overall Budget</div>
+            <span style={{fontSize:10,fontWeight:700,color:over?"#EF4444":"#4ade80",background:over?"rgba(239,68,68,0.15)":"rgba(74,222,128,0.15)",borderRadius:8,padding:"3px 10px"}}>{totalPct}% {over?"OVER":"used"}</span>
+          </div>
+          {totalBudget>0
+            ?<ArcGauge pct={totalPct} spent={totalActual} budget={totalBudget} over={over}/>
+            :<div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.4)",fontSize:13}}>No budgets set yet — tap ••• on an account below</div>
+          }
+          {totalBudget>0&&(
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Budget</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{fmt(totalBudget)}</div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Remaining</div>
+                <div style={{fontSize:14,fontWeight:800,color:over?"#EF4444":"#4ade80"}}>{fmt(Math.abs(totalRemaining))}</div>
+              </div>
             </div>
-          ))}
+          )}
         </div>
 
-        {/* Account cards */}
+        {/* Per-account list */}
         {expAccounts.map(a=>{
           const budget=budgets[a.code]||0;
           const actual=getActual(a.code);
           const pct=budget>0?Math.min(100,Math.round((actual/budget)*100)):0;
-          const over=actual>budget&&budget>0;
+          const isOver=actual>budget&&budget>0;
           return(
-            <div key={a.code} style={{background:T.card,borderRadius:14,border:`1px solid ${over?T.redMid:T.border}`,padding:"14px 14px 12px",marginBottom:8}}>
-              {/* Header row */}
-              <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
-                <span style={{background:T.orangeBg,color:T.orange,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:800,marginRight:8}}>{a.code}</span>
+            <div key={a.code} style={{background:T.card,borderRadius:14,border:`1px solid ${isOver?T.redMid:T.border}`,padding:"13px 14px",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",marginBottom:budget>0?10:0}}>
+                <span style={{background:T.orangeBg,color:T.orange,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:800,marginRight:8,flexShrink:0}}>{a.code}</span>
                 <span style={{fontSize:13,fontWeight:600,color:T.text,flex:1}}>{a.name}</span>
-                {over&&<span style={{fontSize:9,background:T.redLight,color:T.red,padding:"2px 6px",borderRadius:5,fontWeight:800,marginRight:6}}>OVER</span>}
+                {isOver&&<span style={{fontSize:9,background:T.redLight,color:T.red,padding:"2px 6px",borderRadius:5,fontWeight:800,marginRight:6}}>OVER</span>}
                 <div style={{position:"relative"}}>
                   <button onClick={()=>setCardMenu(cardMenu===a.code?null:a.code)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
                   {cardMenu===a.code&&(
                     <div style={{position:"absolute",right:0,top:30,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 24px rgba(0,0,0,0.12)"}}>
-                      <div onClick={()=>openEdit(a)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>✏️ Set Budget</div>
+                      <div onClick={()=>openEdit(a)} style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:T.accent,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>✏️ Set Budget</div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Budget vs Actual */}
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
-                <div style={{fontSize:11,color:T.muted}}>Budget <span style={{fontWeight:700,color:T.text}}>{budget>0?fmt(budget):"—"}</span></div>
-                <div style={{fontSize:11,color:T.muted}}>Actual <span style={{fontWeight:700,color:over?T.red:T.text}}>{fmt(actual)}</span>{budget>0&&<span style={{color:T.muted}}> · {pct}%</span>}</div>
-              </div>
-
-              {/* Bar */}
               {budget>0&&(
-                <div style={{background:T.bg,borderRadius:4,height:5,overflow:"hidden"}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:over?T.red:T.green,borderRadius:4,transition:"width 0.3s"}}/>
-                </div>
+                <>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                    <span style={{fontSize:11,color:T.muted}}>{fmt(actual)} <span style={{color:T.sub}}>of {fmt(budget)}</span></span>
+                    <span style={{fontSize:11,fontWeight:700,color:isOver?T.red:T.accent}}>{pct}%</span>
+                  </div>
+                  <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:isOver?T.red:pct>75?"#F59E0B":T.green,borderRadius:6,transition:"width 0.3s"}}/>
+                  </div>
+                </>
               )}
-              {!budget&&<div style={{fontSize:10,color:T.muted,fontStyle:"italic"}}>No budget set — tap ••• to set one</div>}
+              {!budget&&<div style={{fontSize:10,color:T.muted,fontStyle:"italic",marginTop:4}}>No budget set — tap ••• to set one</div>}
             </div>
           );
         })}
@@ -2341,7 +2655,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
 }
 
 // ─── Profile Screen ────────────────────────────────────────────────────────────
-function ProfileScreen({onSignOut}){
+function ProfileScreen({onSignOut,onNavigate}){
   const CURRENCIES=[
     {code:"PKR",name:"Pakistani Rupee",symbol:"Rs"},
     {code:"USD",name:"US Dollar",symbol:"$"},
@@ -2372,7 +2686,7 @@ function ProfileScreen({onSignOut}){
   return(
     <div>
       {/* Avatar + name */}
-      <div style={{background:"linear-gradient(135deg,#1A3A2E,#2D5C45)",borderRadius:16,padding:"24px 20px 20px",marginBottom:14,textAlign:"center"}}>
+      <div style={{background:"linear-gradient(135deg,#0D7377,#0A5C60)",borderRadius:16,padding:"24px 20px 20px",marginBottom:14,textAlign:"center"}}>
         <div style={{width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 10px"}}>👤</div>
         {editName?(
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"center"}}>
@@ -2410,13 +2724,20 @@ function ProfileScreen({onSignOut}){
           {CURRENCIES.map(c=>{
             const active=(profileData.currencies||["PKR"]).includes(c.code);
             return(
-              <button key={c.code} onClick={()=>{const cur=profileData.currencies||["PKR"];const next=active&&cur.length>1?cur.filter(x=>x!==c.code):[...new Set([...cur,c.code])];saveProfile({currencies:next});}} style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${active?T.red:T.border}`,background:active?T.redLight:"#fff",color:active?T.red:T.sub,fontSize:11,fontWeight:active?700:400,cursor:"pointer",fontFamily:"inherit"}}>
+              <button key={c.code} onClick={()=>{const cur=profileData.currencies||["PKR"];const next=active&&cur.length>1?cur.filter(x=>x!==c.code):[...new Set([...cur,c.code])];saveProfile({currencies:next});}} style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${active?T.accent:T.border}`,background:active?T.redLight:"#fff",color:active?T.red:T.sub,fontSize:11,fontWeight:active?700:400,cursor:"pointer",fontFamily:"inherit"}}>
                 {c.symbol} {c.code}
               </button>
             );
           })}
         </div>
         <div style={{fontSize:10,color:T.muted,marginTop:8}}>Tap to enable/disable. First enabled is primary.</div>
+      </div>
+
+      {/* Admin Panel */}
+      <div onClick={()=>onNavigate&&onNavigate("AdminPanel")} style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:20}}>🛡️</span>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>Admin Panel</div><div style={{fontSize:11,color:T.muted}}>Enable or disable features</div></div>
+        <span style={{fontSize:16,color:T.muted}}>›</span>
       </div>
 
       {/* Help */}
@@ -2428,7 +2749,143 @@ function ProfileScreen({onSignOut}){
         </div>
       </div>
 
-      <button onClick={onSignOut} style={{...btnGhost,marginTop:6,color:"#D0021B",borderColor:"#D0021B"}}>Sign Out</button>
+      <button onClick={onSignOut} style={{...btnGhost,marginTop:6,color:"#0D7377",borderColor:"#0D7377"}}>Sign Out</button>
+    </div>
+  );
+}
+
+// ─── Disabled Screen ──────────────────────────────────────────────────────────
+function DisabledScreen({title,onBack}){
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
+      <BackHeader title={title} sub="FEATURE DISABLED" onBack={onBack}/>
+      <div style={{padding:40,textAlign:"center"}}>
+        <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+        <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:8}}>{title} is turned off</div>
+        <div style={{fontSize:13,color:T.muted,marginBottom:24,lineHeight:1.6}}>This feature has been disabled in the Admin Panel. Contact your admin to enable it.</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Cheque Tracker ───────────────────────────────────────────────────────────
+function ChequeScreen({onBack}){
+  const KEY="rr_cheques";
+  const[cheques,setChequesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
+  const[showForm,setShowForm]=useState(false);
+  const[chequeType,setChequeType]=useState("issued"); // issued | received
+  const[form,setForm]=useState({number:"",party:"",amount:"",date:new Date().toISOString().split("T")[0],bank:"",status:"pending"});
+
+  const save=(cqs)=>{setChequesState(cqs);localStorage.setItem(KEY,JSON.stringify(cqs));};
+  const addCheque=()=>{
+    if(!form.number||!form.party||!parseFloat(form.amount))return;
+    const n=[...cheques,{id:Date.now(),type:chequeType,...form,amount:parseFloat(form.amount)}];
+    save(n);setShowForm(false);setForm({number:"",party:"",amount:"",date:new Date().toISOString().split("T")[0],bank:"",status:"pending"});
+  };
+  const updateStatus=(id,status)=>{const n=cheques.map(c=>c.id===id?{...c,status}:c);save(n);};
+  const deleteCheque=(id)=>{const n=cheques.filter(c=>c.id!==id);save(n);};
+  const[tab,setTab]=useState("issued");
+  const list=cheques.filter(c=>c.type===tab);
+  const STATUS_COLOR={pending:T.orange,cleared:T.green,bounced:T.red,cancelled:T.muted};
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Cheque Tracker" sub="ISSUED & RECEIVED" onBack={onBack}/>
+      <div style={{padding:16}}>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          {["issued","received"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",borderRadius:10,border:`1.5px solid ${tab===t?T.accent:T.border}`,background:tab===t?T.accent:"#fff",color:tab===t?"#fff":T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+          ))}
+        </div>
+        <button style={{...btnRed,marginBottom:12}} onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}}>
+          {showForm?"✕ Cancel":`+ Add ${tab} cheque`}
+        </button>
+        {showForm&&(
+          <Card style={{marginBottom:12}}>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input placeholder="Cheque No." value={form.number} onChange={e=>setForm(p=>({...p,number:e.target.value}))} style={inp}/>
+              <input placeholder="Party name" value={form.party} onChange={e=>setForm(p=>({...p,party:e.target.value}))} style={inp}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <input type="number" placeholder="Amount" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/>
+                <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/>
+              </div>
+              <input placeholder="Bank (optional)" value={form.bank} onChange={e=>setForm(p=>({...p,bank:e.target.value}))} style={inp}/>
+              <button style={btnRed} onClick={addCheque}>Add Cheque</button>
+            </div>
+          </Card>
+        )}
+        {list.map(c=>(
+          <div key={c.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"13px 14px",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,padding:"1px 7px",borderRadius:5}}>#{c.number}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:T.text}}>{c.party}</span>
+                </div>
+                <div style={{fontSize:11,color:T.muted}}>{c.date}{c.bank?` · ${c.bank}`:""}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:900,color:T.text}}>{fmt(c.amount)}</div>
+                <span style={{fontSize:9,fontWeight:700,color:STATUS_COLOR[c.status],background:c.status==="cleared"?T.greenBg:c.status==="bounced"?T.redLight:c.status==="cancelled"?T.border:T.orangeBg,borderRadius:5,padding:"2px 7px",textTransform:"uppercase"}}>{c.status}</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {["pending","cleared","bounced","cancelled"].map(s=>(
+                <button key={s} onClick={()=>updateStatus(c.id,s)} style={{padding:"3px 9px",borderRadius:7,border:`1px solid ${c.status===s?T.accent:T.border}`,background:c.status===s?T.accentLight:"#fff",color:c.status===s?T.accent:T.sub,fontSize:10,fontWeight:c.status===s?700:400,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{s}</button>
+              ))}
+              <button onClick={()=>deleteCheque(c.id)} style={{marginLeft:"auto",padding:"3px 9px",borderRadius:7,border:`1px solid ${T.redMid}`,background:T.redLight,color:T.red,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+            </div>
+          </div>
+        ))}
+        {!list.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {tab} cheques yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Panel ─────────────────────────────────────────────────────────────
+const ADMIN_FEATURES=[
+  {id:"bank",label:"Bank Module",icon:"🏧",desc:"Bank accounts & statements"},
+  {id:"reskontro",label:"Reskontro",icon:"👥",desc:"AR/AP contact tracking"},
+  {id:"budget",label:"Budget",icon:"📐",desc:"Monthly budget vs actual"},
+  {id:"sinkingFunds",label:"Sinking Funds",icon:"🎯",desc:"Savings goals tracker"},
+  {id:"reports",label:"Reports",icon:"📊",desc:"P&L, Balanse, Ledger export"},
+  {id:"import",label:"Import Excel",icon:"📥",desc:"Import transactions from Excel"},
+  {id:"cheque",label:"Cheque Tracker",icon:"🧾",desc:"Issued & received cheques"},
+  {id:"tags",label:"Transaction Tags",icon:"🏷️",desc:"Tag entries for filtering"},
+  {id:"darkMode",label:"Dark Mode",icon:"🌙",desc:"Dark theme toggle"},
+  {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
+];
+function AdminPanel({onBack}){
+  const KEY="rr_admin_features";
+  const[features,setFeaturesState]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch{return{};}
+  });
+  const toggle=(id)=>{
+    const n={...features,[id]:features[id]===false?true:false};
+    setFeaturesState(n);
+    localStorage.setItem(KEY,JSON.stringify(n));
+  };
+  const isOn=(id)=>features[id]!==false; // default on
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Admin Panel" sub="FEATURE TOGGLES" onBack={onBack}/>
+      <div style={{padding:16}}>
+        <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`}}>
+          <div style={{fontSize:12,color:T.accent,fontWeight:600}}>Toggle features on or off. Changes apply immediately across the app.</div>
+        </div>
+        {ADMIN_FEATURES.map(f=>(
+          <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:22,flexShrink:0}}>{f.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>{f.label}</div>
+              <div style={{fontSize:11,color:T.muted,marginTop:1}}>{f.desc}</div>
+            </div>
+            <div onClick={()=>toggle(f.id)} style={{width:44,height:24,borderRadius:12,background:isOn(f.id)?T.accent:"#D1D5DB",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:isOn(f.id)?22:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2449,9 +2906,11 @@ const SIDEBAR=[
   {id:"Reskontro",icon:"👥",label:"Reskontro",group:"main"},
   {id:"SinkingFunds",icon:"🎯",label:"Sinking Funds",group:"tools"},
   {id:"Budget",icon:"📐",label:"Budget",group:"tools"},
+  {id:"Cheques",icon:"🧾",label:"Cheque Tracker",group:"tools"},
   {id:"Reports",icon:"📊",label:"Reports",group:"tools"},
   {id:"Import",icon:"📥",label:"Import Excel",group:"tools"},
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},
+  {id:"AdminPanel",icon:"🛡️",label:"Admin Panel",group:"system"},
 ];
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -2461,11 +2920,37 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
+  const[lastDeleted,setLastDeleted]=useState(null);
+
+  const deleteTxnWithUndo=(id)=>{
+    const txn=transactions.find(t=>t.id===id);
+    if(txn)setLastDeleted(txn);
+    deleteTxn(id);
+    setTimeout(()=>setLastDeleted(null),6000);
+  };
+  const undoDelete=()=>{
+    if(!lastDeleted)return;
+    addTransaction(lastDeleted);
+    setLastDeleted(null);
+  };
+  const duplicateTransaction=(txn)=>{
+    addTransaction({
+      date:new Date().toISOString().split("T")[0],
+      debitCode:txn.debitCode,creditCode:txn.creditCode,
+      description:txn.description+" (copy)",
+      amount:txn.amount,contactId:txn.contactId||null,
+    });
+  };
 
 
 
 
+  const[darkMode,setDarkMode]=useState(()=>localStorage.getItem("rr_dark")==="1");
   const[entrySearch,setEntrySearch]=useState("");
+  useEffect(()=>{
+    document.body.style.background=darkMode?"#111827":"#FAF9F7";
+    localStorage.setItem("rr_dark",darkMode?"1":"0");
+  },[darkMode]);
   const[bankAttachments,setBankAttachmentsState]=useState(()=>{try{const saved=localStorage.getItem("rr_bank_attachments");return saved?JSON.parse(saved):{}}catch{return{};}});
   const setBankAttachments=(fn)=>{setBankAttachmentsState(prev=>{const next=typeof fn==="function"?fn(prev):fn;try{localStorage.setItem("rr_bank_attachments",JSON.stringify(next));}catch(e){}return next;});};
   const _now=new Date();
@@ -2487,19 +2972,56 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
   if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
+  // ── Admin feature gate ──
+  const getFeature=(id)=>{
+    try{const f=JSON.parse(localStorage.getItem("rr_admin_features")||"{}");return f[id]!==false;}catch{return true;}
+  };
+  const feat={
+    bank:getFeature("bank"),
+    reskontro:getFeature("reskontro"),
+    budget:getFeature("budget"),
+    sinkingFunds:getFeature("sinkingFunds"),
+    reports:getFeature("reports"),
+    import:getFeature("import"),
+    cheque:getFeature("cheque"),
+    tags:getFeature("tags"),
+    darkMode:getFeature("darkMode"),
+    calcAmount:getFeature("calcAmount"),
+  };
+
+  if(tab==="AdminPanel")return(<AdminPanel onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Reskontro")return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Import")return(<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="SinkingFunds")return(<SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Budget")return(<BudgetScreen accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Bank")return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(code,att)=>setBankAttachments(p=>({...p,[code]:att}))}/></div></div>);
+  if(tab==="Reskontro"){
+    if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
+  }
+  if(tab==="Import"){
+    if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
+    return(<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
+  }
+  if(tab==="SinkingFunds"){
+    if(!feat.sinkingFunds)return(<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>);
+    return(<SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
+  }
+  if(tab==="Budget"){
+    if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
+    return(<BudgetScreen accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
+  }
+  if(tab==="Cheques"){
+    if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
+    return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
+  }
+  if(tab==="Bank"){
+    if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
+    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(code,att)=>setBankAttachments(p=>({...p,[code]:att}))}/></div></div>);
+  }
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
       {/* Sidebar */}
       {sidebarOpen&&(<>
         <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200}}/>
-        <div style={{position:"fixed",top:0,left:0,bottom:0,width:240,background:"#0F172A",zIndex:201,display:"flex",flexDirection:"column",boxShadow:"6px 0 32px rgba(0,0,0,0.4)"}}>
+        <div style={{position:"fixed",top:0,left:0,bottom:0,width:240,background:"#0A5C60",zIndex:201,display:"flex",flexDirection:"column",boxShadow:"6px 0 32px rgba(0,0,0,0.3)"}}>
           <div style={{padding:"24px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",gap:12}}>
             <img src={LOGO_B64} style={{height:44,objectFit:"contain"}}/>
             <div>
@@ -2508,21 +3030,21 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             </div>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-            <div style={{padding:"8px 16px 4px",fontSize:9,color:"#334155",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Main</div>
+            <div style={{padding:"8px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Main</div>
             {SIDEBAR.filter(i=>i.group==="main").map(item=>{
               const active=tab===item.id;
               const isLedger=item.id==="Accounts";
               return(
                 <div key={item.id}>
-                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(208,2,27,0.15)":"transparent"}}>
+                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent"}}>
                     <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                    <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#ff6b7a":"#94A3B8",flex:1}}>{item.label}</span>
+                    <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
                     {isLedger&&<span style={{fontSize:10,color:"#475569",transition:"transform 0.2s",display:"inline-block",transform:ledgerExpanded?"rotate(180deg)":"none"}}>▾</span>}
-                    {active&&!isLedger&&<div style={{width:4,height:4,borderRadius:"50%",background:"#D0021B"}}/>}
+                    {active&&!isLedger&&<div style={{width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,0.8)"}}/>}
                   </div>
                   {isLedger&&ledgerExpanded&&(
                     <div style={{marginLeft:12,paddingLeft:8,borderLeft:"1px solid rgba(255,255,255,0.06)"}}>
-                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"7px 16px",cursor:"pointer",borderRadius:8,margin:"1px 8px",background:tab==="Accounts"&&!ledgerExpanded?"rgba(208,2,27,0.1)":"transparent"}}>
+                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"7px 16px",cursor:"pointer",borderRadius:8,margin:"1px 8px",background:tab==="Accounts"&&!ledgerExpanded?"rgba(255,255,255,0.12)":"transparent"}}>
                         <span style={{fontSize:12,color:"#64748B",fontWeight:500}}>All Accounts</span>
                       </div>
                       {Object.entries(SERIES).map(([key,s])=>(
@@ -2536,39 +3058,48 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 </div>
               );
             })}
-            <div style={{padding:"14px 16px 4px",fontSize:9,color:"#334155",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
-            {SIDEBAR.filter(i=>i.group==="tools").map(item=>{const active=tab===item.id;return(
-              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(208,2,27,0.15)":"transparent",transition:"background 0.1s"}}>
-                <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#ff6b7a":"#94A3B8"}}>{item.label}</span>
-                {active&&<div style={{marginLeft:"auto",width:4,height:4,borderRadius:"50%",background:"#D0021B"}}/>}
-              </div>
-            );})}
+            <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
+            {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
+              const active=tab===item.id;
+              const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque"}[item.id];
+              const isOff=featureKey&&!feat[featureKey];
+              return(
+                <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent",opacity:isOff?0.4:1,transition:"background 0.1s"}}>
+                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
+                  <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
+                  {isOff&&<span style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.35)"}}>🔒</span>}
+                  {active&&!isOff&&<div style={{marginLeft:"auto",width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,0.8)"}}/>}
+                </div>
+              );
+            })}
             {/* System group */}
-            <div style={{padding:"14px 16px 4px",fontSize:9,color:"#334155",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
+            <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
             {SIDEBAR.filter(i=>i.group==="system").map(item=>{const active=tab===item.id;return(
-              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(208,2,27,0.15)":"transparent",transition:"background 0.1s"}}>
+              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent",transition:"background 0.1s"}}>
                 <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#ff6b7a":"#94A3B8"}}>{item.label}</span>
+                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
               </div>
             );})}
           </div>
           <div style={{padding:"14px 16px",borderTop:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:10,color:"#334155"}}>PKR · v2.2</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>PKR · v2.2</div>
             <button onClick={onSignOut} style={{background:"rgba(255,255,255,0.06)",border:"none",borderRadius:8,color:"#64748B",fontSize:11,cursor:"pointer",padding:"5px 12px",fontWeight:600}}>Sign Out</button>
           </div>
         </div>
       </>)}
 
       {/* Top header */}
-      <div style={{background:"#fff",borderBottom:"1px solid #E8ECF0",padding:"0 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",height:68}}>
-        <button onClick={()=>setSidebarOpen(true)} style={{background:"#F1F5F9",border:"none",borderRadius:10,color:"#475569",cursor:"pointer",width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3.5,flexShrink:0}}>
-          {[0,1,2].map(i=><div key={i} style={{width:14,height:1.5,background:"#475569",borderRadius:2}}/>)}
+      <div style={{background:T.header,borderBottom:`1px solid rgba(255,255,255,0.1)`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 2px 8px rgba(13,115,119,0.2)",height:68}}>
+        <button onClick={()=>setSidebarOpen(true)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",cursor:"pointer",width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3.5,flexShrink:0}}>
+          {[0,1,2].map(i=><div key={i} style={{width:14,height:1.5,background:"#fff",borderRadius:2}}/>)}
         </button>
         <div style={{flex:1,display:"flex",justifyContent:"center",alignItems:"center",height:"100%"}}>
           <img src={LOGO_B64} style={{height:"130%",width:"auto",objectFit:"contain",display:"block"}}/>
         </div>
-        <div style={{width:36,flexShrink:0}}/>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+          {isAdmin&&<button onClick={()=>setTab("AdminPanel")} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🛡️</button>}
+          <button onClick={()=>setDarkMode(d=>!d)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{darkMode?"☀️":"🌙"}</button>
+        </div>
       </div>
 
       {(tab==="Dashboard"||tab==="Accounts"||tab==="Reports"||tab==="Entries")&&(
@@ -2585,22 +3116,31 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             filterTo={filterTo}
             setFilterFrom={setFilterFrom}
             setFilterTo={setFilterTo}
+            onNavigate={setTab}
+            feat={feat}
           />
         )}
 
         {tab==="Entries"&&(
           <div>
+            {/* Undo toast */}
+            {lastDeleted&&(
+              <div style={{background:"#1A1A2A",borderRadius:12,padding:"10px 14px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,color:"#fff",fontWeight:500}}>Entry deleted</span>
+                <button onClick={undoDelete} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Undo</button>
+              </div>
+            )}
             <div style={{position:"relative",marginBottom:12}}>
               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} onEdit={saveEdit} onDelete={deleteTxn} onReverse={reverseTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
           </div>
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
@@ -2637,32 +3177,34 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Reports"&&(
-          <ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
+          feat.reports
+            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
+            :<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {tab==="Profile"&&(
-          <ProfileScreen onSignOut={onSignOut}/>
+          <ProfileScreen onSignOut={onSignOut} onNavigate={setTab}/>
         )}
       </div>
 
       {/* Bottom nav */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"#fff",borderTop:"1px solid #F1F5F9",display:"flex",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)",paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"#fff",borderTop:`1px solid ${T.border}`,display:"flex",boxShadow:"0 -2px 16px rgba(13,115,119,0.08)",paddingBottom:"env(safe-area-inset-bottom)"}}>
         {MENU.map(t=>{
           const active=tab===t.id;
           const isNew=t.isNew;
           return(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,paddingTop:8,paddingBottom:10,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,paddingTop:8,paddingBottom:10,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}>
               {isNew?(
-                <div style={{background:"#1A3A2E",borderRadius:18,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",marginTop:-20,boxShadow:"0 4px 14px rgba(26,58,46,0.4)"}}>
+                <div style={{background:T.header,borderRadius:18,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",marginTop:-20,boxShadow:"0 4px 14px rgba(13,115,119,0.4)"}}>
                   <span style={{color:"#fff",fontSize:26,fontWeight:300,lineHeight:1}}>+</span>
                 </div>
               ):(
                 <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontSize:19,filter:active?"none":"grayscale(1)",opacity:active?1:0.45}}>{t.icon}</span>
+                  <span style={{fontSize:19,filter:active?"none":"grayscale(1)",opacity:active?1:0.4}}>{t.icon}</span>
                 </div>
               )}
-              {!isNew&&<span style={{fontSize:9,fontWeight:active?700:500,color:active?"#1A3A2E":"#94A3B8",letterSpacing:0.2}}>{t.label}</span>}
-              {active&&!isNew&&<div style={{position:"absolute",bottom:0,width:20,height:2,background:"#1A3A2E",borderRadius:2}}/>}
+              {!isNew&&<span style={{fontSize:9,fontWeight:active?700:500,color:active?T.header:T.muted,letterSpacing:0.2}}>{t.label}</span>}
+              {active&&!isNew&&<div style={{position:"absolute",bottom:0,width:20,height:2.5,background:T.header,borderRadius:2}}/>}
             </button>
           );
         })}
