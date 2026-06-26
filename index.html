@@ -383,7 +383,7 @@ function BackHeader({title,sub,onBack}){
   );
 }
 
-const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"9px 10px",width:"100%",fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"9px 10px",width:"100%",fontSize:9,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
 function AccDrop({value,onChange,accounts}){
@@ -516,7 +516,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
           </div>
           <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
           <div style={{display:"flex",gap:6,marginTop:4}}>
-            <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>valid&&onSave({...form,amount:parseFloat(form.amount)})}>💾 Save</button>
+            <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>{
+              if(!valid)return;
+              if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
+              onSave({...form,amount:parseFloat(form.amount)});
+            }}>💾 Save</button>
             {confirmDel?(
               <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
             ):(
@@ -709,7 +713,32 @@ function MatchedGroups({matchedRows,getMovement}){
   );
 }
 
-// ─── Ledger Screen ────────────────────────────────────────────────────────────
+// ─── Admin feature helpers ────────────────────────────────────────────────────
+const ADMIN_KEY="rr_admin_features";
+const USER_FEATS_KEY="rr_user_features"; // {userId: {featureId: bool}}
+
+const getAdminFeatures=()=>{try{return JSON.parse(localStorage.getItem(ADMIN_KEY)||"{}")}catch{return{};}};
+const getUserFeatures=(userId)=>{try{const all=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");return all[userId]||{};}catch{return{};}};
+const setUserFeature=(userId,featureId,val)=>{
+  try{
+    const all=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");
+    if(!all[userId])all[userId]={};
+    all[userId][featureId]=val;
+    localStorage.setItem(USER_FEATS_KEY,JSON.stringify(all));
+  }catch{}
+};
+// Feature is on if admin has enabled it globally AND user has it enabled (or user setting not set, defaults to admin setting)
+const isFeatureOn=(featureId,userId)=>{
+  const admin=getAdminFeatures();
+  if(admin[featureId]===false)return false; // admin disabled globally
+  const user=getUserFeatures(userId);
+  return user[featureId]!==false; // default on unless user explicitly off
+};
+
+// Period close helper
+const PERIOD_CLOSE_KEY="rr_period_close";
+const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
+const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
 
 function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,filterFrom,filterTo}){
   const today=new Date().toISOString().split("T")[0];
@@ -752,6 +781,18 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Ledger_${account.code}_${from}_${to}.csv`;a.click();
   };
 
+  const exportLedgerPDF=()=>{
+    const w=window.open("","_blank");
+    let rows=allRows.map(r=>`<tr><td>${r.date}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</td><td style="text-align:right">${sign(r.balance)}</td></tr>`).join("");
+    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:#0D7377;color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}@media print{button{display:none}}</style></head><body>
+    <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Period: ${from} → ${to}</p>
+    <table><thead><tr><th>Date</th><th>Bilag</th><th>Description</th><th style="text-align:right">Movement</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="foot"><div><div class="lbl">Opening</div><div class="val">${sign(openingBal)}</div></div><div><div class="lbl">Period</div><div class="val">${sign(periodMovement)}</div></div><div><div class="lbl">Closing</div><div class="val">${sign(closingBal)}</div></div></div>
+    <button onclick="window.print()" style="margin-top:20px;padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button>
+    </body></html>`);
+    w.document.close();setTimeout(()=>w.print(),400);
+  };
+
   const[exportMenu,setExportMenu]=useState(false);
 
   return(
@@ -769,7 +810,8 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
               <>
                 <div onClick={()=>setExportMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
                 <div style={{position:"absolute",right:0,top:44,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,minWidth:160,boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
-                  <div onClick={()=>{exportLedger();setExportMenu(false);}} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.blue,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>⬇ Export CSV</div>
+                  <div onClick={()=>{exportLedger();setExportMenu(false);}} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.accent,fontWeight:600,display:"flex",alignItems:"center",gap:8,borderBottom:`1px solid ${T.border}`}}>📄 Export CSV</div>
+                  <div onClick={()=>{exportLedgerPDF();setExportMenu(false);}} style={{padding:"13px 16px",fontSize:13,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>📕 Export PDF</div>
                 </div>
               </>
             )}
@@ -821,16 +863,16 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         })}
       </div>
       {/* Footer inline after entries */}
-      <div style={{background:T.header,borderTop:"1px solid #2a3a5e",padding:"12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)",marginTop:8,borderRadius:12}}>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,padding:"12px 16px",marginTop:8,borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           {[
-            {label:"Incoming Bal",value:openingBal,color:"#93A8D0"},
+            {label:"Opening",value:openingBal,color:T.sub},
             {label:"Period",value:periodMovement,color:periodMovement>=0?T.green:T.red},
-            {label:"Outgoing Bal",value:closingBal,color:closingBal>=0?"#4ade80":T.red}
+            {label:"Closing",value:closingBal,color:closingBal>=0?T.accent:T.red}
           ].map((c,i)=>(
             <div key={i} style={{textAlign:"center"}}>
-              <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{c.label}</div>
-              <div style={{fontSize:12,fontWeight:800,color:c.color}}>{sign(c.value)}</div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{c.label}</div>
+              <div style={{fontSize:12,fontWeight:700,color:c.color}}>{sign(c.value)}</div>
             </div>
           ))}
         </div>
@@ -924,6 +966,12 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   const[detailTxn,setDetailTxn]=useState(null);
   const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
+
+  const toggleInactive=(id)=>{
+    const updated=contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c);
+    setContacts(updated);
+  };
+  const hasTxns=(id)=>transactions.some(t=>t.contactId===id);
 
   const customers=contacts.filter(c=>c.type==="customer");
   const suppliers=contacts.filter(c=>c.type==="supplier");
@@ -1124,17 +1172,28 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           <>
             <SL>Select Type</SL>
             {[
-              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.length},
-              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.length}
+              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.filter(c=>!c.inactive).length},
+              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.filter(c=>!c.inactive).length}
             ].map(item=>(
-              <div key={item.type} onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-                <div style={{background:item.bg,borderRadius:12,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{item.icon}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:15,fontWeight:700}}>{item.label}</div>
-                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{item.sub}</div>
-                  <div style={{fontSize:11,color:item.color,fontWeight:600,marginTop:4}}>{item.count} contacts</div>
+              <div key={item.type}>
+                <div onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                  <div style={{background:item.bg,borderRadius:12,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{item.icon}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:15,fontWeight:700}}>{item.label}</div>
+                    <div style={{fontSize:11,color:T.sub,marginTop:2}}>{item.sub}</div>
+                    <div style={{fontSize:11,color:item.color,fontWeight:600,marginTop:4}}>{item.count} active contacts</div>
+                  </div>
+                  <span style={{fontSize:20,color:T.muted}}>›</span>
                 </div>
-                <span style={{fontSize:20,color:T.muted}}>›</span>
+                {/* Inactive contacts for this type */}
+                {contacts.filter(c=>c.type===item.type&&c.inactive).map(c=>(
+                  <div key={c.id} style={{background:"#f9f9f9",borderRadius:10,border:`1px solid ${T.border}`,padding:"10px 14px",marginBottom:6,marginLeft:8,display:"flex",alignItems:"center",gap:10,opacity:0.6}}>
+                    <span style={{fontSize:10,fontWeight:800,color:T.muted,background:T.border,padding:"2px 7px",borderRadius:5}}>{c.id}</span>
+                    <span style={{fontSize:12,color:T.muted,flex:1,textDecoration:"line-through"}}>{c.name}</span>
+                    <span style={{fontSize:9,fontWeight:800,color:T.muted,background:T.border,borderRadius:5,padding:"2px 6px"}}>INACTIVE</span>
+                    <button onClick={()=>toggleInactive(c.id)} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Reactivate</button>
+                  </div>
+                ))}
               </div>
             ))}
           </>
@@ -1219,7 +1278,7 @@ function AccountPlanScreen({accounts,onSave,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,onBack}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -1237,45 +1296,71 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,onBack}){
   };
   const deleteContact=id=>setContacts(contacts.filter(c=>c.id!==id));
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onBack={()=>setScreen(null)}/>);
-  if(screen==="contacts")return(
+  if(screen==="backup")return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>{setScreen(null);setShowNew(false);setNewName("");}}/>
+      <BackHeader title="Backup & Restore" sub="DATA" onBack={()=>setScreen(null)}/>
       <div style={{padding:16}}>
-        <div style={{display:"flex",gap:6,marginBottom:12}}>
-          {["customer","supplier"].map(t=>(
-            <button key={t} onClick={()=>setContactType(t)} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${contactType===t?T.red:T.border}`,background:contactType===t?T.red:"#fff",color:contactType===t?"#fff":T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t==="customer"?"Customers (AR)":"Suppliers (AP)"}</button>
-          ))}
-        </div>
-        <button style={{...btnRed,marginBottom:12}} onClick={()=>setShowNew(s=>!s)}>{showNew?"✕ Cancel":`+ New ${contactType==="customer"?"Customer":"Supplier"}`}</button>
-        {showNew&&(
-          <Card style={{marginBottom:12}}>
-            <SL>New {contactType==="customer"?"Customer":"Supplier"}</SL>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <input placeholder="Full Name / Company" value={newName} onChange={e=>setNewName(e.target.value)} style={inp}/>
-              <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"6px 10px"}}>ID auto-assigned: <strong>{nextId(contactType)}</strong></div>
-              <button style={btnRed} onClick={addContact}>Add {contactType==="customer"?"Customer":"Supplier"}</button>
-            </div>
-          </Card>
-        )}
-        {contacts.filter(c=>c.type===contactType).map(c=>(
-          <div key={c.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:10,fontWeight:800,color:contactType==="customer"?T.blue:T.red,background:contactType==="customer"?T.blueBg:T.redLight,padding:"2px 7px",borderRadius:5}}>{c.id}</span>
-              <span style={{fontSize:13,fontWeight:600}}>{c.name}</span>
-            </div>
-            <button onClick={()=>deleteContact(c.id)} style={{background:T.redLight,border:"none",borderRadius:8,color:T.red,fontSize:12,cursor:"pointer",padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>🗑</button>
-          </div>
-        ))}
-        {!contacts.filter(c=>c.type===contactType).length&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No {contactType}s added yet.</div>}
+        <Card style={{marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>💾 Export Backup</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Downloads all your data as a single JSON file — transactions, accounts, contacts, sinking funds, budgets and profile.</div>
+          <button style={btnRed} onClick={()=>{
+            try{
+              const budgets=JSON.parse(localStorage.getItem("rr_budgets")||"{}");
+              const sf=JSON.parse(localStorage.getItem("rr_sf")||"[]");
+              const profile=JSON.parse(localStorage.getItem("rr_profile")||"{}");
+              const backup={version:1,date:new Date().toISOString(),accounts,contacts,transactions,sinkingFunds:sf,budgets,profile};
+              const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+              const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`redrock_backup_${new Date().toISOString().slice(0,10)}.json`;a.click();
+            }catch(e){alert("Backup failed: "+e.message);}
+          }}>⬇ Download Backup</button>
+        </Card>
+        <Card>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>📥 Restore from Backup</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Select a previously exported JSON backup file. This will overwrite your current local data.</div>
+          <label style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accentMid}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.accent,fontWeight:600}}>
+            📂 Choose backup file
+            <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{
+              const file=e.target.files[0];if(!file)return;
+              const r=new FileReader();
+              r.onload=ev=>{
+                try{
+                  const data=JSON.parse(ev.target.result);
+                  if(!data.version||!data.accounts)throw new Error("Invalid backup file");
+                  if(!window.confirm(`Restore backup from ${data.date?.slice(0,10)}?\n\nThis will overwrite local data.`))return;
+                  if(data.accounts)onSave(data.accounts);
+                  if(data.contacts)setContacts(data.contacts);
+                  if(data.budgets)localStorage.setItem("rr_budgets",JSON.stringify(data.budgets));
+                  if(data.sinkingFunds)localStorage.setItem("rr_sf",JSON.stringify(data.sinkingFunds));
+                  if(data.profile)localStorage.setItem("rr_profile",JSON.stringify(data.profile));
+                  alert("Restore complete! Note: transactions restore requires Supabase sync.");
+                }catch(err){alert("Restore failed: "+err.message);}
+              };
+              r.readAsText(file);
+            }}/>
+          </label>
+        </Card>
       </div>
     </div>
   );
+
+  const[periodClose,setPeriodCloseState]=useState(()=>localStorage.getItem(PERIOD_CLOSE_KEY)||"");
+  const savePeriodClose=(d)=>{setPeriodCloseState(d);if(d)localStorage.setItem(PERIOD_CLOSE_KEY,d);else localStorage.removeItem(PERIOD_CLOSE_KEY);};
+
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onBack={()=>setScreen(null)}/>);
+  if(screen==="contacts")return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>{setScreen(null);}}/>
+      <div style={{padding:16}}>
+        <div style={{fontSize:12,color:T.muted,marginBottom:12}}>To add or manage contacts, go to Reskontro → Contacts tab.</div>
+        <button onClick={()=>setScreen(null)} style={btnRed}>← Back to Settings</button>
+      </div>
+    </div>
+  );
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
-      <BackHeader title="Settings" sub="MY FINANCE LEDGER" onBack={onBack}/>
+      <BackHeader title="Settings" sub="REDROCK ACCOUNTING" onBack={onBack}/>
       <div style={{padding:16}}>
-        {/* App stats */}
         <SL>App Stats</SL>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
           {[{label:"Accounts",val:accounts.length,icon:"📒"},{label:"Contacts",val:contacts.length,icon:"👥"},{label:"Currency",val:"PKR",icon:"🏛️"}].map((s,i)=>(
@@ -1286,18 +1371,45 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,onBack}){
             </div>
           ))}
         </div>
-        <SL>Account Management</SL>
-        <div onClick={()=>setScreen("plan")} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-          <div style={{background:T.blueBg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📋</div>
-          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>Account Plan</div><div style={{fontSize:11,color:T.sub,marginTop:2}}>Edit all accounts, codes and names</div></div>
-          <span style={{fontSize:20,color:T.muted}}>›</span>
+
+        <SL>Account & Contact Management</SL>
+        {[
+          {icon:"📋",label:"Account Plan",sub:"Edit accounts, codes and names",action:()=>setScreen("plan"),bg:T.accentLight},
+          {icon:"👥",label:"Manage Contacts",sub:"Add or manage customers & suppliers",action:()=>setScreen("contacts"),bg:T.redLight},
+        ].map((item,i)=>(
+          <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <div style={{background:item.bg,borderRadius:12,width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{item.icon}</div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1}}>{item.sub}</div></div>
+            <span style={{fontSize:18,color:T.muted}}>›</span>
+          </div>
+        ))}
+
+        <SL mt={16}>Period Management</SL>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <div style={{background:"#FEF3C7",borderRadius:10,width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🔒</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:700}}>Period Close</div>
+              <div style={{fontSize:11,color:T.sub,marginTop:1}}>No entries can be added or edited on or before this date</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input type="date" value={periodClose} onChange={e=>savePeriodClose(e.target.value)} style={{...inp,flex:1,fontSize:13}}/>
+            {periodClose&&<button onClick={()=>savePeriodClose("")} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Clear</button>}
+          </div>
+          {periodClose&&<div style={{fontSize:11,color:T.orange,fontWeight:600,marginTop:8}}>⚠️ Period closed up to {periodClose}</div>}
         </div>
-        <SL mt={16}>Reskontro Contacts</SL>
-        <div onClick={()=>setScreen("contacts")} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-          <div style={{background:T.redLight,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👥</div>
-          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>Manage Contacts</div><div style={{fontSize:11,color:T.sub,marginTop:2}}>Add or delete customers and suppliers</div></div>
-          <span style={{fontSize:20,color:T.muted}}>›</span>
-        </div>
+
+        <SL mt={16}>Data</SL>
+        {[
+          {icon:"💾",label:"Backup & Restore",sub:"Export or import all your data",action:()=>setScreen("backup"),bg:"#E8F4F4"},
+        ].map((item,i)=>(
+          <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <div style={{background:item.bg,borderRadius:12,width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{item.icon}</div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1}}>{item.sub}</div></div>
+            <span style={{fontSize:18,color:T.muted}}>›</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1551,11 +1663,11 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
       {/* 3 ── KPI row: Cash, AR, AP ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
         {[
-          {label:"Cash & Bank",val:cashBal,color:T.accent,icon:"🏦"},
-          {label:"Receivables",val:arBal,color:T.green,icon:"📥"},
-          {label:"Payables",val:Math.abs(apBal),color:T.red,icon:"📤"},
+          {label:"Cash & Bank",val:cashBal,color:T.accent,icon:"🏦",nav:null},
+          {label:"Receivables",val:arBal,color:T.green,icon:"📥",nav:"Reskontro"},
+          {label:"Payables",val:Math.abs(apBal),color:T.red,icon:"📤",nav:"Reskontro"},
         ].map((c,i)=>(
-          <div key={i} style={{background:"#fff",borderRadius:14,padding:"12px 10px",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          <div key={i} onClick={c.nav?()=>onNavigate(c.nav):undefined} style={{background:"#fff",borderRadius:14,padding:"12px 10px",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",cursor:c.nav?"pointer":"default"}}>
             <div style={{fontSize:15,marginBottom:5}}>{c.icon}</div>
             <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{c.label}</div>
             <div style={{fontSize:13,fontWeight:800,color:c.color}}>{fmt(c.val)}</div>
@@ -1576,20 +1688,21 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
       </div>
 
       
-      {/* ── Budget / Sinking tabs — tap to open full screen ── */}
+      {/* ── Budget / Sinking / Analytics tabs ── */}
       {(feat.budget!==false||feat.sinkingFunds!==false)&&(
         <div style={{background:"#fff",borderRadius:16,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-          {/* Tab row — clicking navigates to full screen */}
-          <div style={{display:"flex"}}>
-            {[feat.budget!==false&&{id:"budget",label:"💰 Budget",nav:"Budget"},feat.sinkingFunds!==false&&{id:"sinking",label:"🎯 Sinking Funds",nav:"SinkingFunds"}].filter(Boolean).map(t=>(
-              <button key={t.id} onClick={()=>onNavigate(t.nav)} style={{flex:1,padding:"13px 8px",border:"none",background:"#fff",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                {t.label} <span style={{fontSize:10,color:T.muted}}>›</span>
-              </button>
+          <div style={{display:"flex",borderBottom:`1px solid ${T.border}`}}>
+            {[
+              feat.budget!==false&&{id:"budget",label:"💰 Budget",nav:"Budget"},
+              feat.sinkingFunds!==false&&{id:"sinking",label:"🎯 Sinking",nav:"SinkingFunds"},
+              {id:"analytics",label:"📈 Analytics",nav:null}
+            ].filter(Boolean).map(t=>(
+              <button key={t.id} onClick={()=>t.nav?onNavigate(t.nav):setOverviewTab(t.id==="analytics"?"analytics":overviewTab)} style={{flex:1,padding:"11px 4px",border:"none",background:overviewTab===t.id?T.accentLight:"#fff",color:overviewTab===t.id?T.accent:T.sub,fontSize:11,fontWeight:overviewTab===t.id?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:overviewTab===t.id?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s"}}>{t.label}</button>
             ))}
           </div>
 
-          {/* Single progress bar per item */}
-          <div style={{padding:"0 16px 14px",borderTop:`1px solid ${T.border}`}}>
+          {/* Budget progress */}
+          {overviewTab!=="analytics"&&<div style={{padding:"0 16px 14px",borderTop:`1px solid ${T.border}`}}>
             {feat.budget!==false&&totalBudget>0&&(
               <div style={{paddingTop:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
@@ -1612,7 +1725,51 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
                 </div>
               </div>
             )}
-          </div>
+          </div>}
+
+          {/* Analytics mini panel */}
+          {overviewTab==="analytics"&&(()=>{
+            const months=[];
+            for(let i=2;i>=0;i--){
+              const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
+              const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
+              const f=`${y}-${m}-01`;const t=`${y}-${m}-${new Date(y,d.getMonth()+1,0).getDate()}`;
+              const inc=transactions.filter(x=>x.date>=f&&x.date<=t&&getSK(x.creditCode)==="3000").reduce((s,x)=>s+x.amount,0);
+              const exp=transactions.filter(x=>x.date>=f&&x.date<=t&&getSK(x.debitCode)==="4000").reduce((s,x)=>s+x.amount,0);
+              months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
+            }
+            const maxV=Math.max(...months.flatMap(m=>[m.inc,m.exp]),1);
+            return(
+              <div style={{padding:"14px 16px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:14}}>
+                  {[{l:"Income",v:totalIncome,c:T.accent},{l:"Expenses",v:totalExpenses,c:T.orange},{l:"Net",v:net,c:net>=0?T.green:T.red}].map((k,i)=>(
+                    <div key={i} style={{background:T.bg,borderRadius:10,padding:"8px 6px",textAlign:"center",border:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{k.l}</div>
+                      <div style={{fontSize:12,fontWeight:800,color:k.c}}>{sign(k.v)}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Mini bar chart */}
+                <div style={{display:"flex",gap:8,alignItems:"flex-end",height:60,marginBottom:6}}>
+                  {months.map((m,i)=>(
+                    <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                      <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:46}}>
+                        <div style={{flex:1,background:T.accent,borderRadius:"3px 3px 0 0",height:`${Math.max((m.inc/maxV)*46,2)}px`,opacity:0.85}}/>
+                        <div style={{flex:1,background:T.orange,borderRadius:"3px 3px 0 0",height:`${Math.max((m.exp/maxV)*46,2)}px`,opacity:0.85}}/>
+                      </div>
+                      <div style={{fontSize:9,color:T.muted,marginTop:3,fontWeight:600}}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                  {[{c:T.accent,l:"Income"},{c:T.orange,l:"Expenses"}].map((x,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,background:x.c,borderRadius:2}}/><span style={{fontSize:9,color:T.sub}}>{x.l}</span></div>
+                  ))}
+                </div>
+                <button onClick={()=>onNavigate("Reports")} style={{...btnSm,width:"100%",marginTop:10,textAlign:"center"}}>Full Analytics →</button>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -1621,7 +1778,7 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
 
 // ─── New Entry Form ───────────────────────────────────────────────────────────
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:""};
   const[form,setForm]=useState(emptyTxn);
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
@@ -1636,7 +1793,21 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
 
   const save=()=>{
     if(!valid)return;
-    onSave({...form,amount:parseFloat(form.amount)});
+    // Period close check
+    if(isDateClosed(form.date)){
+      alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
+      return;
+    }
+    const amount=parseFloat(form.amount);
+    onSave({...form,amount});
+    // If sinking fund selected, update fund balance in localStorage
+    if(form.sfFundId){
+      try{
+        const existing=JSON.parse(localStorage.getItem("rr_sf")||"[]");
+        const updated=existing.map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
+        localStorage.setItem("rr_sf",JSON.stringify(updated));
+      }catch(e){}
+    }
     setForm(emptyTxn);
   };
 
@@ -1671,6 +1842,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
     } else {setCalcResult(null);}
   };
 
+  // Sinking fund detection
+  const isSFAccount=(code)=>code&&code.startsWith("1009");
+  const needSF=isSFAccount(form.debitCode)||isSFAccount(form.creditCode);
+
+  // Load funds from storage
+  const sfFunds=useMemo(()=>{try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}});
+
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
   return(
@@ -1702,18 +1880,89 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
           )}
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <div>
-            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>Debit</div>
-            <AccDrop value={form.debitCode} onChange={v=>setForm(p=>({...p,debitCode:v,contactId:""}))} accounts={accounts}/>
-            {form.debitCode&&<div style={{fontSize:10,color:T.red,marginTop:3,fontWeight:600}}>{getName(form.debitCode)}</div>}
-          </div>
-          <div>
-            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>Credit</div>
-            <AccDrop value={form.creditCode} onChange={v=>setForm(p=>({...p,creditCode:v,contactId:""}))} accounts={accounts}/>
-            {form.creditCode&&<div style={{fontSize:10,color:T.green,marginTop:3,fontWeight:600}}>{getName(form.creditCode)}</div>}
-          </div>
+        {/* Multi-line entry */}
+        <div>
+          {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
+            <div key={li} style={{background:T.bg,borderRadius:10,padding:"10px",marginBottom:6,border:`1px solid ${T.border}`,position:"relative"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                <span style={{fontSize:10,color:T.muted,fontWeight:700,width:14}}>#{li+1}</span>
+                <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  <div>
+                    <div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Debit</div>
+                    <AccDrop value={line.debitCode||""} onChange={v=>{
+                      if(li===0){setForm(p=>({...p,debitCode:v,contactId:""}));}
+                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                      lines[li]={...lines[li],debitCode:v};
+                      setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode}));
+                    }} accounts={accounts}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>
+                    <AccDrop value={line.creditCode||""} onChange={v=>{
+                      if(li===0){setForm(p=>({...p,creditCode:v,contactId:""}));}
+                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                      lines[li]={...lines[li],creditCode:v};
+                      setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode}));
+                    }} accounts={accounts}/>
+                  </div>
+                </div>
+                {/* ••• line menu */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <button onClick={()=>setForm(p=>({...p,_lineMenu:p._lineMenu===li?null:li}))} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,fontSize:11,cursor:"pointer",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>☰</button>
+                  {form._lineMenu===li&&(
+                    <div style={{position:"absolute",right:0,top:28,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 6px 20px rgba(0,0,0,0.1)"}}>
+                      <div onClick={()=>{
+                        const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                        lines.splice(li+1,0,{debitCode:"",creditCode:""});
+                        setForm(p=>({...p,lines,_lineMenu:null}));
+                      }} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>+ Add line</div>
+                      {(form.lines||[]).length>1&&<div onClick={()=>{
+                        const lines=[...(form.lines||[])];
+                        lines.splice(li,1);
+                        setForm(p=>({...p,lines,_lineMenu:null,debitCode:lines[0]?.debitCode||"",creditCode:lines[0]?.creditCode||""}));
+                      }} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>− Remove line</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {/* Add line shortcut */}
+          <button onClick={()=>{
+            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:""}];
+            setForm(p=>({...p,lines}));
+          }} style={{fontSize:11,color:T.accent,background:T.accentLight,border:"none",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add line</button>
         </div>
+
+        {/* Sinking fund picker — when 1009x account selected */}
+        {needSF&&(
+          <div style={{background:T.accentLight,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"12px 14px"}}>
+            <div style={{fontSize:10,color:T.accent,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>🎯 Sinking Fund Target</div>
+            <select value={form.sfFundId||""} onChange={e=>setForm(p=>({...p,sfFundId:e.target.value}))} style={{...selSm,width:"100%",marginBottom:form.sfFundId?"8px":"0"}}>
+              <option value="">— Select a fund —</option>
+              {sfFunds.map(f=>(
+                <option key={f.id} value={f.id}>{f.icon} {f.name} · saved {fmt(f.saved||0)} of {fmt(f.goal||0)}</option>
+              ))}
+            </select>
+            {!sfFunds.length&&<div style={{fontSize:11,color:T.muted,marginTop:4}}>No funds yet. Create one in Sinking Funds first.</div>}
+            {form.sfFundId&&sfFunds.find(f=>f.id===form.sfFundId)&&(()=>{
+              const f=sfFunds.find(x=>x.id===form.sfFundId);
+              const pct=Math.min(100,Math.round(((f.saved||0)/(f.goal||1))*100));
+              return(
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                    <span style={{fontSize:11,color:T.sub}}>{f.icon} {f.name}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{pct}%</span>
+                  </div>
+                  <div style={{background:"rgba(255,255,255,0.5)",borderRadius:4,height:5,overflow:"hidden"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:f.color||T.accent,borderRadius:4}}/>
+                  </div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:4}}>This amount will be added to the fund on save</div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Smart contact selector — only when 1500 or 2400 */}
         {needContact&&(
@@ -1939,18 +2188,11 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds}){
                 <span style={{fontSize:11,color:T.muted}}>{fmt(f.saved)} <span style={{color:T.sub}}>of {fmt(f.goal)}</span></span>
                 <span style={{fontSize:11,fontWeight:700,color:done?T.green:f.color||T.accent}}>{pct}%</span>
               </div>
-              <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden",marginBottom:done?0:8}}>
+              <div style={{background:T.border,borderRadius:6,height:7,overflow:"hidden",marginBottom:done?0:6}}>
                 <div style={{width:`${pct}%`,height:"100%",background:done?T.green:f.color||T.accent,borderRadius:6,transition:"width 0.3s"}}/>
               </div>
-              {!done&&(
-                <>
-                  <div style={{display:"flex",gap:8}}>
-                    <input type="number" placeholder="Add amount…" value={addAmt[f.id]||""} onChange={e=>setAddAmt(p=>({...p,[f.id]:e.target.value}))} style={{...inp,padding:"7px 10px",fontSize:14,flex:1}}/>
-                    <button onClick={()=>deposit(f.id)} style={{background:f.color||T.accent,color:"#fff",border:"none",borderRadius:10,padding:"7px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>+ Add</button>
-                  </div>
-                  {monthly&&<div style={{fontSize:10,color:T.muted,marginTop:6}}>📅 {fmt(monthly)}/month to reach goal</div>}
-                </>
-              )}
+              {!done&&monthly&&<div style={{fontSize:10,color:T.muted}}>📅 {fmt(monthly)}/month to reach goal</div>}
+              {!done&&<div style={{fontSize:10,color:T.muted,marginTop:3,fontStyle:"italic"}}>Add funds via a transaction using account 1009x</div>}
             </div>
           );
         })}
@@ -2528,8 +2770,24 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const[editVal,setEditVal]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
 
+  // Own period dropdown — list of months from Jan 2024 to 12 months ahead
+  const now=new Date();
+  const periodOptions=[];
+  for(let y=2024;y<=now.getFullYear()+1;y++){
+    for(let m=1;m<=12;m++){
+      const mm=String(m).padStart(2,"0");
+      const lastDay=new Date(y,m,0).getDate();
+      const label=new Date(y,m-1,1).toLocaleString("default",{month:"long",year:"numeric"});
+      periodOptions.push({value:`${y}-${mm}`,label,from:`${y}-${mm}-01`,to:`${y}-${mm}-${lastDay}`});
+    }
+  }
+  const defaultPeriod=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const[selPeriod,setSelPeriod]=useState(defaultPeriod);
+  const periodObj=periodOptions.find(p=>p.value===selPeriod)||periodOptions[0];
+  const bFrom=periodObj.from;const bTo=periodObj.to;
+
   const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
-  const periodTxns=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo);
+  const periodTxns=transactions.filter(t=>t.date>=bFrom&&t.date<=bTo);
   const getActual=code=>periodTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
   const saveBudgets=(b)=>{setBudgetsState(b);try{localStorage.setItem(BKEY,JSON.stringify(b));}catch{}};
   const confirmEdit=()=>{if(!editModal)return;saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});setEditModal(null);setEditVal("");};
@@ -2591,8 +2849,17 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
         {/* Arc gauge hero card */}
         <div style={{background:"#1A1A2E",borderRadius:20,padding:"20px 16px 16px",marginBottom:16,overflow:"hidden",position:"relative"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>Overall Budget</div>
-            <span style={{fontSize:10,fontWeight:700,color:over?"#EF4444":"#4ade80",background:over?"rgba(239,68,68,0.15)":"rgba(74,222,128,0.15)",borderRadius:8,padding:"3px 10px"}}>{totalPct}% {over?"OVER":"used"}</span>
+            <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>Budget Overview</div>
+            <select
+              value={selPeriod}
+              onChange={e=>setSelPeriod(e.target.value)}
+              style={{fontSize:12,fontWeight:700,color:"#fff",background:"rgba(255,255,255,0.12)",border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}
+            >
+              {periodOptions.map(p=><option key={p.value} value={p.value} style={{background:"#1A1A2E"}}>{p.label}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:10,fontWeight:700,color:over?"#EF4444":"rgba(255,255,255,0.5)",background:over?"rgba(239,68,68,0.15)":"rgba(255,255,255,0.08)",borderRadius:8,padding:"3px 10px"}}>{totalPct}% {over?"OVER":"used"}</span>
           </div>
           {totalBudget>0
             ?<ArcGauge pct={totalPct} spent={totalActual} budget={totalBudget} over={over}/>
@@ -2855,36 +3122,97 @@ const ADMIN_FEATURES=[
   {id:"darkMode",label:"Dark Mode",icon:"🌙",desc:"Dark theme toggle"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
 ];
-function AdminPanel({onBack}){
-  const KEY="rr_admin_features";
-  const[features,setFeaturesState]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch{return{};}
+function AdminPanel({onBack,profiles=[]}){
+  const[tab,setTab]=useState("global"); // "global" | "users"
+  const[selUser,setSelUser]=useState(profiles[0]?.id||"");
+  const[features,setFeaturesState]=useState(()=>getAdminFeatures());
+  const[userFeats,setUserFeatsState]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}")}catch{return{};}
   });
-  const toggle=(id)=>{
+
+  const toggleGlobal=(id)=>{
     const n={...features,[id]:features[id]===false?true:false};
     setFeaturesState(n);
-    localStorage.setItem(KEY,JSON.stringify(n));
+    localStorage.setItem(ADMIN_KEY,JSON.stringify(n));
   };
-  const isOn=(id)=>features[id]!==false; // default on
+  const toggleUser=(userId,featureId)=>{
+    const cur=(userFeats[userId]||{});
+    const newVal=cur[featureId]===false?true:false;
+    const n={...userFeats,[userId]:{...cur,[featureId]:newVal}};
+    setUserFeatsState(n);
+    localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
+  };
+  const isGlobalOn=(id)=>features[id]!==false;
+  const isUserOn=(userId,id)=>{
+    if(!isGlobalOn(id))return false;
+    return(userFeats[userId]||{})[id]!==false;
+  };
+
+  const Toggle=({on,onClick,disabled})=>(
+    <div onClick={disabled?undefined:onClick} style={{width:44,height:24,borderRadius:12,background:disabled?"#e5e7eb":on?T.accent:"#D1D5DB",cursor:disabled?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:disabled?0.4:1}}>
+      <div style={{position:"absolute",top:3,left:on?22:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+    </div>
+  );
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Admin Panel" sub="FEATURE TOGGLES" onBack={onBack}/>
-      <div style={{padding:16}}>
-        <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`}}>
-          <div style={{fontSize:12,color:T.accent,fontWeight:600}}>Toggle features on or off. Changes apply immediately across the app.</div>
-        </div>
-        {ADMIN_FEATURES.map(f=>(
-          <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:22,flexShrink:0}}>{f.icon}</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.text}}>{f.label}</div>
-              <div style={{fontSize:11,color:T.muted,marginTop:1}}>{f.desc}</div>
-            </div>
-            <div onClick={()=>toggle(f.id)} style={{width:44,height:24,borderRadius:12,background:isOn(f.id)?T.accent:"#D1D5DB",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-              <div style={{position:"absolute",top:3,left:isOn(f.id)?22:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
-            </div>
-          </div>
+      <BackHeader title="Admin Panel" sub="ADMIN ONLY · FEATURE CONTROL" onBack={onBack}/>
+      {/* Tab switcher */}
+      <div style={{display:"flex",gap:4,padding:"10px 16px 0",background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+        {[["global","🌐 Global"],["users","👤 Per User"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",border:"none",background:"none",fontSize:12,fontWeight:tab===id?700:500,color:tab===id?T.accent:T.muted,borderBottom:tab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
         ))}
+      </div>
+      <div style={{padding:16}}>
+        {tab==="global"&&(
+          <>
+            <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`}}>
+              <div style={{fontSize:12,color:T.accent,fontWeight:600}}>Global toggles apply to all users. Per-user overrides below.</div>
+            </div>
+            {ADMIN_FEATURES.map(f=>(
+              <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:22,flexShrink:0}}>{f.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.text}}>{f.label}</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:1}}>{f.desc}</div>
+                </div>
+                <Toggle on={isGlobalOn(f.id)} onClick={()=>toggleGlobal(f.id)}/>
+              </div>
+            ))}
+          </>
+        )}
+        {tab==="users"&&(
+          <>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Select User</div>
+              {profiles.length?(
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {profiles.map(p=>(
+                    <button key={p.id} onClick={()=>setSelUser(p.id)} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${selUser===p.id?T.accent:T.border}`,background:selUser===p.id?T.accentLight:"#fff",color:selUser===p.id?T.accent:T.sub,fontSize:11,fontWeight:selUser===p.id?700:400,cursor:"pointer",fontFamily:"inherit"}}>
+                      {p.display_name||p.email?.split("@")[0]||p.id.slice(0,8)}
+                    </button>
+                  ))}
+                </div>
+              ):(
+                <div style={{fontSize:12,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px"}}>No other users found. Users appear here after they sign in.</div>
+              )}
+            </div>
+            {selUser&&ADMIN_FEATURES.map(f=>{
+              const globalOn=isGlobalOn(f.id);
+              const userOn=isUserOn(selUser,f.id);
+              return(
+                <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10,opacity:globalOn?1:0.4}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{f.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{f.label}</div>
+                    {!globalOn&&<div style={{fontSize:10,color:T.red}}>Disabled globally</div>}
+                  </div>
+                  <Toggle on={userOn} onClick={()=>toggleUser(selUser,f.id)} disabled={!globalOn}/>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );
@@ -2972,10 +3300,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
   if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
-  // ── Admin feature gate ──
-  const getFeature=(id)=>{
-    try{const f=JSON.parse(localStorage.getItem("rr_admin_features")||"{}");return f[id]!==false;}catch{return true;}
-  };
+  // ── Admin feature gate ── (uses global + per-user settings)
+  const getFeature=(id)=>isFeatureOn(id,viewingUserId);
   const feat={
     bank:getFeature("bank"),
     reskontro:getFeature("reskontro"),
@@ -2989,8 +3315,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     calcAmount:getFeature("calcAmount"),
   };
 
-  if(tab==="AdminPanel")return(<AdminPanel onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
+  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
@@ -3074,7 +3400,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             })}
             {/* System group */}
             <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-            {SIDEBAR.filter(i=>i.group==="system").map(item=>{const active=tab===item.id;return(
+            {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"||isAdmin)).map(item=>{const active=tab===item.id;return(
               <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent",transition:"background 0.1s"}}>
                 <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
                 <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
