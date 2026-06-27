@@ -395,26 +395,80 @@ const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,co
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
 function AccDrop({value,onChange,accounts}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const sel=accounts.find(a=>a.code===value);
+
+  const filtered=useMemo(()=>{
+    const all=[];
+    Object.entries(SERIES).forEach(([key,s])=>{
+      const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
+      grp.forEach(a=>{if(!q||a.code.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()))all.push({...a,groupKey:key});});
+    });
+    return all;
+  },[accounts,q]);
+
   return(
-    <select value={value} onChange={e=>onChange(e.target.value)} style={selSm}>
-      <option value="">— Select Account —</option>
-      {Object.entries(SERIES).map(([key,s])=>{
-        const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
-        if(!grp.length)return null;
-        return(<optgroup key={key} label={`${s.name}`}>{grp.map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}</optgroup>);
-      })}
-    </select>
+    <div style={{position:"relative"}}>
+      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:36}}>
+        {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {sel.name}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
+        <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
+      </div>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:240}}>
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
+            </div>
+            <div style={{overflowY:"auto",maxHeight:190}}>
+              {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No accounts found</div>}
+              {filtered.map((a,i)=>(
+                <div key={a.code} onClick={()=>{onChange(a.code);setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{color:SERIES[a.groupKey]?.color||T.muted,fontWeight:700,minWidth:32,flexShrink:0}}>{a.code}</span>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
-// Flat dropdown (for edit modal — plain list, no categories)
+// Flat searchable dropdown (for edit modal)
 function AccDropFlat({value,onChange,accounts}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const sel=accounts.find(a=>a.code===value);
   const sorted=[...accounts].sort((a,b)=>a.code.localeCompare(b.code));
+  const filtered=sorted.filter(a=>!q||a.code.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()));
   return(
-    <select value={value} onChange={e=>onChange(e.target.value)} style={selSm}>
-      <option value="">— Select Account —</option>
-      {sorted.map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
-    </select>
+    <div style={{position:"relative"}}>
+      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:36}}>
+        {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {sel.name}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
+        <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
+      </div>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:220}}>
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
+            </div>
+            <div style={{overflowY:"auto",maxHeight:175}}>
+              {filtered.map((a,i)=>(
+                <div key={a.code} onClick={()=>{onChange(a.code);setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontWeight:700,minWidth:32,flexShrink:0,color:T.muted}}>{a.code}</span>
+                  <span>{a.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -935,9 +989,11 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
     .filter(tx=>tx.date>=f&&tx.date<=t)
     .reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
 
+  const periodKey=(code)=>`${code}_${filterFrom.slice(0,7)}`;
+
   const handleAttach=(code,file)=>{
     const reader=new FileReader();
-    reader.onload=e=>onAttach(code,{name:file.name,data:e.target.result,type:file.type});
+    reader.onload=e=>onAttach(periodKey(code),{name:file.name,data:e.target.result,type:file.type,period:filterFrom.slice(0,7),code});
     reader.readAsDataURL(file);
   };
 
@@ -959,7 +1015,8 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
         const opening=getBal(a.code,filterFrom);
         const movement=getMovement(a.code,filterFrom,filterTo);
         const closing=opening+movement;
-        const att=attachments[a.code];
+        const attKey=`${a.code}_${filterFrom.slice(0,7)}`;
+        const att=attachments[attKey];
         return(
           <div key={a.code} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,marginBottom:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
             <div style={{background:"linear-gradient(135deg,#1A3A6E,#0057B8)",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -995,8 +1052,8 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,deleteTxn,accounts,onBack}){
-  const[view,setView]=useState(null); // null | "customer" | "supplier"
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null}){
+  const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
   const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
@@ -1069,8 +1126,10 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
     const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
     const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatchTxns(selected,Date.now().toString());setSelected([]);};
 
-    const ROW_COLS="24px 52px 1fr 76px";
+    // COL: ☑ | Bilag | Date | Description | Amount
+    const ROW_COLS="22px 48px 60px 1fr 82px";
     const hdStyle={fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.6};
+    const canSelect=mode!=="period";
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
@@ -1083,75 +1142,116 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
 
         {/* ── Filter bar ── */}
         <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px"}}>
-          {/* Radio row */}
-          <div style={{display:"flex",gap:16,marginBottom:10}}>
-            {[["open","Åpne poster"],["period","Periode"],["contact",isCustomer?"Kunde":"Leverandør"]].map(([id,label])=>(
-              <label key={id} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,fontWeight:mode===id?700:400,color:mode===id?accentColor:T.text}}>
-                <div style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${mode===id?accentColor:T.border}`,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
-                  onClick={()=>setMode(id)}>
-                  {mode===id&&<div style={{width:6,height:6,borderRadius:"50%",background:accentColor}}/>}
-                </div>
-                {label}
-              </label>
+          {/* Mode selector — pill-style tabs */}
+          <div style={{display:"flex",gap:6,marginBottom:10}}>
+            {[["open","Open Post"],["period","Period"],["contact",isCustomer?"Customer":"Supplier"]].map(([id,label])=>(
+              <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"6px 4px",border:`1.5px solid ${mode===id?accentColor:T.border}`,borderRadius:9,background:mode===id?accentColor:"#fff",color:mode===id?"#fff":T.sub,fontSize:10,fontWeight:mode===id?700:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                {id==="open"?"🗓 Open Post":id==="period"?"📅 Period":"👤 "+(isCustomer?"Customer":"Supplier")}
+              </button>
             ))}
           </div>
 
-          {/* Åpne poster: optional as-of date */}
+          {/* Open Post: small calendar box + optional as-of date */}
           {mode==="open"&&(
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:10,color:T.muted,fontWeight:700,minWidth:50}}>As of</span>
-              <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)} placeholder="All time if blank"
-                style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
-              {asOfDate&&<button onClick={()=>setAsOfDate("")} style={{background:"none",border:"none",color:T.muted,fontSize:16,cursor:"pointer",padding:"0 4px"}}>×</button>}
-              <span style={{fontSize:9,color:T.muted,fontStyle:"italic"}}>{asOfDate?"":"All time"}</span>
+              {/* Calendar date box */}
+              <div style={{position:"relative",flexShrink:0}}>
+                <div style={{background:accentColor+"15",border:`1.5px solid ${accentColor}44`,borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:6,minWidth:34}}>
+                  <span style={{fontSize:15}}>🗓</span>
+                  {!asOfDate&&<span style={{fontSize:9,color:accentColor,fontWeight:600,whiteSpace:"nowrap"}}>As of</span>}
+                </div>
+              </div>
+              <div style={{flex:1,position:"relative"}}>
+                <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                  style={{...inp,padding:"6px 30px 6px 10px",fontSize:11,border:`1.5px solid ${asOfDate?accentColor:T.border}`}}/>
+                {asOfDate&&(
+                  <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                )}
+              </div>
+              {!asOfDate&&<span style={{fontSize:9,color:T.muted,fontStyle:"italic",flexShrink:0}}>All time</span>}
             </div>
           )}
 
-          {/* Periode: date range */}
+          {/* Period: two calendar-icon date boxes */}
           {mode==="period"&&(
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)} style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
-              <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
-              <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)} style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
+              <div style={{flex:1,position:"relative"}}>
+                <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
+                <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+                  style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
+              </div>
+              <span style={{fontSize:12,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
+              <div style={{flex:1,position:"relative"}}>
+                <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
+                <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+                  style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
+              </div>
             </div>
           )}
 
-          {/* Contact mode: dropdown */}
+          {/* Contact mode: 9px dropdown */}
           {mode==="contact"&&(
             <select value={selContact} onChange={e=>setSelContact(e.target.value)}
-              style={{...inp,fontSize:9,width:"100%",padding:"6px 10px"}}>
+              style={{...inp,fontSize:9,width:"100%",padding:"6px 10px",border:`1.5px solid ${accentColor}44`}}>
               <option value="all">(All {isCustomer?"customers":"suppliers"})</option>
               {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
             </select>
           )}
         </div>
 
-        {/* ── Summary bar ── */}
-        <div style={{background:accentBg,padding:"8px 16px",borderBottom:`1px solid ${accentColor}33`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:10,color:accentColor,fontWeight:700}}>
+        {/* ── Summary bar — Total LEFT, counts RIGHT ── */}
+        <div style={{background:accentBg,padding:"8px 16px",borderBottom:`1px solid ${accentColor}33`,display:"flex",alignItems:"center",gap:12}}>
+          {/* Total — prominent on the LEFT */}
+          <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+            <span style={{fontSize:9,color:accentColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.6}}>Total</span>
+            <span style={{fontSize:16,fontWeight:900,color:accentColor,letterSpacing:-0.5}}>{sign(grandTotal)}</span>
+          </div>
+          {/* Divider */}
+          <div style={{width:1,height:20,background:accentColor+"33",flexShrink:0}}/>
+          {/* Counts — RIGHT side */}
+          <div style={{fontSize:10,color:accentColor,fontWeight:600,opacity:0.75}}>
             {byContact.length} {isCustomer?"customers":"suppliers"} · {viewTxns.length} entries
           </div>
-          <div style={{fontSize:14,fontWeight:900,color:accentColor}}>{sign(grandTotal)}</div>
         </div>
 
-        {/* ── Match bar ── */}
+        {/* ── Match bar — always visible when items selected ── */}
         {selected.length>0&&(
-          <div style={{background:T.header,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{background:"#0F2744",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
             <div>
-              <div style={{fontSize:10,color:"#aaa"}}>{selected.length} selected · Net: <span style={{color:Math.abs(selSum)<1?T.green:"#f87171"}}>{sign(selSum)}</span></div>
-              <div style={{fontSize:11,color:"#fff",fontWeight:700}}>{Math.abs(selSum)<1?"✓ Ready to match":"Must net to zero"}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                <div style={{width:20,height:20,borderRadius:4,background:accentColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff",flexShrink:0}}>{selected.length}</div>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>selected</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>·</span>
+                <span style={{fontSize:11,fontWeight:700,color:Math.abs(selSum)<1?"#4ade80":"#f87171"}}>Net {sign(selSum)}</span>
+              </div>
+              <div style={{fontSize:10,color:Math.abs(selSum)<1?"#4ade80":"rgba(255,255,255,0.45)",fontWeight:600}}>
+                {Math.abs(selSum)<1?"✓ Balances to zero — ready to match":"Entries must net to zero to match"}
+              </div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setSelected([])} style={{...btnSm,background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:11}}>Clear</button>
-              <button onClick={doMatch} style={{...btnSm,background:Math.abs(selSum)<1?T.green:"#555",color:"#fff",fontSize:11,opacity:Math.abs(selSum)<1?1:0.5}}>Match ✓</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>setSelected([])} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.7)",fontSize:11,cursor:"pointer",padding:"6px 12px",fontWeight:600,fontFamily:"inherit"}}>Clear</button>
+              <button onClick={doMatch} disabled={Math.abs(selSum)>=1||selected.length<2}
+                style={{background:Math.abs(selSum)<1&&selected.length>=2?T.green:"#374151",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:Math.abs(selSum)<1&&selected.length>=2?"pointer":"not-allowed",padding:"6px 14px",fontWeight:700,fontFamily:"inherit",opacity:Math.abs(selSum)<1&&selected.length>=2?1:0.45,transition:"all 0.15s"}}>
+                Match ✓
+              </button>
             </div>
           </div>
         )}
 
         <div style={{padding:"12px 16px"}}>
+          {/* ── Match hint banner (Open Post only, no selection yet) ── */}
+          {canSelect&&viewTxns.length>1&&selected.length===0&&(
+            <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:9,padding:"7px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:14}}>☑️</span>
+              <span style={{fontSize:11,color:"#0369A1",fontWeight:600}}>Tap rows to select entries, then match them</span>
+            </div>
+          )}
+
           {/* ── Column header ── */}
           {viewTxns.length>0&&(
-            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"4px 6px",marginBottom:4}}>
+            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"4px 8px",marginBottom:4,alignItems:"center"}}>
+              {/* Checkbox placeholder */}
+              <div/>
               <div style={hdStyle}>Bilag</div>
               <div style={hdStyle}>Date</div>
               <div style={hdStyle}>Description</div>
@@ -1184,34 +1284,72 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                     const isSel=selected.includes(t.id);
                     const isRev=!!t.reversalOf;
                     const isRevd=!!t.reversedBy;
+                    const isGhosted=isRevd||isRev;
+                    // Format date as DD.MM.YY
+                    const dateParts=t.date.split("-");
+                    const dateLabel=dateParts.length===3?`${dateParts[2]}.${dateParts[1]}.${dateParts[0].slice(2)}`:t.date;
                     return(
-                      <div key={t.id} onClick={()=>mode!=="period"&&toggleSel(t.id)}
+                      <div key={t.id}
                         style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
                           borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
                           alignItems:"center",
-                          background:isSel?"#EBF4FF":isRevd||isRev?"#fafafa":"#fff",
-                          cursor:mode!=="period"?"pointer":"default",
-                          opacity:isRevd||isRev?0.55:1}}>
+                          background:isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
+                          cursor:canSelect?"pointer":"default",
+                          opacity:isGhosted?0.5:1,
+                          borderLeft:isSel?`3px solid ${accentColor}`:"3px solid transparent",
+                          transition:"background 0.1s,border-color 0.1s"}}>
+
+                        {/* ── Checkbox ── */}
+                        <div onClick={()=>canSelect&&toggleSel(t.id)}
+                          style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:canSelect?"pointer":"default"}}>
+                          <div style={{
+                            width:16,height:16,borderRadius:4,
+                            border:`2px solid ${isSel?accentColor:T.border}`,
+                            background:isSel?accentColor:"#fff",
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            flexShrink:0,transition:"all 0.12s"
+                          }}>
+                            {isSel&&<span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+                          </div>
+                        </div>
+
+                        {/* ── Bilag badge ── */}
                         <div onClick={e=>{e.stopPropagation();setDetailTxn(t);}}
-                          style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>
-                          {fmtB(t.bilag)}
+                          style={{cursor:"pointer"}}>
+                          <span style={{
+                            fontSize:9,fontWeight:800,color:T.blue,
+                            background:T.blueBg,borderRadius:5,
+                            padding:"2px 5px",display:"inline-block",
+                            textDecoration:"none",letterSpacing:0.2
+                          }}>
+                            {fmtB(t.bilag)}
+                          </span>
                         </div>
-                        <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
-                        <div style={{fontSize:11,color:isRev||isRevd?T.muted:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
+
+                        {/* ── Date DD.MM.YY ── */}
+                        <div style={{fontSize:10,color:T.sub,fontVariantNumeric:"tabular-nums",letterSpacing:0.1}}>
+                          {dateLabel}
+                        </div>
+
+                        {/* ── Description ── */}
+                        <div style={{fontSize:11,color:isGhosted?T.muted:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
                           {t.description}
-                          {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩</span>}
+                          {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩ reversed</span>}
                         </div>
-                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap"}}>
+
+                        {/* ── Amount ── */}
+                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
                           {m>=0?"+":"−"}{fmt(Math.abs(m))}
                         </div>
                       </div>
                     );
                   })}
 
-                  {/* Sub-total row */}
+                  {/* Sub-total row — 5 cols: ☑ bilag date desc amount */}
                   <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",background:accentBg,borderTop:`1.5px solid ${accentColor}33`}}>
-                    <div/>
-                    <div/>
+                    <div/>{/* checkbox */}
+                    <div/>{/* bilag */}
+                    <div/>{/* date */}
                     <div style={{fontSize:10,color:accentColor,fontWeight:700,textAlign:"right",textTransform:"uppercase",letterSpacing:0.5}}>Sub-total</div>
                     <div style={{fontSize:12,fontWeight:900,textAlign:"right",color:accentColor,whiteSpace:"nowrap"}}>{subTotal>=0?"+":"−"}{fmt(Math.abs(subTotal))}</div>
                   </div>
@@ -1409,6 +1547,11 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const saveProfile=(updates)=>{const n={...profileData,...updates};setProfileData(n);try{localStorage.setItem("rr_profile",JSON.stringify(n));}catch{}};
   const primaryCurrency=(profileData.currencies||["PKR"])[0];
 
+  // Period close state — must be before any early returns (screen checks)
+  const[periodClose,setPeriodCloseState]=useState(()=>localStorage.getItem(PERIOD_CLOSE_KEY)||"");
+  const[tempPeriodClose,setTempPeriodClose]=useState(null);
+  const savePeriodClose=(d)=>{setPeriodCloseState(d);if(d)localStorage.setItem(PERIOD_CLOSE_KEY,d);else localStorage.removeItem(PERIOD_CLOSE_KEY);};
+
   const nextId=type=>{
     const prefix=type==="customer"?"C":"S";
     const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
@@ -1570,10 +1713,6 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
       </div>
     </div>
   );
-
-  const[periodClose,setPeriodCloseState]=useState(()=>localStorage.getItem(PERIOD_CLOSE_KEY)||"");
-  const[tempPeriodClose,setTempPeriodClose]=useState(null);
-  const savePeriodClose=(d)=>{setPeriodCloseState(d);if(d)localStorage.setItem(PERIOD_CLOSE_KEY,d);else localStorage.removeItem(PERIOD_CLOSE_KEY);};
 
   if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onBack={()=>setScreen(null)}/>);
   if(screen==="contacts")return(
@@ -2000,6 +2139,42 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
 }
 
 // ─── New Entry Form ───────────────────────────────────────────────────────────
+// Inline contact search for entry form
+function ContactSearchInline({contacts,value,onChange,type}){
+  const[q,setQ]=useState("");
+  const[open,setOpen]=useState(false);
+  const isC=type==="customer";
+  const filtered=useMemo(()=>{
+    if(!q.trim())return contacts.slice(0,12);
+    const ql=q.toLowerCase();
+    return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql)).slice(0,10);
+  },[contacts,q]);
+  return(
+    <div style={{position:"relative"}}>
+      <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
+        placeholder={`Search ${isC?"customer":"supplier"}…`}
+        style={{...inp,fontSize:12,padding:"8px 12px"}}/>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:200}}>
+            <div style={{overflowY:"auto",maxHeight:200}}>
+              {filtered.length===0&&<div style={{padding:"10px 12px",fontSize:9,color:T.muted}}>No contacts found</div>}
+              {filtered.map((c,i)=>(
+                <div key={c.id} onClick={()=>{onChange(c.id);setOpen(false);setQ("");}} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",background:"#fff"}}>
+                  <span style={{fontSize:9,fontWeight:800,color:isC?T.blue:T.red,background:isC?T.blueBg:T.redLight,padding:"1px 6px",borderRadius:4,flexShrink:0}}>{isC?"AR":"AP"}</span>
+                  <span style={{fontSize:12,fontWeight:600,flex:1,color:T.text}}>{c.name}</span>
+                  <span style={{fontSize:9,color:T.muted,fontWeight:700}}>{c.id}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:""};
   const[form,setForm]=useState(emptyTxn);
@@ -2090,12 +2265,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
         <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
         <div>
           <input
-            placeholder={feat.calcAmount!==false?"Amount or expression (e.g. 500+200)":"Amount (PKR)"}
+            placeholder="Amount or expression (e.g. 500+200 or 3*150)"
             value={form.amount}
-            onChange={e=>feat.calcAmount!==false?handleAmountChange(e.target.value):setForm(p=>({...p,amount:e.target.value}))}
+            onChange={e=>handleAmountChange(e.target.value)}
             style={inpSm}
           />
-          {feat.calcAmount!==false&&calcResult&&(
+          {calcResult&&(
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5}}>
               <span style={{fontSize:11,color:T.muted}}>= {fmt(calcResult)}</span>
               <button onClick={()=>{setForm(p=>({...p,amount:String(calcResult)}));setCalcResult(null);}} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>Use this</button>
@@ -2194,13 +2369,21 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
         {needContact&&(
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
-              {contactType==="customer"?"Customer (1500)":"Supplier (2400)"}
+              {contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"}
             </div>
             <div style={{display:"flex",gap:6}}>
-              <select value={form.contactId} onChange={e=>setForm(p=>({...p,contactId:e.target.value}))} style={{...selSm,flex:1}}>
-                <option value="">— Select {contactType} —</option>
-                {filteredContacts.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
-              </select>
+              <div style={{flex:1,position:"relative"}}>
+                {form.contactId?(
+                  <div style={{background:contactType==="customer"?T.blueBg:T.redLight,border:`1px solid ${contactType==="customer"?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:9,fontWeight:800,color:contactType==="customer"?T.blue:T.red,background:"#fff",padding:"1px 6px",borderRadius:4}}>{contactType==="customer"?"AR":"AP"}</span>
+                    <span style={{fontSize:12,fontWeight:700,flex:1,color:contactType==="customer"?T.blue:T.red}}>{filteredContacts.find(c=>c.id===form.contactId)?.name||form.contactId}</span>
+                    <span style={{fontSize:10,color:T.muted}}>{form.contactId}</span>
+                    <button onClick={()=>setForm(p=>({...p,contactId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+                  </div>
+                ):(
+                  <ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={contactType}/>
+                )}
+              </div>
               <button onClick={()=>setShowAddContact(s=>!s)} style={{background:showAddContact?T.redLight:T.blueBg,color:showAddContact?T.red:T.blue,border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>+ Add</button>
             </div>
 
@@ -2241,7 +2424,9 @@ const INIT_SF=[
 ];
 
 function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[],filterFrom,filterTo}){
-  const[funds,setFunds]=useState((sinkingFunds&&sinkingFunds.length>0)?sinkingFunds:INIT_SF);
+  const[funds,setFunds]=useState(sinkingFunds||[]);
+  // Sync when parent data loads from Supabase
+  useEffect(()=>{if(sinkingFunds&&sinkingFunds.length>0)setFunds(sinkingFunds);},[sinkingFunds]);
   const[showForm,setShowForm]=useState(false);
   const[editId,setEditId]=useState(null);
   const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""});
@@ -2501,7 +2686,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
 function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod}){
-  const[rTab,setRTab]=useState("analytics");
+  const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
   const[selAcc,setSelAcc]=useState("");
@@ -2684,7 +2869,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
     <div>
       {/* Tab switcher */}
       <div style={{display:"flex",gap:3,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
-        {[["balanse","⚖️ Balanse"],["analytics","📈 Analytics"]].map(([id,label])=>(
+        {[["resultat","📈 Resultat"],["balanse","⚖️ Balanse"],["analytics","📊 Analytics"]].map(([id,label])=>(
           <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 2px",fontSize:10}}>{label}</button>
         ))}
       </div>
@@ -3652,9 +3837,16 @@ function AdminPanel({onBack,profiles=[]}){
             <div style={{fontSize:11,color:T.muted,marginBottom:12,lineHeight:1.6}}>
               {isDeactivated?"User can log in and view basic data, but cannot make new entries or use any features. Only support access.":"Deactivate if user has not paid. They will lose feature access but can still log in and contact support."}
             </div>
-            <button onClick={()=>toggleDeactivate(p.id)} style={{...isDeactivated?{...btnRed,background:T.green,borderColor:T.green}:{background:"#fee2e2",color:T.red,border:`1px solid ${T.red}`,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"},width:"100%"}}>
-              {isDeactivated?"✅ Reactivate Account":"🚫 Deactivate Account"}
-            </button>
+            {p.is_admin?(
+              <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                <span>⚠️</span>
+                <span style={{fontSize:12,color:T.orange,fontWeight:600}}>Admin accounts cannot be deactivated.</span>
+              </div>
+            ):(
+              <button onClick={()=>toggleDeactivate(p.id)} style={{...isDeactivated?{...btnRed,background:T.green,borderColor:T.green}:{background:"#fee2e2",color:T.red,border:`1px solid ${T.red}`,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"},width:"100%"}}>
+                {isDeactivated?"✅ Reactivate Account":"🚫 Deactivate Account"}
+              </button>
+            )}
           </div>
 
           {/* Feature toggles */}
@@ -3708,39 +3900,51 @@ function AdminPanel({onBack,profiles=[]}){
             ))}
           </>
         )}
-        {tab==="users"&&(
-          <>
-            <div style={{position:"relative",marginBottom:12}}>
-              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
-              <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
-            </div>
-            {filteredProfiles.length?(
-              <div style={{marginBottom:12}}>
-                {filteredProfiles.map((p,idx)=>{
-                  const isDeact=!!deactivated[p.id];
-                  return(
-                    <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:`1.5px solid ${isDeact?T.red:T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:36,height:36,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800,flexShrink:0}}>
-                        {isDeact?"🚫":`#${idx+1}`}
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
-                        <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
-                      </div>
-                      {isDeact&&<span style={{fontSize:9,background:"#fee2e2",color:T.red,padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>DEACTIVATED</span>}
-                      {p.is_admin&&!isDeact&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
-                      <span style={{fontSize:16,color:T.muted}}>›</span>
-                    </div>
-                  );
-                })}
+        {tab==="users"&&(()=>{
+          const[userStatusTab,setUserStatusTab]=React.useState("active");
+          const activeProfiles=filteredProfiles.filter(p=>!deactivated[p.id]);
+          const inactiveProfiles=filteredProfiles.filter(p=>!!deactivated[p.id]);
+          const shownProfiles=userStatusTab==="active"?activeProfiles:inactiveProfiles;
+          return(
+            <>
+              <div style={{position:"relative",marginBottom:10}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
+                <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
               </div>
-            ):(
-              <div style={{fontSize:12,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px"}}>
-                {search?"No users match your search.":"No other users found. Users appear here after they sign in."}
+              {/* Active / Inactive sub-tabs */}
+              <div style={{display:"flex",gap:6,marginBottom:12}}>
+                {[["active",`✅ Active (${activeProfiles.length})`],["inactive",`🚫 Inactive (${inactiveProfiles.length})`]].map(([id,label])=>(
+                  <button key={id} onClick={()=>setUserStatusTab(id)} style={{flex:1,padding:"7px",borderRadius:10,border:`1.5px solid ${userStatusTab===id?T.accent:T.border}`,background:userStatusTab===id?T.accent:"#fff",color:userStatusTab===id?"#fff":T.sub,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+                ))}
               </div>
-            )}
-          </>
-        )}
+              {shownProfiles.length?(
+                <div>
+                  {shownProfiles.map((p,idx)=>{
+                    const isDeact=!!deactivated[p.id];
+                    const realIdx=profiles.findIndex(x=>x.id===p.id);
+                    return(
+                      <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:`1.5px solid ${isDeact?T.red:T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800,flexShrink:0}}>
+                          {isDeact?"🚫":`#${realIdx+1}`}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
+                          <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
+                        </div>
+                        {p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
+                        <span style={{fontSize:16,color:T.muted}}>›</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ):(
+                <div style={{fontSize:12,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px",textAlign:"center"}}>
+                  {userStatusTab==="active"?"No active users found.":"No deactivated users."}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
@@ -3831,76 +4035,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
 
-  // Handle direct ledger navigation from home KPI cards — show contact summary
+  // Handle direct ledger navigation from home KPI cards — redirect to Reskontro
   if(tab==="ledger_1500"||tab==="ledger_2400"){
-    const isAR=tab==="ledger_1500";
-    const code=isAR?"1500":"2400";
-    const type=isAR?"customer":"supplier";
-    const relContacts=contacts.filter(c=>c.type===type&&!c.inactive);
-    const contactTxns=(cid)=>transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo&&t.contactId===cid&&(t.debitCode===code||t.creditCode===code));
-    const contactSum=(cid)=>contactTxns(cid).reduce((s,t)=>t.debitCode===code?s+t.amount:s-t.amount,0);
-    const totalSum=relContacts.reduce((s,c)=>s+contactSum(c.id),0);
-    return(
-      <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-        <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={()=>setTab("Dashboard")} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-          <div style={{flex:1}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{isAR?"Accounts Receivable · 1500":"Accounts Payable · 2400"}</div>
-            <div style={{fontSize:17,fontWeight:700,color:"#fff"}}>{isAR?"Receivables":"Payables"}</div>
-          </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",textAlign:"right"}}>
-            <div style={{fontSize:9,marginBottom:2,textTransform:"uppercase",letterSpacing:0.5}}>Total</div>
-            <div style={{fontSize:15,fontWeight:800,color:isAR?"#4ade80":"#f87171"}}>{fmt(Math.abs(totalSum))}</div>
-          </div>
-        </div>
-        {/* Period info */}
-        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"8px 16px",fontSize:11,color:T.muted,display:"flex",justifyContent:"space-between"}}>
-          <span>Period: {filterFrom} → {filterTo}</span>
-          <span>{relContacts.length} {type}s</span>
-        </div>
-        <div style={{padding:16}}>
-          {!relContacts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type}s found.</div>}
-          {relContacts.map(c=>{
-            const txns=contactTxns(c.id);
-            const sum=contactSum(c.id);
-            if(txns.length===0)return null;
-            return(
-              <div key={c.id} style={{background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:12,padding:"13px 14px",marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                  <div>
-                    <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
-                      <span style={{fontSize:10,fontWeight:700,color:isAR?T.accent:T.red,background:isAR?T.accentLight:T.redLight,padding:"2px 7px",borderRadius:5}}>{c.id}</span>
-                      <span style={{fontSize:13,fontWeight:600,color:"#1a1a18"}}>{c.name}</span>
-                    </div>
-                    <div style={{fontSize:10,color:"#888780"}}>{txns.length} transaction{txns.length!==1?"s":""} this period</div>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:15,fontWeight:700,color:sum>=0?T.green:T.red}}>{sum>=0?"+":"-"}{fmt(Math.abs(sum))}</div>
-                  </div>
-                </div>
-                {/* Mini transaction list */}
-                <div style={{borderTop:"0.5px solid #e8e6df",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                  {txns.slice(0,3).map(t=>{
-                    const mv=t.debitCode===code?t.amount:-t.amount;
-                    return(
-                      <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{display:"flex",gap:6,alignItems:"center",minWidth:0}}>
-                          <span style={{fontSize:9,color:"#888780",flexShrink:0}}>{t.date.slice(5)}</span>
-                          <span style={{fontSize:11,color:"#1a1a18",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</span>
-                        </div>
-                        <span style={{fontSize:11,fontWeight:600,color:mv>=0?T.green:T.red,flexShrink:0,marginLeft:8}}>{mv>=0?"+":"-"}{fmt(Math.abs(mv))}</span>
-                      </div>
-                    );
-                  })}
-                  {txns.length>3&&<div style={{fontSize:10,color:"#888780",marginTop:2}}>+{txns.length-3} more...</div>}
-                </div>
-              </div>
-            );
-          })}
-          {relContacts.every(c=>contactTxns(c.id).length===0)&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No transactions this period.</div>}
-        </div>
-      </div>
-    );
+    if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
+    const initView=tab==="ledger_1500"?"customer":"supplier";
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
   }
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -3942,7 +4081,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
-    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(code,att)=>setBankAttachments(p=>({...p,[code]:att}))}/></div></div>);
+    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
   }
 
   return(
