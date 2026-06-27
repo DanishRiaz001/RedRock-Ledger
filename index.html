@@ -996,234 +996,253 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
 function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,deleteTxn,accounts,onBack}){
-  const[view,setView]=useState(null);
-  const[reskontroTab,setReskontroTab]=useState("contacts"); // "contacts" | "aging"
-  const[editingId,setEditingId]=useState(null);
-  const[showNew,setShowNew]=useState(false);
-  const[newName,setNewName]=useState("");
-  const[selected,setSelected]=useState([]);
-  const[showMatched,setShowMatched]=useState(false);
-  const[detailTxn,setDetailTxn]=useState(null);
+  const[view,setView]=useState(null); // null | "customer" | "supplier"
+  const[mode,setMode]=useState("open"); // open | period | contact
+  const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
   const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
-  const[ledgerTab,setLedgerTab]=useState("open"); // open | period | supplier
+  const[selContact,setSelContact]=useState("all"); // "all" or contact id
+  const[selected,setSelected]=useState([]);
+  const[detailTxn,setDetailTxn]=useState(null);
+  const[reskontroTab,setReskontroTab]=useState("contacts");
 
-  const toggleInactive=(id)=>{
-    const updated=contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c);
-    setContacts(updated);
-  };
-  const hasTxns=(id)=>transactions.some(t=>t.contactId===id);
-
-  const customers=contacts.filter(c=>c.type==="customer");
-  const suppliers=contacts.filter(c=>c.type==="supplier");
-
-  const nextId=type=>{
-    const prefix=type==="customer"?"C":"S";
-    const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
-    return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
-  };
-
-  const addContact=()=>{
-    if(!newName.trim())return;
-    setContacts(p=>[...p,{id:nextId(view),type:view,name:newName.trim(),notes:""}]);
-    setNewName("");setShowNew(false);
-  };
-
-  const getContactTxns=cid=>transactions.filter(t=>t.contactId===cid);
+  const customers=contacts.filter(c=>c.type==="customer"&&!c.inactive);
+  const suppliers=contacts.filter(c=>c.type==="supplier"&&!c.inactive);
 
   const mv=(t,code)=>t.debitCode===code?t.amount:t.creditCode===code?-t.amount:0;
+  const doMatchTxns=(ids,grpId)=>matchTxns(ids,grpId);
 
-  const doMatch=(ids,grpId)=>matchTxns(ids,grpId);
+  const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");};
 
+  const toggleInactive=(id)=>setContacts(contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c));
 
-
-  const goBack=()=>{setView(null);setSelected([]);setShowMatched(false);setDetailTxn(null);setShowNew(false);setNewName("");setEditingId(null);setLedgerTab("open");};
-
-  // ── Combined ledger view for all customers or all suppliers ──
+  // ── Ledger view (after selecting AR or AP) ──
   if(view){
     const list=view==="customer"?customers:suppliers;
     const isCustomer=view==="customer";
     const code=isCustomer?"1500":"2400";
+    const accentColor=isCustomer?T.blue:T.red;
+    const accentBg=isCustomer?T.blueBg:T.redLight;
 
-    // All txns for this type in period — only AR/AP movements (1500 or 2400), sorted by contact then date
-    const allTxns=transactions.filter(t=>{
+    // Filter transactions based on mode
+    const getViewTxns=(contactId)=>{
+      return transactions.filter(t=>{
+        const c=contacts.find(x=>x.id===t.contactId);
+        if(!c||c.type!==view||c.inactive)return false;
+        if(contactId&&contactId!=="all"&&t.contactId!==contactId)return false;
+        if(!(t.debitCode===code||t.creditCode===code))return false;
+        if(mode==="open"){
+          // Unmatched, unreversed entries; optionally up to asOfDate
+          if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
+          if(asOfDate&&t.date>asOfDate)return false;
+        } else if(mode==="period"){
+          // All entries (including matched/reversed) in date range
+          if(t.date<periodFrom||t.date>periodTo)return false;
+        } else if(mode==="contact"){
+          // Open items only, filtered by selected contact
+          if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
+        }
+        return true;
+      }).sort((a,b)=>{
+        const ca=contacts.find(x=>x.id===a.contactId);
+        const cb=contacts.find(x=>x.id===b.contactId);
+        const na=(ca?.id)||"";const nb=(cb?.id)||"";
+        if(na!==nb)return na.localeCompare(nb);
+        return a.date.localeCompare(b.date);
+      });
+    };
+
+    const viewTxns=getViewTxns(mode==="contact"?selContact:null);
+    const grandTotal=viewTxns.reduce((s,t)=>s+mv(t,code),0);
+
+    // Group by contact for sub-totals
+    const byContact=[];
+    let lastCid=null;
+    viewTxns.forEach(t=>{
       const c=contacts.find(x=>x.id===t.contactId);
-      if(!c||c.type!==view)return false;
-      if(ledgerTab==="period"&&(t.date<periodFrom||t.date>periodTo))return false;
-      // Only show entries that touch the AR (1500) or AP (2400) account
-      return(t.debitCode===code||t.creditCode===code);
-    }).sort((a,b)=>{
-      const ca=contacts.find(x=>x.id===a.contactId);
-      const cb=contacts.find(x=>x.id===b.contactId);
-      const na=(ca&&ca.id)||"";const nb=(cb&&cb.id)||"";
-      if(na!==nb)return na.localeCompare(nb);
-      return a.date.localeCompare(b.date);
+      if(!c)return;
+      if(c.id!==lastCid){byContact.push({contact:c,txns:[]});lastCid=c.id;}
+      byContact[byContact.length-1].txns.push(t);
     });
 
-    const openTxns=ledgerTab==="open"?allTxns.filter(t=>!t.matchedWith):allTxns;
-    const matchedTxns=allTxns.filter(t=>!!t.matchedWith);
-
-    // Per-supplier/customer summary for supplier tab
-    const supplierSummary=contacts.filter(c=>c.type===view&&!c.inactive).map(c=>{
-      const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
-      const bal=txns.reduce((s,t)=>s+mv(t,code),0);
-      const open=txns.filter(t=>!t.matchedWith);
-      const openBal=open.reduce((s,t)=>s+mv(t,code),0);
-      return{...c,bal,openBal,count:txns.length,openCount:open.length};
-    }).filter(c=>Math.abs(c.openBal)>0).sort((a,b)=>Math.abs(b.openBal)-Math.abs(a.openBal));
-
     const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
-    const selSum=selected.reduce((s,id)=>{const t=openTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
-    const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatch(selected,Date.now().toString());setSelected([]);};
+    const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
+    const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatchTxns(selected,Date.now().toString());setSelected([]);};
 
-    const totalOpen=openTxns.reduce((s,t)=>s+mv(t,code),0);
+    const ROW_COLS="24px 52px 1fr 76px";
+    const hdStyle={fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.6};
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
-          onReverse={()=>{}}
-          onClose={()=>setDetailTxn(null)}/>}
-        <BackHeader title={isCustomer?"Customers":"Suppliers"} sub={`RESKONTRO · ${isCustomer?"AR 1500":"AP 2400"}`} color={isCustomer?T.blue:T.red} onBack={goBack}/>
+          onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
 
-        {/* Open Items / Period / Supplier tabs */}
-        <div style={{display:"flex",gap:0,background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-          {[["open","Open Items"],["period","Period"],["supplier",isCustomer?"Customers":"Suppliers"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setLedgerTab(id)} style={{flex:1,padding:"9px 4px",border:"none",background:"none",fontSize:11,fontWeight:ledgerTab===id?700:500,color:ledgerTab===id?T.accent:T.muted,borderBottom:ledgerTab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
-          ))}
-        </div>
+        <BackHeader title={isCustomer?"Customers (AR)":"Suppliers (AP)"} sub={`RESKONTRO · ${isCustomer?"1500":"2400"}`} color={accentColor} onBack={goBack}/>
 
-        {/* Period filter — only shown in Period tab */}
-        {ledgerTab==="period"&&<div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
-          <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-          <span style={{fontSize:11,color:T.muted,fontWeight:700}}>TO</span>
-          <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-        </div>}
-
-        {/* Summary bar */}
-        <div style={{background:isCustomer?T.blueBg:T.redLight,padding:"10px 16px",borderBottom:`1px solid ${isCustomer?T.blue:T.red}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:11,color:isCustomer?T.blue:T.red,fontWeight:700}}>{list.length} {isCustomer?"customers":"suppliers"} · {openTxns.length} open entries</div>
-          <div style={{fontSize:15,fontWeight:900,color:isCustomer?T.blue:T.red}}>{sign(totalOpen)}</div>
-        </div>
-
-        <div style={{padding:16}}>
-          {/* Match bar */}
-          {selected.length>0&&(
-            <div style={{background:T.header,borderRadius:12,padding:"12px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:11,color:"#aaa"}}>{selected.length} selected · Net: <span style={{color:Math.abs(selSum)<1?T.green:"#f87171"}}>{sign(selSum)}</span></div>
-                <div style={{fontSize:12,color:"#fff",fontWeight:700,marginTop:1}}>{Math.abs(selSum)<1?"✓ Ready to match":"Must net to zero"}</div>
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setSelected([])} style={{...btnSm,background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:11}}>Clear</button>
-                <button onClick={doMatch} style={{...btnSm,background:Math.abs(selSum)<1?T.green:"#555",color:"#fff",fontSize:11,opacity:Math.abs(selSum)<1?1:0.5}}>Match ✓</button>
-              </div>
-            </div>
-          )}
-
-          {/* Matched toggle */}
-          {ledgerTab!=="supplier"&&matchedTxns.length>0&&(
-            <button onClick={()=>setShowMatched(s=>!s)} style={{...btnSm,marginBottom:10,fontSize:11}}>
-              {showMatched?"▲ Hide":"▼ Show"} Matched ({matchedTxns.length})
-            </button>
-          )}
-          {showMatched&&ledgerTab!=="supplier"&&<MatchedGroups matchedRows={matchedTxns} getMovement={r=>mv(r,code)}/>}
-
-          {/* Supplier/Customer summary tab */}
-          {ledgerTab==="supplier"&&(
-            <div>
-              {supplierSummary.length>0&&(
-                <div style={{display:"flex",justifyContent:"space-between",padding:"0 4px",marginBottom:6}}>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Code &nbsp; Description</div>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Closing</div>
+        {/* ── Filter bar ── */}
+        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px"}}>
+          {/* Radio row */}
+          <div style={{display:"flex",gap:16,marginBottom:10}}>
+            {[["open","Åpne poster"],["period","Periode"],["contact",isCustomer?"Kunde":"Leverandør"]].map(([id,label])=>(
+              <label key={id} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,fontWeight:mode===id?700:400,color:mode===id?accentColor:T.text}}>
+                <div style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${mode===id?accentColor:T.border}`,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+                  onClick={()=>setMode(id)}>
+                  {mode===id&&<div style={{width:6,height:6,borderRadius:"50%",background:accentColor}}/>}
                 </div>
-              )}
-              {supplierSummary.length===0&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No outstanding balances.</div>}
-              {supplierSummary.map(c=>{
-                const today=new Date().toISOString().split("T")[0];
-                const oldest=transactions.filter(t=>t.contactId===c.id&&!t.matchedWith&&(t.debitCode===code||t.creditCode===code)).sort((a,b)=>a.date.localeCompare(b.date))[0]?.date||today;
-                const days=Math.floor((new Date(today)-new Date(oldest))/(1000*60*60*24));
-                const ageColor=days>90?T.red:days>60?"#EF9F27":T.green;
-                return(
-                  <div key={c.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:isCustomer?T.blueBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:isCustomer?T.blue:T.red,flexShrink:0}}>{c.id}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
-                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>{c.openCount} open entries · {days}d oldest</div>
-                    </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:14,fontWeight:800,color:isCustomer?T.blue:T.red}}>{fmt(Math.abs(c.openBal))}</div>
-                      <span style={{fontSize:9,fontWeight:700,color:ageColor,background:days>90?T.redLight:days>60?"#faeeda":T.greenBg,borderRadius:5,padding:"1px 6px"}}>{days>90?"90d+":days>60?"61-90d":days>30?"31-60d":"0-30d"}</span>
-                    </div>
-                  </div>
-                );
-              })}
+                {label}
+              </label>
+            ))}
+          </div>
+
+          {/* Åpne poster: optional as-of date */}
+          {mode==="open"&&(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:10,color:T.muted,fontWeight:700,minWidth:50}}>As of</span>
+              <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)} placeholder="All time if blank"
+                style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
+              {asOfDate&&<button onClick={()=>setAsOfDate("")} style={{background:"none",border:"none",color:T.muted,fontSize:16,cursor:"pointer",padding:"0 4px"}}>×</button>}
+              <span style={{fontSize:9,color:T.muted,fontStyle:"italic"}}>{asOfDate?"":"All time"}</span>
             </div>
           )}
 
-          {/* Combined ledger table — Open Items and Period tabs */}
-          {ledgerTab!=="supplier"&&openTxns.length===0&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No {ledgerTab==="open"?"open":"period"} entries.</div>}
-          {ledgerTab!=="supplier"&&openTxns.length>0&&(
-            <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-              {/* Header */}
-              <div style={{display:"grid",gridTemplateColumns:"22px 48px 46px 1fr 72px",gap:4,padding:"8px 10px",background:T.bg,borderBottom:`2px solid ${T.border}`}}>
-                <div/>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Bilag</div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
-              </div>
-              {(()=>{
-                let lastCid=null;
-                return openTxns.map((t,i)=>{
-                  const m=mv(t,code);
-                  const isSel=selected.includes(t.id);
-                  const c=contacts.find(x=>x.id===t.contactId);
-                  const cid=c?c.id:"";
-                  const cname=c?c.name:"—";
-                  const showHeader=cid!==lastCid;
-                  if(showHeader)lastCid=cid;
-                  return(
-                    <React.Fragment key={t.id}>
-                      {showHeader&&(
-                        <div style={{padding:"7px 10px",background:isCustomer?T.blueBg:T.redLight,borderBottom:`1px solid ${isCustomer?T.blue+"33":T.red+"33"}`,display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontSize:10,fontWeight:800,color:isCustomer?T.blue:T.red}}>{cid}</span>
-                          <span style={{fontSize:12,fontWeight:700,color:T.text}}>{cname}</span>
+          {/* Periode: date range */}
+          {mode==="period"&&(
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)} style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
+              <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
+              <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)} style={{...inp,flex:1,padding:"6px 10px",fontSize:11}}/>
+            </div>
+          )}
+
+          {/* Contact mode: dropdown */}
+          {mode==="contact"&&(
+            <select value={selContact} onChange={e=>setSelContact(e.target.value)}
+              style={{...inp,fontSize:9,width:"100%",padding:"6px 10px"}}>
+              <option value="all">(All {isCustomer?"customers":"suppliers"})</option>
+              {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* ── Summary bar ── */}
+        <div style={{background:accentBg,padding:"8px 16px",borderBottom:`1px solid ${accentColor}33`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:10,color:accentColor,fontWeight:700}}>
+            {byContact.length} {isCustomer?"customers":"suppliers"} · {viewTxns.length} entries
+          </div>
+          <div style={{fontSize:14,fontWeight:900,color:accentColor}}>{sign(grandTotal)}</div>
+        </div>
+
+        {/* ── Match bar ── */}
+        {selected.length>0&&(
+          <div style={{background:T.header,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:10,color:"#aaa"}}>{selected.length} selected · Net: <span style={{color:Math.abs(selSum)<1?T.green:"#f87171"}}>{sign(selSum)}</span></div>
+              <div style={{fontSize:11,color:"#fff",fontWeight:700}}>{Math.abs(selSum)<1?"✓ Ready to match":"Must net to zero"}</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setSelected([])} style={{...btnSm,background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:11}}>Clear</button>
+              <button onClick={doMatch} style={{...btnSm,background:Math.abs(selSum)<1?T.green:"#555",color:"#fff",fontSize:11,opacity:Math.abs(selSum)<1?1:0.5}}>Match ✓</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{padding:"12px 16px"}}>
+          {/* ── Column header ── */}
+          {viewTxns.length>0&&(
+            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"4px 6px",marginBottom:4}}>
+              <div style={hdStyle}>Bilag</div>
+              <div style={hdStyle}>Date</div>
+              <div style={hdStyle}>Description</div>
+              <div style={{...hdStyle,textAlign:"right"}}>Amount</div>
+            </div>
+          )}
+
+          {viewTxns.length===0&&(
+            <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:13}}>
+              <div style={{fontSize:28,marginBottom:8}}>📭</div>
+              No entries found
+            </div>
+          )}
+
+          {/* ── Grouped by contact with sub-totals ── */}
+          {byContact.map(({contact:c,txns:ctxns})=>{
+            const subTotal=ctxns.reduce((s,t)=>s+mv(t,code),0);
+            return(
+              <div key={c.id} style={{marginBottom:14}}>
+                {/* Contact header row */}
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:accentBg,borderRadius:"8px 8px 0 0",borderLeft:`3px solid ${accentColor}`}}>
+                  <span style={{fontSize:10,fontWeight:800,color:accentColor,minWidth:36}}>{c.id}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>{c.name}</span>
+                </div>
+
+                {/* Transactions */}
+                <div style={{background:T.card,border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                  {ctxns.map((t,i)=>{
+                    const m=mv(t,code);
+                    const isSel=selected.includes(t.id);
+                    const isRev=!!t.reversalOf;
+                    const isRevd=!!t.reversedBy;
+                    return(
+                      <div key={t.id} onClick={()=>mode!=="period"&&toggleSel(t.id)}
+                        style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
+                          borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
+                          alignItems:"center",
+                          background:isSel?"#EBF4FF":isRevd||isRev?"#fafafa":"#fff",
+                          cursor:mode!=="period"?"pointer":"default",
+                          opacity:isRevd||isRev?0.55:1}}>
+                        <div onClick={e=>{e.stopPropagation();setDetailTxn(t);}}
+                          style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>
+                          {fmtB(t.bilag)}
                         </div>
-                      )}
-                      <div onClick={()=>toggleSel(t.id)} style={{display:"grid",gridTemplateColumns:"22px 48px 46px 1fr 72px",gap:4,padding:"10px 10px",borderBottom:i<openTxns.length-1?`1px solid ${T.border}`:"none",alignItems:"center",background:isSel?"#EBF4FF":"#fff",cursor:"pointer"}}>
-                        <input type="checkbox" checked={isSel} onChange={()=>toggleSel(t.id)} onClick={e=>e.stopPropagation()} style={{width:13,height:13}}/>
                         <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
-                        <div onClick={e=>{e.stopPropagation();setDetailTxn(t);}} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(t.bilag)}</div>
-                        <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
-                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap"}}>{m>=0?"+":"−"}{fmt(m)}</div>
+                        <div style={{fontSize:11,color:isRev||isRevd?T.muted:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
+                          {t.description}
+                          {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩</span>}
+                        </div>
+                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap"}}>
+                          {m>=0?"+":"−"}{fmt(Math.abs(m))}
+                        </div>
                       </div>
-                    </React.Fragment>
-                  );
-                });
-              })()}
-              {/* Total row */}
-              <div style={{display:"grid",gridTemplateColumns:"22px 48px 46px 1fr 72px",gap:4,padding:"10px 10px",background:T.bg,borderTop:`2px solid ${T.border}`}}>
-                <div/><div/><div/>
-                <div style={{fontSize:11,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Total</div>
-                <div style={{fontSize:13,fontWeight:900,textAlign:"right",color:totalOpen>=0?T.green:T.red,whiteSpace:"nowrap"}}>{totalOpen>=0?"+":"−"}{fmt(totalOpen)}</div>
+                    );
+                  })}
+
+                  {/* Sub-total row */}
+                  <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",background:accentBg,borderTop:`1.5px solid ${accentColor}33`}}>
+                    <div/>
+                    <div/>
+                    <div style={{fontSize:10,color:accentColor,fontWeight:700,textAlign:"right",textTransform:"uppercase",letterSpacing:0.5}}>Sub-total</div>
+                    <div style={{fontSize:12,fontWeight:900,textAlign:"right",color:accentColor,whiteSpace:"nowrap"}}>{subTotal>=0?"+":"−"}{fmt(Math.abs(subTotal))}</div>
+                  </div>
+                </div>
               </div>
+            );
+          })}
+
+          {/* ── Grand total ── */}
+          {byContact.length>1&&(
+            <div style={{background:T.header,borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Total — All {isCustomer?"Customers":"Suppliers"}</div>
+              <div style={{fontSize:16,fontWeight:900,color:grandTotal>=0?"#4ade80":"#f87171"}}>{grandTotal>=0?"+":"−"}{fmt(Math.abs(grandTotal))}</div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.header,borderTop:"1px solid #2a3a5e",padding:"12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {/* Fixed footer */}
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.header,borderTop:"1px solid #2a3a5e",padding:"10px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{isCustomer?"Receivable":"Payable"}</div>
-              <div style={{fontSize:13,fontWeight:800,color:totalOpen>=0?"#4ade80":T.red}}>{sign(totalOpen)}</div>
+              <div style={{fontSize:13,fontWeight:800,color:grandTotal>=0?"#4ade80":"#f87171"}}>{sign(grandTotal)}</div>
             </div>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Contacts</div>
-              <div style={{fontSize:13,fontWeight:800,color:"#93A8D0"}}>{list.length}</div>
+              <div style={{fontSize:13,fontWeight:800,color:"#93A8D0"}}>{byContact.length}</div>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Entries</div>
+              <div style={{fontSize:13,fontWeight:800,color:"#93A8D0"}}>{viewTxns.length}</div>
             </div>
           </div>
         </div>
@@ -1235,11 +1254,10 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   const today=new Date().toISOString().split("T")[0];
   const agingBuckets=(contactType)=>{
     const code=contactType==="customer"?"1500":"2400";
-    return contacts.filter(c=>c.type===contactType).map(c=>{
+    return contacts.filter(c=>c.type===contactType&&!c.inactive).map(c=>{
       const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
       const bal=txns.reduce((s,t)=>t.debitCode===code?s+t.amount:s-t.amount,0);
       if(Math.abs(bal)<1)return null;
-      // Find oldest unmatched txn date
       const unmatched=txns.filter(t=>!t.matchedWith).sort((a,b)=>a.date.localeCompare(b.date));
       const oldest=unmatched[0]?.date||today;
       const days=Math.floor((new Date(today)-new Date(oldest))/(1000*60*60*24));
@@ -1250,7 +1268,6 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
       <BackHeader title="Reskontro" sub="SUBLEDGER" onBack={onBack}/>
-      {/* Tabs */}
       <div style={{display:"flex",gap:4,padding:"10px 16px 0",background:"#fff",borderBottom:`1px solid ${T.border}`}}>
         {[["contacts","Contacts"],["aging","Aging Report"]].map(([id,label])=>(
           <button key={id} onClick={()=>setReskontroTab(id)} style={{padding:"7px 14px",border:"none",background:"none",fontSize:12,fontWeight:reskontroTab===id?700:500,color:reskontroTab===id?T.accent:T.muted,borderBottom:reskontroTab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
@@ -1261,8 +1278,8 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           <>
             <SL>Select Type</SL>
             {[
-              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.filter(c=>!c.inactive).length,code:"1500"},
-              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.filter(c=>!c.inactive).length,code:"2400"}
+              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.length,code:"1500"},
+              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.length,code:"2400"}
             ].map(item=>{
               const bal=transactions.reduce((s,t)=>{if(t.debitCode===item.code)return s+t.amount;if(t.creditCode===item.code)return s-t.amount;return s;},0);
               return(
@@ -1326,6 +1343,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
     </div>
   );
 }
+
 
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
