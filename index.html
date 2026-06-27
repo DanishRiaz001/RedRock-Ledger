@@ -177,7 +177,7 @@ function AppShell({user}){
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
       setTransactionsState(txns);
       setNextBilag(txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1);
-      setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon})));
+      setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setLoading(false);
     });
   },[viewingUserId]);
@@ -246,7 +246,7 @@ function AppShell({user}){
     setSFState(list);
     if(!canEdit)return;
     await sb.from("sinking_funds").delete().eq("user_id",user.id);
-    if(list.length)await sb.from("sinking_funds").insert(list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved,color:f.color,icon:f.icon})));
+    if(list.length)await sb.from("sinking_funds").insert(list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
   };
 
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
@@ -1006,6 +1006,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   const[detailTxn,setDetailTxn]=useState(null);
   const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
+  const[ledgerTab,setLedgerTab]=useState("open"); // open | period | supplier
 
   const toggleInactive=(id)=>{
     const updated=contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c);
@@ -1036,7 +1037,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
 
 
 
-  const goBack=()=>{setView(null);setSelected([]);setShowMatched(false);setDetailTxn(null);setShowNew(false);setNewName("");setEditingId(null);};
+  const goBack=()=>{setView(null);setSelected([]);setShowMatched(false);setDetailTxn(null);setShowNew(false);setNewName("");setEditingId(null);setLedgerTab("open");};
 
   // ── Combined ledger view for all customers or all suppliers ──
   if(view){
@@ -1048,7 +1049,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
     const allTxns=transactions.filter(t=>{
       const c=contacts.find(x=>x.id===t.contactId);
       if(!c||c.type!==view)return false;
-      if(t.date<periodFrom||t.date>periodTo)return false;
+      if(ledgerTab==="period"&&(t.date<periodFrom||t.date>periodTo))return false;
       // Only show entries that touch the AR (1500) or AP (2400) account
       return(t.debitCode===code||t.creditCode===code);
     }).sort((a,b)=>{
@@ -1059,8 +1060,17 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
       return a.date.localeCompare(b.date);
     });
 
-    const openTxns=allTxns.filter(t=>!t.matchedWith);
+    const openTxns=ledgerTab==="open"?allTxns.filter(t=>!t.matchedWith):allTxns;
     const matchedTxns=allTxns.filter(t=>!!t.matchedWith);
+
+    // Per-supplier/customer summary for supplier tab
+    const supplierSummary=contacts.filter(c=>c.type===view&&!c.inactive).map(c=>{
+      const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
+      const bal=txns.reduce((s,t)=>s+mv(t,code),0);
+      const open=txns.filter(t=>!t.matchedWith);
+      const openBal=open.reduce((s,t)=>s+mv(t,code),0);
+      return{...c,bal,openBal,count:txns.length,openCount:open.length};
+    }).filter(c=>Math.abs(c.openBal)>0).sort((a,b)=>Math.abs(b.openBal)-Math.abs(a.openBal));
 
     const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
     const selSum=selected.reduce((s,id)=>{const t=openTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
@@ -1077,13 +1087,20 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           onClose={()=>setDetailTxn(null)}/>}
         <BackHeader title={isCustomer?"Customers":"Suppliers"} sub={`RESKONTRO · ${isCustomer?"AR 1500":"AP 2400"}`} color={isCustomer?T.blue:T.red} onBack={goBack}/>
 
-        {/* Period filter */}
-        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",gap:8,alignItems:"center"}}>
+        {/* Open Items / Period / Supplier tabs */}
+        <div style={{display:"flex",gap:0,background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+          {[["open","Open Items"],["period","Period"],["supplier",isCustomer?"Customers":"Suppliers"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setLedgerTab(id)} style={{flex:1,padding:"9px 4px",border:"none",background:"none",fontSize:11,fontWeight:ledgerTab===id?700:500,color:ledgerTab===id?T.accent:T.muted,borderBottom:ledgerTab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
+          ))}
+        </div>
+
+        {/* Period filter — only shown in Period tab */}
+        {ledgerTab==="period"&&<div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",gap:8,alignItems:"center"}}>
           <span style={{fontSize:11,color:T.muted,fontWeight:700,minWidth:30}}>FROM</span>
           <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
           <span style={{fontSize:11,color:T.muted,fontWeight:700}}>TO</span>
           <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)} style={{...inp,flex:1,padding:"7px 10px",fontSize:12}}/>
-        </div>
+        </div>}
 
         {/* Summary bar */}
         <div style={{background:isCustomer?T.blueBg:T.redLight,padding:"10px 16px",borderBottom:`1px solid ${isCustomer?T.blue:T.red}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1107,16 +1124,48 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           )}
 
           {/* Matched toggle */}
-          {matchedTxns.length>0&&(
+          {ledgerTab!=="supplier"&&matchedTxns.length>0&&(
             <button onClick={()=>setShowMatched(s=>!s)} style={{...btnSm,marginBottom:10,fontSize:11}}>
               {showMatched?"▲ Hide":"▼ Show"} Matched ({matchedTxns.length})
             </button>
           )}
-          {showMatched&&<MatchedGroups matchedRows={matchedTxns} getMovement={r=>mv(r,code)}/>}
+          {showMatched&&ledgerTab!=="supplier"&&<MatchedGroups matchedRows={matchedTxns} getMovement={r=>mv(r,code)}/>}
 
-          {/* Combined ledger table */}
-          {openTxns.length===0&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No open entries in this period.</div>}
-          {openTxns.length>0&&(
+          {/* Supplier/Customer summary tab */}
+          {ledgerTab==="supplier"&&(
+            <div>
+              {supplierSummary.length>0&&(
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0 4px",marginBottom:6}}>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Code &nbsp; Description</div>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Closing</div>
+                </div>
+              )}
+              {supplierSummary.length===0&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No outstanding balances.</div>}
+              {supplierSummary.map(c=>{
+                const today=new Date().toISOString().split("T")[0];
+                const oldest=transactions.filter(t=>t.contactId===c.id&&!t.matchedWith&&(t.debitCode===code||t.creditCode===code)).sort((a,b)=>a.date.localeCompare(b.date))[0]?.date||today;
+                const days=Math.floor((new Date(today)-new Date(oldest))/(1000*60*60*24));
+                const ageColor=days>90?T.red:days>60?"#EF9F27":T.green;
+                return(
+                  <div key={c.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:isCustomer?T.blueBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:isCustomer?T.blue:T.red,flexShrink:0}}>{c.id}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>{c.openCount} open entries · {days}d oldest</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:14,fontWeight:800,color:isCustomer?T.blue:T.red}}>{fmt(Math.abs(c.openBal))}</div>
+                      <span style={{fontSize:9,fontWeight:700,color:ageColor,background:days>90?T.redLight:days>60?"#faeeda":T.greenBg,borderRadius:5,padding:"1px 6px"}}>{days>90?"90d+":days>60?"61-90d":days>30?"31-60d":"0-30d"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Combined ledger table — Open Items and Period tabs */}
+          {ledgerTab!=="supplier"&&openTxns.length===0&&<div style={{textAlign:"center",color:T.muted,padding:24,fontSize:13}}>No {ledgerTab==="open"?"open":"period"} entries.</div>}
+          {ledgerTab!=="supplier"&&openTxns.length>0&&(
             <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,overflow:"hidden"}}>
               {/* Header */}
               <div style={{display:"grid",gridTemplateColumns:"22px 48px 46px 1fr 72px",gap:4,padding:"8px 10px",background:T.bg,borderBottom:`2px solid ${T.border}`}}>
@@ -1212,20 +1261,24 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           <>
             <SL>Select Type</SL>
             {[
-              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.filter(c=>!c.inactive).length},
-              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.filter(c=>!c.inactive).length}
-            ].map(item=>(
+              {type:"customer",label:"Customers",sub:"Accounts Receivable · always posts to 1500",icon:"📥",color:T.accent,bg:T.accentLight,count:customers.filter(c=>!c.inactive).length,code:"1500"},
+              {type:"supplier",label:"Suppliers",sub:"Accounts Payable · always posts to 2400",icon:"📤",color:T.red,bg:T.redLight,count:suppliers.filter(c=>!c.inactive).length,code:"2400"}
+            ].map(item=>{
+              const bal=transactions.reduce((s,t)=>{if(t.debitCode===item.code)return s+t.amount;if(t.creditCode===item.code)return s-t.amount;return s;},0);
+              return(
               <div key={item.type}>
-                <div onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                <div onClick={()=>setView(item.type)} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
                   <div style={{background:item.bg,borderRadius:12,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{item.icon}</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:15,fontWeight:700}}>{item.label}</div>
                     <div style={{fontSize:11,color:T.sub,marginTop:2}}>{item.sub}</div>
                     <div style={{fontSize:11,color:item.color,fontWeight:600,marginTop:4}}>{item.count} active contacts</div>
                   </div>
-                  <span style={{fontSize:20,color:T.muted}}>›</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>Balance</div>
+                    <div style={{fontSize:15,fontWeight:800,color:item.color}}>{fmt(Math.abs(bal))}</div>
+                  </div>
                 </div>
-                {/* Inactive contacts for this type */}
                 {contacts.filter(c=>c.type===item.type&&c.inactive).map(c=>(
                   <div key={c.id} style={{background:"#f9f9f9",borderRadius:10,border:`1px solid ${T.border}`,padding:"10px 14px",marginBottom:6,marginLeft:8,display:"flex",alignItems:"center",gap:10,opacity:0.6}}>
                     <span style={{fontSize:10,fontWeight:800,color:T.muted,background:T.border,padding:"2px 7px",borderRadius:5}}>{c.id}</span>
@@ -1235,7 +1288,8 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </>
         )}
         {reskontroTab==="aging"&&(
@@ -1318,11 +1372,24 @@ function AccountPlanScreen({accounts,onSave,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,onBack}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
   const[showNew,setShowNew]=useState(false);
+
+  const CURRENCIES=[
+    {code:"PKR",name:"Pakistani Rupee",symbol:"Rs"},
+    {code:"USD",name:"US Dollar",symbol:"$"},
+    {code:"EUR",name:"Euro",symbol:"€"},
+    {code:"GBP",name:"British Pound",symbol:"£"},
+    {code:"AED",name:"UAE Dirham",symbol:"د.إ"},
+    {code:"SAR",name:"Saudi Riyal",symbol:"﷼"},
+    {code:"NOK",name:"Norwegian Krone",symbol:"kr"},
+  ];
+  const[profileData,setProfileData]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_profile")||"{}")}catch{return{};}});
+  const saveProfile=(updates)=>{const n={...profileData,...updates};setProfileData(n);try{localStorage.setItem("rr_profile",JSON.stringify(n));}catch{}};
+  const primaryCurrency=(profileData.currencies||["PKR"])[0];
 
   const nextId=type=>{
     const prefix=type==="customer"?"C":"S";
@@ -1336,35 +1403,100 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   };
   const deleteContact=id=>setContacts(contacts.filter(c=>c.id!==id));
 
+  if(screen==="currency")return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Currency" sub="SETTINGS" onBack={()=>setScreen(null)}/>
+      <div style={{padding:16}}>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Primary Currency</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Used for all amounts and reports throughout the app.</div>
+          <select value={primaryCurrency} onChange={e=>{const c=e.target.value;saveProfile({currencies:[c,...(profileData.currencies||["PKR"]).filter(x=>x!==c)]});}} style={{...inp,fontSize:13,fontWeight:700}}>
+            {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.symbol} {c.code} — {c.name}</option>)}
+          </select>
+        </div>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Additional Currencies</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Enable extra currencies for multi-currency entries.</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {CURRENCIES.filter(c=>c.code!==primaryCurrency).map(c=>{
+              const active=(profileData.currencies||["PKR"]).includes(c.code);
+              return(
+                <button key={c.code} onClick={()=>{const cur=profileData.currencies||["PKR"];const next=active?cur.filter(x=>x!==c.code):[...cur,c.code];saveProfile({currencies:next});}} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${active?T.accent:T.border}`,background:active?T.accentLight:"#fff",color:active?T.accent:T.sub,fontSize:12,fontWeight:active?700:400,cursor:"pointer",fontFamily:"inherit"}}>
+                  {c.symbol} {c.code}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if(screen==="sinkingfunds")return(
+    <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Sinking Funds" sub="SETTINGS · MANAGE" onBack={()=>setScreen(null)}/>
+      <div style={{padding:16}}>
+        <div style={{fontSize:11,color:"#888780",marginBottom:12}}>Manage all funds including inactive ones. Inactive funds are hidden from the main Sinking Funds screen.</div>
+        {(sinkingFunds||[]).map(f=>{
+          const pct=f.goal>0?Math.min(100,Math.round(((f.saved||0)/f.goal)*100)):0;
+          return(
+            <div key={f.id} style={{background:"#fff",border:`1px solid ${f.inactive?"#d3d1c7":"#d3d1c7"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,opacity:f.inactive?0.65:1}}>
+              <span style={{fontSize:20}}>{f.icon}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:f.inactive?"#888780":"#1a1a18",textDecoration:f.inactive?"line-through":"none"}}>{f.name}</div>
+                <div style={{fontSize:11,color:"#888780"}}>{fmt(f.saved||0)} / {fmt(f.goal)} · {pct}%</div>
+              </div>
+              {f.inactive&&<span style={{fontSize:9,fontWeight:800,color:"#888780",background:"#f1efe8",borderRadius:5,padding:"2px 7px",flexShrink:0}}>INACTIVE</span>}
+              <button onClick={()=>{const updated=(sinkingFunds||[]).map(x=>x.id===f.id?{...x,inactive:!x.inactive}:x);saveSinkingFunds(updated);}} style={{fontSize:11,background:f.inactive?T.accentLight:"#faeeda",color:f.inactive?T.accent:"#854f0b",border:"none",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontWeight:600,fontFamily:"inherit",flexShrink:0}}>
+                {f.inactive?"Reactivate":"Make Inactive"}
+              </button>
+            </div>
+          );
+        })}
+        {!(sinkingFunds||[]).length&&<div style={{textAlign:"center",color:"#888780",padding:30,fontSize:13}}>No sinking funds yet.</div>}
+      </div>
+    </div>
+  );
+
   if(screen==="periodclose")return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       <BackHeader title="Period Close" sub="SETTINGS" onBack={()=>setScreen(null)}/>
       <div style={{padding:16}}>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>Close Period Until</div>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔒 Lock Period Until Date</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.6}}>
-            No entries can be added or edited on or before this date.<br/>
-            <strong>Note:</strong> You can only move the date backwards to re-open a closed period.
+            Set a date to lock all periods up to and including that date. No new entries or edits will be allowed on or before this date. To unlock, clear the date and save.
           </div>
-          <input type="date" value={tempPeriodClose||periodClose} onChange={e=>setTempPeriodClose(e.target.value)} max={new Date().toISOString().slice(0,10)} style={{...inp,marginBottom:12}}/>
+          <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:5}}>Close Date</div>
+          <input type="date" value={tempPeriodClose!==null?tempPeriodClose:periodClose} onChange={e=>setTempPeriodClose(e.target.value)} style={{...inp,marginBottom:12}}/>
           {periodClose&&(
             <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-              <span style={{fontSize:16}}>🔒</span>
-              <span style={{fontSize:12,fontWeight:600,color:T.orange}}>Currently locked up to {periodClose}</span>
+              <span style={{fontSize:14}}>🔒</span>
+              <span style={{fontSize:12,fontWeight:600,color:T.orange}}>Currently locked up to <strong>{periodClose}</strong></span>
             </div>
           )}
-          <button style={btnRed} onClick={()=>{
-            const newDate=tempPeriodClose;
-            if(!newDate)return;
-            if(periodClose&&newDate>periodClose){
-              alert("Period close date can only be moved backwards to re-open periods.");
-              return;
-            }
-            savePeriodClose(newDate);
-            setTempPeriodClose(null);
-            alert(`Period closed up to ${newDate}`);
-          }}>Save Period Close</button>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...btnRed,flex:2}} onClick={()=>{
+              const newDate=tempPeriodClose;
+              if(newDate===null)return;
+              savePeriodClose(newDate);
+              setTempPeriodClose(null);
+              if(newDate)alert(`✅ Period locked up to ${newDate}. No entries allowed on or before this date.`);
+              else alert("Period lock cleared. All dates are now open.");
+            }}>Save</button>
+            {periodClose&&<button style={{...btnGhost,flex:1,fontSize:12}} onClick={()=>{
+              if(window.confirm("Clear period lock? All dates will be open again.")){
+                savePeriodClose("");setTempPeriodClose(null);
+              }
+            }}>Clear Lock</button>}
+          </div>
         </div>
+        {periodClose&&(
+          <div style={{background:T.accentLight,borderRadius:12,padding:"12px 14px",border:`1px solid ${T.accentMid}`}}>
+            <div style={{fontSize:11,color:T.accent,fontWeight:600}}>📋 How it works</div>
+            <div style={{fontSize:11,color:T.muted,marginTop:4,lineHeight:1.5}}>Any entry with a date on or before <strong>{periodClose}</strong> will be blocked. You will see an error when trying to add or edit such entries.</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1442,7 +1574,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
       <div style={{padding:16}}>
         {/* Stats row */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
-          {[{label:"Accounts",val:accounts.length,icon:"📒"},{label:"Contacts",val:contacts.length,icon:"👥"},{label:"Currency",val:"PKR",icon:"🏛️"}].map((s,i)=>(
+          {[{label:"Accounts",val:accounts.length,icon:"📒"},{label:"Contacts",val:contacts.length,icon:"👥"},{label:"Currency",val:primaryCurrency,icon:"💱"}].map((s,i)=>(
             <div key={i} style={{background:T.card,borderRadius:12,padding:"14px 8px",textAlign:"center",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:20,marginBottom:4}}>{s.icon}</div>
               <div style={{fontSize:15,fontWeight:800,color:T.text}}>{s.val}</div>
@@ -1455,8 +1587,10 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         {[
           {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
           {icon:"👥",label:"Manage Contacts",sub:"Customers & suppliers",action:()=>setScreen("contacts"),bg:T.redLight,color:T.red},
+          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
+          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
           {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
-          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.greenBg,color:T.green},
+          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
         ].map((item,i)=>(
           <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
@@ -1497,10 +1631,10 @@ function BankSlider({accounts,transactions,filterFrom,filterTo}){
           <div key={a.code} style={{minWidth:150,flexShrink:0,background:"linear-gradient(140deg,#1A3A6E,#0057B8)",borderRadius:16,padding:"14px 14px 16px",boxShadow:"0 4px 14px rgba(0,87,184,0.2)"}}>
             <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.2,marginBottom:2,textTransform:"uppercase"}}>{a.code}</div>
             <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.85)",marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</div>
-            <div style={{fontSize:20,fontWeight:900,color:a.bal>=0?"#4ade80":"#f87171",letterSpacing:-0.5}}>{a.bal>=0?"+":"−"}{fmt(Math.abs(a.bal))}</div>
-            <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",marginTop:4}}>
-              Closing balance
-              {a.period!==0&&<span style={{marginLeft:4,color:a.period>=0?"#4ade80":"#f87171"}}>({a.period>=0?"+":"−"}{fmt(Math.abs(a.period))} this period)</span>}
+            <div style={{fontSize:20,fontWeight:900,color:a.bal>=0?"#4ade80":"#f87171",letterSpacing:-0.5,marginBottom:6}}>{a.bal>=0?"+":"−"}{fmt(Math.abs(a.bal))}</div>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.4)"}}>
+              Movement&nbsp;
+              <span style={{color:a.period>=0?"#4ade80":"#f87171",fontWeight:700}}>{a.period>=0?"+":"−"}{fmt(Math.abs(a.period))}</span>
             </div>
           </div>
         ))}
@@ -1627,15 +1761,16 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   const[overviewTab,setOverviewTab]=useState("budget");
 
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo),[transactions,filterFrom,filterTo]);
-  const totalIncome=useMemo(()=>periodTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[periodTxns]);
-  const totalExpenses=useMemo(()=>periodTxns.filter(t=>getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0),[periodTxns]);
+  const activePeriodTxns=useMemo(()=>periodTxns.filter(t=>!t.reversedBy&&!t.reversalOf),[periodTxns]);
+  const totalIncome=useMemo(()=>activePeriodTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[activePeriodTxns]);
+  const totalExpenses=useMemo(()=>activePeriodTxns.filter(t=>getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0),[activePeriodTxns]);
   const net=totalIncome-totalExpenses;
 
   // Previous period for % change
   const periodMs=new Date(filterTo)-new Date(filterFrom);
   const prevTo=new Date(new Date(filterFrom)-1).toISOString().split("T")[0];
   const prevFrom=new Date(new Date(filterFrom)-periodMs-1).toISOString().split("T")[0];
-  const prevTxns=useMemo(()=>transactions.filter(t=>t.date>=prevFrom&&t.date<=prevTo),[transactions,prevFrom,prevTo]);
+  const prevTxns=useMemo(()=>transactions.filter(t=>t.date>=prevFrom&&t.date<=prevTo&&!t.reversedBy&&!t.reversalOf),[transactions,prevFrom,prevTo]);
   const prevIncome=useMemo(()=>prevTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[prevTxns]);
   const prevExpenses=useMemo(()=>prevTxns.filter(t=>getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0),[prevTxns]);
   const incomePct=prevIncome>0?Math.round(((totalIncome-prevIncome)/prevIncome)*100):null;
@@ -1650,7 +1785,7 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   const budgets=useMemo(()=>{try{return JSON.parse(localStorage.getItem(BKEY)||"{}")}catch{return{};}});
   const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
   const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
-  const totalActual=expAccounts.reduce((s,a)=>s+periodTxns.filter(t=>t.debitCode===a.code).reduce((ss,t)=>ss+t.amount,0),0);
+  const totalActual=expAccounts.reduce((s,a)=>s+activePeriodTxns.filter(t=>t.debitCode===a.code).reduce((ss,t)=>ss+t.amount,0),0);
   const budgetPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
 
   // Sinking funds
@@ -1767,7 +1902,7 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
               feat.sinkingFunds!==false&&{id:"sinking",label:"🎯 Sinking",nav:"SinkingFunds"},
               {id:"analytics",label:"📈 Analytics",nav:null}
             ].filter(Boolean).map(t=>(
-              <button key={t.id} onClick={()=>t.nav?onNavigate(t.nav):setOverviewTab(t.id==="analytics"?"analytics":overviewTab)} style={{flex:1,padding:"11px 4px",border:"none",background:overviewTab===t.id?T.accentLight:"#fff",color:overviewTab===t.id?T.accent:T.sub,fontSize:11,fontWeight:overviewTab===t.id?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:overviewTab===t.id?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s"}}>{t.label}</button>
+              <button key={t.id} onClick={()=>t.nav?onNavigate(t.nav):setOverviewTab("analytics")} style={{flex:1,padding:"11px 4px",border:"none",background:overviewTab===t.id?T.accentLight:"#fff",color:overviewTab===t.id?T.accent:T.sub,fontSize:11,fontWeight:overviewTab===t.id?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:overviewTab===t.id?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s"}}>{t.label}</button>
             ))}
           </div>
 
@@ -1804,8 +1939,8 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
               const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
               const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
               const f=`${y}-${m}-01`;const t=`${y}-${m}-${new Date(y,d.getMonth()+1,0).getDate()}`;
-              const inc=transactions.filter(x=>x.date>=f&&x.date<=t&&getSK(x.creditCode)==="3000").reduce((s,x)=>s+x.amount,0);
-              const exp=transactions.filter(x=>x.date>=f&&x.date<=t&&getSK(x.debitCode)==="4000").reduce((s,x)=>s+x.amount,0);
+              const inc=transactions.filter(x=>x.date>=f&&x.date<=t&&!x.reversedBy&&!x.reversalOf&&getSK(x.creditCode)==="3000").reduce((s,x)=>s+x.amount,0);
+              const exp=transactions.filter(x=>x.date>=f&&x.date<=t&&!x.reversedBy&&!x.reversalOf&&getSK(x.debitCode)==="4000").reduce((s,x)=>s+x.amount,0);
               months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
             }
             const maxV=Math.max(...months.flatMap(m=>[m.inc,m.exp]),1);
@@ -1950,66 +2085,59 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
           )}
         </div>
 
-        {/* Multi-line entry — first line has no ☰, extra lines have ☰ + description */}
+        {/* Multi-line entry — first line: no remove button. Extra lines: − remove, description, amount */}
         <div>
           {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
-            <div key={li} style={{background:T.bg,borderRadius:10,padding:"10px",marginBottom:6,border:`1px solid ${T.border}`}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:li>0?6:0}}>
-                {li>0&&<span style={{fontSize:9,color:T.muted,fontWeight:700,width:12}}>+{li}</span>}
-                <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            <div key={li} style={{background:T.bg,borderRadius:10,padding:"8px 10px",marginBottom:6,border:`1px solid ${T.border}`}}>
+              {/* Debit / Credit row + remove button for extra lines */}
+              <div style={{display:"flex",alignItems:"flex-end",gap:5}}>
+                <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
                   <div>
                     <div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Debit</div>
                     <AccDrop value={line.debitCode||""} onChange={v=>{
-                      if(li===0){setForm(p=>({...p,debitCode:v,contactId:""}));}
                       const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                       lines[li]={...lines[li],debitCode:v};
-                      setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode}));
+                      setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
                     }} accounts={accounts}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>
                     <AccDrop value={line.creditCode||""} onChange={v=>{
-                      if(li===0){setForm(p=>({...p,creditCode:v,contactId:""}));}
                       const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                       lines[li]={...lines[li],creditCode:v};
-                      setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode}));
+                      setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
                     }} accounts={accounts}/>
                   </div>
                 </div>
-                {/* ☰ only on extra lines (li > 0) */}
+                {/* − remove button only on extra lines */}
                 {li>0&&(
-                  <div style={{position:"relative",flexShrink:0}}>
-                    <button onClick={()=>setForm(p=>({...p,_lineMenu:p._lineMenu===li?null:li}))} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,fontSize:11,cursor:"pointer",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>☰</button>
-                    {form._lineMenu===li&&(
-                      <div style={{position:"absolute",right:0,top:28,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 6px 20px rgba(0,0,0,0.1)"}}>
-                        <div onClick={()=>{
-                          const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                          lines.splice(li+1,0,{debitCode:"",creditCode:"",description:""});
-                          setForm(p=>({...p,lines,_lineMenu:null}));
-                        }} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>+ Add line</div>
-                        <div onClick={()=>{
-                          const lines=[...(form.lines||[])];
-                          lines.splice(li,1);
-                          setForm(p=>({...p,lines,_lineMenu:null,debitCode:lines[0]?.debitCode||"",creditCode:lines[0]?.creditCode||""}));
-                        }} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>− Remove line</div>
-                      </div>
-                    )}
-                  </div>
+                  <button onClick={()=>{
+                    const lines=[...(form.lines||[])];
+                    lines.splice(li,1);
+                    setForm(p=>({...p,lines,_lineMenu:null}));
+                  }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:30,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
                 )}
               </div>
-              {/* Description for extra lines */}
+              {/* Description + Amount for extra lines */}
               {li>0&&(
-                <input placeholder={`Description for line ${li+1}`} value={line.description||""} onChange={e=>{
-                  const lines=[...(form.lines||[])];
-                  lines[li]={...lines[li],description:e.target.value};
-                  setForm(p=>({...p,lines}));
-                }} style={{...inpSm,fontSize:12,marginTop:2}}/>
+                <div style={{display:"flex",gap:5,marginTop:5}}>
+                  <input placeholder="Description" value={line.description||""} onChange={e=>{
+                    const lines=[...(form.lines||[])];
+                    lines[li]={...lines[li],description:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{...inp,fontSize:10,padding:"5px 8px",flex:2}}/>
+                  <input type="number" placeholder="Amount" value={line.amount||""} onChange={e=>{
+                    const lines=[...(form.lines||[])];
+                    lines[li]={...lines[li],amount:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{...inp,fontSize:10,padding:"5px 8px",flex:1}}/>
+                </div>
               )}
             </div>
           ))}
           {/* Add line button */}
           <button onClick={()=>{
-            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",description:""}];
+            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",description:"",amount:""}];
             setForm(p=>({...p,lines}));
           }} style={{fontSize:11,color:T.accent,background:T.accentLight,border:"none",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add line</button>
         </div>
@@ -2118,7 +2246,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   const curFrom=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
   const curTo=filterTo||now.toISOString().slice(0,10);
   const monthIncome=useMemo(()=>
-    transactions.filter(t=>t.date>=curFrom&&t.date<=curTo&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),
+    transactions.filter(t=>t.date>=curFrom&&t.date<=curTo&&!t.reversedBy&&!t.reversalOf&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),
   [transactions,curFrom,curTo]);
 
   // Last month saved — look at sinking fund transactions from last month
@@ -2285,7 +2413,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                       <button onClick={()=>setCardMenu(cardMenu===f.id?null:f.id)} style={{background:"none",border:"0.5px solid #d3d1c7",borderRadius:6,color:"#888780",fontSize:12,cursor:"pointer",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>•••</button>
                       {cardMenu===f.id&&(
                         <div style={{position:"absolute",right:0,top:28,background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:10,zIndex:100,minWidth:140,boxShadow:"0 6px 20px rgba(0,0,0,0.1)"}}>
-                          <div onClick={()=>openEdit(f)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:"0.5px solid #d3d1c7"}}>✏️ Rename</div>
+                          <div onClick={()=>openEdit(f)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:"0.5px solid #d3d1c7"}}>✏️ Edit</div>
                           <div onClick={()=>toggleFundInactive(f.id)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.orange,fontWeight:600,borderBottom:"0.5px solid #d3d1c7"}}>{f.inactive?"✅ Reactivate":"⏸ Inactive"}</div>
                           {(!f.saved||f.saved===0)?<div onClick={()=>deleteFund(f.id)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}>🗑️ Delete</div>:<div style={{padding:"10px 14px",fontSize:10,color:"#888780"}}>Has balance — no delete</div>}
                         </div>
@@ -2322,22 +2450,8 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
           })}
         </div>
 
-        {/* Inactive funds section */}
-        {funds.filter(f=>f.inactive).length>0&&(
-          <div style={{marginTop:16}}>
-            <div style={{fontSize:10,color:"#888780",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Inactive</div>
-            {funds.filter(f=>f.inactive).map(f=>(
-              <div key={f.id} style={{background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:10,padding:"10px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10,opacity:0.6}}>
-                <span style={{fontSize:16}}>{f.icon}</span>
-                <span style={{fontSize:12,flex:1,color:"#888780",textDecoration:"line-through"}}>{f.name}</span>
-                <button onClick={()=>toggleFundInactive(f.id)} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Reactivate</button>
-              </div>
-            ))}
-          </div>
-        )}
-
         {!activeFunds.length&&!showForm&&(
-          <div style={{textAlign:"center",color:"#888780",padding:40,fontSize:13}}>No funds yet. Tap "+ Fund" to add one.</div>
+          <div style={{textAlign:"center",color:"#888780",padding:40,fontSize:13}}>No funds yet. Tap "+ Add" to create one.</div>
         )}
       </div>
     </div>
@@ -2369,7 +2483,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
 function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod}){
-  const[rTab,setRTab]=useState("resultat");
+  const[rTab,setRTab]=useState("analytics");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
   const[selAcc,setSelAcc]=useState("");
@@ -2378,8 +2492,9 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   useEffect(()=>{setRFrom(filterFrom);setRTo(filterTo);},[filterFrom,filterTo]);
 
   const rTxns=useMemo(()=>transactions.filter(t=>t.date>=rFrom&&t.date<=rTo),[transactions,rFrom,rTo]);
-  const income=useMemo(()=>{const m={};rTxns.filter(t=>getSK(t.creditCode)==="3000").forEach(t=>{m[t.creditCode]=(m[t.creditCode]||0)+t.amount;});return m;},[rTxns]);
-  const expenses=useMemo(()=>{const m={};rTxns.filter(t=>getSK(t.debitCode)==="4000").forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});return m;},[rTxns]);
+  const activeRTxns=useMemo(()=>rTxns.filter(t=>!t.reversedBy&&!t.reversalOf),[rTxns]);
+  const income=useMemo(()=>{const m={};activeRTxns.filter(t=>getSK(t.creditCode)==="3000").forEach(t=>{m[t.creditCode]=(m[t.creditCode]||0)+t.amount;});return m;},[activeRTxns]);
+  const expenses=useMemo(()=>{const m={};activeRTxns.filter(t=>getSK(t.debitCode)==="4000").forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});return m;},[activeRTxns]);
   const totalInc=Object.values(income).reduce((s,v)=>s+v,0);
   const totalExp=Object.values(expenses).reduce((s,v)=>s+v,0);
 
@@ -2551,7 +2666,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
     <div>
       {/* Tab switcher */}
       <div style={{display:"flex",gap:3,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
-        {[["resultat","📊 P&L"],["balanse","⚖️ Balanse"],["account","📒 Ledger"],["analytics","📈 Analytics"]].map(([id,label])=>(
+        {[["balanse","⚖️ Balanse"],["analytics","📈 Analytics"]].map(([id,label])=>(
           <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 2px",fontSize:10}}>{label}</button>
         ))}
       </div>
@@ -2639,15 +2754,15 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       )}
 
       {rTab==="analytics"&&(()=>{
-        // Top expenses for period
+        // Top expenses for period — exclude reversed
         const expMap={};
-        transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&getSK(t.debitCode)==="4000").forEach(t=>{
+        transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&getSK(t.debitCode)==="4000").forEach(t=>{
           expMap[t.debitCode]=(expMap[t.debitCode]||0)+t.amount;
         });
         const topExp=Object.entries(expMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
         const maxExp=topExp.length?topExp[0][1]:1;
 
-        // Month over month — last 6 months
+        // Month over month — last 6 months, exclude reversed
         const months=[];
         for(let i=5;i>=0;i--){
           const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
@@ -2655,14 +2770,74 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
           const from=`${y}-${m}-01`;
           const last=new Date(y,d.getMonth()+1,0).getDate();
           const to=`${y}-${m}-${String(last).padStart(2,"0")}`;
-          const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
-          const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0);
+          const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
+          const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&getSK(t.debitCode)==="4000").reduce((s,t)=>s+t.amount,0);
           months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
         }
         const maxBar=Math.max(...months.map(m=>Math.max(m.inc,m.exp)),1);
 
+        // Sinking funds for suggestions
+        const sfFunds2=(() => {try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}})();
+        const budgets2=(() => {try{return JSON.parse(localStorage.getItem("rr_budgets")||"{}");}catch{return{};}})();
+        const totalInc2=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
+        const totalExp2=Object.values(expMap).reduce((s,v)=>s+v,0);
+        const expRatio=totalInc2>0?(totalExp2/totalInc2)*100:0;
+
+        // Smart suggestions — only show if there is an issue
+        const suggestions=[];
+        if(expRatio>80&&totalInc2>0) suggestions.push({icon:"⚠️",color:"#a32d2d",bg:"#fcebeb",text:`Expenses are ${Math.round(expRatio)}% of income this period — leaving little margin. Consider reducing top spending categories.`});
+        if(months.length>=2){
+          const last2=months[months.length-1];const prev2=months[months.length-2];
+          if(prev2.exp>0&&last2.exp>prev2.exp*1.2) suggestions.push({icon:"📈",color:"#854f0b",bg:"#faeeda",text:`Expenses rose ${Math.round(((last2.exp-prev2.exp)/prev2.exp)*100)}% last month vs the month before. Review new or unusual charges.`});
+          if(prev2.inc>0&&last2.inc<prev2.inc*0.8) suggestions.push({icon:"📉",color:"#a32d2d",bg:"#fcebeb",text:`Income dropped ${Math.round(((prev2.inc-last2.inc)/prev2.inc)*100)}% last month. Investigate if receivables are delayed.`});
+        }
+        if(topExp.length&&totalInc2>0&&topExp[0][1]/totalInc2>0.4) suggestions.push({icon:"💡",color:"#854f0b",bg:"#faeeda",text:`"${getName(topExp[0][0])}" alone accounts for ${Math.round((topExp[0][1]/totalInc2)*100)}% of income — highest single expense category.`});
+        const sfAtRisk=sfFunds2.filter(f=>{if(!f.months||f.months<=0)return false;const needed=Math.ceil((f.goal-(f.saved||0))/f.months);const totalMonthly2=sfFunds2.reduce((s,x)=>{if(!x.months||x.months<=0)return s;return s+Math.ceil((x.goal-(x.saved||0))/x.months);},0);return needed>totalMonthly2*0.5;});
+        if(sfAtRisk.length) suggestions.push({icon:"🎯",color:"#7c3aed",bg:"#ede9fe",text:`${sfAtRisk.length} sinking fund${sfAtRisk.length>1?"s":""} (${sfAtRisk.map(f=>f.name).join(", ")}) behind schedule. Increase monthly contributions.`});
+        const overBudget=Object.entries(budgets2).filter(([code,b])=>{if(!b)return false;const act=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&t.debitCode===code).reduce((s,t)=>s+t.amount,0);return act>b;});
+        if(overBudget.length) suggestions.push({icon:"💰",color:"#a32d2d",bg:"#fcebeb",text:`${overBudget.length} budget${overBudget.length>1?"s are":" is"} over limit: ${overBudget.map(([c])=>getName(c)).join(", ")}.`});
+
         return(
           <div>
+            {/* Overall expense graph */}
+            <Card style={{marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Overall Income & Expenses</div>
+              <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Last 6 months</div>
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",height:100,marginBottom:8}}>
+                {months.map((m,i)=>(
+                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:80}}>
+                      <div style={{flex:1,background:T.accent,borderRadius:"3px 3px 0 0",height:`${Math.round((m.inc/maxBar)*80)}px`,minHeight:m.inc?2:0,transition:"height 0.3s"}}/>
+                      <div style={{flex:1,background:T.orange,borderRadius:"3px 3px 0 0",height:`${Math.round((m.exp/maxBar)*80)}px`,minHeight:m.exp?2:0,transition:"height 0.3s"}}/>
+                    </div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:600}}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:14,justifyContent:"center",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.accent,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Income</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.orange,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Expenses</span></div>
+              </div>
+              {/* MoM table */}
+              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+                {months.slice(-3).map((m,i,arr)=>{
+                  const prev=arr[i-1];
+                  const chg=prev&&prev.net!==0?Math.round(((m.net-prev.net)/Math.abs(prev.net))*100):null;
+                  return(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                      <span style={{fontSize:12,fontWeight:600,color:T.sub}}>{m.label}</span>
+                      <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                        <span style={{fontSize:11,color:T.green}}>+{fmtRs(m.inc)}</span>
+                        <span style={{fontSize:11,color:T.orange}}>-{fmtRs(m.exp)}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:m.net>=0?T.green:T.red}}>{signRs(m.net)}</span>
+                        {chg!==null&&<span style={{fontSize:10,fontWeight:700,color:chg>=0?T.green:T.red,background:chg>=0?T.greenBg:T.redLight,borderRadius:6,padding:"1px 6px"}}>{chg>=0?"+":""}{chg}%</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
             {/* Top Expenses */}
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Top Expenses — {rFrom.slice(0,7)}</div>
@@ -2681,43 +2856,25 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
               ):<div style={{textAlign:"center",color:T.muted,padding:20,fontSize:13}}>No expense data for this period</div>}
             </Card>
 
-            {/* Month over Month */}
-            <Card>
-              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Month over Month — Last 6 Months</div>
-              <div style={{display:"flex",gap:6,alignItems:"flex-end",height:100,marginBottom:8}}>
-                {months.map((m,i)=>(
-                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                    <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:80}}>
-                      <div style={{flex:1,background:T.accent,borderRadius:"3px 3px 0 0",height:`${Math.round((m.inc/maxBar)*80)}px`,minHeight:m.inc?2:0,transition:"height 0.3s"}}/>
-                      <div style={{flex:1,background:T.orange,borderRadius:"3px 3px 0 0",height:`${Math.round((m.exp/maxBar)*80)}px`,minHeight:m.exp?2:0,transition:"height 0.3s"}}/>
-                    </div>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:600}}>{m.label}</div>
+            {/* Smart suggestions — only shown if issues exist */}
+            {suggestions.length>0&&(
+              <Card>
+                <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:12}}>⚡ Insights & Alerts</div>
+                {suggestions.map((s,i)=>(
+                  <div key={i} style={{background:s.bg,borderRadius:10,padding:"10px 12px",marginBottom:8,display:"flex",gap:10,alignItems:"flex-start",border:`1px solid ${s.color}22`}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{s.icon}</span>
+                    <span style={{fontSize:12,color:s.color,lineHeight:1.5}}>{s.text}</span>
                   </div>
                 ))}
+              </Card>
+            )}
+            {suggestions.length===0&&(
+              <div style={{background:T.greenBg,borderRadius:12,padding:"14px 16px",textAlign:"center",border:`1px solid ${T.green}33`}}>
+                <div style={{fontSize:20,marginBottom:6}}>✅</div>
+                <div style={{fontSize:13,fontWeight:700,color:T.green}}>Looking good!</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:3}}>No issues detected for this period.</div>
               </div>
-              <div style={{display:"flex",gap:14,justifyContent:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.accent,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Income</span></div>
-                <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,background:T.orange,borderRadius:2}}/><span style={{fontSize:10,color:T.sub}}>Expenses</span></div>
-              </div>
-              {/* MoM table */}
-              <div style={{marginTop:14,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
-                {months.slice(-3).map((m,i,arr)=>{
-                  const prev=arr[i-1];
-                  const chg=prev&&prev.net!==0?Math.round(((m.net-prev.net)/Math.abs(prev.net))*100):null;
-                  return(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
-                      <span style={{fontSize:12,fontWeight:600,color:T.sub}}>{m.label}</span>
-                      <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                        <span style={{fontSize:11,color:T.green}}>+{fmtRs(m.inc)}</span>
-                        <span style={{fontSize:11,color:T.orange}}>-{fmtRs(m.exp)}</span>
-                        <span style={{fontSize:12,fontWeight:800,color:m.net>=0?T.green:T.red}}>{signRs(m.net)}</span>
-                        {chg!==null&&<span style={{fontSize:10,fontWeight:700,color:chg>=0?T.green:T.red,background:chg>=0?T.greenBg:T.redLight,borderRadius:6,padding:"1px 6px"}}>{chg>=0?"+":""}{chg}%</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
+            )}
           </div>
         );
       })()}
@@ -2927,8 +3084,8 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const lmTo=new Date(lastMonthDate.getFullYear(),lastMonthDate.getMonth()+1,0).toISOString().slice(0,10);
 
   const expAccounts=accounts.filter(a=>getSK(a.code)==="4000");
-  const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=bFrom&&t.date<=bTo),[transactions,bFrom,bTo]);
-  const lastMonthTxns=useMemo(()=>transactions.filter(t=>t.date>=lmFrom&&t.date<=lmTo),[transactions,lmFrom,lmTo]);
+  const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=bFrom&&t.date<=bTo&&!t.reversedBy&&!t.reversalOf),[transactions,bFrom,bTo]);
+  const lastMonthTxns=useMemo(()=>transactions.filter(t=>t.date>=lmFrom&&t.date<=lmTo&&!t.reversedBy&&!t.reversalOf),[transactions,lmFrom,lmTo]);
   const getActual=(code,txns)=>txns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
 
   // Current month income for % calculation
@@ -3119,12 +3276,12 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
         {!expAccounts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>Add expense accounts (4000s) first.</div>}
         {expAccounts.length>0&&expAccounts.filter(a=>budgets[a.code]>0).length===0&&(
           <div style={{textAlign:"center",color:"#888780",padding:24,fontSize:13,background:"#fff",borderRadius:12,border:"0.5px solid #d3d1c7"}}>
-            No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Go to Reports → Account and add budgets to your expense accounts.</span>
+            No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap ••• on a card below to set a budget for any expense account.</span>
           </div>
         )}
         {expAccounts.filter(a=>!budgets[a.code]).length>0&&expAccounts.filter(a=>budgets[a.code]>0).length>0&&(
-          <div style={{fontSize:10,color:"#888780",textAlign:"center",marginTop:8}}>
-            {expAccounts.filter(a=>!budgets[a.code]).length} accounts without budget — tap ••• on any card to set one
+          <div style={{fontSize:10,color:"#888780",textAlign:"center",marginTop:10,padding:"8px 14px",background:"#fff",borderRadius:10,border:"0.5px solid #d3d1c7"}}>
+            + {expAccounts.filter(a=>!budgets[a.code]).length} expense accounts without a budget — not shown
           </div>
         )}
       </div>
@@ -3134,15 +3291,6 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
 
 // ─── Profile Screen ────────────────────────────────────────────────────────────
 function ProfileScreen({onSignOut,onNavigate}){
-  const CURRENCIES=[
-    {code:"PKR",name:"Pakistani Rupee",symbol:"Rs"},
-    {code:"USD",name:"US Dollar",symbol:"$"},
-    {code:"EUR",name:"Euro",symbol:"€"},
-    {code:"GBP",name:"British Pound",symbol:"£"},
-    {code:"AED",name:"UAE Dirham",symbol:"د.إ"},
-    {code:"SAR",name:"Saudi Riyal",symbol:"﷼"},
-    {code:"NOK",name:"Norwegian Krone",symbol:"kr"},
-  ];
   const[profileData,setProfileData]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_profile")||"{}")}catch{return{};}});
   const[editName,setEditName]=useState(false);
   const[tempName,setTempName]=useState("");
@@ -3195,20 +3343,11 @@ function ProfileScreen({onSignOut,onNavigate}){
         </div>
       </div>
 
-      {/* Currency */}
-      <div style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`}}>
-        <div style={{fontSize:10,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:12}}>Currencies</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {CURRENCIES.map(c=>{
-            const active=(profileData.currencies||["PKR"]).includes(c.code);
-            return(
-              <button key={c.code} onClick={()=>{const cur=profileData.currencies||["PKR"];const next=active&&cur.length>1?cur.filter(x=>x!==c.code):[...new Set([...cur,c.code])];saveProfile({currencies:next});}} style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${active?T.accent:T.border}`,background:active?T.redLight:"#fff",color:active?T.red:T.sub,fontSize:11,fontWeight:active?700:400,cursor:"pointer",fontFamily:"inherit"}}>
-                {c.symbol} {c.code}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{fontSize:10,color:T.muted,marginTop:8}}>Tap to enable/disable. First enabled is primary.</div>
+      {/* Settings shortcut */}
+      <div onClick={()=>onNavigate&&onNavigate("Settings")} style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:20}}>⚙️</span>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>Settings</div><div style={{fontSize:11,color:T.muted}}>Currency, accounts, backup & more</div></div>
+        <span style={{fontSize:16,color:T.muted}}>›</span>
       </div>
 
       {/* Admin Panel */}
@@ -3416,6 +3555,9 @@ function AdminPanel({onBack,profiles=[]}){
   const[userFeats,setUserFeatsState]=useState(()=>{
     try{return JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}")}catch{return{};}
   });
+  const[deactivated,setDeactivated]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("rr_deactivated")||"{}")}catch{return{};}
+  });
 
   const toggleGlobal=(id)=>{
     const n={...features,[id]:features[id]===false?true:false};
@@ -3428,6 +3570,11 @@ function AdminPanel({onBack,profiles=[]}){
     const n={...userFeats,[userId]:{...cur,[featureId]:newVal}};
     setUserFeatsState(n);
     localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
+  };
+  const toggleDeactivate=(userId)=>{
+    const n={...deactivated,[userId]:!deactivated[userId]};
+    setDeactivated(n);
+    localStorage.setItem("rr_deactivated",JSON.stringify(n));
   };
   const isGlobalOn=(id)=>features[id]!==false;
   const isUserOn=(userId,id)=>{
@@ -3443,6 +3590,79 @@ function AdminPanel({onBack,profiles=[]}){
     </div>
   );
 
+  // ── User Detail Screen ──
+  if(selUser){
+    const p=selUser;
+    const isDeactivated=!!deactivated[p.id];
+    return(
+      <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+        <BackHeader title={p.display_name||p.email?.split("@")[0]||"User"} sub="USER DETAIL · ADMIN" onBack={()=>setSelUser(null)}/>
+        <div style={{padding:16}}>
+          {/* User info card */}
+          <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+              <div style={{width:52,height:52,borderRadius:"50%",background:isDeactivated?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:800}}>
+                {isDeactivated?"🚫":`#${(profiles.findIndex(x=>x.id===p.id)+1)||"?"}`}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:T.text}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
+                <div style={{fontSize:11,color:T.muted}}>{p.email}</div>
+                <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+                  {isDeactivated&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}
+                  {p.is_admin&&<span style={{fontSize:10,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800}}>ADMIN</span>}
+                </div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[
+                {label:"User ID",val:p.id?.slice(0,12)+"..."},
+                {label:"Joined",val:p.created_at?.slice(0,10)||"—"},
+                {label:"Plan",val:p.subscription||"Free"},
+                {label:"Status",val:isDeactivated?"Deactivated":p.status||"Active"},
+              ].map((info,i)=>(
+                <div key={i} style={{background:T.bg,borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{info.label}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:T.text}}>{info.val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Deactivate / Reactivate */}
+          <div style={{background:isDeactivated?"#fff8f8":T.card,borderRadius:14,border:`1px solid ${isDeactivated?T.red:T.border}`,padding:16,marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:700,color:isDeactivated?T.red:T.text,marginBottom:4}}>{isDeactivated?"Account Deactivated":"Account Active"}</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:12,lineHeight:1.6}}>
+              {isDeactivated?"User can log in and view basic data, but cannot make new entries or use any features. Only support access.":"Deactivate if user has not paid. They will lose feature access but can still log in and contact support."}
+            </div>
+            <button onClick={()=>toggleDeactivate(p.id)} style={{...isDeactivated?{...btnRed,background:T.green,borderColor:T.green}:{background:"#fee2e2",color:T.red,border:`1px solid ${T.red}`,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"},width:"100%"}}>
+              {isDeactivated?"✅ Reactivate Account":"🚫 Deactivate Account"}
+            </button>
+          </div>
+
+          {/* Feature toggles */}
+          <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,opacity:isDeactivated?0.5:1}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:2}}>Feature Access</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Toggle features for this user only. Global off overrides all.</div>
+            {ADMIN_FEATURES.map(f=>{
+              const globalOn=isGlobalOn(f.id);
+              const userOn=isUserOn(p.id,f.id);
+              return(
+                <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,opacity:globalOn?1:0.4}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{f.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,color:T.text,fontWeight:600}}>{f.label}</div>
+                    {!globalOn&&<div style={{fontSize:10,color:T.red,fontWeight:600}}>Globally disabled</div>}
+                  </div>
+                  <Toggle on={userOn} onClick={()=>toggleUser(p.id,f.id)} disabled={!globalOn||isDeactivated}/>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       <BackHeader title="Admin Panel" sub="ADMIN ONLY · FEATURE CONTROL" onBack={onBack}/>
@@ -3456,7 +3676,7 @@ function AdminPanel({onBack,profiles=[]}){
         {tab==="global"&&(
           <>
             <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`}}>
-              <div style={{fontSize:12,color:T.accent,fontWeight:600}}>Global toggles apply to all users. Per-user overrides below.</div>
+              <div style={{fontSize:12,color:T.accent,fontWeight:600}}>Global toggles apply to all users. Per-user overrides in the Users tab.</div>
             </div>
             {ADMIN_FEATURES.map(f=>(
               <div key={f.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
@@ -3472,65 +3692,30 @@ function AdminPanel({onBack,profiles=[]}){
         )}
         {tab==="users"&&(
           <>
-            {/* Search box */}
             <div style={{position:"relative",marginBottom:12}}>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
               <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
             </div>
-
             {filteredProfiles.length?(
-              <>
-                {/* User cards */}
-                <div style={{marginBottom:12}}>
-                  {filteredProfiles.map(p=>(
-                    <div key={p.id} onClick={()=>setSelUser(selUser===p.id?null:p.id)} style={{background:selUser===p.id?T.accentLight:T.card,borderRadius:12,border:`1.5px solid ${selUser===p.id?T.accent:T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:800,flexShrink:0}}>
-                          {(p.display_name||p.email||"?")[0].toUpperCase()}
-                        </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
-                          <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
-                        </div>
-                        {p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
-                        <span style={{fontSize:14,color:T.muted}}>{selUser===p.id?"▲":"▼"}</span>
+              <div style={{marginBottom:12}}>
+                {filteredProfiles.map((p,idx)=>{
+                  const isDeact=!!deactivated[p.id];
+                  return(
+                    <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:`1.5px solid ${isDeact?T.red:T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:36,height:36,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800,flexShrink:0}}>
+                        {isDeact?"🚫":`#${idx+1}`}
                       </div>
-                      {/* Expanded user info */}
-                      {selUser===p.id&&(
-                        <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:12}}>
-                            {[
-                              {label:"User ID",val:p.id?.slice(0,8)+"..."},
-                              {label:"Joined",val:p.created_at?.slice(0,10)||"—"},
-                              {label:"Plan",val:p.subscription||"Free"},
-                              {label:"Status",val:p.status||"Active"},
-                            ].map((info,i)=>(
-                              <div key={i} style={{background:"rgba(255,255,255,0.6)",borderRadius:8,padding:"8px 10px"}}>
-                                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{info.label}</div>
-                                <div style={{fontSize:12,fontWeight:600,color:T.text}}>{info.val}</div>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Feature toggles for this user */}
-                          <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Feature Access</div>
-                          {ADMIN_FEATURES.map(f=>{
-                            const globalOn=isGlobalOn(f.id);
-                            const userOn=isUserOn(p.id,f.id);
-                            return(
-                              <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,opacity:globalOn?1:0.4}}>
-                                <span style={{fontSize:14}}>{f.icon}</span>
-                                <span style={{fontSize:12,color:T.text,flex:1}}>{f.label}</span>
-                                {!globalOn&&<span style={{fontSize:9,color:T.red,fontWeight:600}}>Global OFF</span>}
-                                <Toggle on={userOn} onClick={()=>toggleUser(p.id,f.id)} disabled={!globalOn}/>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
+                      </div>
+                      {isDeact&&<span style={{fontSize:9,background:"#fee2e2",color:T.red,padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>DEACTIVATED</span>}
+                      {p.is_admin&&!isDeact&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
+                      <span style={{fontSize:16,color:T.muted}}>›</span>
                     </div>
-                  ))}
-                </div>
-              </>
+                  );
+                })}
+              </div>
             ):(
               <div style={{fontSize:12,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px"}}>
                 {search?"No users match your search.":"No other users found. Users appear here after they sign in."}
@@ -3542,6 +3727,7 @@ function AdminPanel({onBack,profiles=[]}){
     </div>
   );
 }
+
 
 const MENU=[
   {id:"Dashboard",icon:"🏠",label:"Home"},
@@ -3714,7 +3900,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   };
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
@@ -3871,6 +4057,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Accounts"&&(
           <div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"0 14px",marginBottom:8}}>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,minWidth:36,textAlign:"center"}}>Code</div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Description</div>
+              </div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Closing</div>
+            </div>
             {Object.entries(SERIES).map(([key,s])=>{
               const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
               if(!grp.length)return null;
@@ -3880,7 +4073,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   <span style={{fontSize:11,fontWeight:800,color:s.color,textTransform:"uppercase",letterSpacing:0.8}}>{s.name}</span>
                 </div>
                 {grp.map(a=>{
-                  // Opening balance = all transactions BEFORE filterFrom
                   const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{
                     if(t.debitCode===a.code)return sum+t.amount;
                     if(t.creditCode===a.code)return sum-t.amount;
@@ -3910,7 +4102,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                     </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:13,fontWeight:800,color:closingBal>=0?T.green:T.red}}>{closingBal>=0?"+":"−"}{fmt(Math.abs(closingBal))}</div>
-                      <div style={{fontSize:9,color:T.muted}}>closing</div>
                     </div>
                   </div>
                 );})}
