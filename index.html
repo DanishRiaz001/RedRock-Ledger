@@ -347,6 +347,26 @@ const getSK=(code)=>{
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
+// ─── useSaveFlash hook & SaveFlashButton ────────────────────────────────────
+function useSaveFlash(){
+  const[saved,setSaved]=React.useState(false);
+  const flash=React.useCallback(()=>{setSaved(true);setTimeout(()=>setSaved(false),1800);},[]);
+  return[saved,flash];
+}
+function SaveFlashButton({onClick,label,style={}}){
+  const[saved,setSaved]=React.useState(false);
+  const handle=()=>{
+    if(onClick)onClick();
+    setSaved(true);setTimeout(()=>setSaved(false),1800);
+  };
+  return(
+    <button onClick={handle} style={{...btnRed,...style,background:saved?"#059669":T.accent,transition:"background 0.25s",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+      {saved&&<span style={{fontSize:14}}>✓</span>}
+      {saved?"Saved!":label}
+    </button>
+  );
+}
+
 const sign=(n)=>(n>=0?"+":"−")+fmt(n);
 const signRs=(n)=>(n>=0?"+":"−")+fmtRs(n);
 
@@ -1498,7 +1518,7 @@ function AccountPlanScreen({accounts,onSave,onBack}){
       <div style={{padding:16}}>
         <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:12}}/>
         <button style={{...btnRed,marginBottom:14}} onClick={()=>setShowNew(s=>!s)}>{showNew?"✕ Cancel":"+ New Account"}</button>
-        {showNew&&<Card style={{marginBottom:14}}><SL>New Account</SL><div style={{display:"flex",flexDirection:"column",gap:10}}><input placeholder="Code e.g. 4005" value={newAcc.code} onChange={e=>setNewAcc(p=>({...p,code:e.target.value}))} style={inp}/><input placeholder="Name e.g. Office Supplies" value={newAcc.name} onChange={e=>setNewAcc(p=>({...p,name:e.target.value}))} style={inp}/><div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px",lineHeight:1.7}}>1000s=Assets · 1500=AR · 1900s=Bank · 2000s=Equity · 2400=AP · 3000s=Income · 4000s=Expenses</div><button style={btnRed} onClick={()=>{if(!newAcc.code||!newAcc.name)return;const updated=[...list,{...newAcc}];setList(updated);onSave(updated);setNewAcc({code:"",name:""});setShowNew(false);}}>Add Account</button></div></Card>}
+        {showNew&&<Card style={{marginBottom:14}}><SL>New Account</SL><div style={{display:"flex",flexDirection:"column",gap:10}}><input placeholder="Code e.g. 4005" value={newAcc.code} onChange={e=>setNewAcc(p=>({...p,code:e.target.value}))} style={inp}/><input placeholder="Name e.g. Office Supplies" value={newAcc.name} onChange={e=>setNewAcc(p=>({...p,name:e.target.value}))} style={inp}/><div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px",lineHeight:1.7}}>1000s=Assets · 1500=AR · 1900s=Bank · 2000s=Equity · 2400=AP · 3000s=Income · 4000s=Expenses</div><SaveFlashButton onClick={()=>{if(!newAcc.code||!newAcc.name)return;const updated=[...list,{...newAcc}];setList(updated);onSave(updated);setNewAcc({code:"",name:""});setShowNew(false);}} label="Add Account"/></div></Card>}
         {Object.entries(SERIES).map(([key,s])=>{
           const grp=filtered.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
           if(!grp.length)return null;
@@ -1509,7 +1529,7 @@ function AccountPlanScreen({accounts,onSave,onBack}){
                 {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}><input value={list[ri].code} onChange={e=>{const n=[...list];n[ri]={...n[ri],code:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/><input value={list[ri].name} onChange={e=>{const n=[...list];n[ri]={...n[ri],name:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/></div>
                   <div style={{display:"flex",gap:8}}>
-                    <button style={{...btnRed,flex:2,padding:"8px"}} onClick={()=>{onSave(list);setEditingIdx(null);}}>✓ Done</button>
+                    <SaveFlashButton onClick={()=>{onSave(list);setEditingIdx(null);}} style={{flex:2,padding:"8px"}} label="✓ Done"/>
                     <button style={{...btnGhost,flex:1,padding:"8px"}} onClick={()=>{setList(accounts.map(a=>({...a})));setEditingIdx(null);}}>Cancel</button>
                   </div>
                 </div>):(
@@ -1593,31 +1613,133 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     </div>
   );
 
-  if(screen==="sinkingfunds")return(
-    <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Sinking Funds" sub="SETTINGS · MANAGE" onBack={()=>setScreen(null)}/>
-      <div style={{padding:16}}>
-        <div style={{fontSize:11,color:"#888780",marginBottom:12}}>Manage all funds including inactive ones. Inactive funds are hidden from the main Sinking Funds screen.</div>
-        {(sinkingFunds||[]).map(f=>{
-          const pct=f.goal>0?Math.min(100,Math.round(((f.saved||0)/f.goal)*100)):0;
-          return(
-            <div key={f.id} style={{background:"#fff",border:`1px solid ${f.inactive?"#d3d1c7":"#d3d1c7"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,opacity:f.inactive?0.65:1}}>
-              <span style={{fontSize:20}}>{f.icon}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:f.inactive?"#888780":"#1a1a18",textDecoration:f.inactive?"line-through":"none"}}>{f.name}</div>
-                <div style={{fontSize:11,color:"#888780"}}>{fmt(f.saved||0)} / {fmt(f.goal)} · {pct}%</div>
-              </div>
-              {f.inactive&&<span style={{fontSize:9,fontWeight:800,color:"#888780",background:"#f1efe8",borderRadius:5,padding:"2px 7px",flexShrink:0}}>INACTIVE</span>}
-              <button onClick={()=>{const updated=(sinkingFunds||[]).map(x=>x.id===f.id?{...x,inactive:!x.inactive}:x);saveSinkingFunds(updated);}} style={{fontSize:11,background:f.inactive?T.accentLight:"#faeeda",color:f.inactive?T.accent:"#854f0b",border:"none",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontWeight:600,fontFamily:"inherit",flexShrink:0}}>
-                {f.inactive?"Reactivate":"Make Inactive"}
-              </button>
+  if(screen==="sinkingfunds"){
+    const SFSettingsInner=()=>{
+      const SF_COLORS=["#00875A","#0057B8","#7C3AED","#B45309","#0D7377","#1D4ED8","#DC2626","#D97706"];
+      const SF_ICONS=["🛡️","🚗","✈️","🏠","📚","💍","🎯","🏖️","🏥","💻","🎓","💰","🐾","🎸","🏋️"];
+      const emptyForm={name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""};
+      const[sfForm,setSfForm]=useState(emptyForm);
+      const[sfEditId,setSfEditId]=useState(null);
+      const[sfShowForm,setSfShowForm]=useState(false);
+      const[sfSaved,setSfSaved]=React.useState(false);
+      const openSfNew=()=>{setSfForm(emptyForm);setSfEditId(null);setSfShowForm(true);};
+      const openSfEdit=f=>{setSfForm({name:f.name,goal:String(f.goal),saved:String(f.saved||0),icon:f.icon||"🎯",color:f.color||"#0057B8",months:String(f.months||"")});setSfEditId(f.id);setSfShowForm(true);};
+      const cancelSf=()=>{setSfShowForm(false);setSfEditId(null);setSfForm(emptyForm);};
+      const saveSf=()=>{
+        if(!sfForm.name.trim()||!parseFloat(sfForm.goal))return;
+        const list=sinkingFunds||[];
+        if(sfEditId){
+          const updated=list.map(f=>f.id===sfEditId?{...f,name:sfForm.name,goal:parseFloat(sfForm.goal),saved:parseFloat(sfForm.saved)||0,icon:sfForm.icon,color:sfForm.color,months:sfForm.months?parseInt(sfForm.months):null}:f);
+          saveSinkingFunds(updated);
+        } else {
+          const id="SF"+String(list.length+1).padStart(3,"0");
+          saveSinkingFunds([...list,{id,name:sfForm.name,goal:parseFloat(sfForm.goal),saved:parseFloat(sfForm.saved)||0,icon:sfForm.icon,color:sfForm.color,months:sfForm.months?parseInt(sfForm.months):null}]);
+        }
+        cancelSf();
+        setSfSaved(true);setTimeout(()=>setSfSaved(false),1800);
+      };
+      const deleteSf=id=>{
+        const f=(sinkingFunds||[]).find(x=>x.id===id);
+        if(f&&(f.saved||0)>0){alert("Cannot delete a fund with saved balance. Make it inactive or rename it instead.");return;}
+        if(!window.confirm("Delete this fund?"))return;
+        saveSinkingFunds((sinkingFunds||[]).filter(x=>x.id!==id));
+      };
+      return(
+        <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+          <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
+            <button onClick={()=>setScreen(null)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Settings</div>
+              <div style={{fontSize:17,fontWeight:700,color:"#fff"}}>Sinking Funds</div>
             </div>
-          );
-        })}
-        {!(sinkingFunds||[]).length&&<div style={{textAlign:"center",color:"#888780",padding:30,fontSize:13}}>No sinking funds yet.</div>}
-      </div>
-    </div>
-  );
+            <button onClick={openSfNew} style={{background:"rgba(255,255,255,0.15)",border:"0.5px solid rgba(255,255,255,0.3)",borderRadius:9,color:"#fff",cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ Add</button>
+          </div>
+          <div style={{padding:16}}>
+            {/* Add / Edit Form */}
+            {sfShowForm&&(
+              <div style={{background:"#fff",borderRadius:14,border:`1.5px solid ${T.accent}`,padding:"14px 16px",marginBottom:14,boxShadow:"0 4px 16px rgba(13,115,119,0.12)"}}>
+                <div style={{fontSize:12,fontWeight:800,color:T.accent,marginBottom:12,textTransform:"uppercase",letterSpacing:0.8}}>{sfEditId?"✏️ Edit Fund":"➕ New Fund"}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {/* Icon picker */}
+                  <div>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Icon</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {SF_ICONS.map(ic=>(
+                        <button key={ic} onClick={()=>setSfForm(p=>({...p,icon:ic}))} style={{fontSize:18,background:sfForm.icon===ic?T.accentLight:"#f1efe8",border:sfForm.icon===ic?`2px solid ${T.accent}`:"2px solid transparent",borderRadius:8,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Color picker */}
+                  <div>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Color</div>
+                    <div style={{display:"flex",gap:8}}>
+                      {SF_COLORS.map(c=>(
+                        <button key={c} onClick={()=>setSfForm(p=>({...p,color:c}))} style={{width:26,height:26,borderRadius:"50%",background:c,border:sfForm.color===c?"3px solid #1a1a18":"2px solid transparent",cursor:"pointer",flexShrink:0}}/>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Fund Name *</div>
+                    <input value={sfForm.name} onChange={e=>setSfForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Emergency Fund" style={{...inp,fontSize:13,padding:"9px 12px"}}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div>
+                      <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Goal (PKR) *</div>
+                      <input type="number" value={sfForm.goal} onChange={e=>setSfForm(p=>({...p,goal:e.target.value}))} placeholder="500000" style={{...inp,fontSize:13,padding:"9px 12px"}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Already Saved</div>
+                      <input type="number" value={sfForm.saved} onChange={e=>setSfForm(p=>({...p,saved:e.target.value}))} placeholder="0" style={{...inp,fontSize:13,padding:"9px 12px"}}/>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Target Months (optional)</div>
+                    <input type="number" value={sfForm.months} onChange={e=>setSfForm(p=>({...p,months:e.target.value}))} placeholder="e.g. 12" style={{...inp,fontSize:13,padding:"9px 12px"}}/>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    <button onClick={saveSf} style={{...btnRed,flex:2,opacity:sfForm.name.trim()&&parseFloat(sfForm.goal)?1:0.5,background:sfSaved?"#059669":T.accent,transition:"background 0.2s"}}>{sfSaved?"✓ Saved!":(sfEditId?"Save Changes":"Add Fund")}</button>
+                    <button onClick={cancelSf} style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 14px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{fontSize:11,color:"#888780",marginBottom:10}}>All funds including inactive. Inactive funds are hidden from the main screen.</div>
+            {(sinkingFunds||[]).map(f=>{
+              const pct=f.goal>0?Math.min(100,Math.round(((f.saved||0)/f.goal)*100)):0;
+              return(
+                <div key={f.id} style={{background:"#fff",border:`1px solid #d3d1c7`,borderRadius:12,padding:"12px 14px",marginBottom:8,opacity:f.inactive?0.65:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22}}>{f.icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:f.inactive?"#888780":"#1a1a18",textDecoration:f.inactive?"line-through":"none"}}>{f.name}</div>
+                      <div style={{fontSize:11,color:"#888780"}}>{fmt(f.saved||0)} / {fmt(f.goal)} · {pct}%</div>
+                    </div>
+                    {f.inactive&&<span style={{fontSize:9,fontWeight:800,color:"#888780",background:"#f1efe8",borderRadius:5,padding:"2px 7px",flexShrink:0}}>INACTIVE</span>}
+                  </div>
+                  <div style={{display:"flex",gap:6,marginTop:10}}>
+                    <button onClick={()=>openSfEdit(f)} style={{flex:1,fontSize:11,background:T.accentLight,color:T.accent,border:"none",borderRadius:7,padding:"6px 0",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✏️ Edit</button>
+                    <button onClick={()=>{const updated=(sinkingFunds||[]).map(x=>x.id===f.id?{...x,inactive:!x.inactive}:x);saveSinkingFunds(updated);}} style={{flex:1,fontSize:11,background:f.inactive?"#eaf3de":"#faeeda",color:f.inactive?"#3b6d11":"#854f0b",border:"none",borderRadius:7,padding:"6px 0",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>
+                      {f.inactive?"✅ Reactivate":"⏸ Inactive"}
+                    </button>
+                    <button onClick={()=>deleteSf(f.id)} style={{flex:1,fontSize:11,background:"#fcebeb",color:T.red,border:"none",borderRadius:7,padding:"6px 0",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>🗑 Delete</button>
+                  </div>
+                </div>
+              );
+            })}
+            {!(sinkingFunds||[]).length&&!sfShowForm&&(
+              <div style={{textAlign:"center",padding:40}}>
+                <div style={{fontSize:32,marginBottom:8}}>🎯</div>
+                <div style={{fontSize:13,color:"#888780",marginBottom:16}}>No sinking funds yet.</div>
+                <button onClick={openSfNew} style={{...btnRed}}>+ Create First Fund</button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+    return <SFSettingsInner/>;
+  }
 
   if(screen==="periodclose")return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -1637,14 +1759,12 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             </div>
           )}
           <div style={{display:"flex",gap:8}}>
-            <button style={{...btnRed,flex:2}} onClick={()=>{
+            <SaveFlashButton onClick={()=>{
               const newDate=tempPeriodClose;
               if(newDate===null)return;
               savePeriodClose(newDate);
               setTempPeriodClose(null);
-              if(newDate)alert(`✅ Period locked up to ${newDate}. No entries allowed on or before this date.`);
-              else alert("Period lock cleared. All dates are now open.");
-            }}>Save</button>
+            }} style={{flex:2}} label="Save"/>
             {periodClose&&<button style={{...btnGhost,flex:1,fontSize:12}} onClick={()=>{
               if(window.confirm("Clear period lock? All dates will be open again.")){
                 savePeriodClose("");setTempPeriodClose(null);
@@ -2143,6 +2263,7 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
 function ContactSearchInline({contacts,value,onChange,type}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
+  const isAll=type==="all";
   const isC=type==="customer";
   const filtered=useMemo(()=>{
     if(!q.trim())return contacts.slice(0,12);
@@ -2152,7 +2273,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
   return(
     <div style={{position:"relative"}}>
       <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
-        placeholder={`Search ${isC?"customer":"supplier"}…`}
+        placeholder={isAll?"Search all contacts (customers & suppliers)…":`Search ${isC?"customer":"supplier"}…`}
         style={{...inp,fontSize:12,padding:"8px 12px"}}/>
       {open&&(
         <>
@@ -2160,13 +2281,13 @@ function ContactSearchInline({contacts,value,onChange,type}){
           <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:200}}>
             <div style={{overflowY:"auto",maxHeight:200}}>
               {filtered.length===0&&<div style={{padding:"10px 12px",fontSize:9,color:T.muted}}>No contacts found</div>}
-              {filtered.map((c,i)=>(
+              {filtered.map((c,i)=>{const cIsC=c.type==="customer";return(
                 <div key={c.id} onClick={()=>{onChange(c.id);setOpen(false);setQ("");}} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",background:"#fff"}}>
-                  <span style={{fontSize:9,fontWeight:800,color:isC?T.blue:T.red,background:isC?T.blueBg:T.redLight,padding:"1px 6px",borderRadius:4,flexShrink:0}}>{isC?"AR":"AP"}</span>
+                  <span style={{fontSize:9,fontWeight:800,color:isAll?(cIsC?T.blue:T.red):(isC?T.blue:T.red),background:isAll?(cIsC?T.blueBg:T.redLight):(isC?T.blueBg:T.redLight),padding:"1px 6px",borderRadius:4,flexShrink:0}}>{isAll?(cIsC?"AR":"AP"):(isC?"AR":"AP")}</span>
                   <span style={{fontSize:12,fontWeight:600,flex:1,color:T.text}}>{c.name}</span>
                   <span style={{fontSize:9,color:T.muted,fontWeight:700}}>{c.id}</span>
                 </div>
-              ))}
+              );})}
             </div>
           </div>
         </>
@@ -2180,12 +2301,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
   const[form,setForm]=useState(emptyTxn);
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
+  const[reskontroMode,setReskontroMode]=useState(false);
+  const[entrySaved,setEntrySaved]=React.useState(false);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Determine if contact selector should show and what type
-  const needContact=form.debitCode==="1500"||form.creditCode==="1500"||form.debitCode==="2400"||form.creditCode==="2400";
+  const autoNeedContact=form.debitCode==="1500"||form.creditCode==="1500"||form.debitCode==="2400"||form.creditCode==="2400";
+  const needContact=reskontroMode||autoNeedContact;
   const contactType=form.debitCode==="1500"||form.creditCode==="1500"?"customer":"supplier";
-  const filteredContacts=contacts.filter(c=>c.type===contactType);
+  // reskontro mode shows all contacts; normal mode filters by type
+  const filteredContacts=reskontroMode?contacts.filter(c=>!c.inactive):contacts.filter(c=>c.type===contactType);
 
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
 
@@ -2198,6 +2323,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
     }
     const amount=parseFloat(form.amount);
     onSave({...form,amount});
+    setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
     // If sinking fund selected, update fund balance in localStorage
     if(form.sfFundId){
       try{
@@ -2369,20 +2495,18 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
         {needContact&&(
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
-              {contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"}
+              {reskontroMode?"👥 Reskontro — All Contacts":contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"}
             </div>
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1,position:"relative"}}>
-                {form.contactId?(
-                  <div style={{background:contactType==="customer"?T.blueBg:T.redLight,border:`1px solid ${contactType==="customer"?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:9,fontWeight:800,color:contactType==="customer"?T.blue:T.red,background:"#fff",padding:"1px 6px",borderRadius:4}}>{contactType==="customer"?"AR":"AP"}</span>
-                    <span style={{fontSize:12,fontWeight:700,flex:1,color:contactType==="customer"?T.blue:T.red}}>{filteredContacts.find(c=>c.id===form.contactId)?.name||form.contactId}</span>
+                {(()=>{if(form.contactId){const selC=contacts.find(c=>c.id===form.contactId);const isCust=selC?.type==="customer";return(
+                  <div style={{background:isCust?T.blueBg:T.redLight,border:`1px solid ${isCust?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:9,fontWeight:800,color:isCust?T.blue:T.red,background:"#fff",padding:"1px 6px",borderRadius:4}}>{isCust?"AR":"AP"}</span>
+                    <span style={{fontSize:12,fontWeight:700,flex:1,color:isCust?T.blue:T.red}}>{selC?.name||form.contactId}</span>
                     <span style={{fontSize:10,color:T.muted}}>{form.contactId}</span>
                     <button onClick={()=>setForm(p=>({...p,contactId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
                   </div>
-                ):(
-                  <ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={contactType}/>
-                )}
+                );}return(<ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={reskontroMode?"all":contactType}/>);})()}
               </div>
               <button onClick={()=>setShowAddContact(s=>!s)} style={{background:showAddContact?T.redLight:T.blueBg,color:showAddContact?T.red:T.blue,border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>+ Add</button>
             </div>
@@ -2408,8 +2532,19 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
           </div>
         )}
 
+        {/* Reskontro checkbox */}
+        <div onClick={()=>{setReskontroMode(v=>!v);setForm(p=>({...p,contactId:""}));}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:reskontroMode?T.accentLight:"#f1efe8",borderRadius:10,border:`1.5px solid ${reskontroMode?T.accent:"#d3d1c7"}`,cursor:"pointer",userSelect:"none"}}>
+          <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${reskontroMode?T.accent:"#b0ada6"}`,background:reskontroMode?T.accent:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+            {reskontroMode&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:reskontroMode?T.accent:T.sub}}>Reskontro</div>
+            <div style={{fontSize:10,color:T.muted}}>Show all customers &amp; suppliers in contact list</div>
+          </div>
+        </div>
+
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
-        <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4}} onClick={save}>Save Entry</button>
+        <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={save}>{entrySaved?"✓ Saved!":"Save Entry"}</button>
       </div>
     </Card>
   );
@@ -2591,7 +2726,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                   </div>
                 </div>
               )}
-              <button style={btnRed} onClick={save}>{editId?"Save Changes":"Create Fund"}</button>
+              <SaveFlashButton onClick={save} label={editId?"Save Changes":"Create Fund"}/>
             </div>
           </div>
         )}
@@ -3228,7 +3363,7 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
                   {rows.length>50&&<div style={{textAlign:"center",padding:8,fontSize:11,color:T.muted}}>…and {rows.length-50} more</div>}
                 </div>
                 <div style={{marginTop:14,display:"flex",gap:8}}>
-                  <button style={btnRed} onClick={doImport}>⬆ Import All {rows.length} Entries</button>
+                  <SaveFlashButton onClick={doImport} label={`⬆ Import All ${rows.length} Entries`}/>
                 </div>
                 <div style={{fontSize:10,color:T.muted,marginTop:8,lineHeight:1.5}}>
                   ⚠️ Make sure you have added all accounts and Reskontro contacts before importing.
@@ -3337,7 +3472,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
             <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Set monthly budget (PKR)</div>
             <input type="number" placeholder="e.g. 50000" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus style={{...inp,marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={confirmEdit} style={{...btnRed,flex:2}}>Save Budget</button>
+              <SaveFlashButton onClick={confirmEdit} style={{flex:2}} label="Save Budget"/>
               <button onClick={()=>setEditModal(null)} style={{...btnGhost,flex:1}}>Cancel</button>
             </div>
           </div>
@@ -3704,7 +3839,7 @@ function ChequeScreen({onBack}){
                 <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/>
               </div>
               <input placeholder="Bank (optional)" value={form.bank} onChange={e=>setForm(p=>({...p,bank:e.target.value}))} style={inp}/>
-              <button style={btnRed} onClick={addCheque}>Add Cheque</button>
+              <SaveFlashButton onClick={addCheque} label="Add Cheque"/>
             </div>
           </Card>
         )}
