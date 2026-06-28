@@ -132,24 +132,12 @@ function LoginScreen({onLogin}){
 }
 
 
-function AdminBanner({profiles,viewingUserId,onSwitch}){
-  const[open,setOpen]=useState(false);
-  const cur=profiles.find(p=>p.id===viewingUserId);
-  return(
-    <div style={{background:"#7C3AED",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative",zIndex:50}}>
-      <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",fontWeight:700,letterSpacing:1}}>👑 ADMIN VIEW</div>
-      <div style={{position:"relative"}}>
-        <button onClick={()=>setOpen(o=>!o)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 12px"}}>{cur?(cur.display_name||cur.email.split("@")[0]):"Select user"} ▾</button>
-        {open&&<><div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:190}}/><div style={{position:"absolute",right:0,top:36,background:"#fff",border:"1px solid #E8ECF0",borderRadius:12,zIndex:200,minWidth:220,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",overflow:"hidden"}}>{profiles.map(p=>(<div key={p.id} onClick={()=>{onSwitch(p.id);setOpen(false);}} style={{padding:"12px 16px",fontSize:13,cursor:"pointer",fontWeight:viewingUserId===p.id?800:500,color:viewingUserId===p.id?"#0057B8":"#111827",background:viewingUserId===p.id?"#EBF2FF":"#fff",borderBottom:"1px solid #E8ECF0"}}>{p.display_name||p.email}{p.is_admin&&<span style={{fontSize:9,color:"#7C3AED",marginLeft:6,fontWeight:800}}>ADMIN</span>}</div>))}</div></>}
-      </div>
-    </div>
-  );
-}
+
 
 function AppShell({user}){
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
-  const[viewingUserId,setViewingUserId]=useState(user.id);
+  const viewingUserId=user.id;
   const[accounts,setAccountsState]=useState([]);
   const[contacts,setContactsState]=useState([]);
   const[transactions,setTransactionsState]=useState([]);
@@ -182,7 +170,7 @@ function AppShell({user}){
     });
   },[viewingUserId]);
 
-  const canEdit=viewingUserId===user.id;
+  const canEdit=true;
 
   const setAccounts=async(list)=>{
     setAccountsState(list);
@@ -277,10 +265,9 @@ function AppShell({user}){
 
   return(
     <div>
-      {isAdmin&&profiles.length>0&&<AdminBanner profiles={profiles} viewingUserId={viewingUserId} onSwitch={setViewingUserId}/>}
       <FinanceTracker
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
-        viewingUserId={viewingUserId} onSwitchUser={setViewingUserId}
+        viewingUserId={viewingUserId}
         accounts={accounts} setAccounts={setAccounts}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
@@ -4343,7 +4330,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,onSwitchUser}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
