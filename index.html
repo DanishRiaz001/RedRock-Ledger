@@ -1082,6 +1082,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
   const[selected,setSelected]=useState([]);
   const[detailTxn,setDetailTxn]=useState(null);
   const[reskontroTab,setReskontroTab]=useState("contacts");
+  const[bilagPopup,setBilagPopup]=useState(null); // {txn} — must be at top level, not inside if(view)
 
   const customers=contacts.filter(c=>c.type==="customer"&&!c.inactive);
   const suppliers=contacts.filter(c=>c.type==="supplier"&&!c.inactive);
@@ -1158,8 +1159,6 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
       }
     });
 
-    // Bilag popup state — only for matched entries (shows match partners)
-    const[bilagPopup,setBilagPopup]=useState(null); // {txn}
     // Bilag click: matched → show match info popup; unmatched → open DetailModal
     const handleBilagClick=(e,t,isMatched)=>{
       e.stopPropagation();
