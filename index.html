@@ -1171,11 +1171,17 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
       }
     });
 
-    // Bilag popup state
-    const[bilagPopup,setBilagPopup]=useState(null); // {txn, x, y}
-    const handleBilagClick=(e,t)=>{
+    // Bilag popup state — only for matched entries (shows match partners)
+    const[bilagPopup,setBilagPopup]=useState(null); // {txn}
+    // Bilag click: matched → show match info popup; unmatched → open DetailModal
+    const handleBilagClick=(e,t,isMatched)=>{
       e.stopPropagation();
-      setBilagPopup(p=>p&&p.txn.id===t.id?null:{txn:t});
+      if(isMatched){
+        setBilagPopup(p=>p&&p.txn.id===t.id?null:{txn:t});
+      } else {
+        // Open entry detail view
+        setDetailTxn(t);
+      }
     };
 
     // COL: ☑/✓ | Bilag | Date | Description | Amount
@@ -1378,9 +1384,9 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                           )}
                         </div>
 
-                        {/* ── Bilag badge — click to see match info ── */}
+                        {/* ── Bilag badge — matched: click shows match info; unmatched: opens entry detail ── */}
                         <div style={{position:"relative"}}>
-                          <div onClick={e=>handleBilagClick(e,t)} style={{cursor:"pointer",display:"inline-block"}}>
+                          <div onClick={e=>handleBilagClick(e,t,isMatched)} style={{cursor:"pointer",display:"inline-block"}}>
                             <span style={{
                               fontSize:9,fontWeight:800,
                               color:isMatched?T.green:T.blue,
@@ -1393,38 +1399,22 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                               {isMatched&&<span style={{marginLeft:3,fontSize:8}}>✓</span>}
                             </span>
                           </div>
-                          {/* Bilag popup */}
-                          {isBilagPopupOpen&&(
+                          {/* Bilag popup — ONLY for matched entries (shows who it's matched with) */}
+                          {isBilagPopupOpen&&isMatched&&(
                             <>
                               <div onClick={e=>{e.stopPropagation();setBilagPopup(null);}} style={{position:"fixed",inset:0,zIndex:398}}/>
-                              <div style={{position:"absolute",top:22,left:0,background:"#fff",border:`1.5px solid ${isMatched?T.green:accentColor}`,borderRadius:10,padding:"10px 12px",zIndex:399,minWidth:190,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",whiteSpace:"nowrap"}}>
-                                {isMatched?(
-                                  <>
-                                    <div style={{fontSize:10,fontWeight:800,color:T.green,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>✓ Matched</div>
-                                    <div style={{fontSize:11,color:T.sub,marginBottom:4}}>This entry is matched with:</div>
-                                    {matchPartners.map(p=>(
-                                      <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                                        <span style={{fontSize:9,fontWeight:800,color:T.green,background:"#DCFCE7",borderRadius:4,padding:"1px 6px"}}>{fmtB(p.bilag)}</span>
-                                        <span style={{fontSize:10,color:T.muted}}>
-                                          {(()=>{const pt=transactions.find(x=>x.id===p.id);return pt?pt.description?.slice(0,24):"";})()}
-                                        </span>
-                                      </div>
-                                    ))}
-                                    <div style={{fontSize:9,color:T.muted,marginTop:6,borderTop:`1px solid ${T.border}`,paddingTop:5}}>Group: {t.matchedWith?.slice(-8)}</div>
-                                  </>
-                                ):(
-                                  <>
-                                    <div style={{fontSize:10,fontWeight:800,color:accentColor,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Not matched</div>
-                                    <div style={{fontSize:11,color:T.sub,marginBottom:2}}>{fmtB(t.bilag)} · {t.description?.slice(0,28)}</div>
-                                    <div style={{fontSize:11,color:T.muted,marginTop:4}}>
-                                      {isSel?"✓ Selected for matching":"Tap the row to select for matching"}
-                                    </div>
-                                    <div onClick={e=>{e.stopPropagation();if(!isMatched){toggleSel(t.id);}setBilagPopup(null);}}
-                                      style={{marginTop:8,background:isSel?T.redLight:accentColor,color:isSel?T.red:"#fff",borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center"}}>
-                                      {isSel?"Deselect":"Select for matching"}
-                                    </div>
-                                  </>
-                                )}
+                              <div style={{position:"absolute",top:22,left:0,background:"#fff",border:`1.5px solid ${T.green}`,borderRadius:10,padding:"10px 12px",zIndex:399,minWidth:190,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",whiteSpace:"nowrap"}}>
+                                <div style={{fontSize:10,fontWeight:800,color:T.green,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>✓ Matched</div>
+                                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>This entry is matched with:</div>
+                                {matchPartners.map(p=>(
+                                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                                    <span style={{fontSize:9,fontWeight:800,color:T.green,background:"#DCFCE7",borderRadius:4,padding:"1px 6px"}}>{fmtB(p.bilag)}</span>
+                                    <span style={{fontSize:10,color:T.muted}}>
+                                      {(()=>{const pt=transactions.find(x=>x.id===p.id);return pt?pt.description?.slice(0,24):"";})()}
+                                    </span>
+                                  </div>
+                                ))}
+                                <div style={{fontSize:9,color:T.muted,marginTop:6,borderTop:`1px solid ${T.border}`,paddingTop:5}}>Group: {t.matchedWith?.slice(-8)}</div>
                               </div>
                             </>
                           )}
@@ -3677,14 +3667,27 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const ArcGauge=({pct,spent,budget,over})=>{
     const r=72;const cx=100;const cy=96;
     const fillColor=over?"#EF4444":"#3B82F6";
-    const startX=cx-r;const startY=cy;const endX=cx+r;
-    const angle=Math.PI*(pct/100);
-    const px=cx+r*Math.cos(Math.PI-angle);const py=cy-r*Math.sin(Math.PI-angle);
+    // Arc goes from left (180°) to right (0°) — half circle opening downward
+    // startAngle=π (left), endAngle=0 (right) moving counter-clockwise in SVG coords
+    // For pct% fill: angle from π going toward 0
+    const clampedPct=Math.min(100,Math.max(0,pct));
+    const startAngle=Math.PI; // left side
+    const fillAngle=Math.PI*(1-clampedPct/100); // angle position at pct%
+    // Points on the arc: cx + r*cos(angle), cy - r*sin(angle)
+    const startX=cx+r*Math.cos(startAngle); // cx-r, cy
+    const startY=cy-r*Math.sin(startAngle); // cy
+    const endFullX=cx+r*Math.cos(0); // cx+r, cy
+    const px=cx+r*Math.cos(fillAngle);
+    const py=cy-r*Math.sin(fillAngle);
+    const largeArc=clampedPct>50?1:0;
     return(
       <svg width={200} height={110} style={{display:"block",margin:"0 auto"}}>
-        <path d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endX} ${startY}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
-        {pct>0&&<path d={`M ${startX} ${startY} A ${r} ${r} 0 ${pct>50?1:0} 1 ${px} ${py}`} fill="none" stroke={fillColor} strokeWidth={14} strokeLinecap="round"/>}
-        {pct>0&&<circle cx={px} cy={py} r={7} fill="#fff" opacity={0.9}/>}
+        {/* Track */}
+        <path d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFullX} ${startY}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
+        {/* Fill — always stays on the arc */}
+        {clampedPct>0&&<path d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${px} ${py}`} fill="none" stroke={fillColor} strokeWidth={14} strokeLinecap="round"/>}
+        {/* Dot indicator at fill end, on the arc */}
+        {clampedPct>0&&<circle cx={px} cy={py} r={7} fill="#fff" opacity={0.9}/>}
         <text x={cx} y={cy-16} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" fontFamily="system-ui" letterSpacing={1} fontWeight={600}>SPENT</text>
         <text x={cx} y={cy+8} textAnchor="middle" fontSize={22} fill="#fff" fontFamily="system-ui" fontWeight={900}>{fmt(spent)}</text>
         <text x={cx} y={cy+24} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="system-ui">of {fmt(budget)}</text>
