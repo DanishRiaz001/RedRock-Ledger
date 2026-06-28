@@ -160,7 +160,7 @@ function AppShell({user}){
       sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).order("fund_id"),
     ]).then(([aR,cR,tR,sR])=>{
       const accs=aR.data||[];
-      setAccountsState(accs.length?accs.map(a=>({code:a.code,name:a.name})):DEFAULT_ACCOUNTS);
+      setAccountsState(accs.length?accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false})):DEFAULT_ACCOUNTS);
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
       setTransactionsState(txns);
@@ -177,7 +177,7 @@ function AppShell({user}){
     if(!canEdit)return;
     // Upsert each account individually — safer than delete+insert
     for(const a of list){
-      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name},{onConflict:"user_id,code"});
+      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"});
     }
   };
 
@@ -229,6 +229,11 @@ function AppShell({user}){
     if(!canEdit)return;
     await Promise.all(ids.map(id=>sb.from("transactions").update({matched_with:grpId}).eq("id",id)));
   };
+  const unmatchTransactions=async(grpId)=>{
+    setTransactionsState(p=>p.map(t=>t.matchedWith===grpId?{...t,matchedWith:null}:t));
+    if(!canEdit)return;
+    await sb.from("transactions").update({matched_with:null}).eq("matched_with",grpId);
+  };
 
   const saveSinkingFunds=async(list)=>{
     setSFState(list);
@@ -272,7 +277,7 @@ function AppShell({user}){
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
         saveEdit={saveEdit} deleteTxn={deleteTxn}
-        reverseTransaction={reverseTransaction} matchTransactions={matchTransactions}
+        reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
         nextBilag={nextBilag} onSignOut={signOut}
       />
@@ -617,7 +622,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate,onClose}){
+function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners}){
   const[showEdit,setShowEdit]=useState(false);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
@@ -661,7 +666,7 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
             {isReversal&&<div style={{fontSize:11,color:T.red,marginTop:2}}>↩ Reversal of {fmtB(txn.reversalOf)}</div>}
           </div>
           <div style={{display:"flex",gap:8}}>
-            {!isReversal&&!isReversed&&(
+            {!isReversal&&!isReversed&&!txn.matchedWith&&(
               <Menu3 items={[
                 {icon:"✏️",label:"Edit Entry",action:()=>setShowEdit(true)},
                 {icon:"⧉",label:"Duplicate",action:()=>{if(onDuplicate)onDuplicate(txn);onClose();}},
@@ -670,6 +675,9 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
             )}
             {isReversed&&!isReversal&&(
               <span style={{fontSize:10,background:T.redLight,color:T.red,padding:"4px 8px",borderRadius:8,fontWeight:700}}>🔒 Reversed</span>
+            )}
+            {txn.matchedWith&&!isReversed&&!isReversal&&(
+              <span style={{fontSize:10,background:"#DCFCE7",color:T.green,padding:"4px 8px",borderRadius:8,fontWeight:700}}>✓ Matched</span>
             )}
             <button onClick={onClose} style={{background:T.border,border:"none",borderRadius:10,color:T.sub,fontSize:16,cursor:"pointer",width:34,height:34}}>✕</button>
           </div>
@@ -1072,7 +1080,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -1089,6 +1097,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
 
   const mv=(t,code)=>t.debitCode===code?t.amount:t.creditCode===code?-t.amount:0;
   const doMatchTxns=(ids,grpId)=>matchTxns(ids,grpId);
+  const doUnmatchGroup=(grpId)=>{if(unmatchTxns)unmatchTxns(grpId);};
 
   const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");};
 
@@ -1142,9 +1151,16 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
 
     // ALL modes allow checkbox selection (period now included)
     const canSelect=true;
+    // Check if either the debit or credit account is matchable
+    const isAccMatchable=(t)=>{
+      const da=accounts.find(a=>a.code===t.debitCode);
+      const ca=accounts.find(a=>a.code===t.creditCode);
+      return (da&&da.matchable)||(ca&&ca.matchable);
+    };
     const toggleSel=id=>{
       const t=viewTxns.find(x=>x.id===id);
       if(!t||t.matchedWith)return; // matched entries cannot be re-selected
+      if(!isAccMatchable(t))return; // account must have matchable enabled
       setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
     };
     const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
@@ -1159,13 +1175,12 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
       }
     });
 
-    // Bilag click: matched → show match info popup; unmatched → open DetailModal
+    // Bilag click: matched → small action popup (View / Unmatch); unmatched → open detail
     const handleBilagClick=(e,t,isMatched)=>{
       e.stopPropagation();
       if(isMatched){
         setBilagPopup(p=>p&&p.txn.id===t.id?null:{txn:t});
       } else {
-        // Open entry detail view
         setDetailTxn(t);
       }
     };
@@ -1287,7 +1302,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           {viewTxns.filter(t=>!t.matchedWith).length>1&&selected.length===0&&(
             <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:9,padding:"7px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:14}}>☑️</span>
-              <span style={{fontSize:11,color:"#0369A1",fontWeight:600}}>Tap unmatched rows to select · green ✓ = already matched</span>
+              <span style={{fontSize:11,color:"#0369A1",fontWeight:600}}>Tap unmatched rows to select · green ✓ = already matched · only accounts with Match enabled can be selected</span>
             </div>
           )}
 
@@ -1336,14 +1351,19 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                     // Partners in the same match group
                     const matchPartners=(matchGroupMap[t.matchedWith]||[]).filter(x=>x.id!==t.id);
                     const isBilagPopupOpen=bilagPopup&&bilagPopup.txn.id===t.id;
+                    const canMatchRow=!isGhosted&&isAccMatchable(t);
                     return(
                       <div key={t.id}
-                        onClick={()=>{if(!isMatched&&canSelect)toggleSel(t.id);}}
+                        onClick={()=>{
+                          if(isMatched||isGhosted)return;
+                          if(canMatchRow)toggleSel(t.id);
+                          else setDetailTxn(t);
+                        }}
                         style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
                           borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
                           alignItems:"center",
                           background:isMatched?"#F0FDF4":isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
-                          cursor:isMatched?"default":"pointer",
+                          cursor:isMatched||isGhosted?"default":"pointer",
                           opacity:isGhosted?0.45:1,
                           borderLeft:isMatched?`3px solid ${T.green}`:isSel?`3px solid ${accentColor}`:"3px solid transparent",
                           transition:"background 0.1s,border-color 0.1s",
@@ -1357,20 +1377,21 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                               <span style={{color:"#fff",fontSize:9,fontWeight:900,lineHeight:1}}>✓</span>
                             </div>
                           ):(
-                            /* Normal checkbox — blue when selected, grey outline when not */
+                            /* Normal checkbox — blue when selected, grey outline when not; dim if account not matchable */
                             <div style={{
                               width:16,height:16,borderRadius:4,
-                              border:`2px solid ${isSel?accentColor:"#c0c0c0"}`,
+                              border:`2px solid ${isSel?accentColor:canMatchRow?"#c0c0c0":"#e0e0e0"}`,
                               background:isSel?accentColor:"#fff",
                               display:"flex",alignItems:"center",justifyContent:"center",
-                              flexShrink:0,transition:"all 0.12s"
+                              flexShrink:0,transition:"all 0.12s",
+                              opacity:canMatchRow?1:0.35
                             }}>
                               {isSel&&<span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
                             </div>
                           )}
                         </div>
 
-                        {/* ── Bilag badge — matched: click shows match info; unmatched: opens entry detail ── */}
+                        {/* ── Bilag badge — matched: action popup; unmatched: opens entry detail ── */}
                         <div style={{position:"relative"}}>
                           <div onClick={e=>handleBilagClick(e,t,isMatched)} style={{cursor:"pointer",display:"inline-block"}}>
                             <span style={{
@@ -1385,22 +1406,14 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                               {isMatched&&<span style={{marginLeft:3,fontSize:8}}>✓</span>}
                             </span>
                           </div>
-                          {/* Bilag popup — ONLY for matched entries (shows who it's matched with) */}
+                          {/* Action popup — ONLY for matched bilags */}
                           {isBilagPopupOpen&&isMatched&&(
                             <>
                               <div onClick={e=>{e.stopPropagation();setBilagPopup(null);}} style={{position:"fixed",inset:0,zIndex:398}}/>
-                              <div style={{position:"absolute",top:22,left:0,background:"#fff",border:`1.5px solid ${T.green}`,borderRadius:10,padding:"10px 12px",zIndex:399,minWidth:190,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",whiteSpace:"nowrap"}}>
-                                <div style={{fontSize:10,fontWeight:800,color:T.green,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>✓ Matched</div>
-                                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>This entry is matched with:</div>
-                                {matchPartners.map(p=>(
-                                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                                    <span style={{fontSize:9,fontWeight:800,color:T.green,background:"#DCFCE7",borderRadius:4,padding:"1px 6px"}}>{fmtB(p.bilag)}</span>
-                                    <span style={{fontSize:10,color:T.muted}}>
-                                      {(()=>{const pt=transactions.find(x=>x.id===p.id);return pt?pt.description?.slice(0,24):"";})()}
-                                    </span>
-                                  </div>
-                                ))}
-                                <div style={{fontSize:9,color:T.muted,marginTop:6,borderTop:`1px solid ${T.border}`,paddingTop:5}}>Group: {t.matchedWith?.slice(-8)}</div>
+                              <div style={{position:"absolute",top:24,left:0,background:"#fff",border:`1.5px solid ${T.green}`,borderRadius:10,zIndex:399,minWidth:160,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",overflow:"hidden"}}>
+                                <div style={{fontSize:10,fontWeight:800,color:T.green,padding:"8px 12px 6px",textTransform:"uppercase",letterSpacing:0.5,borderBottom:`1px solid ${T.border}`}}>✓ {fmtB(t.bilag)} — Matched</div>
+                                <button onClick={e=>{e.stopPropagation();setBilagPopup(null);setDetailTxn(t);}} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:`1px solid ${T.border}`,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>👁 View Entry</button>
+                                <button onClick={e=>{e.stopPropagation();doUnmatchGroup(t.matchedWith);setBilagPopup(null);}} style={{display:"block",width:"100%",background:"none",border:"none",padding:"10px 14px",fontSize:12,fontWeight:600,color:"#DC2626",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>✕ Unmatch Entry</button>
                               </div>
                             </>
                           )}
@@ -1588,13 +1601,23 @@ function AccountPlanScreen({accounts,onSave,onBack}){
               <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6}}>
                 {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}><input value={list[ri].code} onChange={e=>{const n=[...list];n[ri]={...n[ri],code:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/><input value={list[ri].name} onChange={e=>{const n=[...list];n[ri]={...n[ri],name:e.target.value};setList(n);}} style={{...inp,fontSize:13}}/></div>
+                  {/* Matchable toggle */}
+                  <div onClick={()=>{const n=[...list];n[ri]={...n[ri],matchable:!n[ri].matchable};setList(n);}} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:list[ri].matchable?"#F0FDF4":"#f9f9f9",border:`1.5px solid ${list[ri].matchable?T.green:"#d3d1c7"}`,borderRadius:9,cursor:"pointer",userSelect:"none"}}>
+                    <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${list[ri].matchable?T.green:"#b0ada6"}`,background:list[ri].matchable?T.green:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {list[ri].matchable&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:list[ri].matchable?T.green:T.text}}>Match</div>
+                      <div style={{fontSize:10,color:T.muted}}>{list[ri].matchable?"Bilags on this account can be matched in Reskontro":"Enable to allow matching bilags in Reskontro"}</div>
+                    </div>
+                  </div>
                   <div style={{display:"flex",gap:8}}>
                     <SaveFlashButton onClick={()=>{onSave(list);setEditingIdx(null);}} style={{flex:2,padding:"8px"}} label="✓ Done"/>
                     <button style={{...btnGhost,flex:1,padding:"8px"}} onClick={()=>{setList(accounts.map(a=>({...a})));setEditingIdx(null);}}>Cancel</button>
                   </div>
                 </div>):(
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800}}>{a.code}</span><span style={{fontSize:13,fontWeight:600}}>{a.name}</span></div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800}}>{a.code}</span><span style={{fontSize:13,fontWeight:600}}>{a.name}</span>{a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700}}>✓ Match</span>}</div>
                     <button style={btnSm} onClick={()=>setEditingIdx(ri)}>✏️ Edit</button>
                   </div>
                 )}
@@ -1852,7 +1875,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
           <button style={btnRed} onClick={()=>{
             try{
               const budgets=JSON.parse(localStorage.getItem("rr_budgets")||"{}");
-              const sf=JSON.parse(localStorage.getItem("rr_sf")||"[]");
+              const sf=sinkingFunds||[];
               const profile=JSON.parse(localStorage.getItem("rr_profile")||"{}");
               const backup={version:2,date:new Date().toISOString(),accounts,contacts,sinkingFunds:sf,budgets,profile};
               const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
@@ -1880,7 +1903,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
                   if(data.accounts&&data.accounts.length){onSave(data.accounts);}
                   if(data.contacts&&data.contacts.length){setContacts(data.contacts);}
                   if(data.budgets){try{localStorage.setItem("rr_budgets",JSON.stringify(data.budgets));}catch{}}
-                  if(data.sinkingFunds){try{localStorage.setItem("rr_sf",JSON.stringify(data.sinkingFunds));}catch{}}
+                  if(data.sinkingFunds&&saveSinkingFunds){saveSinkingFunds(data.sinkingFunds);}
                   if(data.profile){try{localStorage.setItem("rr_profile",JSON.stringify(data.profile));}catch{}}
                   alert("✅ Restore complete! Accounts, contacts, budgets and profile restored.");
                   setScreen(null);
@@ -2092,7 +2115,7 @@ function PeriodSelector({from,to,onChange}){
 }
 
 
-function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo,onNavigate,feat={}}){
+function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo,onNavigate,feat={},sinkingFunds=[]}){
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const[kpiSlide,setKpiSlide]=useState(0); // 0=income, 1=expense
   const[overviewTab,setOverviewTab]=useState("budget");
@@ -2126,7 +2149,7 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   const budgetPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
 
   // Sinking funds
-  const sfData=useMemo(()=>{try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}});
+  const sfData=sinkingFunds||[];
   const totalSaved=sfData.reduce((s,f)=>s+(f.saved||0),0);
   const totalGoal=sfData.reduce((s,f)=>s+(f.goal||0),0);
   const sfPct=totalGoal>0?Math.min(100,Math.round((totalSaved/totalGoal)*100)):0;
@@ -2450,7 +2473,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:""};
   const[form,setForm]=useState(emptyTxn);
   const[showAddContact,setShowAddContact]=useState(false);
@@ -2492,12 +2515,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
       });
     });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
-    if(form.sfFundId){
-      try{
-        const existing=JSON.parse(localStorage.getItem("rr_sf")||"[]");
-        const updated=existing.map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
-        localStorage.setItem("rr_sf",JSON.stringify(updated));
-      }catch(e){}
+    if(form.sfFundId&&saveSinkingFunds){
+      const updated=(sinkingFunds||[]).map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
+      saveSinkingFunds(updated);
     }
     setForm(emptyTxn);
   };
@@ -2537,8 +2557,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
   const isSFAccount=(code)=>code&&code.startsWith("1009");
   const needSF=isSFAccount(form.debitCode)||isSFAccount(form.creditCode);
 
-  // Load funds from storage
-  const sfFunds=useMemo(()=>{try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}});
+  // Load funds from prop
+  const sfFunds=sinkingFunds||[];
 
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
@@ -3018,7 +3038,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 }
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
-function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod}){
+function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[]}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
@@ -3313,7 +3333,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
         const maxBar=Math.max(...months.map(m=>Math.max(m.inc,m.exp)),1);
 
         // Sinking funds for suggestions
-        const sfFunds2=(() => {try{const s=localStorage.getItem("rr_sf");return s?JSON.parse(s):[];}catch{return[];}})();
+        const sfFunds2=sinkingFunds||[];
         const budgets2=(() => {try{return JSON.parse(localStorage.getItem("rr_budgets")||"{}");}catch{return{};}})();
         const totalInc2=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0);
         const totalExp2=Object.values(expMap).reduce((s,v)=>s+v,0);
@@ -4308,7 +4328,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -4385,14 +4405,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
   }
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -4519,6 +4539,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             setFilterTo={setFilterTo}
             onNavigate={setTab}
             feat={feat}
+            sinkingFunds={sinkingFunds}
           />
         )}
 
@@ -4541,7 +4562,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
@@ -4601,7 +4622,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reports"&&(
           feat.reports
-            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
+            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
             :<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>
         )}
 
