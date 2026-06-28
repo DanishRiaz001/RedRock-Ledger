@@ -1151,16 +1151,14 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
     // ALL modes allow checkbox selection (period now included)
     const canSelect=true;
-    // Check if either the debit or credit account is matchable
+    // Check if the current ledger account (1500/2400) is matchable
     const isAccMatchable=(t)=>{
-      const da=accounts.find(a=>a.code===t.debitCode);
-      const ca=accounts.find(a=>a.code===t.creditCode);
-      return (da&&da.matchable)||(ca&&ca.matchable);
+      const ledgerAcc=accounts.find(a=>a.code===code);
+      return ledgerAcc&&ledgerAcc.matchable;
     };
     const toggleSel=id=>{
       const t=viewTxns.find(x=>x.id===id);
-      if(!t||t.matchedWith)return; // matched entries cannot be re-selected
-      if(!isAccMatchable(t))return; // account must have matchable enabled
+      if(!t||t.matchedWith)return;
       setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
     };
     const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
@@ -1354,37 +1352,30 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                     const canMatchRow=!isGhosted&&isAccMatchable(t);
                     return(
                       <div key={t.id}
-                        onClick={()=>{
-                          if(isMatched||isGhosted)return;
-                          if(canMatchRow)toggleSel(t.id);
-                          else setDetailTxn(t);
-                        }}
                         style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
                           borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
                           alignItems:"center",
                           background:isMatched?"#F0FDF4":isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
-                          cursor:isMatched||isGhosted?"default":"pointer",
                           opacity:isGhosted?0.45:1,
                           borderLeft:isMatched?`3px solid ${T.green}`:isSel?`3px solid ${accentColor}`:"3px solid transparent",
                           transition:"background 0.1s,border-color 0.1s",
                           position:"relative"}}>
 
-                        {/* ── Checkbox or match indicator ── */}
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {/* ── Checkbox or match indicator — ONLY this toggles selection ── */}
+                        <div onClick={()=>{if(!isMatched&&!isGhosted)toggleSel(t.id);}} style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:isMatched||isGhosted?"default":"pointer"}}>
                           {isMatched?(
                             /* Green checkmark — matched, not selectable */
                             <div style={{width:16,height:16,borderRadius:"50%",background:T.green,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                               <span style={{color:"#fff",fontSize:9,fontWeight:900,lineHeight:1}}>✓</span>
                             </div>
                           ):(
-                            /* Normal checkbox — blue when selected, grey outline when not; dim if account not matchable */
+                            /* Normal checkbox — blue when selected, grey outline when not */
                             <div style={{
                               width:16,height:16,borderRadius:4,
-                              border:`2px solid ${isSel?accentColor:canMatchRow?"#c0c0c0":"#e0e0e0"}`,
+                              border:`2px solid ${isSel?accentColor:"#c0c0c0"}`,
                               background:isSel?accentColor:"#fff",
                               display:"flex",alignItems:"center",justifyContent:"center",
-                              flexShrink:0,transition:"all 0.12s",
-                              opacity:canMatchRow?1:0.35
+                              flexShrink:0,transition:"all 0.12s"
                             }}>
                               {isSel&&<span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
                             </div>
@@ -1420,18 +1411,18 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                         </div>
 
                         {/* ── Date DD.MM.YY ── */}
-                        <div style={{fontSize:10,color:T.sub,fontVariantNumeric:"tabular-nums",letterSpacing:0.1}}>
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:10,color:T.sub,fontVariantNumeric:"tabular-nums",letterSpacing:0.1}}>
                           {dateLabel}
                         </div>
 
-                        {/* ── Description ── */}
-                        <div style={{fontSize:11,color:isGhosted?T.muted:isMatched?"#166534":T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
+                        {/* ── Description — touch does nothing ── */}
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:11,color:isGhosted?T.muted:isMatched?"#166534":T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
                           {t.description}
                           {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩ reversed</span>}
                         </div>
 
                         {/* ── Amount ── */}
-                        <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
                           {m>=0?"+":"−"}{fmt(Math.abs(m))}
                         </div>
                       </div>
