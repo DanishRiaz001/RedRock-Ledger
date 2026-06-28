@@ -3734,34 +3734,33 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const onTrackCount=expAccounts.filter(a=>{const b=budgets[a.code]||0;if(!b)return false;const act=getActual(a.code,periodTxns);return act<=b;}).length;
   const budgetedCount=expAccounts.filter(a=>budgets[a.code]>0).length;
 
-  // Arc gauge (half circle)
+  // Arc gauge (half circle — speedometer style using strokeDasharray/strokeDashoffset)
   const ArcGauge=({pct,spent,budget,over})=>{
-    const r=72;const cx=100;const cy=96;
+    const r=72;const cx=100;const cy=100;
     const fillColor=over?"#EF4444":"#3B82F6";
-    // Arc goes from left (180°) to right (0°) — half circle opening downward
-    // startAngle=π (left), endAngle=0 (right) moving counter-clockwise in SVG coords
-    // For pct% fill: angle from π going toward 0
     const clampedPct=Math.min(100,Math.max(0,pct));
-    const startAngle=Math.PI; // left side
-    const fillAngle=Math.PI*(1-clampedPct/100); // angle position at pct%
-    // Points on the arc: cx + r*cos(angle), cy - r*sin(angle)
-    const startX=cx+r*Math.cos(startAngle); // cx-r, cy
-    const startY=cy-r*Math.sin(startAngle); // cy
-    const endFullX=cx+r*Math.cos(0); // cx+r, cy
-    const px=cx+r*Math.cos(fillAngle);
-    const py=cy-r*Math.sin(fillAngle);
-    const largeArc=clampedPct>50?1:0;
+    // Half-circle: from left (cx-r, cy) to right (cx+r, cy) sweeping upward
+    const arcLen=Math.PI*r; // circumference of half circle
+    const dashOffset=arcLen*(1-clampedPct/100); // 0%=full offset(nothing), 100%=0 offset(full)
+    // Dot position: starts at left (180°), moves clockwise to right (0°) as pct increases
+    const dotAngle=Math.PI*(1-clampedPct/100); // π at 0%, 0 at 100%
+    const dotX=cx+r*Math.cos(dotAngle);
+    const dotY=cy-r*Math.sin(dotAngle); // minus because SVG y is flipped
     return(
-      <svg width={200} height={110} style={{display:"block",margin:"0 auto"}}>
-        {/* Track */}
-        <path d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFullX} ${startY}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
-        {/* Fill — always stays on the arc */}
-        {clampedPct>0&&<path d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${px} ${py}`} fill="none" stroke={fillColor} strokeWidth={14} strokeLinecap="round"/>}
-        {/* Dot indicator at fill end, on the arc */}
-        {clampedPct>0&&<circle cx={px} cy={py} r={7} fill="#fff" opacity={0.9}/>}
-        <text x={cx} y={cy-16} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" fontFamily="system-ui" letterSpacing={1} fontWeight={600}>SPENT</text>
-        <text x={cx} y={cy+8} textAnchor="middle" fontSize={22} fill="#fff" fontFamily="system-ui" fontWeight={900}>{fmt(spent)}</text>
-        <text x={cx} y={cy+24} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="system-ui">of {fmt(budget)}</text>
+      <svg width={200} height={114} style={{display:"block",margin:"0 auto"}}>
+        {/* Track (grey half-circle) */}
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={14} strokeLinecap="round"/>
+        {/* Fill — strokeDasharray = full arc length, offset shrinks as pct grows */}
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke={fillColor} strokeWidth={14} strokeLinecap="round"
+          strokeDasharray={arcLen}
+          strokeDashoffset={dashOffset}/>
+        {/* Dot indicator at fill tip */}
+        {clampedPct>0&&<circle cx={dotX} cy={dotY} r={7} fill="#fff" opacity={0.9}/>}
+        <text x={cx} y={cy-22} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" fontFamily="system-ui" letterSpacing={1} fontWeight={600}>SPENT</text>
+        <text x={cx} y={cy+2} textAnchor="middle" fontSize={22} fill="#fff" fontFamily="system-ui" fontWeight={900}>{fmt(spent)}</text>
+        <text x={cx} y={cy+20} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="system-ui">of {fmt(budget)}</text>
+        <text x={cx-r+4} y={cy+14} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,0.3)" fontFamily="system-ui">0%</text>
+        <text x={cx+r-4} y={cy+14} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,0.3)" fontFamily="system-ui">100%</text>
       </svg>
     );
   };
