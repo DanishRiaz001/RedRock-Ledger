@@ -245,8 +245,20 @@ function AppShell({user}){
   const saveSinkingFunds=async(list)=>{
     setSFState(list);
     if(!canEdit)return;
-    await sb.from("sinking_funds").delete().eq("user_id",user.id);
-    if(list.length)await sb.from("sinking_funds").insert(list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
+    // Upsert each fund; delete funds that no longer exist
+    const existing=await sb.from("sinking_funds").select("fund_id").eq("user_id",user.id);
+    const existingIds=(existing.data||[]).map(r=>r.fund_id);
+    const newIds=list.map(f=>f.id);
+    // Remove deleted
+    const toDelete=existingIds.filter(id=>!newIds.includes(id));
+    if(toDelete.length)await sb.from("sinking_funds").delete().eq("user_id",user.id).in("fund_id",toDelete);
+    // Upsert all current
+    if(list.length){
+      await sb.from("sinking_funds").upsert(
+        list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})),
+        {onConflict:"user_id,fund_id"}
+      );
+    }
   };
 
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
@@ -957,20 +969,21 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           </button>
         )}
         {showMatched&&<MatchedGroups matchedRows={matchedRows} getMovement={r=>r.movement}/>}
-        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"6px 6px",borderBottom:`2px solid ${T.border}`}}>
-          {["","Bilag","Date","Description","Amount"].map(h=>(
-            <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textAlign:h==="Amount"?"right":"left",textTransform:"uppercase",letterSpacing:0.5}}>{h}</div>
+        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"6px 6px",borderBottom:`2px solid ${T.border}`}}>
+          {["","Bilag","Date","Description","✓","Amount"].map(h=>(
+            <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textAlign:h==="Amount"||h==="✓"?"center":"left",textTransform:"uppercase",letterSpacing:0.5}}>{h}</div>
           ))}
         </div>
         {rows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13,fontWeight:600}}>No transactions in this period</div></div>}
         {rows.map((r,i)=>{
-          const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;
+          const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;const isMatched=!!r.matchedWith;
           return(
-            <div key={r.id} style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"9px 6px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:isSel?T.blueBg:i%2===0?"#fff":T.bg,borderLeft:isSel?`3px solid ${T.blue}`:"3px solid transparent"}}>
+            <div key={r.id} style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"9px 6px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:isSel?T.blueBg:i%2===0?"#fff":T.bg,borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"3px solid transparent"}}>
               <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
               <div onClick={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(r.bilag)}</div>
               <div style={{fontSize:10,color:T.sub}}>{r.date.slice(5)}</div>
               <div style={{fontSize:12,color:isRev?T.red:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
+              <div title={isMatched?`Matched · group ${r.matchedWith?.slice(-6)}`:"Not matched"} style={{fontSize:11,textAlign:"center",cursor:isMatched?"help":"default",color:isMatched?T.green:"#ddd"}}>{isMatched?"✓":"—"}</div>
               <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:r.movement>=0?T.green:T.red}}>{r.movement>=0?"+":"−"}{fmt(r.movement)}</div>
             </div>
           );
@@ -1109,14 +1122,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
         if(contactId&&contactId!=="all"&&t.contactId!==contactId)return false;
         if(!(t.debitCode===code||t.creditCode===code))return false;
         if(mode==="open"){
-          // Unmatched, unreversed entries; optionally up to asOfDate
           if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
           if(asOfDate&&t.date>asOfDate)return false;
         } else if(mode==="period"){
-          // All entries (including matched/reversed) in date range
           if(t.date<periodFrom||t.date>periodTo)return false;
         } else if(mode==="contact"){
-          // Open items only, filtered by selected contact
           if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
         }
         return true;
@@ -1142,14 +1152,35 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
       byContact[byContact.length-1].txns.push(t);
     });
 
-    const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+    // ALL modes allow checkbox selection (period now included)
+    const canSelect=true;
+    const toggleSel=id=>{
+      const t=viewTxns.find(x=>x.id===id);
+      if(!t||t.matchedWith)return; // matched entries cannot be re-selected
+      setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+    };
     const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
     const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatchTxns(selected,Date.now().toString());setSelected([]);};
 
-    // COL: ☑ | Bilag | Date | Description | Amount
-    const ROW_COLS="22px 48px 60px 1fr 82px";
+    // Build a map: matchedWith group → bilags in that group (across ALL transactions)
+    const matchGroupMap={}; // groupId -> [{bilag, id}]
+    transactions.forEach(t=>{
+      if(t.matchedWith){
+        if(!matchGroupMap[t.matchedWith])matchGroupMap[t.matchedWith]=[];
+        matchGroupMap[t.matchedWith].push({bilag:t.bilag,id:t.id});
+      }
+    });
+
+    // Bilag popup state
+    const[bilagPopup,setBilagPopup]=useState(null); // {txn, x, y}
+    const handleBilagClick=(e,t)=>{
+      e.stopPropagation();
+      setBilagPopup(p=>p&&p.txn.id===t.id?null:{txn:t});
+    };
+
+    // COL: ☑/✓ | Bilag | Date | Description | Amount
+    const ROW_COLS="22px 52px 60px 1fr 82px";
     const hdStyle={fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.6};
-    const canSelect=mode!=="period";
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
@@ -1231,6 +1262,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
           {/* Counts — RIGHT side */}
           <div style={{fontSize:10,color:accentColor,fontWeight:600,opacity:0.75}}>
             {byContact.length} {isCustomer?"customers":"suppliers"} · {viewTxns.length} entries
+            {viewTxns.filter(t=>t.matchedWith).length>0&&<span style={{color:T.green,marginLeft:6}}>· {viewTxns.filter(t=>t.matchedWith).length} matched</span>}
           </div>
         </div>
 
@@ -1259,11 +1291,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
         )}
 
         <div style={{padding:"12px 16px"}}>
-          {/* ── Match hint banner (Open Post only, no selection yet) ── */}
-          {canSelect&&viewTxns.length>1&&selected.length===0&&(
+          {/* ── Match hint banner — unmatched entries only ── */}
+          {viewTxns.filter(t=>!t.matchedWith).length>1&&selected.length===0&&(
             <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:9,padding:"7px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:14}}>☑️</span>
-              <span style={{fontSize:11,color:"#0369A1",fontWeight:600}}>Tap rows to select entries, then match them</span>
+              <span style={{fontSize:11,color:"#0369A1",fontWeight:600}}>Tap unmatched rows to select · green ✓ = already matched</span>
             </div>
           )}
 
@@ -1305,45 +1337,97 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                     const isRev=!!t.reversalOf;
                     const isRevd=!!t.reversedBy;
                     const isGhosted=isRevd||isRev;
+                    const isMatched=!!t.matchedWith&&!isRevd&&!isRev;
                     // Format date as DD.MM.YY
                     const dateParts=t.date.split("-");
                     const dateLabel=dateParts.length===3?`${dateParts[2]}.${dateParts[1]}.${dateParts[0].slice(2)}`:t.date;
+                    // Partners in the same match group
+                    const matchPartners=(matchGroupMap[t.matchedWith]||[]).filter(x=>x.id!==t.id);
+                    const isBilagPopupOpen=bilagPopup&&bilagPopup.txn.id===t.id;
                     return(
                       <div key={t.id}
+                        onClick={()=>{if(!isMatched&&canSelect)toggleSel(t.id);}}
                         style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
                           borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
                           alignItems:"center",
-                          background:isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
-                          cursor:canSelect?"pointer":"default",
-                          opacity:isGhosted?0.5:1,
-                          borderLeft:isSel?`3px solid ${accentColor}`:"3px solid transparent",
-                          transition:"background 0.1s,border-color 0.1s"}}>
+                          background:isMatched?"#F0FDF4":isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
+                          cursor:isMatched?"default":"pointer",
+                          opacity:isGhosted?0.45:1,
+                          borderLeft:isMatched?`3px solid ${T.green}`:isSel?`3px solid ${accentColor}`:"3px solid transparent",
+                          transition:"background 0.1s,border-color 0.1s",
+                          position:"relative"}}>
 
-                        {/* ── Checkbox ── */}
-                        <div onClick={()=>canSelect&&toggleSel(t.id)}
-                          style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:canSelect?"pointer":"default"}}>
-                          <div style={{
-                            width:16,height:16,borderRadius:4,
-                            border:`2px solid ${isSel?accentColor:T.border}`,
-                            background:isSel?accentColor:"#fff",
-                            display:"flex",alignItems:"center",justifyContent:"center",
-                            flexShrink:0,transition:"all 0.12s"
-                          }}>
-                            {isSel&&<span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
-                          </div>
+                        {/* ── Checkbox or match indicator ── */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {isMatched?(
+                            /* Green checkmark — matched, not selectable */
+                            <div style={{width:16,height:16,borderRadius:"50%",background:T.green,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <span style={{color:"#fff",fontSize:9,fontWeight:900,lineHeight:1}}>✓</span>
+                            </div>
+                          ):(
+                            /* Normal checkbox — blue when selected, grey outline when not */
+                            <div style={{
+                              width:16,height:16,borderRadius:4,
+                              border:`2px solid ${isSel?accentColor:"#c0c0c0"}`,
+                              background:isSel?accentColor:"#fff",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              flexShrink:0,transition:"all 0.12s"
+                            }}>
+                              {isSel&&<span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+                            </div>
+                          )}
                         </div>
 
-                        {/* ── Bilag badge ── */}
-                        <div onClick={e=>{e.stopPropagation();setDetailTxn(t);}}
-                          style={{cursor:"pointer"}}>
-                          <span style={{
-                            fontSize:9,fontWeight:800,color:T.blue,
-                            background:T.blueBg,borderRadius:5,
-                            padding:"2px 5px",display:"inline-block",
-                            textDecoration:"none",letterSpacing:0.2
-                          }}>
-                            {fmtB(t.bilag)}
-                          </span>
+                        {/* ── Bilag badge — click to see match info ── */}
+                        <div style={{position:"relative"}}>
+                          <div onClick={e=>handleBilagClick(e,t)} style={{cursor:"pointer",display:"inline-block"}}>
+                            <span style={{
+                              fontSize:9,fontWeight:800,
+                              color:isMatched?T.green:T.blue,
+                              background:isMatched?"#DCFCE7":T.blueBg,
+                              borderRadius:5,padding:"2px 5px",
+                              display:"inline-block",letterSpacing:0.2,
+                              border:isMatched?`1px solid ${T.green}33`:"none"
+                            }}>
+                              {fmtB(t.bilag)}
+                              {isMatched&&<span style={{marginLeft:3,fontSize:8}}>✓</span>}
+                            </span>
+                          </div>
+                          {/* Bilag popup */}
+                          {isBilagPopupOpen&&(
+                            <>
+                              <div onClick={e=>{e.stopPropagation();setBilagPopup(null);}} style={{position:"fixed",inset:0,zIndex:398}}/>
+                              <div style={{position:"absolute",top:22,left:0,background:"#fff",border:`1.5px solid ${isMatched?T.green:accentColor}`,borderRadius:10,padding:"10px 12px",zIndex:399,minWidth:190,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",whiteSpace:"nowrap"}}>
+                                {isMatched?(
+                                  <>
+                                    <div style={{fontSize:10,fontWeight:800,color:T.green,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>✓ Matched</div>
+                                    <div style={{fontSize:11,color:T.sub,marginBottom:4}}>This entry is matched with:</div>
+                                    {matchPartners.map(p=>(
+                                      <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                                        <span style={{fontSize:9,fontWeight:800,color:T.green,background:"#DCFCE7",borderRadius:4,padding:"1px 6px"}}>{fmtB(p.bilag)}</span>
+                                        <span style={{fontSize:10,color:T.muted}}>
+                                          {(()=>{const pt=transactions.find(x=>x.id===p.id);return pt?pt.description?.slice(0,24):"";})()}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    <div style={{fontSize:9,color:T.muted,marginTop:6,borderTop:`1px solid ${T.border}`,paddingTop:5}}>Group: {t.matchedWith?.slice(-8)}</div>
+                                  </>
+                                ):(
+                                  <>
+                                    <div style={{fontSize:10,fontWeight:800,color:accentColor,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Not matched</div>
+                                    <div style={{fontSize:11,color:T.sub,marginBottom:2}}>{fmtB(t.bilag)} · {t.description?.slice(0,28)}</div>
+                                    <div style={{fontSize:11,color:T.muted,marginTop:4}}>
+                                      {isSel?"✓ Selected for matching":"Tap the row to select for matching"}
+                                    </div>
+                                    <div onClick={e=>{e.stopPropagation();if(!isMatched){toggleSel(t.id);}setBilagPopup(null);}}
+                                      style={{marginTop:8,background:isSel?T.redLight:accentColor,color:isSel?T.red:"#fff",borderRadius:7,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center"}}>
+                                      {isSel?"Deselect":"Select for matching"}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
 
                         {/* ── Date DD.MM.YY ── */}
@@ -1352,7 +1436,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,editTxn,de
                         </div>
 
                         {/* ── Description ── */}
-                        <div style={{fontSize:11,color:isGhosted?T.muted:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
+                        <div style={{fontSize:11,color:isGhosted?T.muted:isMatched?"#166534":T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
                           {t.description}
                           {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩ reversed</span>}
                         </div>
@@ -2258,6 +2342,100 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   );
 }
 
+// ─── AccDropReskontro — account picker with contacts section ─────────────────
+function AccDropReskontro({value,onChange,accounts,contacts,onContactSelect,side}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+
+  // Determine display label for current value
+  const selAcc=accounts.find(a=>a.code===value);
+  // Check if value matches a contact id (starts with C or S)
+  const selContact=contacts.find(c=>c.id===value);
+  const displayLabel=selContact
+    ?`${selContact.id} — ${selContact.name}`
+    :selAcc?`${selAcc.code} — ${selAcc.name}`:null;
+
+  const ql=q.toLowerCase();
+
+  // Contacts filtered
+  const filteredContacts=contacts.filter(c=>!c.inactive&&(!q||c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql))).slice(0,20);
+
+  // Accounts filtered (grouped)
+  const filteredAccs=useMemo(()=>{
+    const all=[];
+    Object.entries(SERIES).forEach(([key,s])=>{
+      const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
+      grp.forEach(a=>{if(!q||a.code.includes(q)||a.name.toLowerCase().includes(ql))all.push({...a,groupKey:key});});
+    });
+    return all;
+  },[accounts,q,ql]);
+
+  const pickContact=(c)=>{
+    const code=c.type==="customer"?"1500":"2400";
+    onChange(code);
+    if(onContactSelect)onContactSelect(c.id);
+    setOpen(false);setQ("");
+  };
+  const pickAcc=(a)=>{
+    onChange(a.code);
+    setOpen(false);setQ("");
+  };
+
+  return(
+    <div style={{position:"relative"}}>
+      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:36,border:`1.5px solid ${T.accent}`,background:T.accentLight}}>
+        {displayLabel
+          ?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayLabel}</span>
+          :<span style={{fontSize:9,color:T.accent,fontWeight:600}}>— Select Contact / Account —</span>}
+        <span style={{fontSize:8,color:T.accent,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
+      </div>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1.5px solid ${T.accent}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(13,115,119,0.18)",overflow:"hidden",maxHeight:280}}>
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search contacts or accounts…" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
+            </div>
+            <div style={{overflowY:"auto",maxHeight:230}}>
+              {/* Contacts section */}
+              {filteredContacts.length>0&&(
+                <>
+                  <div style={{padding:"5px 10px 3px",fontSize:8,fontWeight:800,color:T.accent,textTransform:"uppercase",letterSpacing:0.8,background:T.accentLight}}>👥 Contacts (Reskontro)</div>
+                  {filteredContacts.map((c,i)=>{
+                    const isCust=c.type==="customer";
+                    return(
+                      <div key={c.id} onClick={()=>pickContact(c)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:8,fontWeight:800,color:isCust?T.blue:T.red,background:isCust?T.blueBg:T.redLight,padding:"1px 5px",borderRadius:4,flexShrink:0}}>{isCust?"AR 1500":"AP 2400"}</span>
+                        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600,color:T.text}}>{c.name}</span>
+                        <span style={{fontSize:8,color:T.muted,flexShrink:0}}>{c.id}</span>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+              {/* Accounts section */}
+              {filteredAccs.length>0&&(
+                <>
+                  <div style={{padding:"5px 10px 3px",fontSize:8,fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:0.8,background:T.bg}}>📋 Accounts</div>
+                  {filteredAccs.map((a,i)=>(
+                    <div key={a.code} onClick={()=>pickAcc(a)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filteredAccs.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
+                      <span style={{color:SERIES[a.groupKey]?.color||T.muted,fontWeight:700,minWidth:32,flexShrink:0}}>{a.code}</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {!filteredContacts.length&&!filteredAccs.length&&(
+                <div style={{padding:"16px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No results found</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── New Entry Form ───────────────────────────────────────────────────────────
 // Inline contact search for entry form
 function ContactSearchInline({contacts,value,onChange,type}){
@@ -2316,15 +2494,28 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
 
   const save=()=>{
     if(!valid)return;
-    // Period close check
     if(isDateClosed(form.date)){
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
       return;
     }
     const amount=parseFloat(form.amount);
-    onSave({...form,amount});
+    const lines=form.lines||[];
+    const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
+    // Save primary entry
+    onSave({...form,amount,lines:undefined});
+    // Save each extra line as its own entry
+    extraLines.forEach(l=>{
+      onSave({
+        date:form.date,
+        debitCode:l.debitCode,
+        creditCode:l.creditCode,
+        description:l.description||form.description,
+        amount:parseFloat(l.amount),
+        contactId:form.contactId||null,
+        sfFundId:form.sfFundId||null,
+      });
+    });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
-    // If sinking fund selected, update fund balance in localStorage
     if(form.sfFundId){
       try{
         const existing=JSON.parse(localStorage.getItem("rr_sf")||"[]");
@@ -2377,13 +2568,21 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
 
   return(
     <Card>
-      {/* Bilag + Date */}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-        <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px"}}>
+      {/* Bilag + Date + Reskontro checkbox — all on one row */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+        <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px",flexShrink:0}}>
           <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
           <div style={{fontSize:15,fontWeight:900,color:T.accent}}>{fmtB(nextBilag)}</div>
         </div>
-        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,flex:1}}/>
+        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,width:130,flexShrink:0}}/>
+        {/* Reskontro toggle — compact icon button */}
+        <div onClick={()=>{setReskontroMode(v=>!v);setForm(p=>({...p,contactId:""}));}} title="Reskontro — show all contacts in debit/credit"
+          style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:reskontroMode?T.accent:"#f1efe8",borderRadius:9,border:`1.5px solid ${reskontroMode?T.accent:"#d3d1c7"}`,cursor:"pointer",userSelect:"none",flexShrink:0}}>
+          <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${reskontroMode?"rgba(255,255,255,0.6)":"#b0ada6"}`,background:reskontroMode?"rgba(255,255,255,0.25)":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {reskontroMode&&<span style={{color:reskontroMode?"#fff":T.accent,fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
+          </div>
+          <span style={{fontSize:10,fontWeight:700,color:reskontroMode?"#fff":T.sub,whiteSpace:"nowrap"}}>Reskontro</span>
+        </div>
         <Pill label="2x Entry" color={T.accent} bg={T.accentLight}/>
       </div>
 
@@ -2412,20 +2611,48 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
               <div style={{display:"flex",alignItems:"flex-end",gap:5}}>
                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
                   <div>
-                    <div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Debit</div>
-                    <AccDrop value={line.debitCode||""} onChange={v=>{
-                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                      lines[li]={...lines[li],debitCode:v};
-                      setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                    }} accounts={accounts}/>
+                    <div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>{reskontroMode?"Debit / Contact":"Debit"}</div>
+                    {reskontroMode
+                      ?<AccDropReskontro
+                          value={line.debitCode||""}
+                          onChange={v=>{
+                            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                            lines[li]={...lines[li],debitCode:v};
+                            setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode}));
+                          }}
+                          accounts={accounts}
+                          contacts={contacts.filter(c=>!c.inactive)}
+                          onContactSelect={id=>setForm(p=>({...p,contactId:id}))}
+                          side="debit"
+                        />
+                      :<AccDrop value={line.debitCode||""} onChange={v=>{
+                          const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                          lines[li]={...lines[li],debitCode:v};
+                          setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
+                        }} accounts={accounts}/>
+                    }
                   </div>
                   <div>
-                    <div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>
-                    <AccDrop value={line.creditCode||""} onChange={v=>{
-                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                      lines[li]={...lines[li],creditCode:v};
-                      setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                    }} accounts={accounts}/>
+                    <div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>{reskontroMode?"Credit / Contact":"Credit"}</div>
+                    {reskontroMode
+                      ?<AccDropReskontro
+                          value={line.creditCode||""}
+                          onChange={v=>{
+                            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                            lines[li]={...lines[li],creditCode:v};
+                            setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode}));
+                          }}
+                          accounts={accounts}
+                          contacts={contacts.filter(c=>!c.inactive)}
+                          onContactSelect={id=>setForm(p=>({...p,contactId:id}))}
+                          side="credit"
+                        />
+                      :<AccDrop value={line.creditCode||""} onChange={v=>{
+                          const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                          lines[li]={...lines[li],creditCode:v};
+                          setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
+                        }} accounts={accounts}/>
+                    }
                   </div>
                 </div>
                 {/* − remove button only on extra lines */}
@@ -2531,17 +2758,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={}}){
             )}
           </div>
         )}
-
-        {/* Reskontro checkbox */}
-        <div onClick={()=>{setReskontroMode(v=>!v);setForm(p=>({...p,contactId:""}));}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:reskontroMode?T.accentLight:"#f1efe8",borderRadius:10,border:`1.5px solid ${reskontroMode?T.accent:"#d3d1c7"}`,cursor:"pointer",userSelect:"none"}}>
-          <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${reskontroMode?T.accent:"#b0ada6"}`,background:reskontroMode?T.accent:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-            {reskontroMode&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
-          </div>
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:reskontroMode?T.accent:T.sub}}>Reskontro</div>
-            <div style={{fontSize:10,color:T.muted}}>Show all customers &amp; suppliers in contact list</div>
-          </div>
-        </div>
 
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
         <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={save}>{entrySaved?"✓ Saved!":"Save Entry"}</button>
@@ -2760,9 +2976,15 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                   </div>
                 </div>
 
-                {/* Fund name + tenure */}
+                {/* Fund name + tenure + target date */}
                 <div style={{fontSize:13,fontWeight:500,color:"#1a1a18",marginBottom:2}}>{f.name}</div>
-                <div style={{fontSize:11,color:"#888780",marginBottom:10}}>{monthsLeft?`${monthsLeft} months`:"No timeline"}</div>
+                <div style={{fontSize:11,color:"#888780",marginBottom:10}}>
+                  {monthsLeft?(()=>{
+                    const d=new Date();d.setMonth(d.getMonth()+monthsLeft);
+                    const mo=d.toLocaleString("default",{month:"short",year:"numeric"});
+                    return`${monthsLeft}mo · target ${mo}`;
+                  })():"No timeline"}
+                </div>
 
                 {/* Ring gauge + saved amount */}
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -3004,8 +3226,8 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
     <div>
       {/* Tab switcher */}
       <div style={{display:"flex",gap:3,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
-        {[["resultat","📈 Resultat"],["balanse","⚖️ Balanse"],["analytics","📊 Analytics"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 2px",fontSize:10}}>{label}</button>
+        {[["resultat","📈 P&L"],["balanse","⚖️ Balanse"],["account","📋 Account"],["analytics","📊 Analytics"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setRTab(id)} style={{...TAB_STYLE(rTab===id),flex:1,borderRadius:7,padding:"7px 2px",fontSize:9}}>{label}</button>
         ))}
       </div>
 
@@ -3401,8 +3623,10 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 
 // ─── Budget Module ────────────────────────────────────────────────────────────
 function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
-  const BKEY="rr_budgets";
-  const[budgets,setBudgetsState]=useState(()=>{try{const s=localStorage.getItem(BKEY);return s?JSON.parse(s):{}}catch{return{};}});
+  // Per-period budget storage: key = "rr_budgets_YYYY-MM" (or "rr_budgets_YYYY" for full year)
+  const getBKey=(year,month)=>month===-1?`rr_budgets_${year}`:`rr_budgets_${year}-${String(month+1).padStart(2,"0")}`;
+  const loadBudgets=(year,month)=>{try{const s=localStorage.getItem(getBKey(year,month));return s?JSON.parse(s):{}}catch{return{};}};
+
   const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
@@ -3412,6 +3636,11 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const BMNTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const[bSelYear,setBSelYear]=useState(now.getFullYear());
   const[bSelMonth,setBSelMonth]=useState(now.getMonth()); // 0-11, -1=full year
+  const[budgets,setBudgetsState]=useState(()=>loadBudgets(now.getFullYear(),now.getMonth()));
+
+  // Reload budgets when period changes
+  useEffect(()=>{setBudgetsState(loadBudgets(bSelYear,bSelMonth));},[bSelYear,bSelMonth]);
+
   const getBFrom=()=>{if(bSelMonth===-1)return`${bSelYear}-01-01`;const mm=String(bSelMonth+1).padStart(2,"0");return`${bSelYear}-${mm}-01`;};
   const getBTo=()=>{if(bSelMonth===-1)return`${bSelYear}-12-31`;const mm=String(bSelMonth+1).padStart(2,"0");const last=new Date(bSelYear,bSelMonth+1,0).getDate();return`${bSelYear}-${mm}-${String(last).padStart(2,"0")}`;};
   const bFrom=getBFrom();const bTo=getBTo();
@@ -3429,7 +3658,10 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   // Current month income for % calculation
   const curIncome=useMemo(()=>periodTxns.filter(t=>getSK(t.creditCode)==="3000").reduce((s,t)=>s+t.amount,0),[periodTxns]);
 
-  const saveBudgets=(b)=>{setBudgetsState(b);try{localStorage.setItem(BKEY,JSON.stringify(b));}catch{}};
+  const saveBudgets=(b)=>{
+    setBudgetsState(b);
+    try{localStorage.setItem(getBKey(bSelYear,bSelMonth),JSON.stringify(b));}catch{}
+  };
   const confirmEdit=()=>{if(!editModal)return;saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});setEditModal(null);setEditVal("");};
   const openEdit=(a)=>{setEditVal(String(budgets[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
 
@@ -3469,7 +3701,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
           <div style={{background:"#fff",borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{editModal.code} · {editModal.name}</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Set monthly budget (PKR)</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Budget for {bSelMonth===-1?String(bSelYear):["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]+" "+bSelYear} (PKR)</div>
             <input type="number" placeholder="e.g. 50000" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus style={{...inp,marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
               <SaveFlashButton onClick={confirmEdit} style={{flex:2}} label="Save Budget"/>
@@ -3484,7 +3716,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
         <div style={{flex:1}}>
           <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Monthly Planning</div>
-          <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Budget</div>
+          <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Budget — {bSelMonth===-1?bSelYear:`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]} ${bSelYear}`}</div>
         </div>
       </div>
 
@@ -3547,9 +3779,9 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
           </div>
         </div>
 
-        {/* 2-column account cards — sinking fund style */}
+        {/* 2-column account cards — shows all expense accounts */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {expAccounts.filter(a=>budgets[a.code]>0).map(a=>{
+          {expAccounts.map(a=>{
             const budget=budgets[a.code]||0;
             const actual=getActual(a.code,periodTxns);
             const lastActual=getActual(a.code,lastMonthTxns);
@@ -3592,7 +3824,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
                 {budget>0&&(
                   <>
                     <div style={{height:5,background:"#f1efe8",borderRadius:3,overflow:"hidden",marginBottom:5}}>
-                      <div style={{width:`${pct}%`,height:"100%",background:isOver?"#e24b4a":pct>75?"#ef9f27":"#3b9e6d",borderRadius:3,transition:"width 0.3s"}}/>
+                      <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:isOver?"#e24b4a":pct>75?"#ef9f27":"#3b9e6d",borderRadius:3,transition:"width 0.3s"}}/>
                     </div>
                     {isOver
                       ?<div style={{fontSize:10,fontWeight:700,color:"#a32d2d",marginBottom:5}}>⚠ Over by {fmt(actual-budget)}</div>
@@ -3617,11 +3849,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
             No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap ••• on a card below to set a budget for any expense account.</span>
           </div>
         )}
-        {expAccounts.filter(a=>!budgets[a.code]).length>0&&expAccounts.filter(a=>budgets[a.code]>0).length>0&&(
-          <div style={{fontSize:10,color:"#888780",textAlign:"center",marginTop:10,padding:"8px 14px",background:"#fff",borderRadius:10,border:"0.5px solid #d3d1c7"}}>
-            + {expAccounts.filter(a=>!budgets[a.code]).length} expense accounts without a budget — not shown
-          </div>
-        )}
+
       </div>
     </div>
   );
@@ -3992,7 +4220,7 @@ function AdminPanel({onBack,profiles=[]}){
               const globalOn=isGlobalOn(f.id);
               const userOn=isUserOn(p.id,f.id);
               return(
-                <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,opacity:globalOn?1:0.4}}>
+                <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"8px 10px",background:T.bg,borderRadius:10,border:`1px solid ${T.border}`,opacity:globalOn?1:0.4}}>
                   <span style={{fontSize:18,flexShrink:0}}>{f.icon}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:13,color:T.text,fontWeight:600}}>{f.label}</div>
@@ -4170,12 +4398,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
 
-  // Handle direct ledger navigation from home KPI cards — redirect to Reskontro
-  if(tab==="ledger_1500"||tab==="ledger_2400"){
-    if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
-  }
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
   const feat={
@@ -4190,6 +4412,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     darkMode:getFeature("darkMode"),
     calcAmount:getFeature("calcAmount"),
   };
+
+  // Handle direct ledger navigation from home KPI cards — redirect to Reskontro
+  if(tab==="ledger_1500"||tab==="ledger_2400"){
+    if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
+    const initView=tab==="ledger_1500"?"customer":"supplier";
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
+  }
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
