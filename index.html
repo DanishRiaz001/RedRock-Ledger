@@ -4107,6 +4107,7 @@ function AdminPanel({onBack,profiles=[]}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[search,setSearch]=useState("");
+  const[userStatusTab,setUserStatusTab]=useState("active");
   const[features,setFeaturesState]=useState(()=>getAdminFeatures());
   const[userFeats,setUserFeatsState]=useState(()=>{
     try{return JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}")}catch{return{};}
@@ -4149,74 +4150,54 @@ function AdminPanel({onBack,profiles=[]}){
   // ── User Detail Screen ──
   if(selUser){
     const p=selUser;
-    const isDeactivated=!!deactivated[p.id];
+    const isDeact=!!deactivated[p.id];
+    const userNum=profiles.findIndex(x=>x.id===p.id)+1;
+    const deactBtnStyle=isDeact
+      ?{background:T.green,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"}
+      :{background:"#fee2e2",color:T.red,border:"1px solid "+T.red,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"};
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-        <BackHeader title={p.display_name||p.email?.split("@")[0]||"User"} sub="USER DETAIL · ADMIN" onBack={()=>setSelUser(null)}/>
+        <BackHeader title={p.display_name||p.email||"User"} sub="USER DETAIL · ADMIN" onBack={()=>setSelUser(null)}/>
         <div style={{padding:16}}>
-          {/* User info card */}
-          <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
+          <div style={{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:16,marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-              <div style={{width:52,height:52,borderRadius:"50%",background:isDeactivated?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:800}}>
-                {isDeactivated?"🚫":`#${(profiles.findIndex(x=>x.id===p.id)+1)||"?"}`}
+              <div style={{width:52,height:52,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:800}}>
+                {isDeact?"🚫":"#"+userNum}
               </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:700,color:T.text}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
+                <div style={{fontSize:15,fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}</div>
                 <div style={{fontSize:11,color:T.muted}}>{p.email}</div>
-                <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
-                  {isDeactivated&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}
+                <div style={{display:"flex",gap:5,marginTop:4}}>
+                  {isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}
                   {p.is_admin&&<span style={{fontSize:10,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800}}>ADMIN</span>}
                 </div>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[
-                {label:"User ID",val:p.id?.slice(0,12)+"..."},
-                {label:"Joined",val:p.created_at?.slice(0,10)||"—"},
-                {label:"Plan",val:p.subscription||"Free"},
-                {label:"Status",val:isDeactivated?"Deactivated":p.status||"Active"},
-              ].map((info,i)=>(
-                <div key={i} style={{background:T.bg,borderRadius:8,padding:"8px 10px"}}>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{info.label}</div>
-                  <div style={{fontSize:12,fontWeight:600,color:T.text}}>{info.val}</div>
-                </div>
-              ))}
-            </div>
+            <div style={{fontSize:11,color:T.muted}}>Joined: {p.created_at?p.created_at.slice(0,10):"—"}</div>
           </div>
 
-          {/* Deactivate / Reactivate */}
-          <div style={{background:isDeactivated?"#fff8f8":T.card,borderRadius:14,border:`1px solid ${isDeactivated?T.red:T.border}`,padding:16,marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:700,color:isDeactivated?T.red:T.text,marginBottom:4}}>{isDeactivated?"Account Deactivated":"Account Active"}</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:12,lineHeight:1.6}}>
-              {isDeactivated?"User can log in and view basic data, but cannot make new entries or use any features. Only support access.":"Deactivate if user has not paid. They will lose feature access but can still log in and contact support."}
-            </div>
-            {p.is_admin?(
-              <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
-                <span>⚠️</span>
-                <span style={{fontSize:12,color:T.orange,fontWeight:600}}>Admin accounts cannot be deactivated.</span>
-              </div>
-            ):(
-              <button onClick={()=>toggleDeactivate(p.id)} style={{...isDeactivated?{...btnRed,background:T.green,borderColor:T.green}:{background:"#fee2e2",color:T.red,border:`1px solid ${T.red}`,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"},width:"100%"}}>
-                {isDeactivated?"✅ Reactivate Account":"🚫 Deactivate Account"}
-              </button>
-            )}
+          <div style={{background:isDeact?"#fff8f8":T.card,borderRadius:14,border:"1px solid "+(isDeact?T.red:T.border),padding:16,marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:8}}>{isDeact?"Account Deactivated":"Account Active"}</div>
+            {p.is_admin
+              ?<div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.orange,fontWeight:600}}>⚠️ Admin accounts cannot be deactivated.</div>
+              :<button onClick={()=>toggleDeactivate(p.id)} style={deactBtnStyle}>{isDeact?"✅ Reactivate Account":"🚫 Deactivate Account"}</button>
+            }
           </div>
 
-          {/* Feature toggles */}
-          <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,opacity:isDeactivated?0.5:1}}>
-            <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:2}}>Feature Access</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Toggle features for this user only. Global off overrides all.</div>
+          <div style={{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:4}}>Feature Access</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Toggle features for this user.</div>
             {ADMIN_FEATURES.map(f=>{
-              const globalOn=isGlobalOn(f.id);
-              const userOn=isUserOn(p.id,f.id);
+              const gOn=isGlobalOn(f.id);
+              const uOn=isUserOn(p.id,f.id);
               return(
-                <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"8px 10px",background:T.bg,borderRadius:10,border:`1px solid ${T.border}`,opacity:globalOn?1:0.4}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{f.icon}</span>
+                <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"8px 10px",background:T.bg,borderRadius:10,border:"1px solid "+T.border,opacity:gOn?1:0.4}}>
+                  <span style={{fontSize:18}}>{f.icon}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:13,color:T.text,fontWeight:600}}>{f.label}</div>
-                    {!globalOn&&<div style={{fontSize:10,color:T.red,fontWeight:600}}>Globally disabled</div>}
+                    {!gOn&&<div style={{fontSize:10,color:T.red,fontWeight:600}}>Globally disabled</div>}
                   </div>
-                  <Toggle on={userOn} onClick={()=>toggleUser(p.id,f.id)} disabled={!globalOn||isDeactivated}/>
+                  <Toggle on={uOn} onClick={()=>toggleUser(p.id,f.id)} disabled={!gOn||isDeact}/>
                 </div>
               );
             })}
@@ -4254,7 +4235,6 @@ function AdminPanel({onBack,profiles=[]}){
           </>
         )}
         {tab==="users"&&(()=>{
-          const[userStatusTab,setUserStatusTab]=React.useState("active");
           const activeProfiles=filteredProfiles.filter(p=>!deactivated[p.id]);
           const inactiveProfiles=filteredProfiles.filter(p=>!!deactivated[p.id]);
           const shownProfiles=userStatusTab==="active"?activeProfiles:inactiveProfiles;
@@ -4264,24 +4244,23 @@ function AdminPanel({onBack,profiles=[]}){
                 <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
                 <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
               </div>
-              {/* Active / Inactive sub-tabs */}
               <div style={{display:"flex",gap:6,marginBottom:12}}>
-                {[["active",`✅ Active (${activeProfiles.length})`],["inactive",`🚫 Inactive (${inactiveProfiles.length})`]].map(([id,label])=>(
-                  <button key={id} onClick={()=>setUserStatusTab(id)} style={{flex:1,padding:"7px",borderRadius:10,border:`1.5px solid ${userStatusTab===id?T.accent:T.border}`,background:userStatusTab===id?T.accent:"#fff",color:userStatusTab===id?"#fff":T.sub,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+                {[["active","✅ Active ("+activeProfiles.length+")"],["inactive","🚫 Inactive ("+inactiveProfiles.length+")"]].map(([id,label])=>(
+                  <button key={id} onClick={()=>setUserStatusTab(id)} style={{flex:1,padding:"7px",borderRadius:10,border:"1.5px solid "+(userStatusTab===id?T.accent:T.border),background:userStatusTab===id?T.accent:"#fff",color:userStatusTab===id?"#fff":T.sub,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
                 ))}
               </div>
               {shownProfiles.length?(
                 <div>
-                  {shownProfiles.map((p,idx)=>{
+                  {shownProfiles.map((p)=>{
                     const isDeact=!!deactivated[p.id];
                     const realIdx=profiles.findIndex(x=>x.id===p.id);
                     return(
-                      <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:`1.5px solid ${isDeact?T.red:T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+                      <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:"1.5px solid "+(isDeact?T.red:T.border),padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
                         <div style={{width:36,height:36,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800,flexShrink:0}}>
-                          {isDeact?"🚫":`#${realIdx+1}`}
+                          {isDeact?"🚫":"#"+(realIdx+1)}
                         </div>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email?.split("@")[0]||"User"}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email||"User"}</div>
                           <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
                         </div>
                         {p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
