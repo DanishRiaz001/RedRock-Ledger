@@ -188,10 +188,21 @@ function AppShell({user}){
     if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||""})));
   };
 
+  const checkTxnLogic=(form,ctx)=>{
+    // Accounting logic checks — log bugs but never block saving
+    if(!form.debitCode||!form.creditCode)logBug("ACCOUNTING","Transaction missing debit or credit account","debit:"+form.debitCode+" credit:"+form.creditCode,ctx);
+    if(form.debitCode===form.creditCode)logBug("ACCOUNTING","Debit and credit are the same account","account:"+form.debitCode+" desc:"+form.description,ctx);
+    if(!form.amount||form.amount<=0)logBug("ACCOUNTING","Transaction amount is zero or negative","amount:"+form.amount+" desc:"+form.description,ctx);
+    if(!form.date)logBug("ACCOUNTING","Transaction has no date","desc:"+form.description,ctx);
+    if(form.amount>10000000)logBug("ACCOUNTING","Unusually large transaction amount (>10M)","amount:"+form.amount+" desc:"+form.description,ctx);
+  };
+
   const addTransaction=async(form)=>{
     if(!canEdit)return;
+    checkTxnLogic(form,"addTransaction");
     const nb=nextBilag;
-    const{data}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null}]).select().single();
+    if(error)logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
     if(data){
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
       setNextBilag(nb+1);
@@ -199,9 +210,11 @@ function AppShell({user}){
   };
 
   const saveEdit=async(u)=>{
+    checkTxnLogic(u,"saveEdit");
     setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
     if(!canEdit)return;
-    await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null}).eq("id",u.id);
+    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null}).eq("id",u.id);
+    if(error)logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
   };
 
   const deleteTxn=async(id)=>{
@@ -238,12 +251,15 @@ function AppShell({user}){
   const saveSinkingFunds=async(list)=>{
     setSFState(list);
     if(!canEdit)return;
-    // Delete all then re-insert — simple, no race conditions
-    await sb.from("sinking_funds").delete().eq("user_id",user.id);
+    // Delete all then re-insert
+    const {error:delErr}=await sb.from("sinking_funds").delete().eq("user_id",user.id);
+    if(delErr){console.error("SF delete error:",delErr);alert("Sinking Funds save failed (delete): "+delErr.message);return;}
     if(list.length){
-      await sb.from("sinking_funds").insert(
-        list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}))
-      );
+      const rows=list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
+      console.log("SF inserting:",rows);
+      const {error:insErr}=await sb.from("sinking_funds").insert(rows);
+      if(insErr){console.error("SF insert error:",insErr);alert("Sinking Funds save failed (insert): "+insErr.message);}
+      else{console.log("SF saved OK, count:",list.length);}
     }
   };
 
@@ -797,6 +813,23 @@ function MatchedGroups({matchedRows,getMovement}){
 
 // ─── Admin feature helpers ────────────────────────────────────────────────────
 const ADMIN_KEY="rr_admin_features";
+const BUGLOG_KEY="rr_buglog";
+const MAX_BUGS=200;
+
+// ── Bug Log helpers ──────────────────────────────────────────────────────────
+const getBugs=()=>{try{return JSON.parse(localStorage.getItem(BUGLOG_KEY)||"[]")}catch{return[];}};
+const saveBugsRaw=(list)=>{try{localStorage.setItem(BUGLOG_KEY,JSON.stringify(list.slice(-MAX_BUGS)));}catch{}};
+const logBug=(type,message,detail="",context="")=>{
+  const bugs=getBugs();
+  bugs.push({id:Date.now()+Math.random().toString(36).slice(2),ts:new Date().toISOString(),type,message,detail:String(detail).slice(0,500),context:String(context).slice(0,200),resolved:false});
+  saveBugsRaw(bugs);
+  console.warn("[BugLog]",type,message,detail);
+};
+// Auto-catch unhandled JS errors
+if(typeof window!=="undefined"){
+  window.addEventListener("error",e=>{logBug("JS_ERROR",e.message,e.filename+":"+(e.lineno||"?"),"window.onerror");});
+  window.addEventListener("unhandledrejection",e=>{logBug("PROMISE",String(e.reason?.message||e.reason),e.reason?.stack||"","unhandledrejection");});
+}
 const USER_FEATS_KEY="rr_user_features"; // {userId: {featureId: bool}}
 
 const getAdminFeatures=()=>{try{return JSON.parse(localStorage.getItem(ADMIN_KEY)||"{}")}catch{return{};}};
@@ -4076,6 +4109,127 @@ function ChequeScreen({onBack}){
   );
 }
 
+
+// ─── Bug Log Screen ───────────────────────────────────────────────────────────
+function BugLogScreen({onBack}){
+  const[bugs,setBugs]=React.useState(()=>getBugs().reverse());
+  const[filter,setFilter]=React.useState("all"); // all | unresolved | JS_ERROR | ACCOUNTING | DB_ERROR | PROMISE
+  const[search,setSearch]=React.useState("");
+
+  const refresh=()=>setBugs(getBugs().reverse());
+  const markResolved=(id)=>{
+    const updated=getBugs().map(b=>b.id===id?{...b,resolved:true}:b);
+    saveBugsRaw(updated);refresh();
+  };
+  const deleteOne=(id)=>{
+    saveBugsRaw(getBugs().filter(b=>b.id!==id));refresh();
+  };
+  const clearAll=()=>{if(window.confirm("Clear all bug logs?")){{saveBugsRaw([]);refresh();}}};
+  const clearResolved=()=>{saveBugsRaw(getBugs().filter(b=>!b.resolved));refresh();};
+
+  const TYPE_COLOR={JS_ERROR:"#dc2626",ACCOUNTING:"#d97706",DB_ERROR:"#7c3aed",PROMISE:"#0369a1",MANUAL:"#059669"};
+  const TYPE_BG={JS_ERROR:"#fef2f2",ACCOUNTING:"#fffbeb",DB_ERROR:"#f5f3ff",PROMISE:"#f0f9ff",MANUAL:"#f0fdf4"};
+
+  const filtered=bugs.filter(b=>{
+    if(filter==="unresolved"&&b.resolved)return false;
+    if(filter!=="all"&&filter!=="unresolved"&&b.type!==filter)return false;
+    if(search&&!b.message.toLowerCase().includes(search.toLowerCase())&&!b.detail.toLowerCase().includes(search.toLowerCase()))return false;
+    return true;
+  });
+
+  const counts={total:bugs.length,unresolved:bugs.filter(b=>!b.resolved).length};
+  const typeCounts={};bugs.forEach(b=>{typeCounts[b.type]=(typeCounts[b.type]||0)+1;});
+
+  const fmtTs=(ts)=>{
+    const d=new Date(ts);
+    return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"})+", "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      <BackHeader title="Bug Log" sub={"ADMIN · "+counts.unresolved+" UNRESOLVED"} onBack={onBack}/>
+
+      {/* Summary bar */}
+      <div style={{background:"#1a1a18",padding:"10px 16px",display:"flex",gap:10,flexWrap:"wrap"}}>
+        {[["all","All",counts.total,"#93A8D0"],["unresolved","Unresolved",counts.unresolved,"#f87171"],
+          ...Object.entries(typeCounts).map(([t,c])=>[t,t.replace("_"," "),c,TYPE_COLOR[t]||"#888"])
+        ].map(([id,label,count,color])=>(
+          <button key={id} onClick={()=>setFilter(id)}
+            style={{background:filter===id?"rgba(255,255,255,0.15)":"transparent",border:`1px solid ${filter===id?"rgba(255,255,255,0.3)":"transparent"}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+            <span style={{fontSize:10,color,fontWeight:700}}>{label}</span>
+            <span style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginLeft:5}}>{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Search + actions */}
+      <div style={{padding:"10px 16px",background:"#fff",borderBottom:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search bugs..." style={{...inp,flex:1,fontSize:11,padding:"6px 10px"}}/>
+        <button onClick={clearResolved} style={{fontSize:10,fontWeight:700,color:T.green,background:"#f0fdf4",border:`1px solid ${T.green}33`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Clear resolved</button>
+        <button onClick={clearAll} style={{fontSize:10,fontWeight:700,color:T.red,background:"#fef2f2",border:`1px solid ${T.red}33`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Clear all</button>
+      </div>
+
+      <div style={{padding:"12px 16px"}}>
+        {filtered.length===0&&(
+          <div style={{textAlign:"center",padding:40,color:T.muted}}>
+            <div style={{fontSize:32,marginBottom:8}}>✅</div>
+            <div style={{fontSize:13,fontWeight:600}}>{bugs.length===0?"No bugs recorded yet":"No bugs match filter"}</div>
+          </div>
+        )}
+        {filtered.map(b=>(
+          <div key={b.id} style={{background:b.resolved?"#f9f9f7":TYPE_BG[b.type]||"#fff",border:`1px solid ${b.resolved?"#e0ddd4":TYPE_COLOR[b.type]||T.border}33`,borderLeft:`3px solid ${b.resolved?"#c0bdb4":TYPE_COLOR[b.type]||T.border}`,borderRadius:10,padding:"10px 12px",marginBottom:8,opacity:b.resolved?0.6:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:9,fontWeight:800,color:b.resolved?"#888":TYPE_COLOR[b.type]||"#888",background:b.resolved?"#e8e7e0":(TYPE_BG[b.type]||"#f5f5f5"),padding:"2px 7px",borderRadius:5,textTransform:"uppercase",letterSpacing:0.5}}>{b.type}</span>
+                {b.resolved&&<span style={{fontSize:9,fontWeight:700,color:T.green,background:"#f0fdf4",padding:"2px 7px",borderRadius:5}}>✓ Resolved</span>}
+                <span style={{fontSize:9,color:T.muted}}>{fmtTs(b.ts)}</span>
+              </div>
+              <div style={{display:"flex",gap:4,flexShrink:0}}>
+                {!b.resolved&&<button onClick={()=>markResolved(b.id)} style={{fontSize:9,fontWeight:700,color:T.green,background:"#f0fdf4",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit"}}>✓</button>}
+                <button onClick={()=>deleteOne(b.id)} style={{fontSize:9,fontWeight:700,color:T.red,background:"#fef2f2",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+              </div>
+            </div>
+            <div style={{fontSize:12,fontWeight:700,color:"#1a1a18",marginBottom:b.detail?4:0,lineHeight:1.4}}>{b.message}</div>
+            {b.detail&&<div style={{fontSize:10,color:T.sub,fontFamily:"monospace",background:"rgba(0,0,0,0.04)",borderRadius:5,padding:"4px 7px",wordBreak:"break-all",lineHeight:1.5}}>{b.detail}</div>}
+            {b.context&&<div style={{fontSize:9,color:T.muted,marginTop:4}}>Context: {b.context}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Manual log button */}
+      <div style={{padding:"0 16px 20px"}}>
+        <ManualBugForm onLog={()=>refresh()}/>
+      </div>
+    </div>
+  );
+}
+
+function ManualBugForm({onLog}){
+  const[show,setShow]=React.useState(false);
+  const[msg,setMsg]=React.useState("");
+  const[detail,setDetail]=React.useState("");
+  const submit=()=>{
+    if(!msg.trim())return;
+    logBug("MANUAL",msg.trim(),detail.trim(),"manual entry");
+    setMsg("");setDetail("");setShow(false);onLog();
+  };
+  if(!show)return(
+    <button onClick={()=>setShow(true)} style={{width:"100%",background:"#f1efe8",border:`1px dashed ${T.border}`,borderRadius:10,padding:"11px",fontSize:12,color:T.muted,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Log a bug manually</button>
+  );
+  return(
+    <div style={{background:"#fff",border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"14px"}}>
+      <div style={{fontSize:12,fontWeight:700,color:T.accent,marginBottom:10}}>📝 Manual Bug Entry</div>
+      <input value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Bug description *" style={{...inp,marginBottom:8,fontSize:12}}/>
+      <textarea value={detail} onChange={e=>setDetail(e.target.value)} placeholder="Details / steps to reproduce (optional)" rows={3}
+        style={{...inp,fontSize:11,resize:"vertical",fontFamily:"inherit",marginBottom:8}}/>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={submit} style={{flex:2,background:T.accent,color:"#fff",border:"none",borderRadius:9,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Log Bug</button>
+        <button onClick={()=>setShow(false)} style={{flex:1,background:T.bg,color:T.muted,border:`1px solid ${T.border}`,borderRadius:9,padding:"9px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Panel ─────────────────────────────────────────────────────────────
 const ADMIN_FEATURES=[
   {id:"bank",label:"Bank Module",icon:"🏧",desc:"Bank accounts & statements"},
@@ -4291,6 +4445,7 @@ const SIDEBAR=[
   {id:"Import",icon:"📥",label:"Import Excel",group:"tools"},
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},
   {id:"AdminPanel",icon:"🛡️",label:"Admin Panel",group:"system"},
+  {id:"BugLog",icon:"🐛",label:"Bug Log",group:"system"},
 ];
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -4376,6 +4531,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   }
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
+  if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
@@ -4461,10 +4617,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             })}
             {/* System group */}
             <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-            {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"||isAdmin)).map(item=>{const active=tab===item.id;return(
+            {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
               <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent"}}>
                 <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
+                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
+                {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px",minWidth:16,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );})}
             <div onClick={()=>setDarkMode(d=>!d)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10}}>
