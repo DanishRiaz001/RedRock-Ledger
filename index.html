@@ -654,6 +654,7 @@ const INCOME_SK=new Set(["3000","3900","8000"]);
 const EXPENSE_SK=new Set(["4000","5000","6000","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900","8100","8200","8300","8800"]);
 const isIncomeSK=(code)=>INCOME_SK.has(getSK(code));
 const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
+const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
 // ─── useSaveFlash hook & SaveFlashButton ────────────────────────────────────
