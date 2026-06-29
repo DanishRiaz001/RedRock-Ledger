@@ -1116,7 +1116,8 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
   const[periodFrom,setPeriodFrom]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
-  const[selContact,setSelContact]=useState("all"); // "all" or contact id
+  const[selContact,setSelContact]=useState("all"); // "all" or contact id — used in contact mode
+  const[filterContact,setFilterContact]=useState("all"); // "all" or contact id — used in open/period modes
   const[selected,setSelected]=useState([]);
   const[detailTxn,setDetailTxn]=useState(null);
   const[reskontroTab,setReskontroTab]=useState("contacts");
@@ -1129,7 +1130,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const doMatchTxns=(ids,grpId)=>matchTxns(ids,grpId);
   const doUnmatchGroup=(grpId)=>{if(unmatchTxns)unmatchTxns(grpId);};
 
-  const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");};
+  const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");setFilterContact("all");};
 
   const toggleInactive=(id)=>setContacts(contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c));
 
@@ -1149,9 +1150,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         if(contactId&&contactId!=="all"&&t.contactId!==contactId)return false;
         if(!(t.debitCode===code||t.creditCode===code))return false;
         if(mode==="open"){
+          if(filterContact!=="all"&&t.contactId!==filterContact)return false;
           if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
           if(asOfDate&&t.date>asOfDate)return false;
         } else if(mode==="period"){
+          if(filterContact!=="all"&&t.contactId!==filterContact)return false;
           if(t.date<periodFrom||t.date>periodTo)return false;
         } else if(mode==="contact"){
           if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
@@ -1224,7 +1227,55 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
 
-        <BackHeader title={isCustomer?"Customers (AR)":"Suppliers (AP)"} sub={`RESKONTRO · ${isCustomer?"1500":"2400"}`} color={accentColor} onBack={goBack}/>
+        {/* Header with PDF export icon */}
+        <div style={{background:T.header,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={goBack} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{`RESKONTRO · ${isCustomer?"1500":"2400"}`}</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>{isCustomer?"Customers (AR)":"Suppliers (AP)"}</div>
+          </div>
+          <button title="Export PDF" onClick={()=>{
+            const modeLabel=mode==="open"?`Open Items${asOfDate?" as of "+asOfDate:" (All time)"}`:mode==="period"?`Period ${periodFrom} → ${periodTo}`:`${isCustomer?"Customer":"Supplier"} View`;
+            const contactLabel=(mode==="open"||mode==="period")&&filterContact!=="all"?(" · "+(list.find(c=>c.id===filterContact)||{name:filterContact}).name):"";
+            const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Reskontro Report</title><style>
+              body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;margin:20px;}
+              h1{font-size:15px;font-weight:800;margin:0 0 2px;}
+              .sub{font-size:10px;color:#64748b;margin:0 0 16px;}
+              table{width:100%;border-collapse:collapse;margin-bottom:12px;}
+              th{font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:1.5px solid #e2e8f0;padding:5px 6px;text-align:left;}
+              td{padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:11px;}
+              .contact-hdr{font-size:12px;font-weight:700;background:#f8fafc;padding:6px 8px;border-left:3px solid ${accentColor};margin-top:8px;color:${accentColor};}
+              .subtotal{font-weight:700;font-size:11px;background:#f8fafc;color:${accentColor};}
+              .pos{color:#16a34a;} .neg{color:#dc2626;}
+              .footer{margin-top:20px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;}
+              @media print{body{margin:10px;}}
+            </style></head><body>
+            <h1>Reskontro — ${isCustomer?"Customers (AR · 1500)":"Suppliers (AP · 2400)"}</h1>
+            <div class="sub">${modeLabel}${contactLabel} · Generated ${new Date().toLocaleDateString()}</div>
+            ${byContact.map(({contact:c,txns:ctxns})=>{
+              const sub=ctxns.reduce((s,t)=>s+mv(t,code),0);
+              return`<div class="contact-hdr">${c.id} — ${c.name}</div>
+              <table><thead><tr><th>Bilag</th><th>Date</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>
+              ${ctxns.map(t=>{
+                const m=mv(t,code);
+                const dp=t.date.split("-");
+                const dl=dp.length===3?`${dp[2]}.${dp[1]}.${dp[0].slice(2)}`:t.date;
+                const matched=!!t.matchedWith&&!t.reversedBy&&!t.reversalOf;
+                return`<tr><td>${fmtB(t.bilag)}${matched?" ✓":""}</td><td>${dl}</td><td>${t.description||""}</td><td style="text-align:right" class="${m>=0?"pos":"neg"}">${m>=0?"+":"−"}${fmt(Math.abs(m))}</td></tr>`;
+              }).join("")}
+              <tr class="subtotal"><td colspan="3" style="text-align:right">Subtotal</td><td style="text-align:right" class="${sub>=0?"pos":"neg"}">${sub>=0?"+":"−"}${fmt(Math.abs(sub))}</td></tr>
+              </tbody></table>`;
+            }).join("")}
+            <div style="margin-top:12px;text-align:right;font-size:13px;font-weight:800" class="${grandTotal>=0?"pos":"neg"}">Grand Total: ${grandTotal>=0?"+":"−"}${fmt(Math.abs(grandTotal))}</div>
+            <div class="footer">Redrock Danria Accountants · Reskontro Report · ${new Date().toISOString().slice(0,10)}</div>
+            </body></html>`;
+            const w=window.open("","_blank","width=700,height=900");
+            w.document.write(html);w.document.close();
+            setTimeout(()=>w.print(),400);
+          }} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:10,color:"#fff",fontSize:16,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            📄
+          </button>
+        </div>
 
         {/* ── Filter bar ── */}
         <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px"}}>
@@ -1237,42 +1288,55 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
             ))}
           </div>
 
-          {/* Open Post: small calendar box + optional as-of date */}
+          {/* Open Post: date + contact filter */}
           {mode==="open"&&(
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {/* Calendar date box */}
-              <div style={{position:"relative",flexShrink:0}}>
-                <div style={{background:accentColor+"15",border:`1.5px solid ${accentColor}44`,borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:6,minWidth:34}}>
-                  <span style={{fontSize:15}}>🗓</span>
-                  {!asOfDate&&<span style={{fontSize:9,color:accentColor,fontWeight:600,whiteSpace:"nowrap"}}>As of</span>}
+            <>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <div style={{position:"relative",flexShrink:0}}>
+                  <div style={{background:accentColor+"15",border:`1.5px solid ${accentColor}44`,borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:6,minWidth:34}}>
+                    <span style={{fontSize:15}}>🗓</span>
+                    {!asOfDate&&<span style={{fontSize:9,color:accentColor,fontWeight:600,whiteSpace:"nowrap"}}>As of</span>}
+                  </div>
                 </div>
+                <div style={{flex:1,position:"relative"}}>
+                  <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                    style={{...inp,padding:"6px 30px 6px 10px",fontSize:11,border:`1.5px solid ${asOfDate?accentColor:T.border}`}}/>
+                  {asOfDate&&(
+                    <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                  )}
+                </div>
+                {!asOfDate&&<span style={{fontSize:9,color:T.muted,fontStyle:"italic",flexShrink:0}}>All time</span>}
               </div>
-              <div style={{flex:1,position:"relative"}}>
-                <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
-                  style={{...inp,padding:"6px 30px 6px 10px",fontSize:11,border:`1.5px solid ${asOfDate?accentColor:T.border}`}}/>
-                {asOfDate&&(
-                  <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
-                )}
-              </div>
-              {!asOfDate&&<span style={{fontSize:9,color:T.muted,fontStyle:"italic",flexShrink:0}}>All time</span>}
-            </div>
+              <select value={filterContact} onChange={e=>setFilterContact(e.target.value)}
+                style={{...inp,fontSize:9,width:"100%",padding:"5px 10px",border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`}}>
+                <option value="all">👤 All {isCustomer?"customers":"suppliers"}</option>
+                {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
+              </select>
+            </>
           )}
 
-          {/* Period: two calendar-icon date boxes */}
+          {/* Period: dates + contact filter */}
           {mode==="period"&&(
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <div style={{flex:1,position:"relative"}}>
-                <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
-                <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
-                  style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
+            <>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+                <div style={{flex:1,position:"relative"}}>
+                  <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
+                  <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+                    style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
+                </div>
+                <span style={{fontSize:12,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
+                <div style={{flex:1,position:"relative"}}>
+                  <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
+                  <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+                    style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
+                </div>
               </div>
-              <span style={{fontSize:12,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
-              <div style={{flex:1,position:"relative"}}>
-                <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
-                <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
-                  style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
-              </div>
-            </div>
+              <select value={filterContact} onChange={e=>setFilterContact(e.target.value)}
+                style={{...inp,fontSize:9,width:"100%",padding:"5px 10px",border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`}}>
+                <option value="all">👤 All {isCustomer?"customers":"suppliers"}</option>
+                {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
+              </select>
+            </>
           )}
 
           {/* Contact mode: 9px dropdown */}
@@ -1984,15 +2048,105 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   );
 
   if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)}/>);
-  if(screen==="contacts")return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>{setScreen(null);}}/>
-      <div style={{padding:16}}>
-        <div style={{fontSize:12,color:T.muted,marginBottom:12}}>To add or manage contacts, go to Reskontro → Contacts tab.</div>
-        <button onClick={()=>setScreen(null)} style={btnRed}>← Back to Settings</button>
-      </div>
-    </div>
-  );
+  if(screen==="contacts"){
+    const ManageContactsInner=()=>{
+      const[cType,setCType]=useState("customer");
+      const[cName,setCName]=useState("");
+      const[cNotes,setCNotes]=useState("");
+      const[showForm,setShowForm]=useState(false);
+      const[editId,setEditId]=useState(null);
+      const[search,setSearch]=useState("");
+      const[saved,setSaved]=useState(false);
+      const hasTxns=(id)=>transactions.some(t=>t.contactId===id);
+      const nextId=(type)=>{
+        const prefix=type==="customer"?"C":"S";
+        const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
+        return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
+      };
+      const openNew=()=>{setCName("");setCNotes("");setEditId(null);setShowForm(true);};
+      const openEdit=(c)=>{setCType(c.type);setCName(c.name);setCNotes(c.notes||"");setEditId(c.id);setShowForm(true);};
+      const cancelForm=()=>{setShowForm(false);setEditId(null);setCName("");setCNotes("");};
+      const saveContact=()=>{
+        if(!cName.trim())return;
+        if(editId){
+          setContacts(contacts.map(c=>c.id===editId?{...c,name:cName.trim(),notes:cNotes.trim()}:c));
+        } else {
+          setContacts([...contacts,{id:nextId(cType),type:cType,name:cName.trim(),notes:cNotes.trim()}]);
+        }
+        cancelForm();setSaved(true);setTimeout(()=>setSaved(false),1600);
+      };
+      const toggleInactive=(id)=>setContacts(contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c));
+      const deleteContact=(id)=>{
+        if(hasTxns(id)){alert("Cannot delete — this contact has transactions. Mark them Inactive instead.");return;}
+        if(!window.confirm("Delete this contact?"))return;
+        setContacts(contacts.filter(c=>c.id!==id));
+      };
+      const lists={
+        customer:contacts.filter(c=>c.type==="customer"&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase()))),
+        supplier:contacts.filter(c=>c.type==="supplier"&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase()))),
+      };
+      return(
+        <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+          <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>setScreen(null)}/>
+          <div style={{padding:16}}>
+            {saved&&<div style={{background:"#DCFCE7",border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",fontSize:12,color:"#166534",fontWeight:700,marginBottom:12}}>✓ Saved</div>}
+            <input placeholder="Search contacts…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:10}}/>
+            <button onClick={openNew} style={{...btnRed,marginBottom:14}}>+ New Contact</button>
+            {showForm&&(
+              <div style={{background:T.card,borderRadius:14,border:`1.5px solid ${T.accent}`,padding:"14px 16px",marginBottom:14,boxShadow:"0 4px 16px rgba(13,115,119,0.1)"}}>
+                <div style={{fontSize:12,fontWeight:800,color:T.accent,marginBottom:12,textTransform:"uppercase",letterSpacing:0.8}}>{editId?"✏️ Edit Contact":"➕ New Contact"}</div>
+                {!editId&&(
+                  <div style={{display:"flex",gap:6,marginBottom:10}}>
+                    {[["customer","📥 Customer (AR)"],["supplier","📤 Supplier (AP)"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setCType(v)} style={{flex:1,padding:"7px 4px",border:`1.5px solid ${cType===v?T.accent:T.border}`,borderRadius:9,background:cType===v?T.accent:"#fff",color:cType===v?"#fff":T.sub,fontSize:10,fontWeight:cType===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+                    ))}
+                  </div>
+                )}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Name</div>
+                  <input value={cName} onChange={e=>setCName(e.target.value)} placeholder="Contact name…" style={inp}/>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>Notes (optional)</div>
+                  <input value={cNotes} onChange={e=>setCNotes(e.target.value)} placeholder="Phone, email, ref…" style={inp}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <SaveFlashButton onClick={saveContact} style={{flex:2,padding:"8px"}} label={editId?"✓ Save Changes":"✓ Add Contact"}/>
+                  <button style={{...btnGhost,flex:1,padding:"8px"}} onClick={cancelForm}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {[["customer","📥 Customers (AR)",T.blue,T.blueBg],["supplier","📤 Suppliers (AP)",T.red,T.redLight]].map(([type,label,color,bg])=>(
+              <div key={type} style={{marginBottom:20}}>
+                <div style={{fontSize:11,fontWeight:800,color,textTransform:"uppercase",letterSpacing:0.7,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                  {label}<span style={{background:bg,color,borderRadius:99,padding:"1px 8px",fontSize:10}}>{contacts.filter(c=>c.type===type&&!c.inactive).length} active</span>
+                </div>
+                {lists[type].length===0&&<div style={{fontSize:12,color:T.muted,padding:"10px 0"}}>No {type}s found.</div>}
+                {lists[type].map(c=>(
+                  <div key={c.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10,opacity:c.inactive?0.55:1}}>
+                    <span style={{fontSize:10,fontWeight:800,color,background:bg,padding:"3px 8px",borderRadius:6,flexShrink:0}}>{c.id}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:c.inactive?T.muted:T.text,textDecoration:c.inactive?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+                      {c.notes&&<div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.notes}</div>}
+                    </div>
+                    {c.inactive&&<span style={{fontSize:9,fontWeight:800,color:T.muted,background:T.border,borderRadius:5,padding:"2px 6px",flexShrink:0}}>INACTIVE</span>}
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      {!c.inactive&&<button onClick={()=>openEdit(c)} style={{...btnSm,fontSize:10,padding:"4px 8px"}}>✏️</button>}
+                      <button onClick={()=>toggleInactive(c.id)} style={{...btnSm,fontSize:10,padding:"4px 8px",background:c.inactive?"#DCFCE7":T.orangeBg,color:c.inactive?T.green:T.orange}}>
+                        {c.inactive?"↩ Activate":"⊘ Inact."}
+                      </button>
+                      {!hasTxns(c.id)&&!c.inactive&&<button onClick={()=>deleteContact(c.id)} style={{...btnSm,fontSize:10,padding:"4px 8px",background:"#FEF2F2",color:T.red}}>🗑</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+    return <ManageContactsInner/>;
+  }
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
