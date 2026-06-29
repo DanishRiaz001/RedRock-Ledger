@@ -17,6 +17,8 @@
     body{margin:0;padding:0;background:#FAF9F7;font-family:system-ui,-apple-system,sans-serif;}
     input,select,button{font-family:inherit;}
     ::-webkit-scrollbar{display:none;}
+    .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}
+    .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#FCE7F3!important;}
   </style>
 </head>
 <body>
@@ -1287,37 +1289,43 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           </button>
         )}
         {showMatched&&<MatchedGroups matchedRows={matchedRows} getMovement={r=>r.movement}/>}
-        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"6px 6px",borderBottom:`2px solid ${T.border}`}}>
+        <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",gap:10}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{account.code} {account.name}</div>
+          <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closingBal)}</div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#111827"}}>Incoming Balance</div>
+            <div style={{fontSize:12,fontWeight:800,color:"#111827"}}>{sign(openingBal)}</div>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
           {["","Bilag","Date","Description","✓","Amount"].map(h=>(
-            <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textAlign:h==="Amount"||h==="✓"?"center":"left",textTransform:"uppercase",letterSpacing:0.5}}>{h}</div>
+            <div key={h} style={{fontSize:10,color:"#111827",fontWeight:800,textAlign:h==="Amount"||h==="✓"?"center":"left",textTransform:"uppercase",letterSpacing:0}}>{h}</div>
           ))}
         </div>
         {rows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13,fontWeight:600}}>No transactions in this period</div></div>}
         {rows.map((r,i)=>{
           const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;const isMatched=!!r.matchedWith;
           return(
-            <div key={r.id} style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"9px 6px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:isSel?T.blueBg:i%2===0?"#fff":T.bg,borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"3px solid transparent"}}>
+            <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"1px solid "+T.border}}>
               <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
               <div onClick={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(r.bilag)}</div>
-              <div style={{fontSize:10,color:T.sub}}>{r.date.slice(5)}</div>
-              <div style={{fontSize:12,color:isRev?T.red:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
+              <div style={{fontSize:10,color:"#111827"}}>{r.date.slice(5)}</div>
+              <div style={{fontSize:12,color:isRev?T.red:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
               <div title={isMatched?`Matched · group ${(r.matchedWith?r.matchedWith.slice(-6):undefined)}`:"Not matched"} style={{fontSize:11,textAlign:"center",cursor:isMatched?"help":"default",color:isMatched?T.green:"#ddd"}}>{isMatched?"✓":"—"}</div>
-              <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:r.movement>=0?T.green:T.red}}>{r.movement>=0?"+":"−"}{fmt(r.movement)}</div>
+              <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:"#111827"}}>{r.movement>=0?"+":"−"}{fmt(Math.abs(r.movement))}</div>
             </div>
           );
         })}
-      </div>
-      {/* Footer */}
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,padding:"12px 16px",marginTop:8,borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
           {[
-            {label:"Incoming",value:openingBal,color:T.muted},
-            {label:"Current",value:periodMovement,color:periodMovement>=0?T.green:T.red},
-            {label:"Outgoing",value:closingBal,color:closingBal>=0?T.accent:T.red}
+            {label:"This Period",value:periodMovement},
+            {label:"Outgoing Balance",value:closingBal}
           ].map((c,i)=>(
-            <div key={i} style={{textAlign:"center"}}>
-              <div style={{fontSize:9,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{c.label}</div>
-              <div style={{fontSize:12,fontWeight:700,color:c.color}}>{sign(c.value)}</div>
+            <div key={c.label} style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",borderBottom:i===0?`1px solid ${T.border}`:"none"}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#111827"}}>{c.label}</div>
+              <div style={{fontSize:12,fontWeight:900,color:"#111827"}}>{sign(c.value)}</div>
             </div>
           ))}
         </div>
@@ -1411,6 +1419,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const[periodTo,setPeriodTo]=useState(new Date().toISOString().split("T")[0]);
   const[selContact,setSelContact]=useState("all"); // "all" or contact id — used in contact mode
   const[filterContact,setFilterContact]=useState("all"); // "all" or contact id — used in open/period modes
+  const[contactSearch,setContactSearch]=useState("");
   const[selected,setSelected]=useState([]);
   const[detailTxn,setDetailTxn]=useState(null);
   const[reskontroTab,setReskontroTab]=useState("contacts");
@@ -1423,7 +1432,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const doMatchTxns=(ids,grpId)=>matchTxns(ids,grpId);
   const doUnmatchGroup=(grpId)=>{if(unmatchTxns)unmatchTxns(grpId);};
 
-  const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");setFilterContact("all");};
+  const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");setFilterContact("all");setContactSearch("");};
 
   const toggleInactive=(id)=>setContacts(contacts.map(c=>c.id===id?{...c,inactive:!c.inactive}:c));
 
@@ -1434,6 +1443,15 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
     const code=isCustomer?"1500":"2400";
     const accentColor=isCustomer?T.blue:T.red;
     const accentBg=isCustomer?T.blueBg:T.redLight;
+    const contactDatalistId=`reskontro-contact-filter-${view}`;
+    const contactFilterLabel=filterContact==="all"?"":((list.find(c=>c.id===filterContact)||{}).name||"");
+    const setContactFilterFromText=(value)=>{
+      setContactSearch(value);
+      const v=value.trim().toLowerCase();
+      if(!v||v==="all"){setFilterContact("all");return;}
+      const match=list.find(c=>c.id.toLowerCase()===v||c.name.toLowerCase()===v||(`${c.id} — ${c.name}`).toLowerCase()===v||(`${c.id} - ${c.name}`).toLowerCase()===v);
+      if(match)setFilterContact(match.id);
+    };
 
     // Filter transactions based on mode
     const getViewTxns=(contactId)=>{
@@ -1449,8 +1467,6 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         } else if(mode==="period"){
           if(filterContact!=="all"&&t.contactId!==filterContact)return false;
           if(t.date<periodFrom||t.date>periodTo)return false;
-        } else if(mode==="contact"){
-          if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
         }
         return true;
       }).sort((a,b)=>{
@@ -1462,7 +1478,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
       });
     };
 
-    const viewTxns=getViewTxns(mode==="contact"?selContact:null);
+    const viewTxns=getViewTxns(null);
     const grandTotal=viewTxns.reduce((s,t)=>s+mv(t,code),0);
 
     // Group by contact for sub-totals
@@ -1511,7 +1527,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
     // COL: ☑/✓ | Bilag | Date | Description | Amount
     const ROW_COLS="22px 52px 60px 1fr 82px";
-    const hdStyle={fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.6};
+    const hdStyle={fontSize:9,color:"#111827",fontWeight:800,textTransform:"uppercase",letterSpacing:0};
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
@@ -1583,73 +1599,42 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         {/* ── Filter bar ── */}
         <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px"}}>
           {/* Mode selector — pill-style tabs */}
-          <div style={{display:"flex",gap:6,marginBottom:10}}>
-            {[["open","Open Items"],["period","Period"],["contact",isCustomer?"Customer":"Supplier"]].map(([id,label])=>(
+          <div style={{display:"flex",gap:6,alignItems:"stretch",flexWrap:"wrap"}}>
+            {[["open","Open Items"],["period","Period"]].map(([id,label])=>(
               <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"6px 4px",border:`1.5px solid ${mode===id?accentColor:T.border}`,borderRadius:9,background:mode===id?accentColor:"#fff",color:mode===id?"#fff":T.sub,fontSize:10,fontWeight:mode===id?700:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-                {id==="open"?"🗓 Open Items":id==="period"?"📅 Period":"👤 "+(isCustomer?"Customer":"Supplier")}
+                {id==="open"?"🗓 Open Items":"📅 Period"}
               </button>
             ))}
+            {mode==="open"&&(
+              <div style={{flex:"1 1 110px",position:"relative"}}>
+                <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                  style={{...inp,height:"100%",padding:"6px 24px 6px 8px",fontSize:10,border:`1.5px solid ${asOfDate?accentColor:T.border}`,borderRadius:9}}/>
+                {asOfDate&&(
+                  <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                )}
+              </div>
+            )}
+            {mode==="period"&&(
+              <div style={{flex:"2 1 170px",display:"flex",gap:4,alignItems:"center"}}>
+                <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+                  style={{...inp,height:"100%",padding:"6px 7px",fontSize:10,border:`1.5px solid ${accentColor}44`,borderRadius:9}}/>
+                <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
+                <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+                  style={{...inp,height:"100%",padding:"6px 7px",fontSize:10,border:`1.5px solid ${accentColor}44`,borderRadius:9}}/>
+              </div>
+            )}
+            <div style={{flex:1.25,position:"relative"}}>
+              <input list={contactDatalistId} value={contactSearch||contactFilterLabel} onChange={e=>setContactFilterFromText(e.target.value)} placeholder={`All ${isCustomer?"customers":"suppliers"}`} style={{...inp,height:"100%",padding:"6px 24px 6px 9px",fontSize:10,border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`,borderRadius:9}}/>
+              <datalist id={contactDatalistId}>
+                <option value="All"/>
+                {list.map(c=><option key={c.id} value={`${c.id} — ${c.name}`}/>)}
+              </datalist>
+              {filterContact!=="all"&&(
+                <button onClick={()=>{setFilterContact("all");setContactSearch("");}} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+              )}
+            </div>
           </div>
 
-          {/* Open Items: date + contact filter */}
-          {mode==="open"&&(
-            <>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <div style={{position:"relative",flexShrink:0}}>
-                  <div style={{background:accentColor+"15",border:`1.5px solid ${accentColor}44`,borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:6,minWidth:34}}>
-                    <span style={{fontSize:15}}>🗓</span>
-                    {!asOfDate&&<span style={{fontSize:9,color:accentColor,fontWeight:600,whiteSpace:"nowrap"}}>As of</span>}
-                  </div>
-                </div>
-                <div style={{flex:1,position:"relative"}}>
-                  <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
-                    style={{...inp,padding:"6px 30px 6px 10px",fontSize:11,border:`1.5px solid ${asOfDate?accentColor:T.border}`}}/>
-                  {asOfDate&&(
-                    <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
-                  )}
-                </div>
-                {!asOfDate&&<span style={{fontSize:9,color:T.muted,fontStyle:"italic",flexShrink:0}}>All time</span>}
-              </div>
-              <select value={filterContact} onChange={e=>setFilterContact(e.target.value)}
-                style={{...inp,fontSize:9,width:"100%",padding:"5px 10px",border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`}}>
-                <option value="all">👤 All {isCustomer?"customers":"suppliers"}</option>
-                {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
-              </select>
-            </>
-          )}
-
-          {/* Period: dates + contact filter */}
-          {mode==="period"&&(
-            <>
-              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-                <div style={{flex:1,position:"relative"}}>
-                  <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
-                  <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
-                    style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
-                </div>
-                <span style={{fontSize:12,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
-                <div style={{flex:1,position:"relative"}}>
-                  <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>📅</span>
-                  <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
-                    style={{...inp,padding:"6px 8px 6px 30px",fontSize:11,border:`1.5px solid ${accentColor}44`}}/>
-                </div>
-              </div>
-              <select value={filterContact} onChange={e=>setFilterContact(e.target.value)}
-                style={{...inp,fontSize:9,width:"100%",padding:"5px 10px",border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`}}>
-                <option value="all">👤 All {isCustomer?"customers":"suppliers"}</option>
-                {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
-              </select>
-            </>
-          )}
-
-          {/* Contact mode: 9px dropdown */}
-          {mode==="contact"&&(
-            <select value={selContact} onChange={e=>setSelContact(e.target.value)}
-              style={{...inp,fontSize:9,width:"100%",padding:"6px 10px",border:`1.5px solid ${accentColor}44`}}>
-              <option value="all">(All {isCustomer?"customers":"suppliers"})</option>
-              {list.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
-            </select>
-          )}
         </div>
 
         {/* ── Match bar — always visible when items selected ── */}
@@ -1687,7 +1672,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
           {/* ── Column header ── */}
           {viewTxns.length>0&&(
-            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"4px 8px",marginBottom:4,alignItems:"center"}}>
+            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",alignItems:"center",background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"8px 8px 0 0"}}>
               {/* Checkbox placeholder */}
               <div/>
               <div style={hdStyle}>Bilag</div>
@@ -1707,16 +1692,25 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
           {/* ── Grouped by contact with sub-totals ── */}
           {byContact.map(({contact:c,txns:ctxns})=>{
             const subTotal=ctxns.reduce((s,t)=>s+mv(t,code),0);
+            const incomingBalance=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&t.date<periodFrom&&!t.reversedBy&&!t.reversalOf).reduce((s,t)=>s+mv(t,code),0);
+            const outgoingBalance=incomingBalance+subTotal;
+            const contactSummaryRows=mode==="period"
+              ?[
+                {label:"Balance this Period",value:subTotal},
+                {label:"Incoming Balance",value:incomingBalance},
+                {label:"Outgoing Balance",value:outgoingBalance}
+              ]
+              :[{label:"Sum",value:subTotal}];
             return(
               <div key={c.id} style={{marginBottom:14}}>
                 {/* Contact header row */}
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:accentBg,borderRadius:"8px 8px 0 0",borderLeft:`3px solid ${accentColor}`}}>
-                  <span style={{fontSize:10,fontWeight:800,color:accentColor,minWidth:36}}>{c.id}</span>
-                  <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>{c.name}</span>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",background:"#FCE7F3",borderRadius:"8px 8px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+                  <span style={{fontSize:10,fontWeight:800,color:"#0369A1",minWidth:36}}>{c.id}</span>
+                  <span style={{fontSize:12,fontWeight:800,color:"#0369A1",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                 </div>
 
                 {/* Transactions */}
-                <div style={{background:T.card,border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
                   {ctxns.map((t,i)=>{
                     const m=mv(t,code);
                     const isSel=selected.includes(t.id);
@@ -1732,11 +1726,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                     const isBilagPopupOpen=bilagPopup&&bilagPopup.txn.id===t.id;
                     const canMatchRow=!isGhosted&&isAccMatchable(t);
                     return(
-                      <div key={t.id}
+                      <div key={t.id} className="rr-reskontro-row"
                         style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"9px 8px",
-                          borderBottom:i<ctxns.length-1?`1px solid ${T.border}`:"none",
+                          borderBottom:`1px solid ${T.border}`,
                           alignItems:"center",
-                          background:isMatched?"#F0FDF4":isSel?"#EBF4FF":isGhosted?"#fafafa":"#fff",
+                          background:"#fff",
                           opacity:isGhosted?0.45:1,
                           borderLeft:isMatched?`3px solid ${T.green}`:isSel?`3px solid ${accentColor}`:"3px solid transparent",
                           transition:"background 0.1s,border-color 0.1s",
@@ -1768,11 +1762,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                           <div onClick={e=>handleBilagClick(e,t,isMatched)} style={{cursor:"pointer",display:"inline-block"}}>
                             <span style={{
                               fontSize:9,fontWeight:800,
-                              color:isMatched?T.green:T.blue,
-                              background:isMatched?"#DCFCE7":T.blueBg,
-                              borderRadius:5,padding:"2px 5px",
+                              color:T.blue,
+                              background:"transparent",
+                              borderRadius:0,padding:0,
                               display:"inline-block",letterSpacing:0.2,
-                              border:isMatched?`1px solid ${T.green}33`:"none"
+                              border:"none"
                             }}>
                               {fmtB(t.bilag)}
                               {isMatched&&<span style={{marginLeft:3,fontSize:8}}>✓</span>}
@@ -1792,32 +1786,31 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                         </div>
 
                         {/* ── Date DD.MM.YY ── */}
-                        <div onClick={e=>e.stopPropagation()} style={{fontSize:10,color:T.sub,fontVariantNumeric:"tabular-nums",letterSpacing:0.1}}>
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:10,color:"#111827",fontVariantNumeric:"tabular-nums",letterSpacing:0.1}}>
                           {dateLabel}
                         </div>
 
                         {/* ── Description — touch does nothing ── */}
-                        <div onClick={e=>e.stopPropagation()} style={{fontSize:11,color:isGhosted?T.muted:isMatched?"#166534":T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:11,color:isGhosted?T.muted:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>
                           {t.description}
                           {isRevd&&<span style={{fontSize:9,color:T.muted,marginLeft:4}}>↩ reversed</span>}
                         </div>
 
                         {/* ── Amount ── */}
-                        <div onClick={e=>e.stopPropagation()} style={{fontSize:12,fontWeight:800,textAlign:"right",color:m>=0?T.green:T.red,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+                        <div onClick={e=>e.stopPropagation()} style={{fontSize:12,fontWeight:800,textAlign:"right",color:"#111827",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
                           {m>=0?"+":"−"}{fmt(Math.abs(m))}
                         </div>
                       </div>
                     );
                   })}
 
-                  {/* Total row per contact — 5 cols: ☑ bilag date desc amount */}
-                  <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",background:accentBg,borderTop:`1.5px solid ${accentColor}33`}}>
-                    <div/>{/* checkbox */}
-                    <div/>{/* bilag */}
-                    <div/>{/* date */}
-                    <div style={{fontSize:10,color:accentColor,fontWeight:700,textAlign:"right",textTransform:"uppercase",letterSpacing:0.5}}>Total</div>
-                    <div style={{fontSize:12,fontWeight:900,textAlign:"right",color:accentColor,whiteSpace:"nowrap"}}>{subTotal>=0?"+":"−"}{fmt(Math.abs(subTotal))}</div>
-                  </div>
+                  {contactSummaryRows.map((row,idx)=>(
+                    <div key={row.label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"9px 10px",background:"#fff",borderBottom:idx<contactSummaryRows.length-1?`1px solid ${T.border}`:"none"}}>
+                      <div style={{fontSize:12,color:"#111827",fontWeight:800}}>{row.label}</div>
+                      <div style={{fontSize:12,fontWeight:900,textAlign:"right",color:"#111827",whiteSpace:"nowrap"}}>{sign(row.value)}</div>
+                    </div>
+                  ))}
+                  <div style={{height:18,background:"#fff",borderTop:`1px solid ${T.border}`}}/>
                 </div>
               </div>
             );
@@ -1825,30 +1818,13 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
           {/* ── Grand total ── */}
           {byContact.length>0&&(
-            <div style={{background:T.header,borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Total — All {isCustomer?"Customers":"Suppliers"}</div>
-              <div style={{fontSize:16,fontWeight:900,color:grandTotal>=0?"#4ade80":"#f87171"}}>{grandTotal>=0?"+":"−"}{fmt(Math.abs(grandTotal))}</div>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"12px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+              <div style={{fontSize:13,color:"#111827",fontWeight:900}}>Total</div>
+              <div style={{fontSize:14,fontWeight:900,color:"#111827"}}>{sign(grandTotal)}</div>
             </div>
           )}
         </div>
 
-        {/* Footer — scrolls with content */}
-        <div style={{background:T.header,borderTop:"1px solid #2a3a5e",padding:"10px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,0.2)",marginTop:8,borderRadius:"0 0 12px 12px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{isCustomer?"Receivable":"Payable"}</div>
-              <div style={{fontSize:13,fontWeight:800,color:grandTotal>=0?"#4ade80":"#f87171"}}>{sign(grandTotal)}</div>
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Contacts</div>
-              <div style={{fontSize:13,fontWeight:800,color:"#93A8D0"}}>{byContact.length}</div>
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:9,color:"#6C7A9C",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Entries</div>
-              <div style={{fontSize:13,fontWeight:800,color:"#93A8D0"}}>{viewTxns.length}</div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
@@ -3540,23 +3516,40 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
 function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
   if(!selAcc)return null;
   const accTxns=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&(t.debitCode===selAcc||t.creditCode===selAcc)).sort((a,b)=>a.date.localeCompare(b.date));
-  let running=transactions.filter(t=>t.date<rFrom&&(t.debitCode===selAcc||t.creditCode===selAcc)).reduce((s,t)=>t.debitCode===selAcc?s+t.amount:s-t.amount,0);
+  const opening=transactions.filter(t=>t.date<rFrom&&(t.debitCode===selAcc||t.creditCode===selAcc)).reduce((s,t)=>t.debitCode===selAcc?s+t.amount:s-t.amount,0);
+  const periodTotal=accTxns.reduce((s,t)=>s+(t.debitCode===selAcc?t.amount:-t.amount),0);
+  const closing=opening+periodTotal;
   return(
-    <Card>
-      <div style={{fontSize:13,fontWeight:800,marginBottom:12}}>{selAcc} · {getName(selAcc)}</div>
-      <div style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 64px",gap:4,padding:"6px 6px",borderBottom:`2px solid ${T.border}`}}>
-        {["Date","Bilag","Description","Amount"].map(h=><div key={h} style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+    <div style={{marginBottom:10}}>
+      <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",gap:10,padding:"10px 12px"}}>
+        <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selAcc} {getName(selAcc)}</div>
+        <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closing)}</div>
       </div>
-      {accTxns.map((t,i)=>{const mv=t.debitCode===selAcc?t.amount:-t.amount;running+=mv;return(
-        <div key={t.id} style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 64px",gap:4,padding:"8px 6px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:i%2===0?"#fff":T.bg}}>
-          <div style={{fontSize:10,color:T.sub}}>{t.date.slice(5)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 76px",gap:4,padding:"7px 8px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
+        {["Date","Bilag","Description","Amount"].map(h=><div key={h} style={{fontSize:9,color:"#111827",fontWeight:800,textTransform:"uppercase",textAlign:h==="Amount"?"right":"left"}}>{h}</div>)}
+      </div>
+      {accTxns.map((t,i)=>{const mv=t.debitCode===selAcc?t.amount:-t.amount;return(
+        <div key={t.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 76px",gap:4,padding:"9px 8px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff"}}>
+          <div style={{fontSize:10,color:"#111827"}}>{t.date.slice(5)}</div>
           <div style={{fontSize:10,color:T.blue,fontWeight:700}}>{fmtB(t.bilag)}</div>
-          <div style={{fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
-          <div style={{fontSize:11,fontWeight:800,textAlign:"right",color:mv>=0?T.green:T.red}}>{mv>=0?"+":"−"}{fmt(mv)}</div>
+          <div style={{fontSize:11,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+          <div style={{fontSize:11,fontWeight:800,textAlign:"right",color:"#111827"}}>{mv>=0?"+":"−"}{fmt(Math.abs(mv))}</div>
         </div>
       );})}
       {!accTxns.length&&<div style={{textAlign:"center",color:T.muted,padding:20,fontSize:13}}>No transactions in this period</div>}
-    </Card>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+        {[
+          {label:"Incoming Balance",value:opening},
+          {label:"This Period",value:periodTotal},
+          {label:"Outgoing Balance",value:closing}
+        ].map((row,i)=>(
+          <div key={row.label} style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",borderBottom:i<2?`1px solid ${T.border}`:"none"}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#111827"}}>{row.label}</div>
+            <div style={{fontSize:12,fontWeight:900,color:"#111827"}}>{sign(row.value)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -5222,56 +5215,32 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Accounts"&&(
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"0 14px",marginBottom:8}}>
-              <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,minWidth:36,textAlign:"center"}}>Code</div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Description</div>
-              </div>
-              <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8}}>Closing</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#FCE7F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase",letterSpacing:0}}>Accounts</div>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase",letterSpacing:0,textAlign:"right"}}>Amounts</div>
             </div>
-            {Object.entries(SERIES).map(([key,s])=>{
-              const grp=accounts.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
-              if(!grp.length)return null;
-              return(<div key={key} style={{marginBottom:18}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,paddingLeft:2}}>
-                  <span style={{fontSize:14}}>{s.icon}</span>
-                  <span style={{fontSize:11,fontWeight:800,color:s.color,textTransform:"uppercase",letterSpacing:0.8}}>{s.name}</span>
-                </div>
-                {grp.map(a=>{
-                  const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{
-                    if(t.debitCode===a.code)return sum+t.amount;
-                    if(t.creditCode===a.code)return sum-t.amount;
-                    return sum;
-                  },0);
-                  // Period movement
-                  const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{
-                    if(t.debitCode===a.code)return sum+t.amount;
-                    if(t.creditCode===a.code)return sum-t.amount;
-                    return sum;
-                  },0);
-                  // Closing = opening + period
-                  const closingBal=openingBal+periodMov;
-                  // Hide if no activity at all
-                  if(closingBal===0&&periodMov===0&&openingBal===0)return null;
-                  return(
-                  <div key={a.code} onClick={()=>setLedgerAcc(a)} style={{background:T.card,borderRadius:12,padding:"11px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{background:s.bg,borderRadius:7,padding:"4px 8px",fontSize:11,fontWeight:800,color:s.color,minWidth:36,textAlign:"center"}}>{a.code}</div>
-                      <div>
-                        <div style={{fontSize:13,fontWeight:600,color:T.text}}>{a.name}</div>
-                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>
-                          {periodMov!==0&&<span style={{color:periodMov>=0?T.green:T.red,marginRight:6}}>{periodMov>=0?"+":"−"}{fmt(Math.abs(periodMov))} period</span>}
-                          {openingBal!==0&&<span style={{color:T.muted}}>bal {sign(openingBal)}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:13,fontWeight:800,color:closingBal>=0?T.green:T.red}}>{closingBal>=0?"+":"−"}{fmt(Math.abs(closingBal))}</div>
-                    </div>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+              {[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
+                const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{
+                  if(t.debitCode===a.code)return sum+t.amount;
+                  if(t.creditCode===a.code)return sum-t.amount;
+                  return sum;
+                },0);
+                const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{
+                  if(t.debitCode===a.code)return sum+t.amount;
+                  if(t.creditCode===a.code)return sum-t.amount;
+                  return sum;
+                },0);
+                const closingBal=openingBal+periodMov;
+                if(closingBal===0&&periodMov===0&&openingBal===0)return null;
+                return(
+                  <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0369A1",lineHeight:1.35,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code} {a.name}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#111827",textAlign:"right",whiteSpace:"nowrap"}}>{closingBal>=0?"+":"-"}{fmt(Math.abs(closingBal))}</div>
                   </div>
-                );})}
-              </div>);
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
