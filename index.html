@@ -1284,14 +1284,16 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           </div>
         )}
         {matchedRows.length>0&&(
-          <button onClick={()=>setShowMatched(s=>!s)} style={{...btnSm,marginBottom:10,fontSize:11}}>
-            {showMatched?"▲ Hide":"▼ Show"} Matched ({matchedRows.length})
-          </button>
+          <div style={{marginBottom:12,fontSize:11,color:T.muted}}>{matchedRows.length} matched {matchedRows.length===1?"item":"items"} in this period — see below.</div>
         )}
-        {showMatched&&<MatchedGroups matchedRows={matchedRows} getMovement={r=>r.movement}/>}
         <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",gap:10}}>
           <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{account.code} {account.name}</div>
           <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closingBal)}</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
+          {["","Bilag","Date","Description","Amount"].map(h=>(
+            <div key={h} style={{fontSize:10,color:"#111827",fontWeight:800,textAlign:h==="Amount"?"right":"left",textTransform:"uppercase",letterSpacing:0}}>{h}</div>
+          ))}
         </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderBottom:"none"}}>
           <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",borderBottom:`1px solid ${T.border}`}}>
@@ -1299,21 +1301,15 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
             <div style={{fontSize:12,fontWeight:800,color:"#111827"}}>{sign(openingBal)}</div>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
-          {["","Bilag","Date","Description","✓","Amount"].map(h=>(
-            <div key={h} style={{fontSize:10,color:"#111827",fontWeight:800,textAlign:h==="Amount"||h==="✓"?"center":"left",textTransform:"uppercase",letterSpacing:0}}>{h}</div>
-          ))}
-        </div>
         {rows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13,fontWeight:600}}>No transactions in this period</div></div>}
         {rows.map((r,i)=>{
           const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;const isMatched=!!r.matchedWith;
           return(
-            <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 20px 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"1px solid "+T.border}}>
+            <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"1px solid "+T.border}}>
               <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
               <div onClick={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(r.bilag)}</div>
               <div style={{fontSize:10,color:"#111827"}}>{r.date.slice(5)}</div>
               <div style={{fontSize:12,color:isRev?T.red:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
-              <div title={isMatched?`Matched · group ${(r.matchedWith?r.matchedWith.slice(-6):undefined)}`:"Not matched"} style={{fontSize:11,textAlign:"center",cursor:isMatched?"help":"default",color:isMatched?T.green:"#ddd"}}>{isMatched?"✓":"—"}</div>
               <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:"#111827"}}>{r.movement>=0?"+":"−"}{fmt(Math.abs(r.movement))}</div>
             </div>
           );
@@ -1329,6 +1325,20 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
             </div>
           ))}
         </div>
+
+        {matchedRows.length>0&&(
+          <div style={{marginTop:16,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div onClick={()=>setShowMatched(s=>!s)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:T.greenBg,cursor:"pointer"}}>
+              <div style={{fontSize:12,fontWeight:800,color:T.green}}>✓ Matched items ({matchedRows.length})</div>
+              <span style={{fontSize:12,color:T.green}}>{showMatched?"▲":"▼"}</span>
+            </div>
+            {showMatched&&(
+              <div style={{padding:12}}>
+                <MatchedGroups matchedRows={matchedRows} getMovement={r=>r.movement}/>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1424,6 +1434,8 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const[detailTxn,setDetailTxn]=useState(null);
   const[reskontroTab,setReskontroTab]=useState("contacts");
   const[bilagPopup,setBilagPopup]=useState(null); // {txn} — must be at top level, not inside if(view)
+  const asOfRef=React.useRef(null);
+  const periodFromRef=React.useRef(null);
 
   const customers=contacts.filter(c=>c.type==="customer"&&!c.inactive);
   const suppliers=contacts.filter(c=>c.type==="supplier"&&!c.inactive);
@@ -1596,45 +1608,55 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
           </button>
         </div>
 
-        {/* ── Filter bar ── */}
-        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"10px 16px"}}>
-          {/* Mode selector — pill-style tabs */}
-          <div style={{display:"flex",gap:6,alignItems:"stretch",flexWrap:"wrap"}}>
-            {[["open","Open Items"],["period","Period"]].map(([id,label])=>(
-              <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"6px 4px",border:`1.5px solid ${mode===id?accentColor:T.border}`,borderRadius:9,background:mode===id?accentColor:"#fff",color:mode===id?"#fff":T.sub,fontSize:10,fontWeight:mode===id?700:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-                {id==="open"?"🗓 Open Items":"📅 Period"}
+        {/* ── Filter bar (Concept 3 — tabs plus toolbar strip) ── */}
+        <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+          {/* Tabs row */}
+          <div style={{display:"flex",padding:"0 16px"}}>
+            {[["open","Open items"],["period","Period"]].map(([id,label])=>(
+              <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"10px 0",border:"none",background:"none",fontSize:12,fontWeight:500,color:mode===id?accentColor:T.muted,borderBottom:mode===id?`2px solid ${accentColor}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                {label}
               </button>
             ))}
-            {mode==="open"&&(
-              <div style={{flex:"1 1 110px",position:"relative"}}>
-                <input type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
-                  style={{...inp,height:"100%",padding:"6px 24px 6px 8px",fontSize:10,border:`1.5px solid ${asOfDate?accentColor:T.border}`,borderRadius:9}}/>
-                {asOfDate&&(
-                  <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
-                )}
-              </div>
-            )}
-            {mode==="period"&&(
-              <div style={{flex:"2 1 170px",display:"flex",gap:4,alignItems:"center"}}>
-                <input type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
-                  style={{...inp,height:"100%",padding:"6px 7px",fontSize:10,border:`1.5px solid ${accentColor}44`,borderRadius:9}}/>
-                <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>→</span>
-                <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
-                  style={{...inp,height:"100%",padding:"6px 7px",fontSize:10,border:`1.5px solid ${accentColor}44`,borderRadius:9}}/>
-              </div>
-            )}
-            <div style={{flex:1.25,position:"relative"}}>
-              <input list={contactDatalistId} value={contactSearch||contactFilterLabel} onChange={e=>setContactFilterFromText(e.target.value)} placeholder={`All ${isCustomer?"customers":"suppliers"}`} style={{...inp,height:"100%",padding:"6px 24px 6px 9px",fontSize:10,border:`1.5px solid ${filterContact!=="all"?accentColor:T.border}`,borderRadius:9}}/>
+          </div>
+          {/* Toolbar strip — light gray boxes for period and contact filter, calendar icon posted right */}
+          <div style={{display:"flex",alignItems:"stretch",background:"#F1EFE8",margin:"0 16px 10px",borderRadius:8,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+            <div style={{flex:2,padding:"7px 10px",borderRight:`1px solid ${T.border}`,minWidth:0,position:"relative"}}>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Period</div>
+              {mode==="open"?(
+                <>
+                  <input ref={asOfRef} type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                    style={{border:"none",background:"none",fontSize:11,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:asOfDate?"88%":"100%"}}/>
+                  {asOfDate&&(
+                    <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:6,top:24,background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                  )}
+                </>
+              ):(
+                <div style={{display:"flex",alignItems:"center",gap:3}}>
+                  <input ref={periodFromRef} type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+                    style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
+                  <span style={{fontSize:9,color:T.muted,flexShrink:0}}>→</span>
+                  <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+                    style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
+                </div>
+              )}
+            </div>
+            <div style={{flex:1.4,padding:"7px 10px",borderRight:`1px solid ${T.border}`,position:"relative",minWidth:0}}>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{isCustomer?"Customer":"Supplier"}</div>
+              <input list={contactDatalistId} value={contactSearch||contactFilterLabel} onChange={e=>setContactFilterFromText(e.target.value)} placeholder="All"
+                style={{border:"none",background:"none",fontSize:11,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"100%"}}/>
               <datalist id={contactDatalistId}>
                 <option value="All"/>
                 {list.map(c=><option key={c.id} value={`${c.id} — ${c.name}`}/>)}
               </datalist>
               {filterContact!=="all"&&(
-                <button onClick={()=>{setFilterContact("all");setContactSearch("");}} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                <button onClick={()=>{setFilterContact("all");setContactSearch("");}} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
               )}
             </div>
+            <button onClick={()=>{const ref=mode==="open"?asOfRef:periodFromRef;if(ref.current){if(ref.current.showPicker)ref.current.showPicker();else ref.current.focus();}}}
+              style={{width:38,flexShrink:0,background:"none",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:accentColor,fontSize:16}} title="Open date picker" aria-label="Open date picker">
+              🗓
+            </button>
           </div>
-
         </div>
 
         {/* ── Match bar — always visible when items selected ── */}
@@ -4151,6 +4173,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
+  const[showAddBudget,setShowAddBudget]=useState(false);
 
   const now=new Date();
   const years=[2023,2024,2025,2026,2027,2028];
@@ -4314,7 +4337,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
 
         {/* 2-column account cards — shows all expense accounts */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {expAccounts.map(a=>{
+          {expAccounts.filter(a=>budgets[a.code]>0).map(a=>{
             const budget=budgets[a.code]||0;
             const actual=getActual(a.code,periodTxns);
             const lastActual=getActual(a.code,lastMonthTxns);
@@ -4379,22 +4402,63 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
         {!expAccounts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>Add expense accounts (4000s) first.</div>}
         {expAccounts.length>0&&expAccounts.filter(a=>budgets[a.code]>0).length===0&&(
           <div style={{textAlign:"center",color:"#888780",padding:24,fontSize:13,background:"#fff",borderRadius:12,border:"0.5px solid #d3d1c7"}}>
-            No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap ••• on a card below to set a budget for any expense account.</span>
+            No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap "+ Add Budget" below to set a budget for an expense account.</span>
           </div>
+        )}
+        {expAccounts.length>0&&(
+          <button onClick={()=>setShowAddBudget(true)} style={{width:"100%",marginTop:10,background:"#fff",border:`1.5px dashed #d3d1c7`,borderRadius:12,padding:"12px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ Add Budget</button>
         )}
 
       </div>
+
+      {/* Add-budget account picker */}
+      {showAddBudget&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#fff",borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Choose an expense account</div>
+            <div style={{maxHeight:280,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:10}}>
+              {expAccounts.filter(a=>!(budgets[a.code]>0)).map((a,i,arr)=>(
+                <div key={a.code} onClick={()=>{setShowAddBudget(false);openEdit(a);}} style={{padding:"10px 12px",fontSize:12,cursor:"pointer",borderBottom:i<arr.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:T.orange,background:"#FEF3C7",borderRadius:5,padding:"2px 7px"}}>{a.code}</span>
+                  <span style={{color:T.text}}>{a.name}</span>
+                </div>
+              ))}
+              {expAccounts.filter(a=>!(budgets[a.code]>0)).length===0&&<div style={{padding:16,fontSize:12,color:T.muted,textAlign:"center"}}>All expense accounts already have a budget.</div>}
+            </div>
+            <button onClick={()=>setShowAddBudget(false)} style={{...btnGhost,width:"100%",marginTop:12}}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Profile Screen ────────────────────────────────────────────────────────────
-function ProfileScreen({onSignOut,onNavigate}){
+function ProfileScreen({onSignOut,onNavigate,isAdmin}){
   const[profileData,setProfileData]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_profile")||"{}")}catch{return{};}});
   const[editName,setEditName]=useState(false);
   const[tempName,setTempName]=useState("");
   const[tempPhone,setTempPhone]=useState("");
   const[tempEmail,setTempEmail]=useState("");
+  const[showPwd,setShowPwd]=useState(false);
+  const[newPwd,setNewPwd]=useState("");
+  const[confirmPwd,setConfirmPwd]=useState("");
+  const[pwdMsg,setPwdMsg]=useState("");
+  const[pwdErr,setPwdErr]=useState("");
+  const[pwdSaving,setPwdSaving]=useState(false);
+
+  const changePassword=async()=>{
+    setPwdErr("");setPwdMsg("");
+    if(newPwd.length<6){setPwdErr("Password must be at least 6 characters.");return;}
+    if(newPwd!==confirmPwd){setPwdErr("Passwords do not match.");return;}
+    setPwdSaving(true);
+    try{
+      const{error}=await sb.auth.updateUser({password:newPwd});
+      if(error){setPwdErr(error.message);}
+      else{setPwdMsg("Password updated.");setNewPwd("");setConfirmPwd("");}
+    }catch(e){setPwdErr(e.message||"Failed to update password.");}
+    setPwdSaving(false);
+  };
 
   useEffect(()=>{
     setTempPhone(profileData.phone||"");
@@ -4442,6 +4506,30 @@ function ProfileScreen({onSignOut,onNavigate}){
         </div>
       </div>
 
+      {/* Change Password — available to all users */}
+      <div style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`}}>
+        <div onClick={()=>{setShowPwd(o=>!o);setPwdErr("");setPwdMsg("");}} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+          <span style={{fontSize:20}}>🔒</span>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>Change Password</div><div style={{fontSize:11,color:T.muted}}>Update your account password</div></div>
+          <span style={{fontSize:16,color:T.muted}}>{showPwd?"︿":"›"}</span>
+        </div>
+        {showPwd&&(
+          <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4}}>NEW PASSWORD</div>
+              <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="At least 6 characters" style={{...inp,fontSize:13}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4}}>CONFIRM NEW PASSWORD</div>
+              <input type="password" value={confirmPwd} onChange={e=>setConfirmPwd(e.target.value)} placeholder="Re-enter password" style={{...inp,fontSize:13}}/>
+            </div>
+            {pwdErr&&<div style={{fontSize:11,color:T.red,marginBottom:8}}>{pwdErr}</div>}
+            {pwdMsg&&<div style={{fontSize:11,color:T.green,marginBottom:8}}>{pwdMsg}</div>}
+            <button onClick={changePassword} disabled={pwdSaving} style={{...btnGhost,width:"100%",color:"#0D7377",borderColor:"#0D7377",opacity:pwdSaving?0.6:1}}>{pwdSaving?"Saving…":"Update Password"}</button>
+          </div>
+        )}
+      </div>
+
       {/* Settings shortcut */}
       <div onClick={()=>onNavigate&&onNavigate("Settings")} style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:20}}>⚙️</span>
@@ -4449,12 +4537,14 @@ function ProfileScreen({onSignOut,onNavigate}){
         <span style={{fontSize:16,color:T.muted}}>›</span>
       </div>
 
-      {/* Admin Panel */}
-      <div onClick={()=>onNavigate&&onNavigate("AdminPanel")} style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:20}}>🛡️</span>
-        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>Admin Panel</div><div style={{fontSize:11,color:T.muted}}>Enable or disable features</div></div>
-        <span style={{fontSize:16,color:T.muted}}>›</span>
-      </div>
+      {/* Admin Panel — admin only */}
+      {isAdmin&&(
+        <div onClick={()=>onNavigate&&onNavigate("AdminPanel")} style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🛡️</span>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>Admin Panel</div><div style={{fontSize:11,color:T.muted}}>Enable or disable features</div></div>
+          <span style={{fontSize:16,color:T.muted}}>›</span>
+        </div>
+      )}
 
       {/* Help */}
       <div style={{background:T.card,borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1px solid ${T.border}`,opacity:0.5}}>
@@ -5103,16 +5193,15 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               const isLedger=item.id==="Accounts";
               return(
                 <div key={item.id}>
-                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent"}}>
-                    <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                    <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
+                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent"}}>
+                    <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
+                    <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
                     {isLedger&&<span style={{fontSize:10,color:"#475569",transition:"transform 0.2s",display:"inline-block",transform:ledgerExpanded?"rotate(180deg)":"none"}}>▾</span>}
-                    {active&&!isLedger&&<div style={{width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,0.8)"}}/>}
                   </div>
                   {isLedger&&ledgerExpanded&&(
                     <div style={{marginLeft:12,paddingLeft:8,borderLeft:"1px solid rgba(255,255,255,0.06)"}}>
-                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"7px 16px",cursor:"pointer",borderRadius:8,margin:"1px 8px",background:tab==="Accounts"&&!ledgerExpanded?"rgba(255,255,255,0.12)":"transparent"}}>
-                        <span style={{fontSize:12,color:"#64748B",fontWeight:500}}>All Accounts</span>
+                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:tab==="Accounts"?"3px solid #5DCAA5":"3px solid transparent",background:tab==="Accounts"?"rgba(255,255,255,0.06)":"transparent"}}>
+                        <span style={{fontSize:12,color:tab==="Accounts"?"#E8F4F4":"#64748B",fontWeight:tab==="Accounts"?600:500}}>All Accounts</span>
                       </div>
                       {Object.entries(SERIES).map(([key,s])=>(
                         <div key={key} onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 16px",cursor:"pointer",borderRadius:8,margin:"1px 8px"}}>
@@ -5125,26 +5214,25 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 </div>
               );
             })}
-            <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
+            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
             {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
               const active=tab===item.id;
               const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque",Files:"files"}[item.id];
               const isOff=featureKey&&!feat[featureKey];
               if(isOff)return null;
               return(
-                <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent",transition:"background 0.1s"}}>
-                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                  <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
-                  {active&&<div style={{marginLeft:"auto",width:4,height:4,borderRadius:"50%",background:"rgba(255,255,255,0.8)"}}/>}
+                <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent",transition:"background 0.1s"}}>
+                  <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
+                  <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
                 </div>
               );
             })}
             {/* System group */}
-            <div style={{padding:"14px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
+            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
             {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
-              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10,background:active?"rgba(255,255,255,0.12)":"transparent"}}>
-                <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:13,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
+              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent"}}>
+                <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
+                <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px",minWidth:16,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );})}
@@ -5232,7 +5320,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   return sum;
                 },0);
                 const closingBal=openingBal+periodMov;
-                if(closingBal===0&&periodMov===0&&openingBal===0)return null;
+                if(closingBal===0)return null;
                 return(
                   <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#0369A1",lineHeight:1.35,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code} {a.name}</div>
@@ -5251,7 +5339,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Profile"&&(
-          <ProfileScreen onSignOut={onSignOut} onNavigate={setTab}/>
+          <ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/>
         )}
       </div>
 
