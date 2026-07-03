@@ -321,6 +321,7 @@ function AppShell({user}){
   const[transactions,setTransactionsState]=useState([]);
   const[sinkingFunds,setSFState]=useState([]);
   const[nextBilag,setNextBilag]=useState(1);
+  const bilagRef=React.useRef(1);
   const[loading,setLoading]=useState(true);
 
   useEffect(()=>{
@@ -360,7 +361,9 @@ function AppShell({user}){
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
       setTransactionsState(txns);
-      setNextBilag(txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1);
+      const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
+      bilagRef.current=startBilag;
+      setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setLoading(false);
     });
@@ -415,12 +418,20 @@ function AppShell({user}){
   const addTransaction=async(form)=>{
     if(!canEdit)return;
     checkTxnLogic(form,"addTransaction");
-    const nb=nextBilag;
+    // Use a ref (not the nextBilag state) so multiple entries saved back-to-back
+    // in the same tick (e.g. multi-line entries) each get a unique, correctly
+    // incrementing bilag instead of racing on a stale closure value.
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
     const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null}]).select().single();
-    if(error)logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
+    if(error){
+      logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
+      return;
+    }
     if(data){
+      if(form.attachmentId)attachInboxFileToTxn(data.id,form.attachmentId);
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
-      setNextBilag(nb+1);
     }
   };
 
@@ -440,7 +451,9 @@ function AppShell({user}){
 
   const reverseTransaction=async(t)=>{
     if(!canEdit)return;
-    const rb=nextBilag;
+    const rb=bilagRef.current;
+    bilagRef.current=rb+1;
+    setNextBilag(bilagRef.current);
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
     const desc="Reversal of "+fmtB(t.bilag)+" — "+t.description;
@@ -448,7 +461,6 @@ function AppShell({user}){
     await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
     if(data){
       setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
-      setNextBilag(rb+1);
     }
   };
 
@@ -496,7 +508,7 @@ function AppShell({user}){
     <div>
       <FinanceTracker
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
-        viewingUserId={viewingUserId}
+        viewingUserId={viewingUserId} profile={profile} user={user}
         accounts={accounts} setAccounts={setAccounts}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
@@ -659,6 +671,13 @@ const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
+const getInboxFiles=()=>{try{return JSON.parse(localStorage.getItem("rr_files")||"[]")}catch{return[];}};
+const hasAttachment=(txnId)=>{try{return!!localStorage.getItem(`rr_att_${txnId}`);}catch{return false;}};
+const attachInboxFileToTxn=(txnId,fileId)=>{
+  const file=getInboxFiles().find(f=>f.id===fileId);
+  if(!file)return;
+  try{localStorage.setItem(`rr_att_${txnId}`,JSON.stringify({name:file.name,data:file.data,type:file.type}));}catch{}
+};
 // ─── useSaveFlash hook & SaveFlashButton ────────────────────────────────────
 function useSaveFlash(){
   const[saved,setSaved]=React.useState(false);
@@ -1053,6 +1072,7 @@ function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
             <Pill label={fmtB(t.bilag)} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
+            {hasAttachment(t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
             <div style={{fontSize:13,fontWeight:600,flex:1,color:isReversed?T.muted:T.text}}>
               {t.description}
               {isReversed&&<span style={{fontSize:10,color:T.muted,marginLeft:5}}>[reversed]</span>}
@@ -1548,13 +1568,22 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
 
-        {/* Header with PDF export icon */}
+        {/* Header */}
         <div style={{background:T.header,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
           <button onClick={goBack} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
           <div style={{flex:1}}>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{`RESKONTRO · ${isCustomer?"1500":"2400"}`}</div>
             <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>{isCustomer?"Customers (AR)":"Suppliers (AP)"}</div>
           </div>
+        </div>
+
+        {/* ── Tabs row + small download icon ── */}
+        <div style={{display:"flex",padding:"0 16px",alignItems:"center",background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+          {[["open","Open items"],["period","Period"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"10px 0",border:"none",background:"none",fontSize:12,fontWeight:500,color:mode===id?accentColor:T.muted,borderBottom:mode===id?`2px solid ${accentColor}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+              {label}
+            </button>
+          ))}
           <button title="Export PDF" onClick={()=>{
             const modeLabel=mode==="open"?`Open Items${asOfDate?" — As of "+asOfDate:" (All time)"}`:mode==="period"?`Period: ${periodFrom} → ${periodTo}`:`${isCustomer?"Customer":"Supplier"} View`;
             const contactLabel=(mode==="open"||mode==="period")&&filterContact!=="all"?(" — "+(list.find(c=>c.id===filterContact)||{name:filterContact}).name):"";
@@ -1603,44 +1632,42 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
             const w=window.open("","_blank","width=750,height=900");
             w.document.write(html);w.document.close();
             setTimeout(()=>w.print(),400);
-          }} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:10,color:"#fff",fontSize:16,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            📄
+          }} style={{flexShrink:0,background:"none",border:"none",color:accentColor,fontSize:15,cursor:"pointer",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            ⬇
           </button>
         </div>
 
-        {/* ── Filter bar (Concept 3 — tabs plus toolbar strip) ── */}
+        {/* ── Filter bar (Concept 3 — toolbar strip) ── */}
         <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-          {/* Tabs row */}
-          <div style={{display:"flex",padding:"0 16px"}}>
-            {[["open","Open items"],["period","Period"]].map(([id,label])=>(
-              <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"10px 0",border:"none",background:"none",fontSize:12,fontWeight:500,color:mode===id?accentColor:T.muted,borderBottom:mode===id?`2px solid ${accentColor}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* Toolbar strip — light gray boxes for period and contact filter, calendar icon posted right */}
+          {/* Toolbar strip — light gray boxes for period (with calendar icon) and contact filter */}
           <div style={{display:"flex",alignItems:"stretch",background:"#F1EFE8",margin:"0 16px 10px",borderRadius:8,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-            <div style={{flex:2,padding:"7px 10px",borderRight:`1px solid ${T.border}`,minWidth:0,position:"relative"}}>
-              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Period</div>
-              {mode==="open"?(
-                <>
-                  <input ref={asOfRef} type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
-                    style={{border:"none",background:"none",fontSize:11,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:asOfDate?"88%":"100%"}}/>
-                  {asOfDate&&(
-                    <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:6,top:24,background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
-                  )}
-                </>
-              ):(
-                <div style={{display:"flex",alignItems:"center",gap:3}}>
-                  <input ref={periodFromRef} type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
-                    style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
-                  <span style={{fontSize:9,color:T.muted,flexShrink:0}}>→</span>
-                  <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
-                    style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
-                </div>
-              )}
+            <div style={{flex:2,padding:"7px 10px",borderRight:`1px solid ${T.border}`,minWidth:0,position:"relative",display:"flex",alignItems:"flex-end",gap:6}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Period</div>
+                {mode==="open"?(
+                  <>
+                    <input ref={asOfRef} type="date" value={asOfDate} onChange={e=>setAsOfDate(e.target.value)}
+                      style={{border:"none",background:"none",fontSize:11,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:asOfDate?"88%":"100%"}}/>
+                    {asOfDate&&(
+                      <button onClick={()=>setAsOfDate("")} style={{position:"absolute",right:32,top:24,background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                    )}
+                  </>
+                ):(
+                  <div style={{display:"flex",alignItems:"center",gap:3}}>
+                    <input ref={periodFromRef} type="date" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}
+                      style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
+                    <span style={{fontSize:9,color:T.muted,flexShrink:0}}>→</span>
+                    <input type="date" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}
+                      style={{border:"none",background:"none",fontSize:10,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"46%"}}/>
+                  </div>
+                )}
+              </div>
+              <button onClick={()=>{const ref=mode==="open"?asOfRef:periodFromRef;if(ref.current){if(ref.current.showPicker)ref.current.showPicker();else ref.current.focus();}}}
+                style={{flexShrink:0,background:"none",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:accentColor,fontSize:15,padding:0,lineHeight:1}} title="Open date picker" aria-label="Open date picker">
+                🗓
+              </button>
             </div>
-            <div style={{flex:1.4,padding:"7px 10px",borderRight:`1px solid ${T.border}`,position:"relative",minWidth:0}}>
+            <div style={{flex:1.4,padding:"7px 10px",position:"relative",minWidth:0}}>
               <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>{isCustomer?"Customer":"Supplier"}</div>
               <input list={contactDatalistId} value={contactSearch||contactFilterLabel} onChange={e=>setContactFilterFromText(e.target.value)} placeholder="All"
                 style={{border:"none",background:"none",fontSize:11,fontWeight:600,color:T.text,padding:0,outline:"none",fontFamily:"inherit",width:"100%"}}/>
@@ -1652,10 +1679,6 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                 <button onClick={()=>{setFilterContact("all");setContactSearch("");}} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,fontSize:14,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
               )}
             </div>
-            <button onClick={()=>{const ref=mode==="open"?asOfRef:periodFromRef;if(ref.current){if(ref.current.showPicker)ref.current.showPicker();else ref.current.focus();}}}
-              style={{width:38,flexShrink:0,background:"none",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:accentColor,fontSize:16}} title="Open date picker" aria-label="Open date picker">
-              🗓
-            </button>
           </div>
         </div>
 
@@ -2996,12 +3019,26 @@ function ContactSearchInline({contacts,value,onChange,type}){
 }
 
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds}){
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
   const[form,setForm]=useState(emptyTxn);
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
   const[reskontroMode,setReskontroMode]=useState(false);
   const[entrySaved,setEntrySaved]=React.useState(false);
+  const[inboxFiles,setInboxFiles]=useState(()=>getInboxFiles());
+  const uploadToInbox=(file)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const now=new Date();
+      const monthName=now.toLocaleString("default",{month:"long"});
+      const newFile={id:Date.now(),name:file.name,data:e.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
+      const updated=[...getInboxFiles(),newFile];
+      localStorage.setItem("rr_files",JSON.stringify(updated));
+      setInboxFiles(updated);
+      setForm(p=>({...p,attachmentId:newFile.id}));
+    };
+    reader.readAsDataURL(file);
+  };
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Determine if contact selector should show and what type
@@ -3235,6 +3272,32 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
             })()}
           </div>
         )}
+
+        {/* Attach from Inbox — pick an existing file or upload straight into Inbox */}
+        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>📎 Attachment (optional)</div>
+          {form.attachmentId?(()=>{
+            const f=inboxFiles.find(x=>x.id===form.attachmentId);
+            return(
+              <div style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 12px"}}>
+                <span style={{fontSize:16}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
+                <span style={{fontSize:12,fontWeight:600,color:T.accent,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:14,padding:"0 2px"}}>✕</button>
+              </div>
+            );
+          })():(
+            <div style={{display:"flex",gap:6}}>
+              <select value="" onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,flex:1}}>
+                <option value="">— Select from Inbox —</option>
+                {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+              </select>
+              <label style={{...btnSm,cursor:"pointer",whiteSpace:"nowrap"}}>+ Upload
+                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
+              </label>
+            </div>
+          )}
+          {!inboxFiles.length&&!form.attachmentId&&<div style={{fontSize:11,color:T.muted,marginTop:6}}>No files in Inbox yet — upload one above.</div>}
+        </div>
 
         {/* Smart contact selector — only when 1500 or 2400 */}
         {needContact&&(
@@ -4594,7 +4657,7 @@ function FilesScreen({onBack}){
             :<iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>}
         </div>
       )}
-      <BackHeader title="Files" sub="DOCUMENTS & ATTACHMENTS" onBack={onBack}/>
+      <BackHeader title="Inbox" sub="UPLOAD, VIEW & DELETE FILES" onBack={onBack}/>
       <div style={{padding:16}}>
         {/* Upload options */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
@@ -5054,7 +5117,7 @@ const SIDEBAR=[
   {id:"SinkingFunds",icon:"🎯",label:"Sinking Funds",group:"tools"},
   {id:"Budget",icon:"📐",label:"Budget",group:"tools"},
   {id:"Cheques",icon:"🧾",label:"Cheque Tracker",group:"tools"},
-  {id:"Files",icon:"📁",label:"Files",group:"tools"},
+  {id:"Files",icon:"📥",label:"Inbox",group:"main"},
   {id:"Reports",icon:"📊",label:"Reports",group:"tools"},
   {id:"Import",icon:"📥",label:"Import Excel",group:"tools"},
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},
@@ -5064,7 +5127,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
