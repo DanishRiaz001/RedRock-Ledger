@@ -5492,6 +5492,252 @@ function AdminPanel({onBack,profiles=[]}){
 }
 
 
+function AIBookkeepingScreen({accounts,contacts,addTransaction,nextBilag,onBack}){
+  const[note,setNote]=useState("");
+  const[parsing,setParsing]=useState(false);
+  const[entries,setEntries]=useState([]);
+  const[editModes,setEditModes]=useState({});
+  const[approved,setApproved]=useState({});
+  const[uidCounter,setUidCounter]=useState(1);
+
+  const fmtPKR=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
+
+  const EXAMPLES=[
+    "Purchased clothes for 18000 — 9000 from Muhammad Riaz, 5000 from Dib and 4000 from Raheela.",
+    "Received 25000 from Customer A for the completed project.",
+    "Paid June salary 80000 via Meezan bank and rent 25000 cash.",
+  ];
+
+  const parseNote=async()=>{
+    if(!note.trim())return;
+    setParsing(true);
+    const today=new Date().toISOString().split("T")[0];
+    const accountList=accounts.map(a=>`${a.code} — ${a.name}`).join("\n");
+    const contactList=contacts.map(c=>`${c.id} | ${c.name} | ${c.type} | account: ${c.type==="supplier"?"2400 Accounts Payable":"1500 Accounts Receivable"}`).join("\n");
+    const prompt=`You are a Pakistani bookkeeping assistant using double-entry accounting. Parse the user's note into journal entries.
+
+CONTACTS — match names to these first:
+${contactList}
+
+ACCOUNTS:
+${accountList}
+
+RULES:
+1. Always look up person names in CONTACTS first.
+   - SUPPLIER contact → use 2400 Accounts Payable for their line
+   - CUSTOMER contact → use 1500 Accounts Receivable for their line
+   - Unknown person → pick best account from context, mark contact_id as ""
+
+2. For PURCHASES (you buy something):
+   - Dr the expense/asset account for the total
+   - Cr one line per person involved:
+     * Supplier contact → Cr 2400 AP (you owe them)
+     * Customer contact → Cr 1500 AR (unusual but follow contacts)
+     * No contact found → Cr 1001 Cash or 2400 AP based on context
+
+3. For RECEIVING MONEY:
+   - Dr Cash/Bank
+   - Cr 1500 AR (if customer paying invoice) or Cr 3000s Income
+
+4. For PAYING (salary, bills, suppliers):
+   - Dr Expense account
+   - Cr Cash/Bank or AP
+
+5. Split amounts: one Dr line total, multiple Cr lines per person.
+   Sum of Dr lines must equal sum of Cr lines exactly.
+
+6. unknown_parties: list any names not found in contacts.
+
+Return ONLY valid JSON, no markdown:
+{"entries":[{"id":1,"description":"short description","date":"${today}","reasoning":"how contacts determined accounts","unknown_parties":[],"lines":[{"type":"Dr","account_code":"4001","account_name":"Rent","party":"","contact_id":"","amount":18000},{"type":"Cr","account_code":"2400","account_name":"Accounts Payable","party":"Muhammad Riaz","contact_id":"S001","amount":9000}]}]}
+
+User note: ${note.trim()}`;
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
+      const data=await res.json();
+      const text=data.content.map(b=>b.text||"").join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      let uid=uidCounter;
+      const newEntries=parsed.entries.map(e=>({...e,_uid:uid++}));
+      setUidCounter(uid);
+      setEntries(p=>[...p,...newEntries]);
+    }catch(err){
+      alert("Could not parse note. Try rephrasing.");
+    }
+    setParsing(false);
+  };
+
+  const toggleEdit=uid=>setEditModes(p=>({...p,[uid]:!p[uid]}));
+
+  const updateLine=(uid,li,field,val)=>{
+    setEntries(p=>p.map(e=>{
+      if(e._uid!==uid)return e;
+      const lines=[...e.lines];
+      lines[li]={...lines[li],[field]:field==="amount"?(parseFloat(val)||0):val};
+      return{...e,lines};
+    }));
+  };
+
+  const updateEntryField=(uid,field,val)=>{
+    setEntries(p=>p.map(e=>e._uid===uid?{...e,[field]:val}:e));
+  };
+
+  const discardEntry=uid=>{
+    setEntries(p=>p.filter(e=>e._uid!==uid));
+    setEditModes(p=>{const n={...p};delete n[uid];return n;});
+    setApproved(p=>{const n={...p};delete n[uid];return n;});
+  };
+
+  const approveEntry=uid=>{
+    const e=entries.find(x=>x._uid===uid);
+    if(!e)return;
+    const totalDr=e.lines.filter(l=>l.type==="Dr").reduce((s,l)=>s+l.amount,0);
+    const totalCr=e.lines.filter(l=>l.type==="Cr").reduce((s,l)=>s+l.amount,0);
+    if(Math.abs(totalDr-totalCr)>=1)return;
+    const drLines=e.lines.filter(l=>l.type==="Dr");
+    const crLines=e.lines.filter(l=>l.type==="Cr");
+    if(drLines.length===1&&crLines.length===1){
+      addTransaction({date:e.date,description:e.description,debitCode:drLines[0].account_code,creditCode:crLines[0].account_code,amount:drLines[0].amount,contactId:crLines[0].contact_id||drLines[0].contact_id||undefined});
+    } else {
+      e.lines.forEach(line=>{
+        const paired=e.lines.find(l=>l.type!==(line.type==="Dr"?"Dr":"Cr"));
+        addTransaction({date:e.date,description:`${e.description}${line.party?" — "+line.party:""}`,debitCode:line.type==="Dr"?line.account_code:(paired?paired.account_code:"1001"),creditCode:line.type==="Cr"?line.account_code:(paired?paired.account_code:"1001"),amount:line.amount,contactId:line.contact_id||undefined});
+      });
+    }
+    setApproved(p=>({...p,[uid]:true}));
+    setEditModes(p=>({...p,[uid]:false}));
+  };
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
+      <BackHeader title="AI Bookkeeping" sub="SMART ENTRY PARSER" color={T.accent} onBack={onBack}/>
+      <div style={{padding:16}}>
+        <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:12,color:T.accent,lineHeight:1.7}}>
+          <b>How it works:</b> Type your transaction in plain language. The AI looks up your contacts to determine whether to post to AP (supplier) or AR (customer), then creates a double-entry for your review.
+        </div>
+
+        <SL>Transaction Note</SL>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={"e.g. Purchased clothes for 18000 — 9000 from Muhammad Riaz, 5000 from Dib and 4000 from Raheela."} style={{...inp,minHeight:80,resize:"vertical",lineHeight:1.6,fontSize:14}}/>
+
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"8px 0 12px"}}>
+          {EXAMPLES.map((ex,i)=>(
+            <button key={i} onClick={()=>setNote(ex)} style={{padding:"4px 12px",background:T.card,border:`1px solid ${T.border}`,borderRadius:20,fontSize:11,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Example {i+1}</button>
+          ))}
+        </div>
+
+        <button onClick={parseNote} disabled={parsing||!note.trim()} style={{...btnRed,marginBottom:20,opacity:parsing||!note.trim()?0.5:1}}>
+          {parsing?"⏳ AI is reading your note...":"✨ Parse with AI"}
+        </button>
+
+        <div style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.sub}}>
+          <b style={{color:T.text}}>Your Contacts ({contacts.length})</b>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>
+            {contacts.map(c=>(
+              <span key={c.id} style={{fontSize:10,padding:"2px 8px",borderRadius:5,background:c.type==="supplier"?T.redLight:T.blueBg,color:c.type==="supplier"?T.red:T.blue,fontWeight:700}}>{c.name} ({c.type==="supplier"?"AP":"AR"})</span>
+            ))}
+          </div>
+        </div>
+
+        {entries.length>0&&<SL mt={4}>Parsed Entries — Review Before Approving</SL>}
+
+        {entries.map(e=>{
+          const uid=e._uid;
+          const isApproved=approved[uid];
+          const isEditing=editModes[uid];
+          const totalDr=e.lines.filter(l=>l.type==="Dr").reduce((s,l)=>s+l.amount,0);
+          const totalCr=e.lines.filter(l=>l.type==="Cr").reduce((s,l)=>s+l.amount,0);
+          const balanced=Math.abs(totalDr-totalCr)<1;
+          return(
+            <div key={uid} style={{background:T.card,borderRadius:14,border:`1px solid ${isApproved?"#86efac":T.border}`,padding:"14px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div style={{flex:1}}>
+                  {isEditing?(
+                    <input value={e.description} onChange={ev=>updateEntryField(uid,"description",ev.target.value)} style={{...inp,fontSize:14,fontWeight:700,marginBottom:6}}/>
+                  ):(
+                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{e.description}</div>
+                  )}
+                  {isEditing?(
+                    <input type="date" value={e.date} onChange={ev=>updateEntryField(uid,"date",ev.target.value)} style={{...inp,fontSize:12,width:"auto"}}/>
+                  ):(
+                    <div style={{fontSize:11,color:T.muted,marginTop:2}}>{e.date}</div>
+                  )}
+                </div>
+                <span style={{fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,background:isApproved?"#dcfce7":T.orangeBg,color:isApproved?T.green:T.orange,marginLeft:8,whiteSpace:"nowrap"}}>{isApproved?"✓ Approved":"Pending Review"}</span>
+              </div>
+
+              {e.reasoning&&!isApproved&&(
+                <div style={{background:T.accentLight,borderRadius:8,padding:"7px 10px",fontSize:11,color:T.accent,marginBottom:10,lineHeight:1.5}}>💡 {e.reasoning}</div>
+              )}
+              {e.unknown_parties&&e.unknown_parties.length>0&&(
+                <div style={{background:T.orangeBg,borderRadius:8,padding:"7px 10px",fontSize:11,color:T.orange,marginBottom:10}}>⚠️ Unknown contacts: <b>{e.unknown_parties.join(", ")}</b> — add them in Reskontro for correct account mapping.</div>
+              )}
+
+              <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:10}}>
+                <div style={{display:"grid",gridTemplateColumns:"44px 1fr 90px",background:T.bg,padding:"6px 10px",borderBottom:`1px solid ${T.border}`}}>
+                  {["Type","Account / Party","Amount"].map((h,i)=>(
+                    <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:i===2?"right":"left"}}>{h}</div>
+                  ))}
+                </div>
+                {e.lines.map((line,li)=>{
+                  const contact=contacts.find(c=>c.id===line.contact_id);
+                  if(isEditing){
+                    return(
+                      <div key={li} style={{padding:"8px 10px",borderBottom:li<e.lines.length-1?`1px solid ${T.border}`:"none",display:"grid",gridTemplateColumns:"44px 1fr 90px",gap:6,alignItems:"center"}}>
+                        <select value={line.type} onChange={ev=>updateLine(uid,li,"type",ev.target.value)} style={{...inp,padding:"4px 6px",fontSize:11}}>
+                          <option value="Dr">Dr</option>
+                          <option value="Cr">Cr</option>
+                        </select>
+                        <div>
+                          <select value={line.account_code} onChange={ev=>{const acc=accounts.find(a=>a.code===ev.target.value);updateLine(uid,li,"account_code",ev.target.value);if(acc)updateLine(uid,li,"account_name",acc.name);}} style={{...inp,padding:"4px 6px",fontSize:11,marginBottom:4}}>
+                            {accounts.map(a=><option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+                          </select>
+                          <input value={line.party||""} placeholder="Party name" onChange={ev=>updateLine(uid,li,"party",ev.target.value)} style={{...inp,padding:"4px 6px",fontSize:11}}/>
+                        </div>
+                        <input type="number" value={line.amount} onChange={ev=>updateLine(uid,li,"amount",ev.target.value)} style={{...inp,padding:"4px 6px",fontSize:12,textAlign:"right"}}/>
+                      </div>
+                    );
+                  }
+                  return(
+                    <div key={li} style={{padding:"9px 10px",borderBottom:li<e.lines.length-1?`1px solid ${T.border}`:"none",display:"grid",gridTemplateColumns:"44px 1fr 90px",alignItems:"center",background:line.type==="Dr"?"#fff5f5":"#f0fdf4"}}>
+                      <span style={{fontSize:11,fontWeight:800,padding:"2px 7px",borderRadius:5,background:line.type==="Dr"?T.redLight:T.greenBg,color:line.type==="Dr"?T.red:T.green,display:"inline-block",width:"fit-content"}}>{line.type}</span>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:T.text}}>{line.account_code} — {line.account_name}</div>
+                        {line.party&&(
+                          <div style={{fontSize:10,marginTop:2}}>
+                            <span style={{color:T.muted}}>{line.party} </span>
+                            {contact&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:4,background:contact.type==="supplier"?T.redLight:T.blueBg,color:contact.type==="supplier"?T.red:T.blue}}>{contact.id}</span>}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{fontSize:13,fontWeight:800,textAlign:"right",color:T.text}}>{fmtPKR(line.amount)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:T.sub,marginBottom:10,padding:"0 4px"}}>
+                <span>Total</span>
+                <span style={{fontWeight:700,color:balanced?T.green:T.red}}>{fmtPKR(totalDr)} {balanced?"✓ Balanced":`⚠ Dr≠Cr (diff ${fmtPKR(Math.abs(totalDr-totalCr))})`}</span>
+              </div>
+
+              {isApproved?(
+                <div style={{background:T.greenBg,borderRadius:8,padding:"10px 14px",fontSize:13,color:T.green,fontWeight:700,textAlign:"center"}}>✓ Entry posted to ledger</div>
+              ):(
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>approveEntry(uid)} disabled={!balanced} style={{...btnRed,flex:2,opacity:balanced?1:0.4,padding:"10px"}}>✓ Approve</button>
+                  <button onClick={()=>toggleEdit(uid)} style={{...btnGhost,flex:1,padding:"10px"}}>{isEditing?"Done":"Edit"}</button>
+                  <button onClick={()=>discardEntry(uid)} style={{background:T.bg,color:T.muted,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14}}>🗑</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const MENU=[
   {id:"Dashboard",icon:"🏠",label:"Home"},
   {id:"Accounts",icon:"📒",label:"Ledger"},
@@ -5511,6 +5757,7 @@ const SIDEBAR=[
   {id:"Cheques",icon:"🧾",label:"Cheque Tracker",group:"tools"},
   {id:"Files",icon:"📥",label:"Inbox",group:"main"},
   {id:"Reports",icon:"📊",label:"Reports",group:"tools"},
+  {id:"AIBookkeeping",icon:"🤖",label:"AI Bookkeeping",group:"tools"},
   {id:"Import",icon:"📥",label:"Import Excel",group:"tools"},
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},
   {id:"AdminPanel",icon:"🛡️",label:"Admin Panel",group:"system"},
@@ -5622,6 +5869,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
+  if(tab==="AIBookkeeping")return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
