@@ -5492,7 +5492,7 @@ function AdminPanel({onBack,profiles=[]}){
 }
 
 
-function AIBookkeepingScreen({accounts,contacts,addTransaction,nextBilag,onBack}){
+function AIBookkeepingScreen({accounts,contacts,setContacts,addTransaction,nextBilag,onBack}){
   const[note,setNote]=useState("");
   const[parsing,setParsing]=useState(false);
   const[entries,setEntries]=useState([]);
@@ -5566,6 +5566,32 @@ User note: ${note.trim()}`;
       alert("Could not parse note. Try rephrasing.");
     }
     setParsing(false);
+  };
+
+  const nextContactId=(type,currentContacts)=>{
+    const prefix=type==="customer"?"C":"S";
+    const nums=currentContacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
+    return prefix+String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+  };
+
+  const addUnknownContact=(uid,name,type)=>{
+    const newId=nextContactId(type,contacts);
+    const newContact={id:newId,type,name,notes:""};
+    setContacts(p=>{
+      const updated=[...p,newContact];
+      return updated;
+    });
+    setEntries(prev=>prev.map(e=>{
+      if(e._uid!==uid)return e;
+      const newUnknown=(e.unknown_parties||[]).filter(n=>n!==name);
+      const newLines=e.lines.map(l=>{
+        if(l.party===name&&!l.contact_id){
+          return{...l,contact_id:newId,account_code:type==="supplier"?"2400":"1500",account_name:type==="supplier"?"Accounts Payable":"Accounts Receivable"};
+        }
+        return l;
+      });
+      return{...e,unknown_parties:newUnknown,lines:newLines};
+    }));
   };
 
   const toggleEdit=uid=>setEditModes(p=>({...p,[uid]:!p[uid]}));
@@ -5670,7 +5696,18 @@ User note: ${note.trim()}`;
                 <div style={{background:T.accentLight,borderRadius:8,padding:"7px 10px",fontSize:11,color:T.accent,marginBottom:10,lineHeight:1.5}}>💡 {e.reasoning}</div>
               )}
               {e.unknown_parties&&e.unknown_parties.length>0&&(
-                <div style={{background:T.orangeBg,borderRadius:8,padding:"7px 10px",fontSize:11,color:T.orange,marginBottom:10}}>⚠️ Unknown contacts: <b>{e.unknown_parties.join(", ")}</b> — add them in Reskontro for correct account mapping.</div>
+                <div style={{background:T.orangeBg,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:700,color:T.orange,marginBottom:8}}>⚠️ Unknown contacts — who are these people?</div>
+                  {e.unknown_parties.map(name=>(
+                    <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid rgba(180,83,9,0.15)"}}>
+                      <span style={{fontSize:13,fontWeight:600,color:T.text}}>{name}</span>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>addUnknownContact(uid,name,"supplier")} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Supplier (AP)</button>
+                        <button onClick={()=>addUnknownContact(uid,name,"customer")} style={{background:T.blueBg,color:T.blue,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Customer (AR)</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:10}}>
@@ -5869,7 +5906,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="AIBookkeeping")return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="AIBookkeeping")return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
