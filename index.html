@@ -430,7 +430,9 @@ function AppShell({user}){
       return;
     }
     if(data){
-      if(form.attachmentId)attachInboxFileToTxn(data.id,form.attachmentId);
+      if(form.attachmentIds&&form.attachmentIds.length)attachInboxFilesToTxn(data.id,form.attachmentIds);
+      else if(form.attachmentId)attachInboxFileToTxn(data.id,form.attachmentId);
+      if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
     }
   };
@@ -678,6 +680,26 @@ const attachInboxFileToTxn=(txnId,fileId)=>{
   if(!file)return;
   try{localStorage.setItem(`rr_att_${txnId}`,JSON.stringify({name:file.name,data:file.data,type:file.type}));}catch{}
 };
+const attachInboxFilesToTxn=(txnId,fileIds)=>{
+  const files=getInboxFiles().filter(f=>fileIds.includes(f.id)).map(f=>({name:f.name,data:f.data,type:f.type}));
+  if(!files.length)return;
+  try{localStorage.setItem(`rr_att_${txnId}`,JSON.stringify({files}));}catch{}
+};
+const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
+const appendGroupLine=(groupRef,line)=>{
+  const map=getGroupLinesMap();
+  const arr=map[groupRef]||[];
+  arr.push(line);
+  map[groupRef]=arr;
+  try{localStorage.setItem("rr_group_lines",JSON.stringify(map));}catch{}
+};
+const getGroupForTxn=(txnId)=>{
+  const map=getGroupLinesMap();
+  for(const gref in map){
+    if(map[gref].some(l=>l.id===txnId))return{groupRef:gref,lines:map[gref]};
+  }
+  return null;
+};
 // ─── useSaveFlash hook & SaveFlashButton ────────────────────────────────────
 function useSaveFlash(){
   const[saved,setSaved]=React.useState(false);
@@ -729,6 +751,34 @@ const INIT_CONTACTS=[
 function SL({children,mt}){return <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:mt||0}}>{children}</div>;}
 function Card({children,style}){return <div style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...style}}>{children}</div>;}
 function Pill({label,color,bg}){return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6,background:bg,color}}>{label}</span>;}
+const getRefLabel=(txnId)=>{try{return localStorage.getItem(`rr_reflabel_${txnId}`)||"";}catch{return"";}};
+const setRefLabel=(txnId,label)=>{try{if(label)localStorage.setItem(`rr_reflabel_${txnId}`,label);else localStorage.removeItem(`rr_reflabel_${txnId}`);}catch{}};
+function BilagText({txnId,bilag,style,onOpen}){
+  const[label,setLabel]=useState(()=>getRefLabel(txnId));
+  const display=label||fmtB(bilag);
+  const rename=(e)=>{
+    e.stopPropagation();
+    const val=window.prompt("Rename this entry's reference number:",display);
+    if(val===null)return;
+    const trimmed=val.trim();
+    setRefLabel(txnId,trimmed);
+    setLabel(trimmed);
+  };
+  return <div onClick={onOpen} onDoubleClick={rename} title="Double-click to rename" style={style}>{display}</div>;
+}
+function BilagPill({txnId,bilag,color,bg}){
+  const[label,setLabel]=useState(()=>getRefLabel(txnId));
+  const display=label||fmtB(bilag);
+  const rename=(e)=>{
+    e.stopPropagation();
+    const val=window.prompt("Rename this entry's reference number:",display);
+    if(val===null)return;
+    const trimmed=val.trim();
+    setRefLabel(txnId,trimmed);
+    setLabel(trimmed);
+  };
+  return <span onDoubleClick={rename} title="Double-click to rename"><Pill label={display} color={color} bg={bg}/></span>;
+}
 
 function BackHeader({title,sub,onBack}){
   return(
@@ -827,14 +877,14 @@ function Menu3({items}){
   const[open,setOpen]=useState(false);
   return(
     <div style={{position:"relative"}}>
-      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:T.border,border:"none",borderRadius:8,color:T.sub,fontSize:15,cursor:"pointer",padding:"5px 11px",fontWeight:900,lineHeight:1}}>•••</button>
+      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>⋮</button>
       {open&&(<>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:90}}/>
-        <div style={{position:"absolute",right:0,top:36,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:100,minWidth:170,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
+        <div style={{position:"absolute",right:0,top:28,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
           {items.map((item,i)=>(
             <div key={i} onClick={()=>{if(!item.disabled){setOpen(false);item.action();}}}
-              style={{padding:"13px 16px",fontSize:13,cursor:item.disabled?"not-allowed":"pointer",color:item.disabled?T.muted:item.color||T.blue,fontWeight:600,borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:8,opacity:item.disabled?0.5:1}}>
-              <span>{item.icon}</span>{item.label}
+              style={{padding:"9px 12px",fontSize:9,cursor:item.disabled?"not-allowed":"pointer",color:item.disabled?T.muted:item.color||T.blue,fontWeight:600,borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:6,opacity:item.disabled?0.5:1}}>
+              <span style={{fontSize:11}}>{item.icon}</span>{item.label}
             </div>
           ))}
         </div>
@@ -957,11 +1007,20 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
   const isReversal=!!txn.reversalOf;
   const contact=txn.contactId?contacts.find(c=>c.id===txn.contactId):null;
 
-  // Attachment stored in sessionStorage keyed by txn id
+  // Attachment(s) stored in localStorage keyed by txn id — supports single {name,data,type} (legacy) or {files:[...]} (multi)
   const attKey=`rr_att_${txn.id}`;
   const[att,setAttState]=useState(()=>{try{const s=localStorage.getItem(attKey);return s?JSON.parse(s):null;}catch{return null;}});
+  const[attOpen,setAttOpen]=useState(true);
+  const attList=att?(att.files?att.files:[att]):[];
   const setAtt=(data)=>{setAttState(data);try{if(data)localStorage.setItem(attKey,JSON.stringify(data));else localStorage.removeItem(attKey);}catch{}};
-  const handleAttach=(file)=>{const r=new FileReader();r.onload=e=>setAtt({name:file.name,data:e.target.result,type:file.type});r.readAsDataURL(file);};
+  const handleAttach=(file)=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      const newFile={name:file.name,data:e.target.result,type:file.type};
+      setAtt({files:[...attList,newFile]});
+    };
+    r.readAsDataURL(file);
+  };
 
   if(showEdit)return(
     <EditModal
@@ -976,18 +1035,18 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
       {attViewer&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:600,display:"flex",flexDirection:"column"}}>
           <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:12,color:"#fff",fontWeight:600}}>{att&&att.name}</div>
+            <div style={{fontSize:12,color:"#fff",fontWeight:600}}>{attViewer.name}</div>
             <button onClick={()=>setAttViewer(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer",padding:"6px 14px",fontWeight:600}}>✕ Close</button>
           </div>
-          {att&&att.type&&att.type.startsWith("image")
-            ?<img src={att.data} style={{flex:1,objectFit:"contain",padding:10}}/>
-            :<iframe src={att.data} style={{flex:1,border:"none",background:"#fff"}}/>}
+          {attViewer.type&&attViewer.type.startsWith("image")
+            ?<img src={attViewer.data} style={{flex:1,objectFit:"contain",padding:10}}/>
+            :<iframe src={attViewer.data} style={{flex:1,border:"none",background:"#fff"}}/>}
         </div>
       )}
       <div style={{background:T.bg,borderRadius:20,padding:20,width:"100%",maxWidth:430,marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div>
-            <Pill label={fmtB(txn.bilag)} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
+            <BilagPill txnId={txn.id} bilag={txn.bilag} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
             <div style={{fontSize:17,fontWeight:800,marginTop:6}}>{txn.description}</div>
             {isReversed&&<div style={{fontSize:11,color:T.muted,marginTop:2}}>Reversed by {fmtB(txn.reversedBy)}</div>}
             {isReversal&&<div style={{fontSize:11,color:T.red,marginTop:2}}>↩ Reversal of {fmtB(txn.reversalOf)}</div>}
@@ -1034,17 +1093,40 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
             <div style={{fontSize:11,color:T.sub,marginTop:2}}>{getName(txn.creditCode)}</div>
           </div>
         </div>
+        {(()=>{
+          const group=getGroupForTxn(txn.id);
+          if(!group||group.lines.length<2)return null;
+          const total=group.lines.reduce((s,l)=>s+l.amount,0);
+          return(
+            <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:12,padding:"10px 12px",marginTop:10}}>
+              <div style={{fontSize:10,color:T.accent,fontWeight:800,textTransform:"uppercase",letterSpacing:0.6,marginBottom:6}}>🔗 Linked entry · {group.lines.length} lines</div>
+              {group.lines.map(l=>(
+                <div key={l.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid rgba(0,0,0,0.06)`,fontSize:12,fontWeight:l.id===txn.id?800:500}}>
+                  <span style={{color:l.id===txn.id?T.accent:T.sub}}>{fmtB(l.bilag)} · {l.description}</span>
+                  <span>{fmt(l.amount)}</span>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,fontSize:12,fontWeight:800,color:T.accent}}><span>Total</span><span>{fmt(total)}</span></div>
+            </div>
+          );
+        })()}
         {/* Attachment row */}
         <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
           <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:12,color:T.blue,fontWeight:600}}>
-            📎 {att?"Replace attachment":"Attach file"}
+            📎 {attList.length?`Add another file (${attList.length} attached)`:"Attach file"}
             <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(e.target.files[0]);}}/>
           </label>
-          {att&&(
-            <button onClick={()=>setAttViewer(att)} style={{background:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center"}}>👁</button>
+          {attList.length>0&&(
+            <button onClick={()=>setAttOpen(o=>!o)} title={attOpen?"Hide attachments":"Show attachments"} style={{background:attOpen?T.blue:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:attOpen?"#fff":T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>📎</button>
           )}
         </div>
-        {att&&<div style={{fontSize:10,color:T.muted,marginTop:4,paddingLeft:2}}>📎 {att.name}</div>}
+        {attOpen&&attList.map((f,i)=>(
+          <div key={i} onClick={()=>setAttViewer(f)} style={{display:"flex",alignItems:"center",gap:8,marginTop:6,padding:"7px 10px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer"}}>
+            <span style={{fontSize:15}}>{(f.type&&f.type.startsWith("image"))?"🖼️":(f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
+            <span style={{fontSize:11,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+            <span style={{fontSize:11,color:T.muted}}>👁</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1071,8 +1153,9 @@ function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
       <div onClick={()=>setDetail(true)} style={{background:T.card,borderRadius:14,border:`1px solid ${isReversal?T.redMid:isReversed?T.border:T.border}`,padding:"13px 15px",marginBottom:8,cursor:"pointer",opacity:isReversed?0.5:1,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
-            <Pill label={fmtB(t.bilag)} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
+            <BilagPill txnId={t.id} bilag={t.bilag} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
             {hasAttachment(t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
+            {(()=>{const g=getGroupForTxn(t.id);return g&&g.lines.length>1?<span title={`Linked entry · ${g.lines.length} lines`} style={{fontSize:12}}>🔗</span>:null;})()}
             <div style={{fontSize:13,fontWeight:600,flex:1,color:isReversed?T.muted:T.text}}>
               {t.description}
               {isReversed&&<span style={{fontSize:10,color:T.muted,marginLeft:5}}>[reversed]</span>}
@@ -1236,6 +1319,32 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 
   const[exportMenu,setExportMenu]=useState(false);
 
+  const mergeSelected=()=>{
+    const items=rows.filter(r=>selected.includes(r.id));
+    if(items.length<2)return;
+    const w=window.open("","_blank");
+    const total=items.reduce((s,r)=>s+r.amount,0);
+    const blocks=items.map((r,i)=>`
+      <div style="border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px;${i>0?"page-break-inside:avoid;":""}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-weight:bold;color:#0D7377">${fmtB(r.bilag)}</span>
+          <span style="color:#888;font-size:11px">${r.date}</span>
+        </div>
+        <div style="font-size:13px;margin-bottom:6px">${r.description}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#555">
+          <span>Dr ${r.debitCode} → Cr ${r.creditCode}</span>
+          <span style="font-weight:bold;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</span>
+        </div>
+      </div>`).join("");
+    w.document.write(`<!DOCTYPE html><html><head><title>Merged Entries · ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:13px;margin:30px}h1{font-size:16px}.btn-bar{display:flex;gap:10px;margin-top:20px}@media print{.btn-bar{display:none}}</style></head><body>
+      <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Merged export of ${items.length} selected entries</p>
+      ${blocks}
+      <div style="display:flex;justify-content:space-between;padding:12px 16px;background:#f0f0f0;border-radius:8px;font-weight:bold"><span>Total</span><span>${sign(total)}</span></div>
+      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+      </body></html>`);
+    w.document.close();setTimeout(()=>w.print(),400);
+  };
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
@@ -1260,6 +1369,20 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         }
       />
       <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,padding:"8px 12px"}}>
+        {selected.length>0?(
+          /* Selection banner takes the place of the date/period bar while selecting */
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",minHeight:28}}>
+            <div>
+              <div style={{fontSize:11,color:T.muted}}>{selected.length} selected · Net: <span style={{fontWeight:700,color:Math.abs(selSum)<1?T.green:T.red}}>{sign(selSum)}</span></div>
+              <div style={{fontSize:11,fontWeight:700,color:Math.abs(selSum)<1?T.green:T.sub,marginTop:1}}>{Math.abs(selSum)<1?"✓ Ready to match":"Entries must net to zero"}</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub,fontSize:11}}>Clear</button>
+              {selected.length>=2&&<button onClick={mergeSelected} style={{...btnSm,background:T.accentLight,color:T.accent,fontSize:11}}>📄 Merge</button>}
+              <button onClick={doMatch} style={{...btnSm,background:Math.abs(selSum)<1?T.green:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,fontSize:11,opacity:Math.abs(selSum)<1?1:0.6}}>Match ✓</button>
+            </div>
+          </div>
+        ):(<>
         {/* Quick period buttons */}
         <div style={{display:"flex",gap:4,marginBottom:showSearch?8:0,overflowX:"auto",scrollbarWidth:"none",alignItems:"center"}}>
           <select value={from.slice(0,4)} onChange={e=>{const y=e.target.value;setFrom(`${y}-01-01`);setTo(`${y}-12-31`);}} style={{fontSize:11,fontWeight:700,color:T.text,background:"#f3f4f6",border:"none",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",outline:"none",flexShrink:0}}>
@@ -1289,20 +1412,9 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
             <input placeholder="Search..." value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} style={{...inp,flex:1,padding:"5px 8px",fontSize:12}}/>
           </div>
         )}
+        </>)}
       </div>
       <div style={{padding:16}}>
-        {selected.length>0&&(
-          <div style={{background:T.header,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <div style={{fontSize:11,color:"#aaa"}}>{selected.length} selected · Net: <span style={{color:Math.abs(selSum)<1?T.green:"#f87171"}}>{sign(selSum)}</span></div>
-              <div style={{fontSize:12,color:"#fff",fontWeight:700,marginTop:2}}>{Math.abs(selSum)<1?"✓ Ready to match":"Entries must net to zero"}</div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setSelected([])} style={{...btnSm,background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:11}}>Clear</button>
-              <button onClick={doMatch} style={{...btnSm,background:Math.abs(selSum)<1?T.green:"#555",color:"#fff",fontSize:11,opacity:Math.abs(selSum)<1?1:0.5}}>Match ✓</button>
-            </div>
-          </div>
-        )}
         {matchedRows.length>0&&(
           <div style={{marginBottom:12,fontSize:11,color:T.muted}}>{matchedRows.length} matched {matchedRows.length===1?"item":"items"} in this period — see below.</div>
         )}
@@ -1327,7 +1439,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           return(
             <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"1px solid "+T.border}}>
               <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
-              <div onClick={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}>{fmtB(r.bilag)}</div>
+              <BilagText txnId={r.id} bilag={r.bilag} onOpen={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}/>
               <div style={{fontSize:10,color:"#111827"}}>{r.date.slice(5)}</div>
               <div style={{fontSize:12,color:isRev?T.red:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
               <div style={{fontSize:12,fontWeight:800,textAlign:"right",color:"#111827"}}>{r.movement>=0?"+":"−"}{fmt(Math.abs(r.movement))}</div>
@@ -3020,10 +3132,30 @@ function ContactSearchInline({contacts,value,onChange,type}){
 
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
-  const[form,setForm]=useState(emptyTxn);
+  const[form,setForm]=useState(()=>{
+    let pending=null;
+    try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
+    if(pending){try{localStorage.removeItem("rr_pending_attachment");}catch{}return{...emptyTxn,attachmentId:parseInt(pending)};}
+    return emptyTxn;
+  });
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
-  const[reskontroMode,setReskontroMode]=useState(false);
+  const[entryMode,setEntryMode]=useState("receipt"); // "receipt" | "supplier" | "customer"
+  const[invContactId,setInvContactId]=useState("");
+  const[invoiceNo,setInvoiceNo]=useState("");
+  const[invAmount,setInvAmount]=useState("");
+  const[invAccountCode,setInvAccountCode]=useState("");
+  const[invDescription,setInvDescription]=useState("");
+  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount}]
+  const[invAttachmentIds,setInvAttachmentIds]=useState([]);
+  const[invAttOpen,setInvAttOpen]=useState(true);
+  const[invRegisterPayment,setInvRegisterPayment]=useState(false);
+  const[invPaymentBank,setInvPaymentBank]=useState("");
+  const[invPaymentAmount,setInvPaymentAmount]=useState("");
+  const[invPaymentDate,setInvPaymentDate]=useState(new Date().toISOString().split("T")[0]);
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment(false);setInvPaymentBank("");setInvPaymentAmount("");};
+  const invIsCustomer=entryMode==="customer";
+  const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
   const[inboxFiles,setInboxFiles]=useState(()=>getInboxFiles());
   const uploadToInbox=(file)=>{
@@ -3059,9 +3191,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     const amount=parseFloat(form.amount);
     const lines=form.lines||[];
     const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
+    // Multi-line entries share one groupRef so opening any line shows the whole entry
+    const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
     // Save primary entry
-    onSave({...form,amount,lines:undefined});
-    // Save each extra line as its own entry
+    onSave({...form,amount,lines:undefined,groupRef});
+    // Save each extra line as its own entry, linked via groupRef
     extraLines.forEach(l=>{
       onSave({
         date:form.date,
@@ -3071,6 +3205,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         amount:parseFloat(l.amount),
         contactId:form.contactId||null,
         sfFundId:form.sfFundId||null,
+        groupRef,
       });
     });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
@@ -3119,6 +3254,57 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   // Load funds from prop
   const sfFunds=sinkingFunds||[];
 
+  const saveInvoice=()=>{
+    if(!invContactId||!invAccountCode||!parseFloat(invAmount))return;
+    if(isDateClosed(form.date)){
+      alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
+      return;
+    }
+    const contactCode=invIsCustomer?"1500":"2400";
+    const allLines=[{accountCode:invAccountCode,amount:invAmount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const hasPayment=invRegisterPayment&&invPaymentBank&&parseFloat(invPaymentAmount)>0;
+    const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
+    allLines.forEach((l,idx)=>{
+      const amt=parseFloat(l.amount);
+      const isReverse=amt<0; // negative amount = kreditnote/kreditnota, reverses the normal debit/credit
+      const absAmt=Math.abs(amt);
+      let debitCode,creditCode;
+      if(invIsCustomer){
+        // Normal sale: Customer debit / Sales credit. Kreditnota: reversed.
+        debitCode=isReverse?l.accountCode:contactCode;
+        creditCode=isReverse?contactCode:l.accountCode;
+      } else {
+        // Normal purchase: Expense debit / Supplier credit. Kreditnote: reversed.
+        debitCode=isReverse?contactCode:l.accountCode;
+        creditCode=isReverse?l.accountCode:contactCode;
+      }
+      onSave({
+        date:form.date,
+        debitCode,creditCode,
+        description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
+        amount:absAmt,
+        contactId:invContactId,
+        groupRef,
+        attachmentIds:idx===0?invAttachmentIds:undefined,
+      });
+    });
+    if(hasPayment){
+      // Payment leg: purchase → Supplier debited / Bank credited. Sale → Bank debited / Customer credited.
+      const debitCode=invIsCustomer?invPaymentBank:contactCode;
+      const creditCode=invIsCustomer?contactCode:invPaymentBank;
+      onSave({
+        date:invPaymentDate,
+        debitCode,creditCode,
+        description:`Payment${invoiceNo?" · "+invoiceNo:""}`,
+        amount:parseFloat(invPaymentAmount),
+        contactId:invContactId,
+        groupRef,
+      });
+    }
+    setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
+    resetInvoiceForm();
+  };
+
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
   return(
@@ -3130,17 +3316,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           <div style={{fontSize:15,fontWeight:900,color:T.accent}}>{fmtB(nextBilag)}</div>
         </div>
         <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,width:130,flexShrink:0}}/>
-        {/* Reskontro toggle — compact icon button */}
-        <div onClick={()=>{setReskontroMode(v=>!v);setForm(p=>({...p,contactId:""}));}} title="Reskontro — show all contacts in debit/credit"
-          style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:reskontroMode?T.accent:"#f1efe8",borderRadius:9,border:`1.5px solid ${reskontroMode?T.accent:"#d3d1c7"}`,cursor:"pointer",userSelect:"none",flexShrink:0}}>
-          <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${reskontroMode?"rgba(255,255,255,0.6)":"#b0ada6"}`,background:reskontroMode?"rgba(255,255,255,0.25)":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            {reskontroMode&&<span style={{color:reskontroMode?"#fff":T.accent,fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
-          </div>
-          <span style={{fontSize:10,fontWeight:700,color:reskontroMode?"#fff":T.sub,whiteSpace:"nowrap"}}>Reskontro</span>
-        </div>
-        <Pill label="2x Entry" color={T.accent} bg={T.accentLight}/>
+        {/* Entry mode dropdown — Receipt / Supplier / Customer */}
+        <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...inpSm,flex:1}}>
+          <option value="receipt">Receipt</option>
+          <option value="supplier">Supplier</option>
+          <option value="customer">Customer</option>
+        </select>
       </div>
 
+      {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
         <div>
@@ -3343,6 +3527,142 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
         <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={save}>{entrySaved?"✓ Saved!":"Save Entry"}</button>
       </div>
+      )}
+
+      {entryMode!=="receipt"&&(()=>{
+        const contactList=contacts.filter(c=>c.type===(invIsCustomer?"customer":"supplier")&&!c.inactive);
+        const filteredAccounts=accounts.filter(a=>getSK(a.code)===(invIsCustomer?"3000":"4000"));
+        const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
+        const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
+        return(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* Supplier/Customer selector */}
+            <div>
+              <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"👤 Customer":"👤 Supplier"}</div>
+              {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
+                <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
+                  <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
+                  <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+                </div>
+              );})():(
+                <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"}/>
+              )}
+            </div>
+
+            {/* Invoice No + Amount */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
+                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={inpSm}/>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount {invAmount&&parseFloat(invAmount)<0?"(kreditnote)":""}</div>
+                <input placeholder="Amount (negative = credit note)" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={inpSm}/>
+              </div>
+            </div>
+
+            {/* Account + Description */}
+            <div>
+              <div style={{fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+              <AccDrop value={invAccountCode} onChange={setInvAccountCode} accounts={filteredAccounts}/>
+              <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,marginTop:6,fontSize:12,padding:"7px 10px"}}/>
+            </div>
+
+            {/* Additional lines — amount + account only, no description/attachment per line — sits right under the account */}
+            {invExtraLines.map((l,li)=>(
+              <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Account</div>
+                  <AccDrop value={l.accountCode} onChange={v=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,accountCode:v}:x))} accounts={filteredAccounts}/>
+                </div>
+                <div style={{width:100}}>
+                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>
+                  <input type="number" placeholder="0" value={l.amount} onChange={e=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,amount:e.target.value}:x))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                </div>
+                <button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,width:30,height:34,cursor:"pointer",fontWeight:800,flexShrink:0}}>−</button>
+              </div>
+            ))}
+            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:""}])} style={{...btnGhost,padding:"7px",fontSize:11,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+
+            {/* Attachment — small, compact, toggle via icon, supports multiple files */}
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"7px 10px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:12}}>📎</span>
+                <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
+                {invAttachmentIds.length>0&&(
+                  <button onClick={()=>setInvAttOpen(o=>!o)} title={invAttOpen?"Hide":"Show"} style={{background:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:11,fontWeight:700,padding:0}}>{invAttOpen?"Hide":"Show"}</button>
+                )}
+              </div>
+              {invAttOpen&&invAttachmentIds.map(fid=>{
+                const f=inboxFiles.find(x=>x.id===fid);
+                return(
+                  <div key={fid} style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:8,padding:"5px 8px",marginTop:5}}>
+                    <span style={{fontSize:12}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
+                    <span style={{fontSize:10,fontWeight:600,color:T.accent,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                    <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:12}}>✕</button>
+                  </div>
+                );
+              })}
+              <div style={{display:"flex",gap:5,marginTop:6}}>
+                <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,flex:1,fontSize:10,padding:"6px 8px"}}>
+                  <option value="">— Add from Inbox —</option>
+                  {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                </select>
+                <label style={{...btnSm,cursor:"pointer",whiteSpace:"nowrap",fontSize:10,padding:"5px 9px"}}>+ Upload
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){
+                    const file=e.target.files[0];
+                    const reader=new FileReader();
+                    reader.onload=ev=>{
+                      const now=new Date();
+                      const monthName=now.toLocaleString("default",{month:"long"});
+                      const newFile={id:Date.now(),name:file.name,data:ev.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
+                      const updated=[...getInboxFiles(),newFile];
+                      localStorage.setItem("rr_files",JSON.stringify(updated));
+                      setInboxFiles(updated);
+                      setInvAttachmentIds(p=>[...p,newFile.id]);
+                      setInvAttOpen(true);
+                    };
+                    reader.readAsDataURL(file);
+                  }}}/>
+                </label>
+              </div>
+            </div>
+
+            {/* Payment — optional, toggle reveals bank/amount/date fields */}
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
+              <div onClick={()=>setInvRegisterPayment(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text}}>Register Payment</div>
+                <div style={{width:36,height:20,borderRadius:12,background:invRegisterPayment?T.accent:T.border,position:"relative",transition:"background 0.15s",flexShrink:0}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:2,left:invRegisterPayment?18:2,transition:"left 0.15s",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}}/>
+                </div>
+              </div>
+              {invRegisterPayment&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Bank Account</div>
+                    <AccDrop value={invPaymentBank} onChange={setInvPaymentBank} accounts={bankAccounts}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
+                      <input type="number" placeholder="0" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
+                      <input type="date" value={invPaymentDate} onChange={e=>setInvPaymentDate(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: Bank debited, Customer credited.":"Records a payment: Supplier debited, Bank credited."}</div>
+                </div>
+              )}
+            </div>
+
+            {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
+            <button style={{...btnRed,opacity:invValid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={saveInvoice}>{entrySaved?"✓ Saved!":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
+          </div>
+        );
+      })()}
     </Card>
   );
 }
@@ -4624,10 +4944,12 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack}){
+function FilesScreen({onBack,onNavigate}){
   const KEY="rr_files";
   const[files,setFilesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
   const[search,setSearch]=useState("");
+  const[uploadMenu,setUploadMenu]=useState(false);
+  const[selected,setSelected]=useState([]);
 
   const save=(f)=>{setFilesState(f);localStorage.setItem(KEY,JSON.stringify(f));};
   const addFile=(file)=>{
@@ -4641,8 +4963,41 @@ function FilesScreen({onBack}){
     reader.readAsDataURL(file);
   };
   const deleteFile=(id)=>save(files.filter(f=>f.id!==id));
+  const renameFile=(id)=>{
+    const f=files.find(x=>x.id===id);
+    if(!f)return;
+    const val=window.prompt("Rename file:",f.name);
+    if(val===null)return;
+    const trimmed=val.trim();
+    if(!trimmed)return;
+    save(files.map(x=>x.id===id?{...x,name:trimmed}:x));
+  };
+  const registerEntry=(fileId)=>{
+    try{if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");}catch{}
+    if(onNavigate)onNavigate("Transactions");
+  };
   const[viewing,setViewing]=useState(null);
+  const[inlinePreview,setInlinePreview]=useState(null);
   const filtered=files.filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()));
+  const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+
+  const mergeToPdf=()=>{
+    const items=files.filter(f=>selected.includes(f.id));
+    if(items.length<2)return;
+    const w=window.open("","_blank");
+    const imgs=items.filter(f=>f.type&&f.type.startsWith("image"));
+    const others=items.filter(f=>!(f.type&&f.type.startsWith("image")));
+    const blocks=imgs.map(f=>`<div style="page-break-inside:avoid;margin-bottom:20px"><div style="font-size:11px;color:#888;margin-bottom:6px">${f.name}</div><img src="${f.data}" style="max-width:100%;border:1px solid #eee;border-radius:6px"/></div>`).join("");
+    const otherList=others.map(f=>`<li>${f.name} (view individually — non-image files can't be merged inline)</li>`).join("");
+    w.document.write(`<!DOCTYPE html><html><head><title>Merged Files</title><style>body{font-family:Arial,sans-serif;margin:30px}.btn-bar{display:flex;gap:10px;margin-top:20px}@media print{.btn-bar{display:none}}</style></head><body>
+      <h1 style="font-size:16px">Merged Files (${items.length})</h1>
+      ${blocks}
+      ${others.length?`<div style="margin-top:10px"><b>Other files:</b><ul>${otherList}</ul></div>`:""}
+      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+      </body></html>`);
+    w.document.close();setTimeout(()=>w.print(),400);
+  };
+  const deleteSelected=()=>{save(files.filter(f=>!selected.includes(f.id)));setSelected([]);};
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -4657,21 +5012,27 @@ function FilesScreen({onBack}){
             :<iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>}
         </div>
       )}
-      <BackHeader title="Inbox" sub="UPLOAD, VIEW & DELETE FILES" onBack={onBack}/>
+      <BackHeader title="Inbox" sub="UPLOAD & MANAGE FILES" onBack={onBack}/>
       <div style={{padding:16}}>
-        {/* Upload options */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-          {[
-            {icon:"🖼️",label:"Gallery",accept:"image/*"},
-            {icon:"📄",label:"Files",accept:".pdf,.doc,.docx,.xlsx,.csv"},
-            {icon:"📷",label:"Camera",accept:"image/*",capture:"environment"},
-          ].map((opt,i)=>(
-            <label key={i} style={{background:T.card,borderRadius:12,padding:"14px 8px",textAlign:"center",border:`1px solid ${T.border}`,cursor:"pointer",display:"block"}}>
-              <div style={{fontSize:24,marginBottom:6}}>{opt.icon}</div>
-              <div style={{fontSize:11,fontWeight:600,color:T.accent}}>{opt.label}</div>
-              <input type="file" accept={opt.accept} capture={opt.capture} style={{display:"none"}} onChange={e=>{if(e.target.files[0])addFile(e.target.files[0]);}}/>
-            </label>
-          ))}
+        {/* Upload (small) + Register — same row */}
+        <div style={{position:"relative",display:"flex",gap:8,marginBottom:14}}>
+          <button onClick={()=>setUploadMenu(o=>!o)} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.sub,borderColor:T.border,background:"#F3F4F6"}}>⬆ Upload</button>
+          <button onClick={()=>registerEntry(null)} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.accent,borderColor:T.accent}}>Register Entry</button>
+          {uploadMenu&&(<>
+            <div onClick={()=>setUploadMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
+            <div style={{position:"absolute",left:0,top:"100%",marginTop:6,width:"calc(50% - 4px)",background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",overflow:"hidden"}}>
+              {[
+                {icon:"🖼️",label:"Photo Gallery",accept:"image/*"},
+                {icon:"📷",label:"Camera",accept:"image/*",capture:"environment"},
+                {icon:"📄",label:"Document",accept:".pdf,.doc,.docx,.xlsx,.csv"},
+              ].map((opt,i)=>(
+                <label key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",borderBottom:i<2?`1px solid ${T.border}`:"none",fontSize:12,fontWeight:600,color:T.text}}>
+                  <span style={{fontSize:15}}>{opt.icon}</span>{opt.label}
+                  <input type="file" accept={opt.accept} capture={opt.capture} style={{display:"none"}} onChange={e=>{if(e.target.files[0])addFile(e.target.files[0]);setUploadMenu(false);}}/>
+                </label>
+              ))}
+            </div>
+          </>)}
         </div>
 
         {/* Search */}
@@ -4680,19 +5041,50 @@ function FilesScreen({onBack}){
           <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
         </div>
 
-        {/* File list */}
-        {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No files yet. Upload from gallery, files, or camera.</div>}
-        {filtered.map(f=>(
-          <div key={f.id} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-            <div style={{fontSize:24,flexShrink:0}}>{(f.type&&f.type.startsWith("image"))?"🖼️":(f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-              <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+        {/* Selection bar */}
+        {selected.length>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+            <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{selected.length} selected</span>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub}}>Clear</button>
+              {selected.length>=2&&<button onClick={mergeToPdf} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
+              <button onClick={deleteSelected} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
             </div>
-            <button onClick={()=>setViewing(f)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"5px 10px",fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"inherit",flexShrink:0}}>👁</button>
-            <button onClick={()=>deleteFile(f.id)} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"5px 8px",fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑</button>
           </div>
-        ))}
+        )}
+
+        {/* File list — clean divided table style, like Accounts/Ledger */}
+        {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No files yet. Tap Upload to add one.</div>}
+        {filtered.length>0&&(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            {filtered.map((f,i)=>(
+              <div key={f.id}>
+                <div className="rr-table-row" style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:(i<filtered.length-1||inlinePreview===f.id)?`1px solid ${T.border}`:"none",background:selected.includes(f.id)?T.accentLight:"#fff"}}>
+                  <input type="checkbox" checked={selected.includes(f.id)} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
+                  <button onClick={()=>setInlinePreview(p=>p===f.id?null:f.id)} title="Preview" style={{background:inlinePreview===f.id?T.accentLight:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:14,padding:"3px 5px",borderRadius:6,flexShrink:0}}>👁</button>
+                  <div onDoubleClick={()=>renameFile(f.id)} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+                  </div>
+                  <Menu3 items={[
+                    {icon:"👁",label:"View",action:()=>setViewing(f)},
+                    {icon:"✏️",label:"Rename",action:()=>renameFile(f.id)},
+                    {icon:"📝",label:"Register as Entry",color:T.accent,action:()=>registerEntry(f.id)},
+                    {icon:"🗑",label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
+                  ]}/>
+                </div>
+                {inlinePreview===f.id&&(
+                  <div onDoubleClick={()=>{setViewing(f);setInlinePreview(null);}} title="Double-tap for full view"
+                    style={{padding:"10px 14px",background:T.bg,borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",cursor:"zoom-in",display:"flex",justifyContent:"center"}}>
+                    {(f.type&&f.type.startsWith("image"))
+                      ?<img src={f.data} style={{maxHeight:160,maxWidth:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
+                      :<iframe src={f.data} style={{width:"100%",height:160,border:`1px solid ${T.border}`,borderRadius:8,background:"#fff"}}/>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5230,7 +5622,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
@@ -5240,36 +5632,36 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
       {/* Sidebar */}
       {sidebarOpen&&(<>
-        <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200}}/>
-        <div style={{position:"fixed",top:0,left:0,bottom:0,width:240,background:"#0A5C60",zIndex:201,display:"flex",flexDirection:"column",boxShadow:"6px 0 32px rgba(0,0,0,0.3)"}}>
-          <div style={{padding:"24px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",gap:12}}>
+        <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:200}}/>
+        <div style={{position:"fixed",top:0,left:0,bottom:0,width:240,background:"#FFFFFF",zIndex:201,display:"flex",flexDirection:"column",boxShadow:"6px 0 32px rgba(0,0,0,0.15)"}}>
+          <div style={{padding:"24px 20px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12}}>
             <img src={LOGO_B64} style={{height:44,objectFit:"contain"}}/>
             <div>
-              <div style={{fontSize:13,fontWeight:900,color:"#fff",lineHeight:1.2}}>Redrock Danria</div>
-              <div style={{fontSize:9,color:"#475569",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginTop:2}}>Accountants</div>
+              <div style={{fontSize:13,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Danria</div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginTop:2}}>Accountants</div>
             </div>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-            <div style={{padding:"8px 16px 4px",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Main</div>
+            <div style={{padding:"8px 16px 4px",fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Main</div>
             {SIDEBAR.filter(i=>i.group==="main").map(item=>{
               const active=tab===item.id;
               const isLedger=item.id==="Accounts";
               return(
                 <div key={item.id}>
-                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent"}}>
+                  <div onClick={()=>{if(isLedger){setLedgerExpanded(e=>!e);}else{setTab(item.id);setSidebarOpen(false);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                     <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
-                    <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
-                    {isLedger&&<span style={{fontSize:10,color:"#475569",transition:"transform 0.2s",display:"inline-block",transform:ledgerExpanded?"rotate(180deg)":"none"}}>▾</span>}
+                    <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
+                    {isLedger&&<span style={{fontSize:10,color:T.muted,transition:"transform 0.2s",display:"inline-block",transform:ledgerExpanded?"rotate(180deg)":"none"}}>▾</span>}
                   </div>
                   {isLedger&&ledgerExpanded&&(
-                    <div style={{marginLeft:12,paddingLeft:8,borderLeft:"1px solid rgba(255,255,255,0.06)"}}>
-                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:tab==="Accounts"?"3px solid #5DCAA5":"3px solid transparent",background:tab==="Accounts"?"rgba(255,255,255,0.06)":"transparent"}}>
-                        <span style={{fontSize:12,color:tab==="Accounts"?"#E8F4F4":"#64748B",fontWeight:tab==="Accounts"?600:500}}>All Accounts</span>
+                    <div style={{marginLeft:12,paddingLeft:8,borderLeft:`1px solid ${T.border}`}}>
+                      <div onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:tab==="Accounts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Accounts"?T.accentLight:"transparent"}}>
+                        <span style={{fontSize:12,color:tab==="Accounts"?T.accent:T.sub,fontWeight:tab==="Accounts"?600:500}}>All Accounts</span>
                       </div>
                       {Object.entries(SERIES).map(([key,s])=>(
                         <div key={key} onClick={()=>{setTab("Accounts");setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 16px",cursor:"pointer",borderRadius:8,margin:"1px 8px"}}>
                           <span style={{fontSize:12}}>{s.icon}</span>
-                          <span style={{fontSize:11,color:"#64748B"}}>{s.name}</span>
+                          <span style={{fontSize:11,color:T.sub}}>{s.name}</span>
                         </div>
                       ))}
                     </div>
@@ -5277,36 +5669,36 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 </div>
               );
             })}
-            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
+            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
             {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
               const active=tab===item.id;
               const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque",Files:"files"}[item.id];
               const isOff=featureKey&&!feat[featureKey];
               if(isOff)return null;
               return(
-                <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent",transition:"background 0.1s"}}>
+                <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent",transition:"background 0.1s"}}>
                   <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
-                  <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)"}}>{item.label}</span>
+                  <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?T.accent:T.sub}}>{item.label}</span>
                 </div>
               );
             })}
             {/* System group */}
-            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
+            <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
             {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
-              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?"3px solid #5DCAA5":"3px solid transparent",background:active?"rgba(255,255,255,0.06)":"transparent"}}>
+              <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                 <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?"#E8F4F4":"rgba(255,255,255,0.6)",flex:1}}>{item.label}</span>
+                <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px",minWidth:16,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );})}
             <div onClick={()=>setDarkMode(d=>!d)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10}}>
               <span style={{fontSize:16,width:20,textAlign:"center"}}>{darkMode?"☀️":"🌙"}</span>
-              <span style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>{darkMode?"Light Mode":"Dark Mode"}</span>
+              <span style={{fontSize:13,color:T.sub}}>{darkMode?"Light Mode":"Dark Mode"}</span>
             </div>
           </div>
-          <div style={{padding:"14px 16px",borderTop:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>PKR · v2.2</div>
-            <button onClick={onSignOut} style={{background:"rgba(255,255,255,0.06)",border:"none",borderRadius:8,color:"#64748B",fontSize:11,cursor:"pointer",padding:"5px 12px",fontWeight:600}}>Sign Out</button>
+          <div style={{padding:"14px 16px",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:10,color:T.muted}}>PKR · v2.2</div>
+            <button onClick={onSignOut} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,color:T.sub,fontSize:11,cursor:"pointer",padding:"5px 12px",fontWeight:600}}>Sign Out</button>
           </div>
         </div>
       </>)}
