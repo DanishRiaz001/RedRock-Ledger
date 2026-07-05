@@ -35,6 +35,15 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const SUPPORT_EMAIL = "danishriaz001@gmail.com"; // shown to anyone without approved access
 
+// The Inbox/attachments feature stores files in localStorage (never migrated to
+// Supabase), and localStorage belongs to the BROWSER, not the logged-in user. Every
+// key used by that feature must be scoped by user id or every account sharing a
+// device sees each other's files. AppShell keeps this in sync with the real
+// logged-in user on every render, before any child that reads these keys runs.
+let CURRENT_USER_ID = null;
+const inboxKey = () => `rr_files_${CURRENT_USER_ID || "anon"}`;
+const attKeyFor = (txnId) => `rr_att_${CURRENT_USER_ID || "anon"}_${txnId}`;
+
 const DEFAULT_ACCOUNTS=[
   // ── 1000s ASSETS ──────────────────────────────────────────────
   // Fixed Assets (1000–1099)
@@ -343,6 +352,7 @@ function PendingAccessScreen({reason,onSignOut}){
 
 
 function AppShell({user}){
+  CURRENT_USER_ID=user.id; // must be set before any child reads inboxKey()/attKeyFor() below
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
   const[profileLoading,setProfileLoading]=useState(true);
@@ -729,17 +739,17 @@ const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
-const getInboxFiles=()=>{try{return JSON.parse(localStorage.getItem("rr_files")||"[]")}catch{return[];}};
-const hasAttachment=(txnId)=>{try{return!!localStorage.getItem(`rr_att_${txnId}`);}catch{return false;}};
+const getInboxFiles=()=>{try{return JSON.parse(localStorage.getItem(inboxKey())||"[]")}catch{return[];}};
+const hasAttachment=(txnId)=>{try{return!!localStorage.getItem(attKeyFor(txnId));}catch{return false;}};
 const attachInboxFileToTxn=(txnId,fileId)=>{
   const file=getInboxFiles().find(f=>f.id===fileId);
   if(!file)return;
-  try{localStorage.setItem(`rr_att_${txnId}`,JSON.stringify({name:file.name,data:file.data,type:file.type}));}catch{}
+  try{localStorage.setItem(attKeyFor(txnId),JSON.stringify({name:file.name,data:file.data,type:file.type}));}catch{}
 };
 const attachInboxFilesToTxn=(txnId,fileIds)=>{
   const files=getInboxFiles().filter(f=>fileIds.includes(f.id)).map(f=>({name:f.name,data:f.data,type:f.type}));
   if(!files.length)return;
-  try{localStorage.setItem(`rr_att_${txnId}`,JSON.stringify({files}));}catch{}
+  try{localStorage.setItem(attKeyFor(txnId),JSON.stringify({files}));}catch{}
 };
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 const appendGroupLine=(groupRef,line)=>{
@@ -1063,8 +1073,8 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
   const isReversal=!!txn.reversalOf;
   const contact=txn.contactId?contacts.find(c=>c.id===txn.contactId):null;
 
-  // Attachment(s) stored in localStorage keyed by txn id — supports single {name,data,type} (legacy) or {files:[...]} (multi)
-  const attKey=`rr_att_${txn.id}`;
+  // Attachment(s) stored in localStorage keyed by user + txn id — supports single {name,data,type} (legacy) or {files:[...]} (multi)
+  const attKey=attKeyFor(txn.id);
   const[att,setAttState]=useState(()=>{try{const s=localStorage.getItem(attKey);return s?JSON.parse(s):null;}catch{return null;}});
   const[attOpen,setAttOpen]=useState(true);
   const attList=att?(att.files?att.files:[att]):[];
@@ -3221,7 +3231,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
       const monthName=now.toLocaleString("default",{month:"long"});
       const newFile={id:Date.now(),name:file.name,data:e.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
       const updated=[...getInboxFiles(),newFile];
-      localStorage.setItem("rr_files",JSON.stringify(updated));
+      localStorage.setItem(inboxKey(),JSON.stringify(updated));
       setInboxFiles(updated);
       setForm(p=>({...p,attachmentId:newFile.id}));
     };
@@ -3685,7 +3695,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                       const monthName=now.toLocaleString("default",{month:"long"});
                       const newFile={id:Date.now(),name:file.name,data:ev.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
                       const updated=[...getInboxFiles(),newFile];
-                      localStorage.setItem("rr_files",JSON.stringify(updated));
+                      localStorage.setItem(inboxKey(),JSON.stringify(updated));
                       setInboxFiles(updated);
                       setInvAttachmentIds(p=>[...p,newFile.id]);
                       setInvAttOpen(true);
@@ -5012,7 +5022,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin}){
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
 function FilesScreen({onBack,onNavigate}){
-  const KEY="rr_files";
+  const KEY=inboxKey();
   const[files,setFilesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
