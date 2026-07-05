@@ -33,6 +33,7 @@ const LOGO_B64="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB9AAAAfQCAYAAACaOM
 const SUPABASE_URL = "https://rxarhvbqwwmipgvwdwvw.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4YXJodmJxd3dtaXBndndkd3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDg5MzEsImV4cCI6MjA5NzkyNDkzMX0.wwRARzljhLraDaawC-Ol20TMJeakCFiRBJWUYwlfYyk";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPPORT_EMAIL = "danishriaz001@gmail.com"; // shown to anyone without approved access
 
 const DEFAULT_ACCOUNTS=[
   // ── 1000s ASSETS ──────────────────────────────────────────────
@@ -249,7 +250,7 @@ function LoginScreen({onLogin}){
       <div style={{textAlign:"center",maxWidth:340}}>
         <img src={LOGO_FULL_B64} style={{width:220,marginBottom:24,objectFit:"contain"}}/>
         <div style={{fontSize:16,fontWeight:800,marginBottom:8,color:"#0F172A"}}>{mode==="signup"?"Check your email":"Reset link sent"}</div>
-        <div style={{fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.6}}>{mode==="signup"?"We sent a confirmation link. Click it then come back to sign in.":"Check your email for a reset link."}</div>
+        <div style={{fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.6}}>{mode==="signup"?`We sent a confirmation link. Click it, then come back to sign in. This app is invite-only, so an admin still needs to approve your account before you'll see any data — contact ${SUPPORT_EMAIL} if you're in a hurry.`:"Check your email for a reset link."}</div>
         <button style={{background:"linear-gradient(135deg,#0D7377,#0A5C60)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
       </div>
     </div>
@@ -309,12 +310,42 @@ function LoginScreen({onLogin}){
   );
 }
 
+// Shown instead of the app when a user has no profile row (never provisioned/approved)
+// or has been explicitly deactivated by an admin. RLS already blocks all data access
+// for both cases — this screen just explains why, since the app can't do anything else.
+function PendingAccessScreen({reason,onSignOut}){
+  const isPending=reason==="pending";
+  return(
+    <div style={{minHeight:"100vh",background:"#FAF9F7",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{width:"100%",maxWidth:360,textAlign:"center"}}>
+        <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:24}}/>
+        <div style={{background:"#fff",borderRadius:20,padding:"28px 22px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",border:"1px solid #E2E8F0"}}>
+          <div style={{fontSize:32,marginBottom:10}}>{isPending?"⏳":"🚫"}</div>
+          <div style={{fontSize:15,fontWeight:800,color:"#0F172A",marginBottom:8}}>
+            {isPending?"Access pending approval":"Access has been deactivated"}
+          </div>
+          <div style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.6}}>
+            {isPending
+              ?"Your account has been created but hasn't been approved yet. This app is invite-only — an admin needs to activate your access before you can use it."
+              :"Your access to this app has been turned off by an admin. If you believe this is a mistake, please get in touch."}
+          </div>
+          <div style={{background:"#FAF9F7",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#334155",fontWeight:600,marginBottom:20}}>
+            Contact {SUPPORT_EMAIL} for access
+          </div>
+          <button onClick={onSignOut} style={{background:"none",border:"1px solid #E2E8F0",color:"#64748B",borderRadius:12,padding:"11px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"}}>Sign Out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 
 
 function AppShell({user}){
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
+  const[profileLoading,setProfileLoading]=useState(true);
   const viewingUserId=user.id;
   const[accounts,setAccountsState]=useState([]);
   const[contacts,setContactsState]=useState([]);
@@ -326,7 +357,9 @@ function AppShell({user}){
 
   useEffect(()=>{
     sb.from("profiles").select("*").eq("id",user.id).single().then(({data})=>{
-      if(data){setProfile(data);if(data.is_admin){sb.from("profiles").select("*").then(({data:all})=>{if(all)setProfiles(all);});}}
+      setProfile(data||null); // no row yet (e.g. not provisioned) => treated as pending/no-access below
+      if(data&&data.is_admin){sb.from("profiles").select("*").then(({data:all})=>{if(all)setProfiles(all);});}
+      setProfileLoading(false);
     });
   },[user.id]);
 
@@ -369,7 +402,7 @@ function AppShell({user}){
     });
   },[viewingUserId]);
 
-  const canEdit=true;
+  const canEdit=!!(profile&&profile.is_active!==false);
 
   const setAccounts=async(list,deletedCode=null,newCode=null)=>{
     setAccountsState(list);
@@ -495,6 +528,29 @@ function AppShell({user}){
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
   const isAdmin=profile&&profile.is_admin;
 
+  // Real, server-enforced activate/deactivate (replaces the old localStorage-only mock).
+  // RLS on accounts/contacts/transactions/sinking_funds already checks profiles.is_active,
+  // so this is the single source of truth for whether a user can do anything at all.
+  const toggleUserActive=async(userId,nextActive)=>{
+    const{error}=await sb.from("profiles").update({is_active:nextActive}).eq("id",userId);
+    if(error){alert("Failed to update user status: "+error.message);return;}
+    setProfiles(p=>p.map(x=>x.id===userId?{...x,is_active:nextActive}:x));
+    if(userId===user.id)setProfile(p=>p?{...p,is_active:nextActive}:p);
+  };
+
+  if(profileLoading)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif"}}>
+      <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:20}}/>
+      <Spinner/>
+    </div>
+  );
+
+  // No profile row, or an admin has switched this account off: no access, no data —
+  // don't even attempt to load the ledger. This is the "you need an invite / approval" wall.
+  if(!profile||profile.is_active===false)return(
+    <PendingAccessScreen reason={!profile?"pending":"deactivated"} onSignOut={signOut}/>
+  );
+
   if(loading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif"}}>
       <style>{`@keyframes rr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
@@ -517,7 +573,7 @@ function AppShell({user}){
         saveEdit={saveEdit} deleteTxn={deleteTxn}
         reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
-        nextBilag={nextBilag} onSignOut={signOut}
+        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
   );
@@ -5323,7 +5379,7 @@ const ADMIN_FEATURES=[
   {id:"darkMode",label:"Dark Mode",icon:"🌙",desc:"Dark theme toggle"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
 ];
-function AdminPanel({onBack,profiles=[]}){
+function AdminPanel({onBack,profiles=[],onToggleActive}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[search,setSearch]=useState("");
@@ -5331,9 +5387,6 @@ function AdminPanel({onBack,profiles=[]}){
   const[features,setFeaturesState]=useState(()=>getAdminFeatures());
   const[userFeats,setUserFeatsState]=useState(()=>{
     try{return JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}")}catch{return{};}
-  });
-  const[deactivated,setDeactivated]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("rr_deactivated")||"{}")}catch{return{};}
   });
 
   const toggleGlobal=(id)=>{
@@ -5348,10 +5401,10 @@ function AdminPanel({onBack,profiles=[]}){
     setUserFeatsState(n);
     localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
   };
-  const toggleDeactivate=(userId)=>{
-    const n={...deactivated,[userId]:!deactivated[userId]};
-    setDeactivated(n);
-    localStorage.setItem("rr_deactivated",JSON.stringify(n));
+  // Real, server-side activate/deactivate — is_active also gates RLS on every
+  // other table, so this is what actually locks a user out, not just the UI.
+  const toggleDeactivate=(userId,isDeactNow)=>{
+    if(onToggleActive)onToggleActive(userId,isDeactNow);
   };
   const isGlobalOn=(id)=>features[id]!==false;
   const isUserOn=(userId,id)=>{
@@ -5369,8 +5422,8 @@ function AdminPanel({onBack,profiles=[]}){
 
   // ── User Detail Screen ──
   if(selUser){
-    const p=selUser;
-    const isDeact=!!deactivated[p.id];
+    const p=profiles.find(x=>x.id===selUser.id)||selUser; // re-read live row so status updates immediately after a toggle
+    const isDeact=p.is_active===false;
     const userNum=profiles.findIndex(x=>x.id===p.id)+1;
     const deactBtnStyle=isDeact
       ?{background:T.green,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"}
@@ -5388,7 +5441,7 @@ function AdminPanel({onBack,profiles=[]}){
                 <div style={{fontSize:15,fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}</div>
                 <div style={{fontSize:11,color:T.muted}}>{p.email}</div>
                 <div style={{display:"flex",gap:5,marginTop:4}}>
-                  {isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}
+                  {isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED / PENDING</span>}
                   {p.is_admin&&<span style={{fontSize:10,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800}}>ADMIN</span>}
                 </div>
               </div>
@@ -5397,10 +5450,10 @@ function AdminPanel({onBack,profiles=[]}){
           </div>
 
           <div style={{background:isDeact?"#fff8f8":T.card,borderRadius:14,border:"1px solid "+(isDeact?T.red:T.border),padding:16,marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:8}}>{isDeact?"Account Deactivated":"Account Active"}</div>
+            <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:8}}>{isDeact?"Account Deactivated / Pending":"Account Active"}</div>
             {p.is_admin
               ?<div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.orange,fontWeight:600}}>⚠️ Admin accounts cannot be deactivated.</div>
-              :<button onClick={()=>toggleDeactivate(p.id)} style={deactBtnStyle}>{isDeact?"✅ Reactivate Account":"🚫 Deactivate Account"}</button>
+              :<button onClick={()=>toggleDeactivate(p.id,isDeact)} style={deactBtnStyle}>{isDeact?"✅ Activate / Approve Account":"🚫 Deactivate Account"}</button>
             }
           </div>
 
@@ -5455,8 +5508,8 @@ function AdminPanel({onBack,profiles=[]}){
           </>
         )}
         {tab==="users"&&(()=>{
-          const activeProfiles=filteredProfiles.filter(p=>!deactivated[p.id]);
-          const inactiveProfiles=filteredProfiles.filter(p=>!!deactivated[p.id]);
+          const activeProfiles=filteredProfiles.filter(p=>p.is_active!==false);
+          const inactiveProfiles=filteredProfiles.filter(p=>p.is_active===false);
           const shownProfiles=userStatusTab==="active"?activeProfiles:inactiveProfiles;
           return(
             <>
@@ -5465,14 +5518,14 @@ function AdminPanel({onBack,profiles=[]}){
                 <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:12}}>
-                {[["active","✅ Active ("+activeProfiles.length+")"],["inactive","🚫 Inactive ("+inactiveProfiles.length+")"]].map(([id,label])=>(
+                {[["active","✅ Active ("+activeProfiles.length+")"],["inactive","🚫 Inactive / Pending ("+inactiveProfiles.length+")"]].map(([id,label])=>(
                   <button key={id} onClick={()=>setUserStatusTab(id)} style={{flex:1,padding:"7px",borderRadius:10,border:"1.5px solid "+(userStatusTab===id?T.accent:T.border),background:userStatusTab===id?T.accent:"#fff",color:userStatusTab===id?"#fff":T.sub,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
                 ))}
               </div>
               {shownProfiles.length?(
                 <div>
                   {shownProfiles.map((p)=>{
-                    const isDeact=!!deactivated[p.id];
+                    const isDeact=p.is_active===false;
                     const realIdx=profiles.findIndex(x=>x.id===p.id);
                     return(
                       <div key={p.id} onClick={()=>setSelUser(p)} style={{background:isDeact?"#fff8f8":T.card,borderRadius:12,border:"1.5px solid "+(isDeact?T.red:T.border),padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
@@ -5491,7 +5544,7 @@ function AdminPanel({onBack,profiles=[]}){
                 </div>
               ):(
                 <div style={{fontSize:12,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px",textAlign:"center"}}>
-                  {userStatusTab==="active"?"No active users found.":"No deactivated users."}
+                  {userStatusTab==="active"?"No active users found.":"No deactivated or pending users."}
                 </div>
               )}
             </>
@@ -5814,7 +5867,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -5894,7 +5947,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
   }
 
-  if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles}/>):null;
+  if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
