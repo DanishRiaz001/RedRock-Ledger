@@ -4520,7 +4520,7 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Step 1 — Upload your import file</div>
           <div style={{fontSize:11,color:T.muted,marginBottom:12,lineHeight:1.6}}>
-            Upload the file <strong>Danish_Finance_Jan_May_Import.xlsx</strong> I gave you. It must have a sheet named <em>Import Entries</em>.
+            Upload your Excel file. It must have a sheet named <em>Import Entries</em> with columns: Date, Debit Code, Credit Code, Description, Amount, Contact ID (optional).
           </div>
           <label style={{display:"block",background:T.blueBg,border:`2px dashed ${T.blue}`,borderRadius:12,padding:"20px",textAlign:"center",cursor:"pointer"}}>
             <div style={{fontSize:28,marginBottom:6}}>📂</div>
@@ -4601,7 +4601,7 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
         {status==="idle"&&(
           <div style={{background:T.blueBg,borderRadius:12,padding:"14px 16px",border:`1px solid ${T.border}`}}>
             <div style={{fontSize:12,fontWeight:800,color:T.blue,marginBottom:8}}>Before importing — add these contacts in Reskontro:</div>
-            {[["S001","Papa (Muhammad Riaz)","Supplier"],["S002","Khala Naghmana","Supplier"],["S003","Mamu Hameed","Supplier"],["S004","Adil Mubarak","Supplier"],["S005","Faraz Khan","Supplier"]].map(([id,name,type])=>(
+            {[["S001","Supplier 1","Supplier"],["S002","Supplier 2","Supplier"],["S003","Supplier 3","Supplier"],["S004","Supplier 4","Supplier"],["S005","Supplier 5","Supplier"]].map(([id,name,type])=>(
               <div key={id} style={{display:"flex",gap:8,fontSize:11,color:T.text,marginBottom:4}}>
                 <span style={{background:T.blueBg,color:T.blue,fontWeight:700,padding:"1px 6px",borderRadius:4,minWidth:36,textAlign:"center"}}>{id}</span>
                 <span>{name} <span style={{color:T.muted}}>({type})</span></span>
@@ -5567,9 +5567,9 @@ function AIBookkeepingScreen({accounts,contacts,setContacts,addTransaction,nextB
   const fmtPKR=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 
   const EXAMPLES=[
-    "Purchased clothes for 18000 — 9000 from Muhammad Riaz, 5000 from Dib and 4000 from Raheela.",
+    "Purchased supplies for 18000 — 9000 from Supplier A, 5000 from Supplier B and 4000 cash.",
     "Received 25000 from Customer A for the completed project.",
-    "Paid June salary 80000 via Meezan bank and rent 25000 cash.",
+    "Paid this month's salary 80000 via bank and rent 25000 cash.",
   ];
 
   const parseNote=async()=>{
@@ -5613,7 +5613,7 @@ RULES:
 6. unknown_parties: list any names not found in contacts.
 
 Return ONLY valid JSON, no markdown:
-{"entries":[{"id":1,"description":"short description","date":"${today}","reasoning":"how contacts determined accounts","unknown_parties":[],"lines":[{"type":"Dr","account_code":"4001","account_name":"Rent","party":"","contact_id":"","amount":18000},{"type":"Cr","account_code":"2400","account_name":"Accounts Payable","party":"Muhammad Riaz","contact_id":"S001","amount":9000}]}]}
+{"entries":[{"id":1,"description":"short description","date":"${today}","reasoning":"how contacts determined accounts","unknown_parties":[],"lines":[{"type":"Dr","account_code":"4001","account_name":"Rent","party":"","contact_id":"","amount":18000},{"type":"Cr","account_code":"2400","account_name":"Accounts Payable","party":"Supplier A","contact_id":"S001","amount":9000}]}]}
 
 User note: ${note.trim()}`;
     try{
@@ -5708,7 +5708,7 @@ User note: ${note.trim()}`;
         </div>
 
         <SL>Transaction Note</SL>
-        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={"e.g. Purchased clothes for 18000 — 9000 from Muhammad Riaz, 5000 from Dib and 4000 from Raheela."} style={{...inp,minHeight:80,resize:"vertical",lineHeight:1.6,fontSize:14}}/>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={"e.g. Purchased supplies for 18000 — 9000 from Supplier A, 5000 from Supplier B and 4000 cash."} style={{...inp,minHeight:80,resize:"vertical",lineHeight:1.6,fontSize:14}}/>
 
         <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"8px 0 12px"}}>
           {EXAMPLES.map((ex,i)=>(
