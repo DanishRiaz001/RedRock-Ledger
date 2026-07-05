@@ -3173,12 +3173,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   };
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
-  // Determine if contact selector should show and what type
+  // Determine if contact selector should show and what type.
+  // Contact is auto-typed (Customer/Supplier) when the entry touches AR (1500) or AP (2400);
+  // otherwise the picker is still shown, but optional and lists all contacts.
   const autoNeedContact=form.debitCode==="1500"||form.creditCode==="1500"||form.debitCode==="2400"||form.creditCode==="2400";
-  const needContact=reskontroMode||autoNeedContact;
+  const needContact=true; // always allow tagging a contact on a receipt entry
   const contactType=form.debitCode==="1500"||form.creditCode==="1500"?"customer":"supplier";
-  // reskontro mode shows all contacts; normal mode filters by type
-  const filteredContacts=reskontroMode?contacts.filter(c=>!c.inactive):contacts.filter(c=>c.type===contactType);
+  const contactMode=autoNeedContact?contactType:"all";
+  // AR/AP entries filter contacts by type; otherwise show everyone (customers & suppliers)
+  const filteredContacts=(reskontroMode||!autoNeedContact)?contacts.filter(c=>!c.inactive):contacts.filter(c=>c.type===contactType);
 
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
 
@@ -3218,12 +3221,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
 
   const saveNewContact=()=>{
     if(!newContact.name.trim())return;
-    const prefix=contactType==="customer"?"C":"S";
-    const existing=contacts.filter(c=>c.type===contactType);
+    const typeToUse=autoNeedContact?contactType:(newContact.type||"supplier");
+    const prefix=typeToUse==="customer"?"C":"S";
+    const existing=contacts.filter(c=>c.type===typeToUse);
     const nums=existing.map(c=>parseInt(c.id.slice(1))||0);
     const nextNum=(nums.length?Math.max(...nums):0)+1;
     const id=`${prefix}${String(nextNum).padStart(3,"0")}`;
-    const c={id,type:contactType,name:newContact.name,notes:[newContact.phone,newContact.email,newContact.address,newContact.accountNo].filter(Boolean).join(" | ")};
+    const c={id,type:typeToUse,name:newContact.name,notes:[newContact.phone,newContact.email,newContact.address,newContact.accountNo].filter(Boolean).join(" | ")};
     const updated=[...contacts,c];
     setContacts(updated);
     setForm(f=>({...f,contactId:id}));
@@ -3487,7 +3491,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         {needContact&&(
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
-              {reskontroMode?"👥 Reskontro — All Contacts":contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"}
+              {reskontroMode?"👥 Reskontro — All Contacts":autoNeedContact?(contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"):"👥 Contact (optional)"}
             </div>
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1,position:"relative"}}>
@@ -3498,7 +3502,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                     <span style={{fontSize:10,color:T.muted}}>{form.contactId}</span>
                     <button onClick={()=>setForm(p=>({...p,contactId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
                   </div>
-                );}return(<ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={reskontroMode?"all":contactType}/>);})()}
+                );}return(<ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={reskontroMode?"all":contactMode}/>);})()}
               </div>
               <button onClick={()=>setShowAddContact(s=>!s)} style={{background:showAddContact?T.redLight:T.blueBg,color:showAddContact?T.red:T.blue,border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>+ Add</button>
             </div>
@@ -3506,7 +3510,14 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
             {/* Add new contact inline */}
             {showAddContact&&(
               <div style={{background:T.bg,borderRadius:10,padding:"10px 12px",marginTop:6,border:`1px solid ${T.border}`}}>
-                <div style={{fontSize:10,fontWeight:800,color:T.blue,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>New {contactType}</div>
+                <div style={{fontSize:10,fontWeight:800,color:T.blue,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>New {autoNeedContact?contactType:"contact"}</div>
+                {!autoNeedContact&&(
+                  <div style={{display:"flex",gap:6,marginBottom:6}}>
+                    {["supplier","customer"].map(t=>(
+                      <button key={t} onClick={()=>setNewContact(p=>({...p,type:t}))} style={{flex:1,background:newContact.type===t?(t==="customer"?T.blueBg:T.redLight):T.bg,color:newContact.type===t?(t==="customer"?T.blue:T.red):T.sub,border:`1px solid ${newContact.type===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:8,padding:"6px 8px",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+                    ))}
+                  </div>
+                )}
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   <input placeholder="Name *" value={newContact.name} onChange={e=>setNewContact(p=>({...p,name:e.target.value}))} style={{...inp,fontSize:13,padding:"8px 10px"}}/>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
@@ -3531,7 +3542,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
 
       {entryMode!=="receipt"&&(()=>{
         const contactList=contacts.filter(c=>c.type===(invIsCustomer?"customer":"supplier")&&!c.inactive);
-        const filteredAccounts=accounts.filter(a=>getSK(a.code)===(invIsCustomer?"3000":"4000"));
+        const filteredAccounts=accounts; // show the full chart of accounts (all series, incl. 2xxx) so any account can be picked as the offsetting line
         const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
         return(
