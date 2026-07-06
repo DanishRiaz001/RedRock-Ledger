@@ -410,7 +410,7 @@ function AppShell({user}){
       bilagRef.current=startBilag;
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
-      setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0})));
+      setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
       setLoading(false);
     });
   },[viewingUserId]);
@@ -543,12 +543,41 @@ function AppShell({user}){
   const saveBudget=async(year,month,code,amount)=>{
     setBudgetsState(p=>{
       const idx=p.findIndex(b=>b.year===year&&b.month===month&&b.code===code);
-      if(idx===-1)return[...p,{year,month,code,amount}];
-      const n=[...p];n[idx]={year,month,code,amount};return n;
+      if(idx===-1)return[...p,{year,month,code,amount,surplusAction:"rollover",surplusFundId:null,swept:false}];
+      const n=[...p];n[idx]={...n[idx],amount};return n; // preserve existing surplus settings, only amount changes
     });
     if(!canEdit)return;
     const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,amount},{onConflict:"user_id,year,month,code"});
     if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
+  };
+  // What should happen to THIS month's leftover once it closes: roll over into next
+  // month's budget for the same category (default), or get swept into a sinking fund.
+  const saveBudgetSurplusSetting=async(year,month,code,surplusAction,surplusFundId)=>{
+    setBudgetsState(p=>{
+      const idx=p.findIndex(b=>b.year===year&&b.month===month&&b.code===code);
+      if(idx===-1)return[...p,{year,month,code,amount:0,surplusAction,surplusFundId,swept:false}];
+      const n=[...p];n[idx]={...n[idx],surplusAction,surplusFundId};return n;
+    });
+    if(!canEdit)return;
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:"user_id,year,month,code"});
+    if(error){console.error("Budget surplus-setting save error:",error);alert("Save failed: "+error.message);}
+  };
+  // Actually transfers a month's unspent leftover into the chosen sinking fund and
+  // marks it swept, so it stops counting toward next month's rollover. This is an
+  // explicit, user-confirmed action — money never moves on its own.
+  const sweepBudgetSurplus=async(year,month,code,fundId,leftoverAmount)=>{
+    if(!canEdit)return;
+    const fund=sinkingFunds.find(f=>f.id===fundId);
+    if(!fund){alert("Couldn't find that sinking fund.");return;}
+    const updatedFunds=sinkingFunds.map(f=>f.id===fundId?{...f,saved:(f.saved||0)+leftoverAmount}:f);
+    await saveSinkingFunds(updatedFunds);
+    setBudgetsState(p=>{
+      const idx=p.findIndex(b=>b.year===year&&b.month===month&&b.code===code);
+      if(idx===-1)return p;
+      const n=[...p];n[idx]={...n[idx],swept:true};return n;
+    });
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,swept:true},{onConflict:"user_id,year,month,code"});
+    if(error)console.error("Budget sweep flag save error:",error);
   };
   // Bulk replace (used by Backup Restore) — delete all budget rows then re-insert.
   const restoreBudgets=async(list)=>{
@@ -557,7 +586,7 @@ function AppShell({user}){
     const{error:delErr}=await sb.from("budgets").delete().eq("user_id",user.id);
     if(delErr){console.error("Budget restore delete error:",delErr);return;}
     if(list.length){
-      const rows=list.map(b=>({user_id:user.id,year:b.year,month:b.month,code:b.code,amount:b.amount||0}));
+      const rows=list.map(b=>({user_id:user.id,year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
       const{error:insErr}=await sb.from("budgets").insert(rows);
       if(insErr)console.error("Budget restore insert error:",insErr);
     }
@@ -612,6 +641,7 @@ function AppShell({user}){
         reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
         budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
+        saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -2895,8 +2925,8 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   const expensePct=prevExpenses>0?Math.round(((totalExpenses-prevExpenses)/prevExpenses)*100):null;
 
   const cashBal=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900").reduce((s,a)=>s+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0),[accounts,transactions]);
-  const arBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="1500")return s+t.amount;if(t.creditCode==="1500")return s-t.amount;return s;},0),[transactions]);
-  const apBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="2400")return s+t.amount;if(t.creditCode==="2400")return s-t.amount;return s;},0),[transactions]);
+  const arBal=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1500").reduce((s,a)=>s+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0),[accounts,transactions]);
+  const apBal=useMemo(()=>accounts.filter(a=>getSK(a.code)==="2400").reduce((s,a)=>s+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0),[accounts,transactions]);
 
   // Budget data — this period's own budget amounts (best-effort match to a calendar
   // month; rollover isn't factored in here, see the Budget screen for that detail)
@@ -4672,9 +4702,11 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 }
 
 // ─── Budget Module ────────────────────────────────────────────────────────────
-function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filterTo,onBack}){
+function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplusSetting,sweepBudgetSurplus,sinkingFunds=[],filterFrom,filterTo,onBack}){
   const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
+  const[surplusAction,setSurplusAction]=useState("rollover");
+  const[surplusFundId,setSurplusFundId]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
   const[showAddBudget,setShowAddBudget]=useState(false);
 
@@ -4683,6 +4715,9 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
   const BMNTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const[bSelYear,setBSelYear]=useState(now.getFullYear());
   const[bSelMonth,setBSelMonth]=useState(now.getMonth()); // 0-11, -1=full year
+  const isPastMonth=bSelMonth!==-1&&(bSelYear*12+bSelMonth)<(now.getFullYear()*12+now.getMonth());
+
+  const getRow=(y,m,code)=>budgets.find(b=>b.year===y&&b.month===m&&b.code===code);
 
   // Base (self-entered) budget amounts for the selected period — a {code:amount}
   // lookup derived from the cloud-synced `budgets` prop (one row per year/month/code).
@@ -4709,20 +4744,25 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
 
   // Effective budget = this month's own budget + any unspent surplus rolled over from
   // the previous month. A surplus keeps compounding forward across consecutive months;
-  // overspending never carries a negative balance into the next month. Only applies to
+  // overspending never carries a negative balance into the next month. If a month's
+  // surplus was already swept into a sinking fund, it contributes nothing further to
+  // rollover — that money is accounted for in the fund instead. Only applies to
   // monthly view — "All Year" is its own independent bucket, unaffected by rollover.
   const effectiveBudget=useMemo(()=>{
     const cache={};
     const calc=(y,m,code)=>{
       const key=`${y}-${m}-${code}`;
       if(cache[key]!==undefined)return cache[key];
-      const own=(budgets.find(b=>b.year===y&&b.month===m&&b.code===code)||{}).amount||0;
+      const row=getRow(y,m,code);
+      const own=row?row.amount||0:0;
       let py=m-1,pyy=y;if(py<0){py=11;pyy=y-1;}
       const hasEarlierData=budgets.some(b=>b.code===code&&b.month>=0&&(b.year<pyy||(b.year===pyy&&b.month<=py)));
       if(!hasEarlierData){cache[key]=own;return own;}
+      const prevRow=getRow(pyy,py,code);
       const prevEffective=calc(pyy,py,code);
       const prevActual=getActualForMonth(code,pyy,py);
-      const rollover=Math.max(0,prevEffective-prevActual);
+      const alreadySwept=!!(prevRow&&prevRow.surplusAction==="sinking_fund"&&prevRow.swept);
+      const rollover=alreadySwept?0:Math.max(0,prevEffective-prevActual);
       const eff=own+rollover;
       cache[key]=eff;
       return eff;
@@ -4732,12 +4772,35 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
 
   const getEffective=(code)=>bSelMonth===-1?(baseBudgetMap[code]||0):effectiveBudget(bSelYear,bSelMonth,code);
   const getRollover=(code)=>bSelMonth===-1?0:Math.max(0,getEffective(code)-(baseBudgetMap[code]||0));
+  // Eligible to sweep now: a closed (past) month, set to sweep-to-savings, not yet swept, with money left over.
+  const getSweepable=(code)=>{
+    if(bSelMonth===-1||!isPastMonth)return null;
+    const row=getRow(bSelYear,bSelMonth,code);
+    if(!row||row.surplusAction!=="sinking_fund"||row.swept)return null;
+    const leftover=getEffective(code)-getActual(code,periodTxns);
+    if(leftover<=0)return null;
+    const fund=sinkingFunds.find(f=>f.id===row.surplusFundId);
+    if(!fund)return null;
+    return{leftover,fund};
+  };
 
   // Current month income for % calculation
   const curIncome=useMemo(()=>periodTxns.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[periodTxns]);
 
-  const confirmEdit=()=>{if(!editModal)return;saveBudget(bSelYear,bSelMonth,editModal.code,parseFloat(editVal)||0);setEditModal(null);setEditVal("");};
-  const openEdit=(a)=>{setEditVal(String(baseBudgetMap[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
+  const confirmEdit=()=>{
+    if(!editModal)return;
+    saveBudget(bSelYear,bSelMonth,editModal.code,parseFloat(editVal)||0);
+    saveBudgetSurplusSetting(bSelYear,bSelMonth,editModal.code,surplusAction,surplusAction==="sinking_fund"?surplusFundId||null:null);
+    setEditModal(null);setEditVal("");
+  };
+  const openEdit=(a)=>{
+    const row=getRow(bSelYear,bSelMonth,a.code);
+    setEditVal(String(baseBudgetMap[a.code]||""));
+    setSurplusAction(row?.surplusAction||"rollover");
+    setSurplusFundId(row?.surplusFundId||(sinkingFunds[0]?sinkingFunds[0].id:""));
+    setEditModal({code:a.code,name:a.name});
+    setCardMenu(null);
+  };
 
   const totalBudget=expAccounts.reduce((s,a)=>s+getEffective(a.code),0);
   const totalActual=expAccounts.reduce((s,a)=>s+getActual(a.code,periodTxns),0);
@@ -4789,6 +4852,22 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{editModal.code} · {editModal.name}</div>
             <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Budget for {bSelMonth===-1?String(bSelYear):["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]+" "+bSelYear} (PKR)</div>
             <input type="number" placeholder="e.g. 50000" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus style={{...inp,marginBottom:12}}/>
+            {bSelMonth!==-1&&(
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:"#888780",fontWeight:600,marginBottom:6}}>On surplus, if under budget</div>
+                <div style={{display:"flex",gap:6,marginBottom:8}}>
+                  <button onClick={()=>setSurplusAction("rollover")} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${surplusAction==="rollover"?T.accent:"#d3d1c7"}`,background:surplusAction==="rollover"?T.accentLight:"#fff",color:surplusAction==="rollover"?T.accent:"#5f5e5a",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>↻ Roll over</button>
+                  <button onClick={()=>setSurplusAction("sinking_fund")} disabled={!sinkingFunds.length} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${surplusAction==="sinking_fund"?T.accent:"#d3d1c7"}`,background:surplusAction==="sinking_fund"?T.accentLight:"#fff",color:surplusAction==="sinking_fund"?T.accent:"#5f5e5a",fontWeight:700,fontSize:11,cursor:sinkingFunds.length?"pointer":"not-allowed",fontFamily:"inherit",opacity:sinkingFunds.length?1:0.5}}>💰 Send to savings</button>
+                </div>
+                {surplusAction==="sinking_fund"&&(
+                  sinkingFunds.length
+                    ?<select value={surplusFundId} onChange={e=>setSurplusFundId(e.target.value)} style={{...inp,fontSize:13}}>
+                        {sinkingFunds.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    :<div style={{fontSize:11,color:"#a32d2d"}}>No sinking funds yet — create one first in the Sinking Funds screen.</div>
+                )}
+              </div>
+            )}
             <div style={{display:"flex",gap:8}}>
               <SaveFlashButton onClick={confirmEdit} style={{flex:2}} label="Save Budget"/>
               <button onClick={()=>setEditModal(null)} style={{...btnGhost,flex:1}}>Cancel</button>
@@ -4880,6 +4959,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
               :isOver?{label:"Over",color:"#a32d2d",bg:"#fcebeb"}
               :pct>75?{label:"At risk",color:"#854f0b",bg:"#faeeda"}
               :{label:"On track",color:"#3b6d11",bg:"#eaf3de"};
+            const sweep=getSweepable(a.code);
             return(
               <div key={a.code} style={{background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:12,padding:"12px",position:"relative"}}>
                 {/* Top row */}
@@ -4921,6 +5001,12 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filte
                   </>
                 )}
                 {!budget&&<div style={{height:5,background:"#f1efe8",borderRadius:3,marginBottom:7}}/>}
+
+                {sweep&&(
+                  <button onClick={()=>sweepBudgetSurplus(bSelYear,bSelMonth,a.code,sweep.fund.id,sweep.leftover)} style={{width:"100%",background:"#eaf3de",color:"#3b6d11",border:"1px solid #c0dd97",borderRadius:8,padding:"7px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:7}}>
+                    💰 Sweep {fmt(sweep.leftover)} to {sweep.fund.name}
+                  </button>
+                )}
 
                 {/* Footer: last month + % of income */}
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#888780"}}>
@@ -5960,7 +6046,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -6057,7 +6143,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   }
   if(tab==="Budget"){
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
-    return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
+    return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
   }
   if(tab==="Cheques"){
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
