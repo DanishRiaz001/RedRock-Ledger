@@ -361,6 +361,7 @@ function AppShell({user}){
   const[contacts,setContactsState]=useState([]);
   const[transactions,setTransactionsState]=useState([]);
   const[sinkingFunds,setSFState]=useState([]);
+  const[budgets,setBudgetsState]=useState([]);
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
   const[loading,setLoading]=useState(true);
@@ -380,7 +381,8 @@ function AppShell({user}){
       sb.from("contacts").select("*").eq("user_id",viewingUserId).order("contact_id"),
       sb.from("transactions").select("*").eq("user_id",viewingUserId).order("bilag"),
       sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).order("fund_id"),
-    ]).then(([aR,cR,tR,sR])=>{
+      sb.from("budgets").select("*").eq("user_id",viewingUserId),
+    ]).then(([aR,cR,tR,sR,bR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -408,6 +410,7 @@ function AppShell({user}){
       bilagRef.current=startBilag;
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
+      setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0})));
       setLoading(false);
     });
   },[viewingUserId]);
@@ -535,6 +538,31 @@ function AppShell({user}){
     }
   };
 
+  // Budgets — per-user, cloud-synced (Supabase), one row per (year, month, code).
+  // month is -1 for the "All Year" bucket, 0-11 for a calendar month.
+  const saveBudget=async(year,month,code,amount)=>{
+    setBudgetsState(p=>{
+      const idx=p.findIndex(b=>b.year===year&&b.month===month&&b.code===code);
+      if(idx===-1)return[...p,{year,month,code,amount}];
+      const n=[...p];n[idx]={year,month,code,amount};return n;
+    });
+    if(!canEdit)return;
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,amount},{onConflict:"user_id,year,month,code"});
+    if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
+  };
+  // Bulk replace (used by Backup Restore) — delete all budget rows then re-insert.
+  const restoreBudgets=async(list)=>{
+    setBudgetsState(list);
+    if(!canEdit)return;
+    const{error:delErr}=await sb.from("budgets").delete().eq("user_id",user.id);
+    if(delErr){console.error("Budget restore delete error:",delErr);return;}
+    if(list.length){
+      const rows=list.map(b=>({user_id:user.id,year:b.year,month:b.month,code:b.code,amount:b.amount||0}));
+      const{error:insErr}=await sb.from("budgets").insert(rows);
+      if(insErr)console.error("Budget restore insert error:",insErr);
+    }
+  };
+
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
   const isAdmin=profile&&profile.is_admin;
 
@@ -583,6 +611,7 @@ function AppShell({user}){
         saveEdit={saveEdit} deleteTxn={deleteTxn}
         reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
+        budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -2264,7 +2293,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,restoreBudgets,onBack}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -2507,10 +2536,9 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
           <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Downloads all your data as a single JSON file — transactions, accounts, contacts, sinking funds, budgets and profile.</div>
           <button style={btnRed} onClick={()=>{
             try{
-              const budgets=JSON.parse(localStorage.getItem("rr_budgets")||"{}");
               const sf=sinkingFunds||[];
               const profile=JSON.parse(localStorage.getItem("rr_profile")||"{}");
-              const backup={version:2,date:new Date().toISOString(),accounts,contacts,sinkingFunds:sf,budgets,profile};
+              const backup={version:2,date:new Date().toISOString(),accounts,contacts,sinkingFunds:sf,budgets:budgets||[],profile};
               const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
               const url=URL.createObjectURL(blob);
               const a=document.createElement("a");
@@ -2535,7 +2563,14 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
                   if(!window.confirm(`Restore backup from ${(data.date?data.date.slice(0,10):undefined)}?\nThis will overwrite current accounts, contacts, budgets, sinking funds and profile.`))return;
                   if(data.accounts&&data.accounts.length){onSave(data.accounts);}
                   if(data.contacts&&data.contacts.length){setContacts(data.contacts);}
-                  if(data.budgets){try{localStorage.setItem("rr_budgets",JSON.stringify(data.budgets));}catch{}}
+                  if(data.budgets&&restoreBudgets){
+                    if(Array.isArray(data.budgets)){
+                      restoreBudgets(data.budgets);
+                    } else if(typeof data.budgets==="object"&&Object.keys(data.budgets).length){
+                      // Legacy backup format had no year/month — nothing reliable to restore from it.
+                      console.warn("Skipped legacy-format budgets in backup (no year/month data to restore).");
+                    }
+                  }
                   if(data.sinkingFunds&&saveSinkingFunds){saveSinkingFunds(data.sinkingFunds);}
                   if(data.profile){try{localStorage.setItem("rr_profile",JSON.stringify(data.profile));}catch{}}
                   alert("✅ Restore complete! Accounts, contacts, budgets and profile restored.");
@@ -2838,7 +2873,7 @@ function PeriodSelector({from,to,onChange}){
 }
 
 
-function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo,onNavigate,feat={},sinkingFunds=[]}){
+function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setFilterTo,onNavigate,feat={},sinkingFunds=[],budgets=[]}){
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const[kpiSlide,setKpiSlide]=useState(0); // 0=income, 1=expense
   const[overviewTab,setOverviewTab]=useState("budget");
@@ -2863,11 +2898,17 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   const arBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="1500")return s+t.amount;if(t.creditCode==="1500")return s-t.amount;return s;},0),[transactions]);
   const apBal=useMemo(()=>transactions.reduce((s,t)=>{if(t.debitCode==="2400")return s+t.amount;if(t.creditCode==="2400")return s-t.amount;return s;},0),[transactions]);
 
-  // Budget data
-  const BKEY="rr_budgets";
-  const budgets=useMemo(()=>{try{return JSON.parse(localStorage.getItem(BKEY)||"{}")}catch{return{};}});
+  // Budget data — this period's own budget amounts (best-effort match to a calendar
+  // month; rollover isn't factored in here, see the Budget screen for that detail)
+  const dashPeriodDate=new Date(filterFrom);
+  const dashY=dashPeriodDate.getFullYear(),dashM=dashPeriodDate.getMonth();
+  const budgetMap=useMemo(()=>{
+    const m={};
+    (budgets||[]).filter(b=>b.year===dashY&&b.month===dashM).forEach(b=>{m[b.code]=b.amount;});
+    return m;
+  },[budgets,dashY,dashM]);
   const expAccounts=accounts.filter(a=>isExpenseSK(a.code));
-  const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
+  const totalBudget=expAccounts.reduce((s,a)=>s+(budgetMap[a.code]||0),0);
   const totalActual=expAccounts.reduce((s,a)=>s+activePeriodTxns.filter(t=>t.debitCode===a.code).reduce((ss,t)=>ss+t.amount,0),0);
   const budgetPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
 
@@ -4036,7 +4077,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 }
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
-function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[]}){
+function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[]}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
@@ -4341,7 +4382,13 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
         // Sinking funds for suggestions
         const sfFunds2=sinkingFunds||[];
-        const budgets2=(() => {try{return JSON.parse(localStorage.getItem("rr_budgets")||"{}");}catch{return{};}})();
+        // Best-effort: match the report period to a calendar month/year and use that
+        // month's own budget amounts (rollover isn't factored in here — see the
+        // Budget screen for the full rollover-aware view).
+        const rPeriodDate=new Date(rFrom);
+        const rY=rPeriodDate.getFullYear(),rM=rPeriodDate.getMonth();
+        const budgets2={};
+        (budgets||[]).filter(b=>b.year===rY&&b.month===rM).forEach(b=>{budgets2[b.code]=b.amount;});
         const totalInc2=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
         const totalExp2=Object.values(expMap).reduce((s,v)=>s+v,0);
         const expRatio=totalInc2>0?(totalExp2/totalInc2)*100:0;
@@ -4625,11 +4672,7 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 }
 
 // ─── Budget Module ────────────────────────────────────────────────────────────
-function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
-  // Per-period budget storage: key = "rr_budgets_YYYY-MM" (or "rr_budgets_YYYY" for full year)
-  const getBKey=(year,month)=>month===-1?`rr_budgets_${year}`:`rr_budgets_${year}-${String(month+1).padStart(2,"0")}`;
-  const loadBudgets=(year,month)=>{try{const s=localStorage.getItem(getBKey(year,month));return s?JSON.parse(s):{}}catch{return{};}};
-
+function BudgetScreen({accounts,transactions,budgets,saveBudget,filterFrom,filterTo,onBack}){
   const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
   const[cardMenu,setCardMenu]=useState(null);
@@ -4640,14 +4683,18 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const BMNTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const[bSelYear,setBSelYear]=useState(now.getFullYear());
   const[bSelMonth,setBSelMonth]=useState(now.getMonth()); // 0-11, -1=full year
-  const[budgets,setBudgetsState]=useState(()=>loadBudgets(now.getFullYear(),now.getMonth()));
 
-  // Reload budgets when period changes
-  useEffect(()=>{setBudgetsState(loadBudgets(bSelYear,bSelMonth));},[bSelYear,bSelMonth]);
+  // Base (self-entered) budget amounts for the selected period — a {code:amount}
+  // lookup derived from the cloud-synced `budgets` prop (one row per year/month/code).
+  const baseBudgetMap=useMemo(()=>{
+    const m={};
+    budgets.filter(b=>b.year===bSelYear&&b.month===bSelMonth).forEach(b=>{m[b.code]=b.amount;});
+    return m;
+  },[budgets,bSelYear,bSelMonth]);
 
-  const getBFrom=()=>{if(bSelMonth===-1)return`${bSelYear}-01-01`;const mm=String(bSelMonth+1).padStart(2,"0");return`${bSelYear}-${mm}-01`;};
-  const getBTo=()=>{if(bSelMonth===-1)return`${bSelYear}-12-31`;const mm=String(bSelMonth+1).padStart(2,"0");const last=new Date(bSelYear,bSelMonth+1,0).getDate();return`${bSelYear}-${mm}-${String(last).padStart(2,"0")}`;};
-  const bFrom=getBFrom();const bTo=getBTo();
+  const getBFrom=(y,m)=>{if(m===-1)return`${y}-01-01`;const mm=String(m+1).padStart(2,"0");return`${y}-${mm}-01`;};
+  const getBTo=(y,m)=>{if(m===-1)return`${y}-12-31`;const mm=String(m+1).padStart(2,"0");const last=new Date(y,m+1,0).getDate();return`${y}-${mm}-${String(last).padStart(2,"0")}`;};
+  const bFrom=getBFrom(bSelYear,bSelMonth);const bTo=getBTo(bSelYear,bSelMonth);
 
   // Last month range
   const lastMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
@@ -4658,24 +4705,47 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=bFrom&&t.date<=bTo&&!t.reversedBy&&!t.reversalOf),[transactions,bFrom,bTo]);
   const lastMonthTxns=useMemo(()=>transactions.filter(t=>t.date>=lmFrom&&t.date<=lmTo&&!t.reversedBy&&!t.reversalOf),[transactions,lmFrom,lmTo]);
   const getActual=(code,txns)=>txns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
+  const getActualForMonth=(code,y,m)=>{const f=getBFrom(y,m),t=getBTo(y,m);return transactions.filter(tx=>tx.debitCode===code&&tx.date>=f&&tx.date<=t&&!tx.reversedBy&&!tx.reversalOf).reduce((s,tx)=>s+tx.amount,0);};
+
+  // Effective budget = this month's own budget + any unspent surplus rolled over from
+  // the previous month. A surplus keeps compounding forward across consecutive months;
+  // overspending never carries a negative balance into the next month. Only applies to
+  // monthly view — "All Year" is its own independent bucket, unaffected by rollover.
+  const effectiveBudget=useMemo(()=>{
+    const cache={};
+    const calc=(y,m,code)=>{
+      const key=`${y}-${m}-${code}`;
+      if(cache[key]!==undefined)return cache[key];
+      const own=(budgets.find(b=>b.year===y&&b.month===m&&b.code===code)||{}).amount||0;
+      let py=m-1,pyy=y;if(py<0){py=11;pyy=y-1;}
+      const hasEarlierData=budgets.some(b=>b.code===code&&b.month>=0&&(b.year<pyy||(b.year===pyy&&b.month<=py)));
+      if(!hasEarlierData){cache[key]=own;return own;}
+      const prevEffective=calc(pyy,py,code);
+      const prevActual=getActualForMonth(code,pyy,py);
+      const rollover=Math.max(0,prevEffective-prevActual);
+      const eff=own+rollover;
+      cache[key]=eff;
+      return eff;
+    };
+    return (y,m,code)=>calc(y,m,code);
+  },[budgets,transactions]);
+
+  const getEffective=(code)=>bSelMonth===-1?(baseBudgetMap[code]||0):effectiveBudget(bSelYear,bSelMonth,code);
+  const getRollover=(code)=>bSelMonth===-1?0:Math.max(0,getEffective(code)-(baseBudgetMap[code]||0));
 
   // Current month income for % calculation
   const curIncome=useMemo(()=>periodTxns.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[periodTxns]);
 
-  const saveBudgets=(b)=>{
-    setBudgetsState(b);
-    try{localStorage.setItem(getBKey(bSelYear,bSelMonth),JSON.stringify(b));}catch{}
-  };
-  const confirmEdit=()=>{if(!editModal)return;saveBudgets({...budgets,[editModal.code]:parseFloat(editVal)||0});setEditModal(null);setEditVal("");};
-  const openEdit=(a)=>{setEditVal(String(budgets[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
+  const confirmEdit=()=>{if(!editModal)return;saveBudget(bSelYear,bSelMonth,editModal.code,parseFloat(editVal)||0);setEditModal(null);setEditVal("");};
+  const openEdit=(a)=>{setEditVal(String(baseBudgetMap[a.code]||""));setEditModal({code:a.code,name:a.name});setCardMenu(null);};
 
-  const totalBudget=expAccounts.reduce((s,a)=>s+(budgets[a.code]||0),0);
+  const totalBudget=expAccounts.reduce((s,a)=>s+getEffective(a.code),0);
   const totalActual=expAccounts.reduce((s,a)=>s+getActual(a.code,periodTxns),0);
   const totalRemaining=totalBudget-totalActual;
   const totalPct=totalBudget>0?Math.min(100,Math.round((totalActual/totalBudget)*100)):0;
   const over=totalActual>totalBudget&&totalBudget>0;
-  const onTrackCount=expAccounts.filter(a=>{const b=budgets[a.code]||0;if(!b)return false;const act=getActual(a.code,periodTxns);return act<=b;}).length;
-  const budgetedCount=expAccounts.filter(a=>budgets[a.code]>0).length;
+  const onTrackCount=expAccounts.filter(a=>{const b=getEffective(a.code);if(!b)return false;const act=getActual(a.code,periodTxns);return act<=b;}).length;
+  const budgetedCount=expAccounts.filter(a=>getEffective(a.code)>0).length;
 
   // Arc gauge (half circle — speedometer style using strokeDasharray/strokeDashoffset)
   const ArcGauge=({pct,spent,budget,over})=>{
@@ -4795,10 +4865,11 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
           </div>
         </div>
 
-        {/* 2-column account cards — shows all expense accounts */}
+        {/* 2-column account cards — shows all expense accounts with an effective budget */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {expAccounts.filter(a=>budgets[a.code]>0).map(a=>{
-            const budget=budgets[a.code]||0;
+          {expAccounts.filter(a=>getEffective(a.code)>0).map(a=>{
+            const budget=getEffective(a.code);
+            const rollover=getRollover(a.code);
             const actual=getActual(a.code,periodTxns);
             const lastActual=getActual(a.code,lastMonthTxns);
             const pct=budget>0?Math.min(100,Math.round((actual/budget)*100)):0;
@@ -4834,6 +4905,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
                 <div style={{marginBottom:6}}>
                   <div style={{fontSize:15,fontWeight:600,color:isOver?"#a32d2d":"#1a1a18"}}>{fmt(actual)}</div>
                   <div style={{fontSize:10,color:"#888780"}}>of {budget>0?fmt(budget):"—"}</div>
+                  {rollover>0&&<div style={{fontSize:9,color:"#3b9e6d",fontWeight:700,marginTop:2}}>↻ +{fmt(rollover)} rolled over</div>}
                 </div>
 
                 {/* Progress bar */}
@@ -4860,7 +4932,7 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
           })}
         </div>
         {!expAccounts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>Add expense accounts (4000s) first.</div>}
-        {expAccounts.length>0&&expAccounts.filter(a=>budgets[a.code]>0).length===0&&(
+        {expAccounts.length>0&&expAccounts.filter(a=>getEffective(a.code)>0).length===0&&(
           <div style={{textAlign:"center",color:"#888780",padding:24,fontSize:13,background:"#fff",borderRadius:12,border:"0.5px solid #d3d1c7"}}>
             No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap "+ Add Budget" below to set a budget for an expense account.</span>
           </div>
@@ -4871,19 +4943,19 @@ function BudgetScreen({accounts,transactions,filterFrom,filterTo,onBack}){
 
       </div>
 
-      {/* Add-budget account picker */}
+      {/* Add-budget account picker — only accounts with no own budget AND no rolled-over balance */}
       {showAddBudget&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
           <div style={{background:"#fff",borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Choose an expense account</div>
             <div style={{maxHeight:280,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:10}}>
-              {expAccounts.filter(a=>!(budgets[a.code]>0)).map((a,i,arr)=>(
+              {expAccounts.filter(a=>!(getEffective(a.code)>0)).map((a,i,arr)=>(
                 <div key={a.code} onClick={()=>{setShowAddBudget(false);openEdit(a);}} style={{padding:"10px 12px",fontSize:12,cursor:"pointer",borderBottom:i<arr.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
                   <span style={{fontSize:10,fontWeight:700,color:T.orange,background:"#FEF3C7",borderRadius:5,padding:"2px 7px"}}>{a.code}</span>
                   <span style={{color:T.text}}>{a.name}</span>
                 </div>
               ))}
-              {expAccounts.filter(a=>!(budgets[a.code]>0)).length===0&&<div style={{padding:16,fontSize:12,color:T.muted,textAlign:"center"}}>All expense accounts already have a budget.</div>}
+              {expAccounts.filter(a=>!(getEffective(a.code)>0)).length===0&&<div style={{padding:16,fontSize:12,color:T.muted,textAlign:"center"}}>All expense accounts already have a budget.</div>}
             </div>
             <button onClick={()=>setShowAddBudget(false)} style={{...btnGhost,width:"100%",marginTop:12}}>Cancel</button>
           </div>
@@ -5058,21 +5130,32 @@ function FilesScreen({onBack,onNavigate}){
   const filtered=files.filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()));
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
 
-  const mergeToPdf=()=>{
-    const items=files.filter(f=>selected.includes(f.id));
+  // Merge selected image files into a single combined image and save it straight
+  // to the Inbox — no new tab, no print dialog, no extra questions. Just the
+  // original file "pages" stacked into one, exactly as selected.
+  const selectedImageIds=selected.filter(id=>{const f=files.find(x=>x.id===id);return f&&f.type&&f.type.startsWith("image");});
+  const mergeSelected=()=>{
+    const items=selectedImageIds.map(id=>files.find(f=>f.id===id)).filter(Boolean);
     if(items.length<2)return;
-    const w=window.open("","_blank");
-    const imgs=items.filter(f=>f.type&&f.type.startsWith("image"));
-    const others=items.filter(f=>!(f.type&&f.type.startsWith("image")));
-    const blocks=imgs.map(f=>`<div style="page-break-inside:avoid;margin-bottom:20px"><div style="font-size:11px;color:#888;margin-bottom:6px">${f.name}</div><img src="${f.data}" style="max-width:100%;border:1px solid #eee;border-radius:6px"/></div>`).join("");
-    const otherList=others.map(f=>`<li>${f.name} (view individually — non-image files can't be merged inline)</li>`).join("");
-    w.document.write(`<!DOCTYPE html><html><head><title>Merged Files</title><style>body{font-family:Arial,sans-serif;margin:30px}.btn-bar{display:flex;gap:10px;margin-top:20px}@media print{.btn-bar{display:none}}</style></head><body>
-      <h1 style="font-size:16px">Merged Files (${items.length})</h1>
-      ${blocks}
-      ${others.length?`<div style="margin-top:10px"><b>Other files:</b><ul>${otherList}</ul></div>`:""}
-      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
-      </body></html>`);
-    w.document.close();setTimeout(()=>w.print(),400);
+    const loadImg=(src)=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=src;});
+    Promise.all(items.map(f=>loadImg(f.data))).then(imgs=>{
+      const gap=10;
+      const w=Math.max(...imgs.map(im=>im.naturalWidth));
+      const heights=imgs.map(im=>Math.round(im.naturalHeight*(w/im.naturalWidth)));
+      const totalH=heights.reduce((s,h)=>s+h,0)+gap*(imgs.length-1);
+      const canvas=document.createElement("canvas");
+      canvas.width=w;canvas.height=totalH;
+      const ctx=canvas.getContext("2d");
+      ctx.fillStyle="#fff";ctx.fillRect(0,0,w,totalH);
+      let y=0;
+      imgs.forEach((im,i)=>{ctx.drawImage(im,0,y,w,heights[i]);y+=heights[i]+gap;});
+      const dataUrl=canvas.toDataURL("image/png");
+      const now=new Date();
+      const monthName=now.toLocaleString("default",{month:"long"});
+      const mergedFile={id:Date.now(),name:`Merged - ${items.map(f=>f.name.replace(/\.[^.]+$/,"")).join(" + ")}.png`,data:dataUrl,type:"image/png",size:Math.round(dataUrl.length*0.75),date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
+      save([...files,mergedFile]);
+      setSelected([]);
+    });
   };
   const deleteSelected=()=>{save(files.filter(f=>!selected.includes(f.id)));setSelected([]);};
 
@@ -5124,7 +5207,7 @@ function FilesScreen({onBack,onNavigate}){
             <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{selected.length} selected</span>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub}}>Clear</button>
-              {selected.length>=2&&<button onClick={mergeToPdf} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
+              {selectedImageIds.length>=2&&<button onClick={mergeSelected} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
               <button onClick={deleteSelected} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
             </div>
           </div>
@@ -5877,7 +5960,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -5959,7 +6042,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} restoreBudgets={restoreBudgets} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
@@ -5974,7 +6057,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   }
   if(tab==="Budget"){
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
-    return(<BudgetScreen accounts={accounts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
+    return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
   }
   if(tab==="Cheques"){
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
@@ -6090,6 +6173,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             onNavigate={setTab}
             feat={feat}
             sinkingFunds={sinkingFunds}
+            budgets={budgets}
           />
         )}
 
@@ -6148,7 +6232,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reports"&&(
           feat.reports
-            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
+            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
             :<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>
         )}
 
