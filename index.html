@@ -41,8 +41,28 @@ const SUPPORT_EMAIL = "danishriaz001@gmail.com"; // shown to anyone without appr
 // device sees each other's files. AppShell keeps this in sync with the real
 // logged-in user on every render, before any child that reads these keys runs.
 let CURRENT_USER_ID = null;
-const inboxKey = () => `rr_files_${CURRENT_USER_ID || "anon"}`;
-const attKeyFor = (txnId) => `rr_att_${CURRENT_USER_ID || "anon"}_${txnId}`;
+
+// Inbox files / transaction attachments live in Supabase Storage (bucket
+// "attachments") + two metadata tables (inbox_files, txn_attachments) — not
+// localStorage. These are the low-level Storage helpers; AppShell owns the
+// actual state and the higher-level mutation functions built on top of them.
+const sanitizeFilename=(name)=>String(name||"file").replace(/[^a-zA-Z0-9._-]/g,"_");
+const uploadFileToStorage=async(file)=>{
+  const path=`${CURRENT_USER_ID}/${Date.now()}_${sanitizeFilename(file.name||"file")}`;
+  const{error}=await sb.storage.from("attachments").upload(path,file,{contentType:file.type||undefined});
+  if(error)throw error;
+  return path;
+};
+const getSignedUrl=async(storagePath,expiresIn=3600)=>{
+  if(!storagePath)return null;
+  const{data,error}=await sb.storage.from("attachments").createSignedUrl(storagePath,expiresIn);
+  if(error){console.error("Signed URL error:",error);return null;}
+  return(data&&data.signedUrl)||null;
+};
+const deleteFileFromStorage=async(storagePath)=>{
+  if(!storagePath)return;
+  try{await sb.storage.from("attachments").remove([storagePath]);}catch(e){console.error("Storage delete error:",e);}
+};
 
 const DEFAULT_ACCOUNTS=[
   // ── 1000s ASSETS ──────────────────────────────────────────────
@@ -229,6 +249,24 @@ const DEFAULT_ACCOUNTS=[
 ].map(a=>({...a,matchable:a.code==="1500"||a.code==="2400"}));
 
 function Spinner(){return <div style={{textAlign:"center",padding:60,color:"#9CA3AF",fontSize:14}}>Loading…</div>;}
+// Files now live in Supabase Storage, not as inline base64 — this resolves a
+// storage_path to a short-lived signed URL on demand and renders the file,
+// so nothing needs to prefetch/store URLs that would just expire anyway.
+function SignedFileViewer({storagePath,type,name,style}){
+  const[url,setUrl]=useState(null);
+  const[loading,setLoading]=useState(true);
+  useEffect(()=>{
+    let alive=true;
+    setLoading(true);
+    getSignedUrl(storagePath).then(u=>{if(alive){setUrl(u);setLoading(false);}});
+    return()=>{alive=false;};
+  },[storagePath]);
+  if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
+  if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
+  return(type&&type.startsWith("image"))
+    ?<img src={url} style={style} alt={name||"attachment"}/>
+    :<iframe src={url} style={{border:"none",background:"#fff",...style}} title={name||"attachment"}/>;
+}
 
 function LoginScreen({onLogin}){
   const[email,setEmail]=useState("");
@@ -352,7 +390,7 @@ function PendingAccessScreen({reason,onSignOut}){
 
 
 function AppShell({user}){
-  CURRENT_USER_ID=user.id; // must be set before any child reads inboxKey()/attKeyFor() below
+  CURRENT_USER_ID=user.id; // must be set before any child uploads/reads files via Supabase Storage below
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
   const[profileLoading,setProfileLoading]=useState(true);
@@ -362,6 +400,8 @@ function AppShell({user}){
   const[transactions,setTransactionsState]=useState([]);
   const[sinkingFunds,setSFState]=useState([]);
   const[budgets,setBudgetsState]=useState([]);
+  const[inboxFiles,setInboxFilesState]=useState([]);
+  const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
   const[loading,setLoading]=useState(true);
@@ -382,7 +422,9 @@ function AppShell({user}){
       sb.from("transactions").select("*").eq("user_id",viewingUserId).order("bilag"),
       sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).order("fund_id"),
       sb.from("budgets").select("*").eq("user_id",viewingUserId),
-    ]).then(([aR,cR,tR,sR,bR])=>{
+      sb.from("inbox_files").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}),
+      sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId),
+    ]).then(([aR,cR,tR,sR,bR,ifR,taR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -411,6 +453,8 @@ function AppShell({user}){
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
+      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path})));
+      setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setLoading(false);
     });
   },[viewingUserId]);
@@ -476,8 +520,8 @@ function AppShell({user}){
       return;
     }
     if(data){
-      if(form.attachmentIds&&form.attachmentIds.length)attachInboxFilesToTxn(data.id,form.attachmentIds);
-      else if(form.attachmentId)attachInboxFileToTxn(data.id,form.attachmentId);
+      if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
+      else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
     }
@@ -592,6 +636,70 @@ function AppShell({user}){
     }
   };
 
+  // Inbox files + transaction attachments — Supabase Storage bucket "attachments"
+  // plus the inbox_files / txn_attachments tables. Every mutation here uploads
+  // or removes the real file in Storage AND keeps the metadata row in sync.
+  const uploadInboxFile=async(file,folder="General")=>{
+    if(!canEdit)return null;
+    try{
+      const storagePath=await uploadFileToStorage(file);
+      const now=new Date();
+      const row={user_id:user.id,storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
+      const{data,error}=await sb.from("inbox_files").insert([row]).select().single();
+      if(error){console.error("Inbox file insert error:",error);alert("Upload failed: "+error.message);return null;}
+      const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
+      setInboxFilesState(p=>[newFile,...p]);
+      return newFile;
+    }catch(e){console.error("Upload error:",e);alert("Upload failed: "+e.message);return null;}
+  };
+  const deleteInboxFileEntry=async(id)=>{
+    if(!canEdit)return;
+    const file=inboxFiles.find(f=>f.id===id);
+    if(!file)return;
+    await deleteFileFromStorage(file.storagePath);
+    const{error}=await sb.from("inbox_files").delete().eq("user_id",user.id).eq("id",id);
+    if(error){console.error("Inbox file delete error:",error);return;}
+    setInboxFilesState(p=>p.filter(f=>f.id!==id));
+    fetchAttachedTxnIds().then(setAttachedTxnIds); // a txn's only attachment may have just been removed
+  };
+  const renameInboxFileEntry=async(id,newName)=>{
+    if(!canEdit)return;
+    setInboxFilesState(p=>p.map(f=>f.id===id?{...f,name:newName}:f));
+    const{error}=await sb.from("inbox_files").update({name:newName}).eq("user_id",user.id).eq("id",id);
+    if(error)console.error("Inbox file rename error:",error);
+  };
+  // Merge selected images into one combined image, straight into the Inbox —
+  // no new tab, no print dialog, just the original file pages stacked into one.
+  const mergeInboxFilesEntry=async(fileIds)=>{
+    if(!canEdit)return null;
+    const items=fileIds.map(id=>inboxFiles.find(f=>f.id===id)).filter(Boolean);
+    if(items.length<2)return null;
+    const urls=await Promise.all(items.map(f=>getSignedUrl(f.storagePath)));
+    if(urls.some(u=>!u)){alert("Couldn't load one of the selected files.");return null;}
+    const loadImg=(src)=>new Promise((resolve,reject)=>{const img=new Image();img.crossOrigin="anonymous";img.onload=()=>resolve(img);img.onerror=reject;img.src=src;});
+    try{
+      const imgs=await Promise.all(urls.map(loadImg));
+      const gap=10;
+      const w=Math.max(...imgs.map(im=>im.naturalWidth));
+      const heights=imgs.map(im=>Math.round(im.naturalHeight*(w/im.naturalWidth)));
+      const totalH=heights.reduce((s,h)=>s+h,0)+gap*(imgs.length-1);
+      const canvas=document.createElement("canvas");
+      canvas.width=w;canvas.height=totalH;
+      const ctx=canvas.getContext("2d");
+      ctx.fillStyle="#fff";ctx.fillRect(0,0,w,totalH);
+      let y=0;
+      imgs.forEach((im,i)=>{ctx.drawImage(im,0,y,w,heights[i]);y+=heights[i]+gap;});
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+      const mergedFile=new File([blob],`Merged - ${items.map(f=>f.name.replace(/\.[^.]+$/,"")).join(" + ")}.png`,{type:"image/png"});
+      return await uploadInboxFile(mergedFile);
+    }catch(e){console.error("Merge error:",e);alert("Merge failed: "+e.message);return null;}
+  };
+  const attachFilesToTxnEntry=async(txnId,fileIds)=>{
+    if(!canEdit)return;
+    await attachFilesToTxn(txnId,fileIds);
+    setAttachedTxnIds(p=>new Set([...p,txnId]));
+  };
+
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
   const isAdmin=profile&&profile.is_admin;
 
@@ -642,6 +750,10 @@ function AppShell({user}){
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
         budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
         saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
+        inboxFiles={inboxFiles} attachedTxnIds={attachedTxnIds}
+        uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry}
+        renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
+        attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -798,17 +910,27 @@ const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
-const getInboxFiles=()=>{try{return JSON.parse(localStorage.getItem(inboxKey())||"[]")}catch{return[];}};
-const hasAttachment=(txnId)=>{try{return!!localStorage.getItem(attKeyFor(txnId));}catch{return false;}};
-const attachInboxFileToTxn=(txnId,fileId)=>{
-  const file=getInboxFiles().find(f=>f.id===fileId);
-  if(!file)return;
-  try{localStorage.setItem(attKeyFor(txnId),JSON.stringify({name:file.name,data:file.data,type:file.type}));}catch{}
+const fetchInboxFiles=async()=>{
+  const{data,error}=await sb.from("inbox_files").select("*").eq("user_id",CURRENT_USER_ID).order("created_at",{ascending:false});
+  if(error){console.error("Inbox fetch error:",error);return[];}
+  return(data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path}));
 };
-const attachInboxFilesToTxn=(txnId,fileIds)=>{
-  const files=getInboxFiles().filter(f=>fileIds.includes(f.id)).map(f=>({name:f.name,data:f.data,type:f.type}));
-  if(!files.length)return;
-  try{localStorage.setItem(attKeyFor(txnId),JSON.stringify({files}));}catch{}
+const fetchAttachedTxnIds=async()=>{
+  const{data,error}=await sb.from("txn_attachments").select("txn_id").eq("user_id",CURRENT_USER_ID);
+  if(error){console.error("Fetch attached txn ids error:",error);return new Set();}
+  return new Set((data||[]).map(r=>r.txn_id));
+};
+const attachFilesToTxn=async(txnId,fileIds)=>{
+  const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
+  if(!ids.length)return;
+  const rows=ids.map(fileId=>({user_id:CURRENT_USER_ID,txn_id:txnId,file_id:fileId}));
+  const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:"user_id,txn_id,file_id",ignoreDuplicates:true});
+  if(error)console.error("Attach file to txn error:",error);
+};
+const fetchTxnAttachments=async(txnId)=>{
+  const{data,error}=await sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",CURRENT_USER_ID).eq("txn_id",txnId);
+  if(error){console.error("Fetch txn attachments error:",error);return[];}
+  return(data||[]).filter(r=>r.inbox_files).map(r=>({id:r.inbox_files.id,name:r.inbox_files.name,type:r.inbox_files.type,storagePath:r.inbox_files.storage_path}));
 };
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 const appendGroupLine=(groupRef,line)=>{
@@ -1124,7 +1246,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners}){
+function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners}){
   const[showEdit,setShowEdit]=useState(false);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
@@ -1132,19 +1254,27 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
   const isReversal=!!txn.reversalOf;
   const contact=txn.contactId?contacts.find(c=>c.id===txn.contactId):null;
 
-  // Attachment(s) stored in localStorage keyed by user + txn id — supports single {name,data,type} (legacy) or {files:[...]} (multi)
-  const attKey=attKeyFor(txn.id);
-  const[att,setAttState]=useState(()=>{try{const s=localStorage.getItem(attKey);return s?JSON.parse(s):null;}catch{return null;}});
+  // Attachments now live in Supabase (Storage + inbox_files/txn_attachments) —
+  // fetched fresh for this transaction on open rather than read from localStorage.
+  const[attList,setAttList]=useState([]);
+  const[attLoading,setAttLoading]=useState(true);
+  const[attUploading,setAttUploading]=useState(false);
   const[attOpen,setAttOpen]=useState(true);
-  const attList=att?(att.files?att.files:[att]):[];
-  const setAtt=(data)=>{setAttState(data);try{if(data)localStorage.setItem(attKey,JSON.stringify(data));else localStorage.removeItem(attKey);}catch{}};
-  const handleAttach=(file)=>{
-    const r=new FileReader();
-    r.onload=e=>{
-      const newFile={name:file.name,data:e.target.result,type:file.type};
-      setAtt({files:[...attList,newFile]});
-    };
-    r.readAsDataURL(file);
+  useEffect(()=>{
+    let alive=true;
+    if(!fetchTxnAttachments){setAttLoading(false);return;}
+    fetchTxnAttachments(txn.id).then(list=>{if(alive){setAttList(list);setAttLoading(false);}});
+    return()=>{alive=false;};
+  },[txn.id]);
+  const handleAttach=async(file)=>{
+    if(!uploadInboxFile||!attachFilesToTxnEntry)return;
+    setAttUploading(true);
+    const newFile=await uploadInboxFile(file);
+    if(newFile){
+      await attachFilesToTxnEntry(txn.id,[newFile.id]);
+      setAttList(p=>[...p,newFile]);
+    }
+    setAttUploading(false);
   };
 
   if(showEdit)return(
@@ -1163,9 +1293,7 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
             <div style={{fontSize:12,color:"#fff",fontWeight:600}}>{attViewer.name}</div>
             <button onClick={()=>setAttViewer(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer",padding:"6px 14px",fontWeight:600}}>✕ Close</button>
           </div>
-          {attViewer.type&&attViewer.type.startsWith("image")
-            ?<img src={attViewer.data} style={{flex:1,objectFit:"contain",padding:10}}/>
-            :<iframe src={attViewer.data} style={{flex:1,border:"none",background:"#fff"}}/>}
+          <SignedFileViewer storagePath={attViewer.storagePath} type={attViewer.type} name={attViewer.name} style={{flex:1,objectFit:"contain",padding:10}}/>
         </div>
       )}
       <div style={{background:T.bg,borderRadius:20,padding:20,width:"100%",maxWidth:430,marginBottom:20}}>
@@ -1237,16 +1365,17 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
         })()}
         {/* Attachment row */}
         <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
-          <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:12,color:T.blue,fontWeight:600}}>
-            📎 {attList.length?`Add another file (${attList.length} attached)`:"Attach file"}
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(e.target.files[0]);}}/>
+          <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:attUploading?"wait":"pointer",fontSize:12,color:T.blue,fontWeight:600,opacity:attUploading?0.6:1}}>
+            📎 {attUploading?"Uploading…":attList.length?`Add another file (${attList.length} attached)`:"Attach file"}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(e.target.files[0]);}}/>
           </label>
           {attList.length>0&&(
             <button onClick={()=>setAttOpen(o=>!o)} title={attOpen?"Hide attachments":"Show attachments"} style={{background:attOpen?T.blue:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:attOpen?"#fff":T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>📎</button>
           )}
         </div>
+        {attLoading&&<div style={{fontSize:11,color:T.muted,marginTop:6}}>Loading attachments…</div>}
         {attOpen&&attList.map((f,i)=>(
-          <div key={i} onClick={()=>setAttViewer(f)} style={{display:"flex",alignItems:"center",gap:8,marginTop:6,padding:"7px 10px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer"}}>
+          <div key={f.id||i} onClick={()=>setAttViewer(f)} style={{display:"flex",alignItems:"center",gap:8,marginTop:6,padding:"7px 10px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer"}}>
             <span style={{fontSize:15}}>{(f.type&&f.type.startsWith("image"))?"🖼️":(f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
             <span style={{fontSize:11,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
             <span style={{fontSize:11,color:T.muted}}>👁</span>
@@ -1259,7 +1388,7 @@ function DetailModal({txn,accounts,contacts,onEdit,onDelete,onReverse,onDuplicat
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
+function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -1270,6 +1399,7 @@ function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
   return(
     <>
       {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts}
+        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
         onEdit={u=>{onEdit(u);setDetail(false);}}
         onDelete={id=>{onDelete(id);setDetail(false);}}
         onReverse={tx=>{onReverse(tx);setDetail(false);}}
@@ -1279,7 +1409,7 @@ function TxnCard({t,accounts,contacts,onEdit,onDelete,onReverse,onDuplicate}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
             <BilagPill txnId={t.id} bilag={t.bilag} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
-            {hasAttachment(t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
+            {attachedTxnIds&&attachedTxnIds.has(t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
             {(()=>{const g=getGroupForTxn(t.id);return g&&g.lines.length>1?<span title={`Linked entry · ${g.lines.length} lines`} style={{fontSize:12}}>🔗</span>:null;})()}
             <div style={{fontSize:13,fontWeight:600,flex:1,color:isReversed?T.muted:T.text}}>
               {t.description}
@@ -1382,7 +1512,7 @@ const PERIOD_CLOSE_KEY="rr_period_close";
 const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
 const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,filterFrom,filterTo}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
@@ -1473,6 +1603,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
+        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
         onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
         onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
         onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}}
@@ -1678,7 +1809,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -1801,6 +1932,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
+          fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
@@ -2323,7 +2455,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,restoreBudgets,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,onBack}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -2578,7 +2710,38 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             }catch(e){alert("Backup failed: "+e.message);}
           }}>⬇ Download Backup</button>
         </div>
-        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px"}}>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔎 Recover local budgets</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Budgets used to be saved only on this device. If you had budgets set before they moved to the cloud, this finds them on this browser and imports them properly — safe to run more than once.</div>
+          <button style={{...btnRed,background:"#0D7377"}} onClick={()=>{
+            if(!saveBudget){alert("Budget saving isn't available right now.");return;}
+            const found=[]; // {year, month, entries:[{code,amount}]}
+            for(let i=0;i<localStorage.length;i++){
+              const key=localStorage.key(i);
+              const m=key&&key.match(/^rr_budgets_(\d{4})(?:-(\d{2}))?$/);
+              if(!m)continue;
+              const year=parseInt(m[1]);
+              const month=m[2]?parseInt(m[2])-1:-1;
+              let obj;
+              try{obj=JSON.parse(localStorage.getItem(key)||"{}");}catch{continue;}
+              const entries=Object.entries(obj).filter(([code,amt])=>code&&parseFloat(amt)>0).map(([code,amt])=>({code,amount:parseFloat(amt)}));
+              if(entries.length)found.push({key,year,month,entries});
+            }
+            if(!found.length){alert("No old local budgets found on this device.");return;}
+            const totalEntries=found.reduce((s,f)=>s+f.entries.length,0);
+            const monthList=found.map(f=>f.month===-1?String(f.year):`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][f.month]} ${f.year}`).join(", ");
+            if(!window.confirm(`Found ${totalEntries} budget${totalEntries===1?"":"s"} across ${found.length} period${found.length===1?"":"s"} (${monthList}) saved on this device. Import them now?`))return;
+            (async()=>{
+              for(const f of found){
+                for(const e of f.entries){
+                  await saveBudget(f.year,f.month,e.code,e.amount);
+                }
+              }
+              alert(`✅ Imported ${totalEntries} budget${totalEntries===1?"":"s"}. Open the Budget screen to check them.`);
+            })();
+          }}>🔎 Scan and import local budgets</button>
+        </div>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>📥 Restore from Backup</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Select a previously exported JSON backup file. This will restore accounts, contacts, sinking funds, budgets and profile.</div>
           <label style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accentMid}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",fontSize:13,color:T.accent,fontWeight:600}}>
@@ -2812,90 +2975,138 @@ function MiniBar({data,height=52}){
 function PeriodSelector({from,to,onChange}){
   const now=new Date();
   const curY=now.getFullYear();
-  const[selYear,setSelYear]=useState(parseInt(from.slice(0,4))||curY);
+  const[expanded,setExpanded]=useState(false);
+  const[viewYear,setViewYear]=useState(parseInt(from.slice(0,4))||curY);
   const[showCustom,setShowCustom]=useState(false);
   const[customFrom,setCustomFrom]=useState(from);
   const[customTo,setCustomTo]=useState(to);
-  const moRef=React.useRef(null);
   const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const years=[2023,2024,2025,2026,2027,2028];
 
   const fromYear=parseInt(from.slice(0,4));
   const fromMonth=parseInt(from.slice(5,7))-1;
-  const isFullYear=from.endsWith("-01-01")&&to.endsWith("-12-31")&&fromYear===parseInt(to.slice(0,4));
-  const isSingleMonth=!isFullYear&&fromYear===parseInt(to.slice(0,4))&&fromMonth===(parseInt(to.slice(5,7))-1);
+  const toYear=parseInt(to.slice(0,4));
+  const toMonth=parseInt(to.slice(5,7))-1;
+  const isFullYear=from.endsWith("-01-01")&&to.endsWith("-12-31")&&fromYear===toYear;
+  const isSingleMonth=!isFullYear&&fromYear===toYear&&fromMonth===toMonth&&from.endsWith("-01");
+  const isMonthRange=!isFullYear&&!isSingleMonth&&from.endsWith("-01")&&fromYear===toYear&&(()=>{const last=new Date(toYear,toMonth+1,0).getDate();return to===`${toYear}-${String(toMonth+1).padStart(2,"0")}-${String(last).padStart(2,"0")}`;})();
 
-  // Scroll active month into view
-  useEffect(()=>{
-    if(!moRef.current||!isSingleMonth)return;
-    const btns=moRef.current.querySelectorAll("button");
-    if(btns[fromMonth]){
-      const btn=btns[fromMonth];
-      const c=moRef.current;
-      c.scrollTo({left:btn.offsetLeft-(c.clientWidth/2)+(btn.offsetWidth/2),behavior:"smooth"});
+  const monthStart=(y,m)=>`${y}-${String(m+1).padStart(2,"0")}-01`;
+  const monthEnd=(y,m)=>{const last=new Date(y,m+1,0).getDate();return`${y}-${String(m+1).padStart(2,"0")}-${String(last).padStart(2,"0")}`;};
+
+  // Collapsed pill label
+  let label;
+  if(isFullYear)label=String(fromYear);
+  else if(isSingleMonth)label=`${["January","February","March","April","May","June","July","August","September","October","November","December"][fromMonth]} ${fromYear}`;
+  else if(isMonthRange)label=fromYear===toYear?`${MNAMES[fromMonth]} - ${MNAMES[toMonth]} ${fromYear}`:`${MNAMES[fromMonth]} ${fromYear} - ${MNAMES[toMonth]} ${toYear}`;
+  else label=`${from} → ${to}`;
+
+  // Prev/next only make unambiguous sense for a single month or a full year
+  const canStep=isFullYear||isSingleMonth;
+  const step=(dir)=>{
+    if(isFullYear){const y=fromYear+dir;onChange(`${y}-01-01`,`${y}-12-31`);setViewYear(y);return;}
+    if(isSingleMonth){
+      let y=fromYear,m=fromMonth+dir;
+      if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}
+      onChange(monthStart(y,m),monthEnd(y,m));setViewYear(y);
     }
-  },[fromMonth,isSingleMonth]);
-
-  // Year: always sets full year. If already full year for same year, keep it (no-op visually but fires onChange to refresh)
-  const selectYear=(y)=>{
-    setSelYear(y);
-    onChange(`${y}-01-01`,`${y}-12-31`);
-    setShowCustom(false);
   };
-  const selectMonth=(i)=>{
-    const mm=String(i+1).padStart(2,"0");
-    const lastDay=new Date(selYear,i+1,0).getDate();
-    onChange(`${selYear}-${mm}-01`,`${selYear}-${mm}-${String(lastDay).padStart(2,"0")}`);
-    setShowCustom(false);
-  };
-  const applyCustom=()=>{if(customFrom&&customTo){onChange(customFrom,customTo);setShowCustom(false);}};
 
-  // Month button width sized so ~3.5 fit in container
-  const MON_W=34; // inactive px width incl gap
-  const MON_W_ACT=38;
+  const selectYear=(y)=>{setViewYear(y);onChange(`${y}-01-01`,`${y}-12-31`);setExpanded(false);setShowCustom(false);};
+  const selectFullYear=()=>{onChange(`${viewYear}-01-01`,`${viewYear}-12-31`);setExpanded(false);setShowCustom(false);};
+  const applyCustom=()=>{if(customFrom&&customTo){onChange(customFrom,customTo);setExpanded(false);setShowCustom(false);}};
+
+  // Tap-or-drag range selection across the 12-month grid. A plain tap (no drag)
+  // selects that one month; dragging across cells picks a range, committed on release.
+  const[dragStart,setDragStart]=useState(null);
+  const[dragEnd,setDragEnd]=useState(null);
+  const dragging=dragStart!==null;
+  useEffect(()=>{
+    if(!dragging)return;
+    const finish=()=>{
+      const s=Math.min(dragStart,dragEnd),e=Math.max(dragStart,dragEnd);
+      onChange(monthStart(viewYear,s),monthEnd(viewYear,e));
+      setDragStart(null);setDragEnd(null);
+      setExpanded(false);setShowCustom(false);
+    };
+    window.addEventListener("pointerup",finish,{once:true});
+    return()=>window.removeEventListener("pointerup",finish);
+  },[dragging,dragStart,dragEnd,viewYear]);
+
+  const inRange=(i)=>{
+    if(dragStart===null)return isMonthRange&&fromYear===viewYear&&toYear===viewYear&&i>=fromMonth&&i<=toMonth;
+    const s=Math.min(dragStart,dragEnd),e=Math.max(dragStart,dragEnd);
+    return i>=s&&i<=e;
+  };
+  const isEndpoint=(i)=>{
+    if(dragStart!==null)return i===dragStart||i===dragEnd;
+    if(isSingleMonth)return fromYear===viewYear&&fromMonth===i;
+    if(isMonthRange)return fromYear===viewYear&&toYear===viewYear&&(i===fromMonth||i===toMonth);
+    return false;
+  };
 
   return(
     <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-      <div style={{display:"flex",alignItems:"center",padding:"7px 12px",gap:8}}>
-        {/* Year — compact left, always fires on click even if same year */}
-        <select
-          value={selYear}
-          onChange={e=>selectYear(parseInt(e.target.value))}
-          onClick={e=>selectYear(parseInt(e.target.value))}
-          style={{flexShrink:0,fontSize:12,fontWeight:700,color:isFullYear?"#fff":T.text,background:isFullYear?T.accent:"#f3f4f6",border:"none",borderRadius:8,padding:"5px 8px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}
-        >
-          {years.map(y=><option key={y} value={y}>{y}</option>)}
-        </select>
-
-        {/* Month strip — scrollable, fixed ~3.5 wide */}
-        <div ref={moRef} style={{flex:1,display:"flex",gap:4,overflowX:"auto",scrollbarWidth:"none",alignItems:"center",paddingBottom:2}}>
-          {MNAMES.map((name,i)=>{
-            const active=isSingleMonth&&fromMonth===i&&fromYear===selYear;
-            return(
-              <button key={i} onClick={()=>selectMonth(i)} style={{
-                flexShrink:0,width:active?MON_W_ACT:MON_W,height:26,
-                borderRadius:8,border:`1.5px solid ${active?T.accent:T.border}`,
-                background:active?T.accent:"#fff",color:active?"#fff":T.sub,
-                fontSize:11,fontWeight:active?700:400,
-                cursor:"pointer",fontFamily:"inherit",
-                transform:active?"translateY(-2px)":"none",
-                transition:"all 0.12s ease",
-                boxShadow:active?"0 2px 6px rgba(13,115,119,0.3)":"none",
-                display:"flex",alignItems:"center",justifyContent:"center",
-              }}>{name}</button>
-            );
-          })}
-        </div>
-
-        {/* Custom button — right side */}
-        <button onClick={()=>setShowCustom(s=>!s)} style={{flexShrink:0,padding:"4px 10px",borderRadius:8,border:`1.5px solid ${showCustom?T.blue:T.border}`,background:showCustom?T.blueBg:"#fff",color:showCustom?T.blue:T.sub,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Custom</button>
+      {/* Collapsed pill: ‹ Label › */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,padding:"9px 12px"}}>
+        <button onClick={()=>step(-1)} disabled={!canStep} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:canStep?"pointer":"default",opacity:canStep?1:0.35,color:T.sub,fontSize:15,flexShrink:0}}>‹</button>
+        <button onClick={()=>{setExpanded(e=>!e);setShowCustom(false);}} style={{background:"none",border:"none",display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontFamily:"inherit",padding:"4px 6px"}}>
+          <span style={{fontSize:14}}>📅</span>
+          <span style={{fontSize:14,fontWeight:700,color:T.text}}>{label}</span>
+          <span style={{fontSize:10,color:T.muted,transform:expanded?"rotate(180deg)":"none",transition:"transform 0.15s"}}>▾</span>
+        </button>
+        <button onClick={()=>step(1)} disabled={!canStep} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:canStep?"pointer":"default",opacity:canStep?1:0.35,color:T.sub,fontSize:15,flexShrink:0}}>›</button>
       </div>
-      {showCustom&&(
-        <div style={{padding:"6px 12px 10px",borderTop:`1px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
-          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{...selSm,flex:1,padding:"5px 8px",fontSize:12}}/>
-          <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
-          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{...selSm,flex:1,padding:"5px 8px",fontSize:12}}/>
-          <button onClick={applyCustom} style={{background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"5px 10px",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>OK</button>
+
+      {expanded&&(
+        <div style={{padding:"4px 14px 14px",borderTop:`1px solid ${T.border}`}}>
+          {!showCustom?(
+            <>
+              {/* Year nav */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 4px 12px"}}>
+                <button onClick={()=>setViewYear(y=>y-1)} disabled={!years.includes(viewYear-1)} style={{background:"none",border:"none",cursor:years.includes(viewYear-1)?"pointer":"default",opacity:years.includes(viewYear-1)?1:0.3,fontSize:16,color:T.sub}}>‹</button>
+                <select value={viewYear} onChange={e=>setViewYear(parseInt(e.target.value))} style={{fontSize:14,fontWeight:700,color:T.text,background:"none",border:"none",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
+                  {years.map(y=><option key={y} value={y}>{y}</option>)}
+                </select>
+                <button onClick={()=>setViewYear(y=>y+1)} disabled={!years.includes(viewYear+1)} style={{background:"none",border:"none",cursor:years.includes(viewYear+1)?"pointer":"default",opacity:years.includes(viewYear+1)?1:0.3,fontSize:16,color:T.sub}}>›</button>
+              </div>
+
+              {/* 12-month grid — tap one month, or press-drag across several for a range */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,userSelect:"none",touchAction:dragging?"none":"auto"}}>
+                {MNAMES.map((name,i)=>{
+                  const active=isEndpoint(i);
+                  const within=inRange(i)&&!active;
+                  return(
+                    <button key={i}
+                      onPointerDown={e=>{e.preventDefault();setDragStart(i);setDragEnd(i);}}
+                      onPointerEnter={()=>{if(dragging)setDragEnd(i);}}
+                      style={{
+                        padding:"10px 0",borderRadius:8,border:"none",
+                        background:active?T.accent:within?T.accentLight:"#F3F4F6",
+                        color:active?"#fff":within?T.accent:T.sub,
+                        fontSize:12,fontWeight:active?700:500,
+                        cursor:"pointer",fontFamily:"inherit",
+                      }}>{name}</button>
+                  );
+                })}
+              </div>
+
+              <button onClick={selectFullYear} style={{width:"100%",marginTop:10,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+              <button onClick={()=>{setShowCustom(true);setCustomFrom(from);setCustomTo(to);}} style={{width:"100%",marginTop:6,background:"none",border:"none",padding:"6px",fontSize:11,fontWeight:600,color:T.blue,cursor:"pointer",fontFamily:"inherit"}}>Or pick exact custom dates →</button>
+            </>
+          ):(
+            <div style={{padding:"10px 0"}}>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+                <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{...selSm,flex:1,padding:"7px 8px",fontSize:12}}/>
+                <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
+                <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{...selSm,flex:1,padding:"7px 8px",fontSize:12}}/>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={applyCustom} style={{flex:1,background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"8px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Apply</button>
+                <button onClick={()=>setShowCustom(false)} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>← Back to grid</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -3267,7 +3478,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile}){
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
@@ -3286,6 +3497,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount}]
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
+  const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
   const[invRegisterPayment,setInvRegisterPayment]=useState(false);
   const[invPaymentBank,setInvPaymentBank]=useState("");
   const[invPaymentAmount,setInvPaymentAmount]=useState("");
@@ -3294,19 +3506,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
-  const[inboxFiles,setInboxFiles]=useState(()=>getInboxFiles());
-  const uploadToInbox=(file)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const now=new Date();
-      const monthName=now.toLocaleString("default",{month:"long"});
-      const newFile={id:Date.now(),name:file.name,data:e.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
-      const updated=[...getInboxFiles(),newFile];
-      localStorage.setItem(inboxKey(),JSON.stringify(updated));
-      setInboxFiles(updated);
-      setForm(p=>({...p,attachmentId:newFile.id}));
-    };
-    reader.readAsDataURL(file);
+  const[uploadingReceipt,setUploadingReceipt]=useState(false);
+  const uploadToInbox=async(file)=>{
+    setUploadingReceipt(true);
+    const newFile=await uploadInboxFile(file);
+    if(newFile)setForm(p=>({...p,attachmentId:newFile.id}));
+    setUploadingReceipt(false);
   };
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
@@ -3612,12 +3817,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
             );
           })():(
             <div style={{display:"flex",gap:6}}>
-              <select value="" onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,flex:1}}>
+              <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,flex:1}}>
                 <option value="">— Select from Inbox —</option>
                 {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
               </select>
-              <label style={{...btnSm,cursor:"pointer",whiteSpace:"nowrap"}}>+ Upload
-                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
+              <label style={{...btnSm,cursor:uploadingReceipt?"wait":"pointer",whiteSpace:"nowrap",opacity:uploadingReceipt?0.6:1}}>{uploadingReceipt?"Uploading…":"+ Upload"}
+                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
               </label>
             </div>
           )}
@@ -3757,22 +3962,14 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                   <option value="">— Add from Inbox —</option>
                   {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
                 </select>
-                <label style={{...btnSm,cursor:"pointer",whiteSpace:"nowrap",fontSize:10,padding:"5px 9px"}}>+ Upload
-                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){
-                    const file=e.target.files[0];
-                    const reader=new FileReader();
-                    reader.onload=ev=>{
-                      const now=new Date();
-                      const monthName=now.toLocaleString("default",{month:"long"});
-                      const newFile={id:Date.now(),name:file.name,data:ev.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
-                      const updated=[...getInboxFiles(),newFile];
-                      localStorage.setItem(inboxKey(),JSON.stringify(updated));
-                      setInboxFiles(updated);
-                      setInvAttachmentIds(p=>[...p,newFile.id]);
-                      setInvAttOpen(true);
-                    };
-                    reader.readAsDataURL(file);
-                  }}}/>
+                <label style={{...btnSm,cursor:uploadingInvAtt?"wait":"pointer",whiteSpace:"nowrap",fontSize:10,padding:"5px 9px",opacity:uploadingInvAtt?0.6:1}}>{uploadingInvAtt?"Uploading…":"+ Upload"}
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
+                    if(!e.target.files[0])return;
+                    setUploadingInvAtt(true);
+                    const newFile=await uploadInboxFile(e.target.files[0]);
+                    if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+                    setUploadingInvAtt(false);
+                  }}/>
                 </label>
               </div>
             </div>
@@ -5179,33 +5376,22 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate}){
-  const KEY=inboxKey();
-  const[files,setFilesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
+function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[selected,setSelected]=useState([]);
+  const[busy,setBusy]=useState(false);
 
-  const save=(f)=>{setFilesState(f);localStorage.setItem(KEY,JSON.stringify(f));};
-  const addFile=(file)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const now=new Date();
-      const monthName=now.toLocaleString("default",{month:"long"});
-      const newFile={id:Date.now(),name:file.name,data:e.target.result,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
-      save([...files,newFile]);
-    };
-    reader.readAsDataURL(file);
-  };
-  const deleteFile=(id)=>save(files.filter(f=>f.id!==id));
-  const renameFile=(id)=>{
+  const addFile=async(file)=>{setBusy(true);await onUpload(file);setBusy(false);};
+  const deleteFile=async(id)=>{setBusy(true);await onDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
+  const renameFile=async(id)=>{
     const f=files.find(x=>x.id===id);
     if(!f)return;
     const val=window.prompt("Rename file:",f.name);
     if(val===null)return;
     const trimmed=val.trim();
     if(!trimmed)return;
-    save(files.map(x=>x.id===id?{...x,name:trimmed}:x));
+    await onRename(id,trimmed);
   };
   const registerEntry=(fileId)=>{
     try{if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");}catch{}
@@ -5220,30 +5406,19 @@ function FilesScreen({onBack,onNavigate}){
   // to the Inbox — no new tab, no print dialog, no extra questions. Just the
   // original file "pages" stacked into one, exactly as selected.
   const selectedImageIds=selected.filter(id=>{const f=files.find(x=>x.id===id);return f&&f.type&&f.type.startsWith("image");});
-  const mergeSelected=()=>{
-    const items=selectedImageIds.map(id=>files.find(f=>f.id===id)).filter(Boolean);
-    if(items.length<2)return;
-    const loadImg=(src)=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=src;});
-    Promise.all(items.map(f=>loadImg(f.data))).then(imgs=>{
-      const gap=10;
-      const w=Math.max(...imgs.map(im=>im.naturalWidth));
-      const heights=imgs.map(im=>Math.round(im.naturalHeight*(w/im.naturalWidth)));
-      const totalH=heights.reduce((s,h)=>s+h,0)+gap*(imgs.length-1);
-      const canvas=document.createElement("canvas");
-      canvas.width=w;canvas.height=totalH;
-      const ctx=canvas.getContext("2d");
-      ctx.fillStyle="#fff";ctx.fillRect(0,0,w,totalH);
-      let y=0;
-      imgs.forEach((im,i)=>{ctx.drawImage(im,0,y,w,heights[i]);y+=heights[i]+gap;});
-      const dataUrl=canvas.toDataURL("image/png");
-      const now=new Date();
-      const monthName=now.toLocaleString("default",{month:"long"});
-      const mergedFile={id:Date.now(),name:`Merged - ${items.map(f=>f.name.replace(/\.[^.]+$/,"")).join(" + ")}.png`,data:dataUrl,type:"image/png",size:Math.round(dataUrl.length*0.75),date:now.toISOString().slice(0,10),month:monthName,year:now.getFullYear(),folder:"General"};
-      save([...files,mergedFile]);
-      setSelected([]);
-    });
+  const mergeSelected=async()=>{
+    if(selectedImageIds.length<2)return;
+    setBusy(true);
+    await onMerge(selectedImageIds);
+    setSelected([]);
+    setBusy(false);
   };
-  const deleteSelected=()=>{save(files.filter(f=>!selected.includes(f.id)));setSelected([]);};
+  const deleteSelected=async()=>{
+    setBusy(true);
+    for(const id of selected)await onDelete(id);
+    setSelected([]);
+    setBusy(false);
+  };
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -5253,16 +5428,15 @@ function FilesScreen({onBack,onNavigate}){
             <div style={{fontSize:12,color:"#fff",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewing.name}</div>
             <button onClick={()=>setViewing(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer",padding:"5px 12px",fontWeight:600,marginLeft:10}}>✕ Close</button>
           </div>
-          {(viewing.type&&viewing.type.startsWith("image"))
-            ?<img src={viewing.data} style={{flex:1,objectFit:"contain",padding:10}}/>
-            :<iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>}
+          <SignedFileViewer storagePath={viewing.storagePath} type={viewing.type} name={viewing.name} style={{flex:1,objectFit:"contain",padding:10}}/>
         </div>
       )}
       <BackHeader title="Inbox" sub="UPLOAD & MANAGE FILES" onBack={onBack}/>
       <div style={{padding:16}}>
+        {busy&&<div style={{textAlign:"center",fontSize:11,color:T.accent,marginBottom:10}}>Working…</div>}
         {/* Upload (small) + Register — same row */}
         <div style={{position:"relative",display:"flex",gap:8,marginBottom:14}}>
-          <button onClick={()=>setUploadMenu(o=>!o)} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.sub,borderColor:T.border,background:"#F3F4F6"}}>⬆ Upload</button>
+          <button onClick={()=>setUploadMenu(o=>!o)} disabled={busy} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.sub,borderColor:T.border,background:"#F3F4F6"}}>⬆ Upload</button>
           <button onClick={()=>registerEntry(null)} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.accent,borderColor:T.accent}}>Register Entry</button>
           {uploadMenu&&(<>
             <div onClick={()=>setUploadMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
@@ -5293,8 +5467,8 @@ function FilesScreen({onBack,onNavigate}){
             <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{selected.length} selected</span>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub}}>Clear</button>
-              {selectedImageIds.length>=2&&<button onClick={mergeSelected} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
-              <button onClick={deleteSelected} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
+              {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
+              <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
             </div>
           </div>
         )}
@@ -5322,9 +5496,7 @@ function FilesScreen({onBack,onNavigate}){
                 {inlinePreview===f.id&&(
                   <div onDoubleClick={()=>{setViewing(f);setInlinePreview(null);}} title="Double-tap for full view"
                     style={{padding:"10px 14px",background:T.bg,borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",cursor:"zoom-in",display:"flex",justifyContent:"center"}}>
-                    {(f.type&&f.type.startsWith("image"))
-                      ?<img src={f.data} style={{maxHeight:160,maxWidth:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
-                      :<iframe src={f.data} style={{width:"100%",height:160,border:`1px solid ${T.border}`,borderRadius:8,background:"#fff"}}/>}
+                    <SignedFileViewer storagePath={f.storagePath} type={f.type} name={f.name} style={{maxHeight:160,maxWidth:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
                   </div>
                 )}
               </div>
@@ -6046,7 +6218,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -6102,7 +6274,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
-  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo}/>);
+  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -6123,15 +6295,15 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
   }
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} restoreBudgets={restoreBudgets} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -6150,7 +6322,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
   if(tab==="AIBookkeeping")return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
+  if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
@@ -6277,12 +6449,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
           </div>
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
