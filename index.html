@@ -446,7 +446,7 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -556,15 +556,15 @@ function AppShell({user}){
     }
   };
 
-  const matchTransactions=async(ids,grpId)=>{
-    setTransactionsState(p=>p.map(t=>ids.includes(t.id)?{...t,matchedWith:grpId}:t));
+  const matchTransactions=async(ids,grpId,accountCode)=>{
+    setTransactionsState(p=>p.map(t=>ids.includes(t.id)?{...t,matchedWith:grpId,matchedAccount:accountCode}:t));
     if(!canEdit)return;
-    await Promise.all(ids.map(id=>sb.from("transactions").update({matched_with:grpId}).eq("id",id)));
+    await Promise.all(ids.map(id=>sb.from("transactions").update({matched_with:grpId,matched_account:accountCode}).eq("id",id)));
   };
   const unmatchTransactions=async(grpId)=>{
-    setTransactionsState(p=>p.map(t=>t.matchedWith===grpId?{...t,matchedWith:null}:t));
+    setTransactionsState(p=>p.map(t=>t.matchedWith===grpId?{...t,matchedWith:null,matchedAccount:null}:t));
     if(!canEdit)return;
-    await sb.from("transactions").update({matched_with:null}).eq("matched_with",grpId);
+    await sb.from("transactions").update({matched_with:null,matched_account:null}).eq("matched_with",grpId);
   };
 
   const saveSinkingFunds=async(list)=>{
@@ -1432,7 +1432,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
 
 // ─── MatchedGroups — renders grouped matched entries (no IIFE) ────────────────
 
-function MatchedGroups({matchedRows,getMovement}){
+function MatchedGroups({matchedRows,getMovement,onUnmatch}){
   const groups={};
   matchedRows.forEach(r=>{
     const g=r.matchedWith;
@@ -1448,7 +1448,12 @@ function MatchedGroups({matchedRows,getMovement}){
         const bc=isRev?"#FFCDD3":"#b7e4d4";
         return(
           <div key={grpId} style={{background:lb,borderRadius:12,padding:"10px 12px",marginBottom:8,border:`1px solid ${bc}`}}>
-            <div style={{fontSize:10,color:lc,fontWeight:800,marginBottom:6,letterSpacing:0.5}}>{isRev?"↩ Reversal":"✓ Matched"}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:10,color:lc,fontWeight:800,letterSpacing:0.5}}>{isRev?"↩ Reversal":"✓ Matched"}</div>
+              {!isRev&&onUnmatch&&(
+                <button onClick={()=>onUnmatch(grpId)} style={{background:"none",border:"none",color:lc,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Unmatch</button>
+              )}
+            </div>
             {grpRows.map(r=>{
               const mv=getMovement?getMovement(r):r.movement||0;
               return(
@@ -1512,13 +1517,12 @@ const PERIOD_CLOSE_KEY="rr_period_close";
 const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
 const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
   const[detailTxn,setDetailTxn]=useState(null);
   const[selected,setSelected]=useState([]);
-  const[showMatched,setShowMatched]=useState(false);
   const[showSearch,setShowSearch]=useState(false);
   const[ledgerSearch,setLedgerSearch]=useState("");
   const sk=getSK(account.code);
@@ -1539,18 +1543,17 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   },[transactions,account.code,from,to,openingBal]);
 
   const rows=useMemo(()=>{
-    const base=allRows.filter(r=>!r.matchedWith);
-    if(!ledgerSearch)return base;
+    if(!ledgerSearch)return allRows;
     const q=ledgerSearch.toLowerCase();
-    return base.filter(r=>(r.description?r.description.toLowerCase():undefined).includes(q)||fmtB(r.bilag).toLowerCase().includes(q)||String(r.amount).includes(q));
+    return allRows.filter(r=>(r.description?r.description.toLowerCase():undefined).includes(q)||fmtB(r.bilag).toLowerCase().includes(q)||String(r.amount).includes(q));
   },[allRows,ledgerSearch]);
-  const matchedRows=allRows.filter(r=>!!r.matchedWith);
   const closingBal=allRows.length>0?allRows[allRows.length-1].balance:openingBal;
   const periodMovement=allRows.reduce((s,r)=>s+r.movement,0);
 
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const selSum=selected.reduce((s,id)=>{const r=rows.find(x=>x.id===id);return r?s+r.movement:s;},0);
-  const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;onMatchTxns(selected,Date.now().toString());setSelected([]);};
+  const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;onMatchTxns(selected,Date.now().toString(),account.code);setSelected([]);};
+  const doUnmatch=(grpId)=>{if(onUnmatchTxns&&window.confirm("Unmatch this group of entries?"))onUnmatchTxns(grpId);};
 
   const exportLedger=()=>{
     const csvRows=[["Date","Bilag","Description","Movement","Balance"]];
@@ -1671,9 +1674,6 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         </>)}
       </div>
       <div style={{padding:16}}>
-        {matchedRows.length>0&&(
-          <div style={{marginBottom:12,fontSize:11,color:T.muted}}>{matchedRows.length} matched {matchedRows.length===1?"item":"items"} in this period — see below.</div>
-        )}
         <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",gap:10}}>
           <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{account.code} {account.name}</div>
           <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closingBal)}</div>
@@ -1691,10 +1691,15 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         </div>
         {rows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13,fontWeight:600}}>No transactions in this period</div></div>}
         {rows.map((r,i)=>{
-          const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;const isMatched=!!r.matchedWith;
+          const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;
+          const isMatchedHere=!!r.matchedWith&&r.matchedAccount===account.code;
           return(
-            <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatched?`3px solid ${T.green}`:"1px solid "+T.border}}>
-              <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
+            <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"9px 6px",border:`1px solid ${T.border}`,borderTop:"none",alignItems:"center",background:isMatchedHere?T.greenBg:"#fff",borderLeft:isSel?`3px solid ${T.blue}`:isMatchedHere?`3px solid ${T.green}`:"1px solid "+T.border}}>
+              {isMatchedHere?(
+                <button onClick={()=>doUnmatch(r.matchedWith)} title="Matched — tap to unmatch" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.green,padding:0,fontWeight:800}}>✓</button>
+              ):(
+                <input type="checkbox" checked={isSel} onChange={()=>toggleSel(r.id)} style={{width:14,height:14,cursor:"pointer",accentColor:T.blue}}/>
+              )}
               <BilagText txnId={r.id} bilag={r.bilag} onOpen={()=>setDetailTxn(r)} style={{fontSize:10,color:T.blue,fontWeight:800,cursor:"pointer",textDecoration:"underline dotted"}}/>
               <div style={{fontSize:10,color:"#111827"}}>{r.date.slice(5)}</div>
               <div style={{fontSize:12,color:isRev?T.red:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isRev?"italic":"normal"}}>{r.description}</div>
@@ -1714,19 +1719,6 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           ))}
         </div>
 
-        {matchedRows.length>0&&(
-          <div style={{marginTop:16,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-            <div onClick={()=>setShowMatched(s=>!s)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:T.greenBg,cursor:"pointer"}}>
-              <div style={{fontSize:12,fontWeight:800,color:T.green}}>✓ Matched items ({matchedRows.length})</div>
-              <span style={{fontSize:12,color:T.green}}>{showMatched?"▲":"▼"}</span>
-            </div>
-            {showMatched&&(
-              <div style={{padding:12}}>
-                <MatchedGroups matchedRows={matchedRows} getMovement={r=>r.movement}/>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1829,7 +1821,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const suppliers=contacts.filter(c=>c.type==="supplier"&&!c.inactive);
 
   const mv=(t,code)=>t.debitCode===code?t.amount:t.creditCode===code?-t.amount:0;
-  const doMatchTxns=(ids,grpId)=>matchTxns(ids,grpId);
+  const doMatchTxns=(ids,grpId,accountCode)=>matchTxns(ids,grpId,accountCode);
   const doUnmatchGroup=(grpId)=>{if(unmatchTxns)unmatchTxns(grpId);};
 
   const goBack=()=>{setView(null);setSelected([]);setDetailTxn(null);setMode("open");setSelContact("all");setFilterContact("all");setContactSearch("");};
@@ -1862,7 +1854,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         if(!(t.debitCode===code||t.creditCode===code))return false;
         if(mode==="open"){
           if(filterContact!=="all"&&t.contactId!==filterContact)return false;
-          if(t.matchedWith||t.reversedBy||t.reversalOf)return false;
+          if((t.matchedWith&&t.matchedAccount===code)||t.reversedBy||t.reversalOf)return false;
           if(asOfDate&&t.date>asOfDate)return false;
         } else if(mode==="period"){
           if(filterContact!=="all"&&t.contactId!==filterContact)return false;
@@ -1900,11 +1892,11 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
     };
     const toggleSel=id=>{
       const t=viewTxns.find(x=>x.id===id);
-      if(!t||t.matchedWith)return;
+      if(!t||(t.matchedWith&&t.matchedAccount===code))return;
       setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
     };
     const selSum=selected.reduce((s,id)=>{const t=viewTxns.find(x=>x.id===id);return t?s+mv(t,code):s;},0);
-    const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatchTxns(selected,Date.now().toString());setSelected([]);};
+    const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;doMatchTxns(selected,Date.now().toString(),code);setSelected([]);};
 
     // Build a map: matchedWith group → bilags in that group (across ALL transactions)
     const matchGroupMap={}; // groupId -> [{bilag, id}]
@@ -2131,7 +2123,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
                     const isRev=!!t.reversalOf;
                     const isRevd=!!t.reversedBy;
                     const isGhosted=isRevd||isRev;
-                    const isMatched=!!t.matchedWith&&!isRevd&&!isRev;
+                    const isMatched=!!t.matchedWith&&t.matchedAccount===code&&!isRevd&&!isRev;
                     // Format date as DD.MM.YY
                     const dateParts=t.date.split("-");
                     const dateLabel=dateParts.length===3?`${dateParts[2]}.${dateParts[1]}.${dateParts[0].slice(2)}`:t.date;
@@ -2251,7 +2243,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
       const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
       const bal=txns.reduce((s,t)=>t.debitCode===code?s+t.amount:s-t.amount,0);
       if(Math.abs(bal)<1)return null;
-      const unmatched=txns.filter(t=>!t.matchedWith).sort((a,b)=>a.date.localeCompare(b.date));
+      const unmatched=txns.filter(t=>!(t.matchedWith&&t.matchedAccount===code)).sort((a,b)=>a.date.localeCompare(b.date));
       const oldest=(unmatched[0]?unmatched[0].date:undefined)||today;
       const days=Math.floor((new Date(today)-new Date(oldest))/(1000*60*60*24));
       return{id:c.id,name:c.name,bal,days};
@@ -5727,6 +5719,8 @@ const ADMIN_FEATURES=[
   {id:"import",label:"Import Excel",icon:"📥",desc:"Import transactions from Excel"},
   {id:"cheque",label:"Cheque Tracker",icon:"🧾",desc:"Issued & received cheques"},
   {id:"tags",label:"Transaction Tags",icon:"🏷️",desc:"Tag entries for filtering"},
+  {id:"aiBookkeeping",label:"AI Bookkeeping",icon:"🤖",desc:"Natural-language entry parser"},
+  {id:"files",label:"Inbox",icon:"📥",desc:"Upload & manage receipt files"},
   {id:"darkMode",label:"Dark Mode",icon:"🌙",desc:"Dark theme toggle"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
 ];
@@ -6274,7 +6268,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
-  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
+  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -6321,7 +6315,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="AIBookkeeping")return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="AIBookkeeping"){
+    if(!feat.aiBookkeeping)return(<DisabledScreen title="AI Bookkeeping" onBack={()=>setTab("Dashboard")}/>);
+    return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
+  }
   if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry}/>);
   if(tab==="Bank"){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
@@ -6372,7 +6369,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
             {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
               const active=tab===item.id;
-              const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque",Files:"files"}[item.id];
+              const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque",Files:"files",AIBookkeeping:"aiBookkeeping"}[item.id];
               const isOff=featureKey&&!feat[featureKey];
               if(isOff)return null;
               return(
