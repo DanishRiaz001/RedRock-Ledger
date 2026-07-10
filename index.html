@@ -1550,6 +1550,27 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   const closingBal=allRows.length>0?allRows[allRows.length-1].balance:openingBal;
   const periodMovement=allRows.reduce((s,r)=>s+r.movement,0);
 
+  // Click a column header to sort by it; click again to flip direction.
+  const[sortBy,setSortBy]=useState(null); // null | "bilag" | "date" | "amount"
+  const[sortDir,setSortDir]=useState("asc");
+  const toggleSort=(col)=>{
+    if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");
+    else{setSortBy(col);setSortDir("asc");}
+  };
+  const sortedRows=useMemo(()=>{
+    if(!sortBy)return rows;
+    const mul=sortDir==="asc"?1:-1;
+    const arr=[...rows];
+    arr.sort((a,b)=>{
+      if(sortBy==="amount")return(a.movement-b.movement)*mul;
+      if(sortBy==="bilag")return(a.bilag-b.bilag)*mul;
+      if(sortBy==="date")return a.date.localeCompare(b.date)*mul;
+      if(sortBy==="description")return(a.description||"").localeCompare(b.description||"")*mul;
+      return 0;
+    });
+    return arr;
+  },[rows,sortBy,sortDir]);
+
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const selSum=selected.reduce((s,id)=>{const r=rows.find(x=>x.id===id);return r?s+r.movement:s;},0);
   const doMatch=()=>{if(selected.length<2||Math.abs(selSum)>=1)return;onMatchTxns(selected,Date.now().toString(),account.code);setSelected([]);};
@@ -1674,13 +1695,17 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         </>)}
       </div>
       <div style={{padding:16}}>
-        <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",gap:10}}>
-          <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{account.code} {account.name}</div>
-          <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closingBal)}</div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
-          {["","Bilag","Date","Description","Amount"].map(h=>(
-            <div key={h} style={{fontSize:10,color:"#111827",fontWeight:800,textAlign:h==="Amount"?"right":"left",textTransform:"uppercase",letterSpacing:0}}>{h}</div>
+        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0",background:"#FCE7F3"}}>
+          {[
+            {key:"",label:""},
+            {key:"bilag",label:"Bilag"},
+            {key:"date",label:"Date"},
+            {key:"description",label:"Description"},
+            {key:"amount",label:"Amount"},
+          ].map(h=>(
+            <div key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{fontSize:10,color:"#111827",fontWeight:800,textAlign:h.label==="Amount"?"right":"left",textTransform:"uppercase",letterSpacing:0,cursor:h.key?"pointer":"default",display:"flex",alignItems:"center",justifyContent:h.label==="Amount"?"flex-end":"flex-start",gap:2,userSelect:"none"}}>
+              {h.label}{sortBy===h.key&&h.key&&<span style={{fontSize:9}}>{sortDir==="asc"?"▲":"▼"}</span>}
+            </div>
           ))}
         </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderBottom:"none"}}>
@@ -1690,7 +1715,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           </div>
         </div>
         {rows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13,fontWeight:600}}>No transactions in this period</div></div>}
-        {rows.map((r,i)=>{
+        {sortedRows.map((r,i)=>{
           const isSel=selected.includes(r.id);const isRev=!!r.reversalOf;
           const isMatchedHere=!!r.matchedWith&&r.matchedAccount===account.code;
           return(
