@@ -404,6 +404,10 @@ function AppShell({user}){
   const[budgets,setBudgetsState]=useState([]);
   const[inboxFiles,setInboxFilesState]=useState([]);
   const[bankStatementLines,setBankStatementLines]=useState([]);
+  const[invoices,setInvoices]=useState([]);
+  const[nextInvoiceNo,setNextInvoiceNo]=useState(1);
+  const invoiceNoRef=React.useRef(1);
+  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0});
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
@@ -428,7 +432,9 @@ function AppShell({user}){
       sb.from("inbox_files").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}),
       sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId),
       sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId).order("date"),
-    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR])=>{
+      sb.from("invoices").select("*").eq("user_id",viewingUserId).order("invoice_no",{ascending:false}),
+      sb.from("company_profile").select("*").eq("user_id",viewingUserId).maybeSingle(),
+    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -460,6 +466,14 @@ function AppShell({user}){
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
+      setInvoices((invR.data||[]).map(r=>({id:r.id,invoiceNo:r.invoice_no,customerId:r.customer_id,date:r.date,dueDate:r.due_date,periodFrom:r.period_from,periodTo:r.period_to,saleAccount:r.sale_account,lines:r.lines||[],vatPct:parseFloat(r.vat_pct)||0,subtotal:parseFloat(r.subtotal),vatAmount:parseFloat(r.vat_amount),total:parseFloat(r.total),status:r.status,txnId:r.txn_id})));
+      const startInvNo=(invR.data||[]).reduce((m,r)=>Math.max(m,r.invoice_no),0)+1;
+      invoiceNoRef.current=startInvNo;
+      setNextInvoiceNo(startInvNo);
+      if(cpR.data){
+        const d=cpR.data;
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0});
+      }
       setLoading(false);
     });
   },[viewingUserId]);
@@ -576,6 +590,52 @@ function AppShell({user}){
     if(!canEdit)return;
     await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",user.id);
     setBankStatementLines(p=>p.filter(l=>l.id!==id));
+  };
+
+  // Invoices — creating one posts a real transaction (Dr Receivable / Cr sale
+  // account) so it flows straight into the ledger and Reskontro, same as any
+  // other entry. Status (draft/sent/paid) is tracked separately from posting.
+  const createInvoice=async(form)=>{
+    if(!canEdit)return null;
+    const invNo=invoiceNoRef.current;
+    invoiceNoRef.current=invNo+1;
+    setNextInvoiceNo(invoiceNoRef.current);
+
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+
+    const contact=contacts.find(c=>c.id===form.customerId);
+    const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
+    const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
+
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
+    if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
+    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:form.total,contactId:form.customerId}]);
+
+    const row={user_id:user.id,invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
+    const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
+    if(invErr){alert("Invoice posted to ledger but couldn't be saved as an invoice record: "+invErr.message);return null;}
+    const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"sent",txnId:txnData.id};
+    setInvoices(p=>[newInv,...p]);
+    return newInv;
+  };
+  const updateInvoiceStatus=async(id,status)=>{
+    if(!canEdit)return;
+    setInvoices(p=>p.map(i=>i.id===id?{...i,status}:i));
+    await sb.from("invoices").update({status}).eq("id",id);
+  };
+  const deleteInvoice=async(id)=>{
+    if(!canEdit)return;
+    const inv=invoices.find(i=>i.id===id);
+    if(inv&&inv.txnId)await deleteTxn(inv.txnId);
+    await sb.from("invoices").delete().eq("id",id).eq("user_id",user.id);
+    setInvoices(p=>p.filter(i=>i.id!==id));
+  };
+  const saveCompanyProfile=async(profile)=>{
+    setCompanyProfile(profile);
+    if(!canEdit)return;
+    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,updated_at:new Date().toISOString()},{onConflict:"user_id"});
   };
 
   const saveEdit=async(u)=>{
@@ -806,6 +866,7 @@ function AppShell({user}){
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
+        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -2524,7 +2585,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,onBack}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -2542,6 +2603,10 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const[profileData,setProfileData]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_profile")||"{}")}catch{return{};}});
   const saveProfile=(updates)=>{const n={...profileData,...updates};setProfileData(n);try{localStorage.setItem("rr_profile",JSON.stringify(n));}catch{}};
   const primaryCurrency=(profileData.currencies||["PKR"])[0];
+
+  const[companyForm,setCompanyForm]=useState(companyProfile||{companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0});
+  const[companySaved,setCompanySaved]=useState(false);
+  const saveCompany=()=>{if(saveCompanyProfile)saveCompanyProfile(companyForm);setCompanySaved(true);setTimeout(()=>setCompanySaved(false),1800);};
 
   // Period close state — must be before any early returns (screen checks)
   const[periodClose,setPeriodCloseState]=useState(()=>localStorage.getItem(PERIOD_CLOSE_KEY)||"");
@@ -2961,6 +3026,21 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
               <div style={{fontSize:9,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.label}</div>
             </div>
           ))}
+        </div>
+
+        {/* Company info — used as the issuer header on invoices */}
+        <div style={{background:T.card,borderRadius:14,padding:16,marginBottom:16,border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Company info (for invoices)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <input placeholder="Company name" value={companyForm.companyName} onChange={e=>setCompanyForm(p=>({...p,companyName:e.target.value}))} style={inp}/>
+            <input placeholder="Address" value={companyForm.address} onChange={e=>setCompanyForm(p=>({...p,address:e.target.value}))} style={inp}/>
+            <input placeholder="Mobile" value={companyForm.mobile} onChange={e=>setCompanyForm(p=>({...p,mobile:e.target.value}))} style={inp}/>
+            <input placeholder="Email" value={companyForm.email} onChange={e=>setCompanyForm(p=>({...p,email:e.target.value}))} style={inp}/>
+            <input placeholder="Org. number" value={companyForm.orgNumber} onChange={e=>setCompanyForm(p=>({...p,orgNumber:e.target.value}))} style={inp}/>
+            <input placeholder="Bank account (for invoices)" value={companyForm.bankAccount} onChange={e=>setCompanyForm(p=>({...p,bankAccount:e.target.value}))} style={inp}/>
+            <input type="number" placeholder="Default VAT %" value={companyForm.vatPct} onChange={e=>setCompanyForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>
+            <button onClick={saveCompany} style={{background:companySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{companySaved?"✓ Saved":"Save company info"}</button>
+          </div>
         </div>
 
         {/* All settings as navigation cards */}
@@ -3934,6 +4014,273 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         );
       })}
       {!groups.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</div>}
+    </div>
+  );
+}
+
+const MONTH_NAMES=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthsBetween=(from,to)=>{
+  const[fy,fm]=from.split("-").map(Number);
+  const[ty,tm]=to.split("-").map(Number);
+  return Math.max(1,(ty-fy)*12+(tm-fm)+1);
+};
+const monthRangeLabel=(from,to)=>{
+  const[fy,fm]=from.split("-").map(Number);
+  const[ty,tm]=to.split("-").map(Number);
+  if(from===to)return`${MONTH_NAMES[fm-1]} ${fy}`;
+  if(fy===ty)return`${MONTH_NAMES[fm-1]}–${MONTH_NAMES[tm-1]} ${fy}`;
+  return`${MONTH_NAMES[fm-1]} ${fy} – ${MONTH_NAMES[tm-1]} ${ty}`;
+};
+
+// Printable invoice — company (issuer) on the left, INVOICE details on the
+// right, line items table, total. English labels throughout.
+function InvoicePrintView({invoice,contact,companyProfile}){
+  return(
+    <div style={{background:"#fff",padding:32,fontFamily:"system-ui,sans-serif",color:"#111827",maxWidth:750,margin:"0 auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"2px solid #111827",paddingBottom:16,marginBottom:20}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:800}}>{companyProfile.companyName||"Your Company Name"}</div>
+          <div style={{fontSize:12,color:"#555",marginTop:6,lineHeight:1.6}}>
+            {companyProfile.address&&<div>{companyProfile.address}</div>}
+            {companyProfile.mobile&&<div>Mobile: {companyProfile.mobile}</div>}
+            {companyProfile.email&&<div>Email: {companyProfile.email}</div>}
+            {companyProfile.orgNumber&&<div>Org. number: {companyProfile.orgNumber}</div>}
+          </div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:26,fontWeight:900,letterSpacing:1}}>INVOICE</div>
+          <div style={{fontSize:12,color:"#555",marginTop:6,lineHeight:1.6}}>
+            <div>Invoice no.: <strong>{invoice.invoiceNo}</strong></div>
+            <div>Invoice date: {invoice.date}</div>
+            {invoice.dueDate&&<div>Due date: {invoice.dueDate}</div>}
+            {companyProfile.bankAccount&&<div>Bank account: {companyProfile.bankAccount}</div>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:11,color:"#888",marginBottom:4}}>BILL TO</div>
+        <div style={{fontSize:14,fontWeight:700}}>{contact?contact.name:"Customer"}</div>
+      </div>
+
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:16}}>
+        <thead><tr style={{borderBottom:"1px solid #111827",color:"#555"}}>
+          <td style={{padding:"6px 0"}}>Description</td>
+          <td style={{textAlign:"right"}}>Qty</td>
+          <td style={{textAlign:"right"}}>Unit price</td>
+          <td style={{textAlign:"right"}}>Amount</td>
+        </tr></thead>
+        <tbody>
+          {invoice.lines.map((l,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid #eee"}}>
+              <td style={{padding:"8px 0"}}>{l.description}</td>
+              <td style={{textAlign:"right"}}>{l.qty}</td>
+              <td style={{textAlign:"right"}}>{fmt(l.unitPrice)}</td>
+              <td style={{textAlign:"right"}}>{fmt(l.qty*l.unitPrice)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
+        <div style={{width:220}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>Subtotal</span><span>{fmt(invoice.subtotal)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>VAT ({invoice.vatPct}%)</span><span>{fmt(invoice.vatAmount)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:800,borderTop:"2px solid #111827",padding:"8px 0 0",marginTop:6}}><span>Total</span><span>{fmt(invoice.total)}</span></div>
+        </div>
+      </div>
+      {companyProfile.bankAccount&&<div style={{marginTop:20,fontSize:12,color:"#555"}}>Please pay to bank account {companyProfile.bankAccount}.</div>}
+    </div>
+  );
+}
+
+// Invoice creation form — customer picker, sale account restricted to the
+// 3xxx series, a month-range period (one or more months), auto-generated
+// but editable description, and a live preview before posting.
+function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,createInvoice,onDone}){
+  const customers=contacts.filter(c=>c.type==="customer");
+  const saleAccounts=accounts.filter(a=>a.code.startsWith("3"));
+  const today=new Date().toISOString().slice(0,10);
+  const curMonth=today.slice(0,7);
+
+  const[customerId,setCustomerId]=useState(customers[0]?customers[0].id:"");
+  const[saleAccount,setSaleAccount]=useState(saleAccounts[0]?saleAccounts[0].code:"");
+  const[periodFrom,setPeriodFrom]=useState(curMonth);
+  const[periodTo,setPeriodTo]=useState(curMonth);
+  const[unitPrice,setUnitPrice]=useState("");
+  const[description,setDescription]=useState("");
+  const[descTouched,setDescTouched]=useState(false);
+  const[date,setDate]=useState(today);
+  const[dueDate,setDueDate]=useState(today);
+  const[vatPct,setVatPct]=useState(companyProfile.vatPct||0);
+  const[saving,setSaving]=useState(false);
+
+  const contact=customers.find(c=>c.id===customerId);
+  const qty=monthsBetween(periodFrom,periodTo);
+  const price=parseFloat(unitPrice)||0;
+  const subtotal=qty*price;
+  const vatAmount=subtotal*(parseFloat(vatPct)||0)/100;
+  const total=subtotal+vatAmount;
+  const autoDesc=contact?`${contact.name} — ${qty} month${qty>1?"s":""} (${monthRangeLabel(periodFrom,periodTo)})`:"";
+  const effectiveDesc=descTouched?description:autoDesc;
+
+  const valid=customerId&&saleAccount&&price>0&&periodFrom&&periodTo&&periodTo>=periodFrom;
+
+  const handleCreate=async()=>{
+    if(!valid||saving)return;
+    setSaving(true);
+    const form={
+      customerId,saleAccount,date,dueDate,periodFrom,periodTo,
+      description:effectiveDesc,vatPct:parseFloat(vatPct)||0,
+      lines:[{description:effectiveDesc,qty,unitPrice:price}],
+      subtotal,vatAmount,total,
+    };
+    const inv=await createInvoice(form);
+    setSaving(false);
+    if(inv&&onDone)onDone(inv);
+  };
+
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,alignItems:"start"}}>
+      <div>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>New invoice</h1>
+        <p style={{fontSize:12,color:T.muted,margin:"0 0 20px"}}>Invoice no. {nextInvoiceNo} · posts to Receivable (1500) automatically</p>
+
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
+            <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{...inp}}>
+              {!customers.length&&<option value="">No customers yet</option>}
+              {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx series)</div>
+            <select value={saleAccount} onChange={e=>setSaleAccount(e.target.value)} style={{...inp}}>
+              {!saleAccounts.length&&<option value="">No sale accounts yet</option>}
+              {saleAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From month</div>
+              <input type="month" value={periodFrom} onChange={e=>{setPeriodFrom(e.target.value);if(e.target.value>periodTo)setPeriodTo(e.target.value);}} style={{...inp}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To month</div>
+              <input type="month" value={periodTo} min={periodFrom} onChange={e=>setPeriodTo(e.target.value)} style={{...inp}}/>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Monthly rate</div>
+            <input type="number" placeholder="0" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)} style={{...inp}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+            <input value={effectiveDesc} onChange={e=>{setDescription(e.target.value);setDescTouched(true);}} style={{...inp}}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+              <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
+              <input type="number" value={vatPct} onChange={e=>setVatPct(e.target.value)} style={{...inp}}/>
+            </div>
+          </div>
+          <button onClick={handleCreate} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Creating…":`Create invoice · ${fmt(total)}`}</button>
+        </div>
+      </div>
+
+      <div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
+        <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Preview</div>
+        <div style={{transform:"scale(0.82)",transformOrigin:"top left",width:"122%"}}>
+          <InvoicePrintView
+            invoice={{invoiceNo:nextInvoiceNo,date,dueDate,lines:[{description:effectiveDesc||"—",qty,unitPrice:price}],subtotal,vatPct:parseFloat(vatPct)||0,vatAmount,total}}
+            contact={contact}
+            companyProfile={companyProfile}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Invoice overview — Tripletex-style aging donut (overdue >30 / 1-30 / not
+// yet due) plus outstanding total and the invoice list.
+function InvoiceOverviewScreen({invoices,contacts,companyProfile,updateInvoiceStatus,deleteInvoice,onNewInvoice}){
+  const getContactName=id=>{const c=contacts.find(x=>x.id===id);return c?c.name:"Unknown";};
+  const today=new Date().toISOString().slice(0,10);
+  const daysOverdue=(inv)=>inv.dueDate?Math.floor((new Date(today)-new Date(inv.dueDate))/86400000):0;
+
+  const open=invoices.filter(i=>i.status!=="paid");
+  const over30=open.filter(i=>daysOverdue(i)>30).reduce((s,i)=>s+i.total,0);
+  const over1to30=open.filter(i=>{const d=daysOverdue(i);return d>0&&d<=30;}).reduce((s,i)=>s+i.total,0);
+  const notDue=open.filter(i=>daysOverdue(i)<=0).reduce((s,i)=>s+i.total,0);
+  const outstanding=over30+over1to30+notDue;
+  const donutData=[
+    {label:"Overdue (30+ days)",value:over30,color:"#D0021B"},
+    {label:"Overdue (1-30 days)",value:over1to30,color:"#EF9F27"},
+    {label:"Not yet due",value:notDue,color:"#5DCAA5"},
+  ];
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Invoice overview</h1>
+        <button onClick={onNewInvoice} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New invoice</button>
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:20,marginBottom:20,display:"flex",gap:24,alignItems:"center"}}>
+        <ConicChart data={donutData.filter(d=>d.value>0)} size={120}/>
+        <div style={{display:"flex",flexDirection:"column",gap:10,flex:1}}>
+          {donutData.map(d=>(
+            <div key={d.label} style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+              <span style={{display:"flex",alignItems:"center",gap:6,color:T.sub}}><span style={{width:9,height:9,borderRadius:2,background:d.color,display:"inline-block"}}/>{d.label}</span>
+              <span style={{fontWeight:700,color:T.text}}>{fmt(d.value)}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,borderTop:`1px solid ${T.border}`,paddingTop:10,marginTop:2}}>
+            <span>Outstanding</span><span>{fmt(outstanding)}</span>
+          </div>
+        </div>
+      </div>
+
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}>Invoice</td><td>Customer</td><td>Date</td><td>Due date</td><td style={{textAlign:"right"}}>Total</td><td>Status</td><td></td>
+        </tr></thead>
+        <tbody>
+          {[...invoices].sort((a,b)=>b.invoiceNo-a.invoiceNo).map(inv=>{
+            const overdue=inv.status!=="paid"&&daysOverdue(inv)>0;
+            return(
+              <tr key={inv.id} style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>#{inv.invoiceNo}</td>
+                <td>{getContactName(inv.customerId)}</td>
+                <td style={{color:T.sub}}>{inv.date}</td>
+                <td style={{color:overdue?T.red:T.sub}}>{inv.dueDate||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700}}>{fmt(inv.total)}</td>
+                <td>
+                  <select value={inv.status} onChange={e=>updateInvoiceStatus(inv.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}}>
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </td>
+                <td style={{textAlign:"right"}}>
+                  <button onClick={()=>window.confirm("Delete this invoice? This also removes its ledger entry.")&&deleteInvoice(inv.id)} title="Delete" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
+                </td>
+              </tr>
+            );
+          })}
+          {!invoices.length&&<tr><td colSpan="7" style={{padding:"30px 0",textAlign:"center",color:T.muted}}>No invoices yet. Create your first one.</td></tr>}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -6900,7 +7247,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,companyProfile,saveCompanyProfile,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -6999,7 +7346,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
-  if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
@@ -7053,6 +7400,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Transactions",label:"New entry"},
               {tab:"Entries",label:"All entries"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
+            ]},
+            {id:"invoicing",label:"Invoicing",icon:"ti-file-invoice",items:[
+              {tab:"InvoiceNew",label:"New invoice"},
+              {tab:"InvoiceOverview",label:"Invoice overview"},
             ]},
             {id:"accounts",label:"Accounts",icon:"ti-book",items:[
               {tab:"Accounts",label:"Ledger"},
@@ -7215,6 +7566,18 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
+        {tab==="InvoiceNew"&&(
+          <div style={{maxWidth:1000}}>
+            <InvoiceFormScreen accounts={accounts} contacts={contacts} companyProfile={companyProfile} nextInvoiceNo={nextInvoiceNo} createInvoice={createInvoice} onDone={()=>setTab("InvoiceOverview")}/>
+          </div>
+        )}
+
+        {tab==="InvoiceOverview"&&(
+          <div style={{maxWidth:900}}>
+            <InvoiceOverviewScreen invoices={invoices} contacts={contacts} companyProfile={companyProfile} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} onNewInvoice={()=>setTab("InvoiceNew")}/>
+          </div>
+        )}
+
         {tab==="Budget"&&(
           feat.budget
             ?<div style={{maxWidth:900}}><BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></div>
@@ -7232,6 +7595,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
+
+        {tab==="Settings"&&<div style={{maxWidth:700}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:600}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/></div>}
       </div>
