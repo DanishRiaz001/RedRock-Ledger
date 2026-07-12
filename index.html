@@ -401,6 +401,7 @@ function AppShell({user}){
   const[sinkingFunds,setSFState]=useState([]);
   const[budgets,setBudgetsState]=useState([]);
   const[inboxFiles,setInboxFilesState]=useState([]);
+  const[bankStatementLines,setBankStatementLines]=useState([]);
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
@@ -424,7 +425,8 @@ function AppShell({user}){
       sb.from("budgets").select("*").eq("user_id",viewingUserId),
       sb.from("inbox_files").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}),
       sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId),
-    ]).then(([aR,cR,tR,sR,bR,ifR,taR])=>{
+      sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId).order("date"),
+    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -455,6 +457,7 @@ function AppShell({user}){
       setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
+      setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
       setLoading(false);
     });
   },[viewingUserId]);
@@ -525,6 +528,52 @@ function AppShell({user}){
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
     }
+  };
+
+  // Bank statement lines — manual CSV/Excel upload only (no live bank API).
+  // Uploading parses rows into individual lines against one account; "Post"
+  // turns an unposted line into a real transaction against whichever account
+  // the user picks, then marks the line reconciled.
+  const uploadBankStatement=async(accountCode,file)=>{
+    if(!canEdit)return;
+    try{
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      const toDateStr=(d)=>{
+        if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
+        const s=String(d).trim();
+        const parsed=Date.parse(s);
+        return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
+      };
+      const rows=json.map(r=>({date:toDateStr(r[0]),description:String(r[1]||"").trim(),amount:parseFloat(r[2])})).filter(r=>r.date&&!isNaN(r.amount)&&r.amount!==0);
+      if(!rows.length){alert("Couldn't find valid rows. Expected columns: Date, Description, Amount.");return;}
+      const dbRows=rows.map(r=>({user_id:user.id,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+      const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
+      if(error){alert("Upload failed: "+error.message);return;}
+      setBankStatementLines(p=>[...p,...(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}))]);
+    }catch(e){alert("Couldn't read that file: "+e.message);}
+  };
+  const postBankStatementLine=async(line,offsetCode)=>{
+    if(!canEdit)return;
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+    const isOutflow=line.amount<0;
+    const debitCode=isOutflow?offsetCode:line.accountCode;
+    const creditCode=isOutflow?line.accountCode:offsetCode;
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
+    if(error){alert("Post failed: "+error.message);return;}
+    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount:Math.abs(line.amount),contactId:null}]);
+    const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
+    if(updErr)console.error("Bank line post-flag error:",updErr);
+    setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:true,postedTxnId:data.id}:l));
+  };
+  const deleteBankStatementLine=async(id)=>{
+    if(!canEdit)return;
+    await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",user.id);
+    setBankStatementLines(p=>p.filter(l=>l.id!==id));
   };
 
   const saveEdit=async(u)=>{
@@ -754,6 +803,7 @@ function AppShell({user}){
         uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry}
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
+        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -3363,7 +3413,372 @@ function Dashboard({transactions,accounts,filterFrom,filterTo,setFilterFrom,setF
   );
 }
 
-// ─── AccDropReskontro — account picker with contacts section ─────────────────
+// Simple conic-gradient donut/pie chart — no external chart library needed.
+function ConicChart({data,size=132,donut=true}){
+  const total=data.reduce((s,d)=>s+d.value,0)||1;
+  let acc=0;
+  const stops=data.map(d=>{
+    const start=(acc/total)*360;acc+=d.value;const end=(acc/total)*360;
+    return `${d.color} ${start}deg ${end}deg`;
+  }).join(", ");
+  return(
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <div style={{width:size,height:size,borderRadius:"50%",background:data.length?`conic-gradient(${stops})`:"#F1EFE8"}}/>
+      {donut&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:size*0.58,height:size*0.58,borderRadius:"50%",background:"#fff"}}/>}
+    </div>
+  );
+}
+
+// Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
+// a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
+// a filterable recent-entries table. Manerty-inspired layout, teal identity.
+function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}){
+  // Dashboard is intentionally all-time — no date filter here. If you need a
+  // specific period, use Trial Balance or Reports, which each have their own.
+  const today=new Date().toISOString().slice(0,10);
+  const oneMonthAgo=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,10);})();
+
+  const balAt=(code,asOf)=>transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+  const seriesBalAt=(sk,asOf)=>accounts.filter(a=>getSK(a.code)===sk).reduce((s,a)=>s+balAt(a.code,asOf),0);
+
+  const cashNow=seriesBalAt("1900",today), cashPrev=seriesBalAt("1900",oneMonthAgo);
+  const arNow=seriesBalAt("1500",today), arPrev=seriesBalAt("1500",oneMonthAgo);
+  const apNow=seriesBalAt("2400",today), apPrev=seriesBalAt("2400",oneMonthAgo);
+
+  const income=useMemo(()=>transactions.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
+  const expense=useMemo(()=>transactions.filter(t=>isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
+  const net=income-expense;
+  const incomePrev=useMemo(()=>transactions.filter(t=>isIncomeSK(t.creditCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
+  const expensePrev=useMemo(()=>transactions.filter(t=>isExpenseSK(t.debitCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
+  const netPrev=incomePrev-expensePrev;
+
+  const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
+
+  const kpis=[
+    {label:"Cash and bank",value:cashNow,delta:cashNow-cashPrev},
+    {label:"Receivable",value:arNow,delta:arNow-arPrev},
+    {label:"Payable",value:apNow,delta:apNow-apPrev},
+    {label:"Net profit",value:net,delta:net-netPrev},
+  ];
+
+  const donutData=[
+    {label:"Cash and bank",value:Math.max(0,cashNow),color:"#0D7377"},
+    {label:"Receivable",value:Math.max(0,arNow),color:"#5DCAA5"},
+    {label:"Payable",value:Math.max(0,apNow),color:"#D3D1C7"},
+  ];
+
+  const expenseByAcct=useMemo(()=>{
+    const m={};
+    transactions.filter(t=>isExpenseSK(t.debitCode)).forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  },[transactions]);
+  const pieColors=["#0D7377","#5DCAA5","#D85A30","#888780","#EF9F27"];
+  const pieData=expenseByAcct.map(([code,amt],i)=>({label:getName(code),value:amt,color:pieColors[i%pieColors.length]}));
+
+  const[entryFilter,setEntryFilter]=useState("all");
+  const filteredEntries=useMemo(()=>{
+    const sorted=[...transactions].sort((a,b)=>b.bilag-a.bilag);
+    if(entryFilter==="income")return sorted.filter(t=>isIncomeSK(t.creditCode));
+    if(entryFilter==="expense")return sorted.filter(t=>isExpenseSK(t.debitCode));
+    if(entryFilter==="unreconciled")return sorted.filter(t=>!t.matchedWith);
+    return sorted;
+  },[transactions,entryFilter]);
+  const counts={
+    all:transactions.length,
+    income:transactions.filter(t=>isIncomeSK(t.creditCode)).length,
+    expense:transactions.filter(t=>isExpenseSK(t.debitCode)).length,
+    unreconciled:transactions.filter(t=>!t.matchedWith).length,
+  };
+
+  const activity=[...transactions].sort((a,b)=>b.bilag-a.bilag).slice(0,6);
+
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:20,alignItems:"start"}}>
+      <div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
+          {kpis.map(k=>{
+            const positive=k.delta>=0;
+            return(
+              <div key={k.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px"}}>
+                <div style={{fontSize:12,color:T.sub,marginBottom:8}}>{k.label}</div>
+                <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:6}}>{fmt(k.value)}</div>
+                <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:positive?T.greenBg:T.redLight,color:positive?T.green:T.red}}>{positive?"+":"−"}{fmt(Math.abs(k.delta))}</span>
+                <span style={{fontSize:10,color:T.muted,marginLeft:6}}>vs last month</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Balance composition</div>
+            <div style={{display:"flex",alignItems:"center",gap:20}}>
+              <ConicChart data={donutData}/>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {donutData.map(d=>(
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub}}>
+                    <span style={{width:9,height:9,borderRadius:2,background:d.color,display:"inline-block"}}/>{d.label} ({fmt(Math.abs(d.value))})
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Top expense categories (all time)</div>
+            <div style={{display:"flex",alignItems:"center",gap:20}}>
+              <ConicChart data={pieData} donut={false}/>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {pieData.length?pieData.map(d=>(
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub}}>
+                    <span style={{width:9,height:9,borderRadius:2,background:d.color,display:"inline-block"}}/>{d.label} ({fmt(d.value)})
+                  </div>
+                )):<div style={{fontSize:12,color:T.muted}}>No expenses yet.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text}}>All entries</div>
+            <div style={{display:"flex",gap:6}}>
+              {[["all","All"],["income","Income"],["expense","Expense"],["unreconciled","Unreconciled"]].map(([key,label])=>(
+                <button key={key} onClick={()=>setEntryFilter(key)} style={{background:entryFilter===key?T.accent:"none",color:entryFilter===key?"#fff":T.sub,border:`1px solid ${entryFilter===key?T.accent:T.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label} <span style={{opacity:0.75}}>{counts[key]}</span></button>
+              ))}
+            </div>
+          </div>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <thead><tr style={{color:T.muted,fontSize:11}}>
+              <td style={{padding:"6px 0"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
+            </tr></thead>
+            <tbody>
+              {filteredEntries.slice(0,10).map(t=>(
+                <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+                  <td style={{color:T.sub}}>{t.date}</td>
+                  <td>{t.description}</td>
+                  <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
+                </tr>
+              ))}
+              {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+        <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Activity</div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {activity.map(t=>{
+            const isIn=isIncomeSK(t.creditCode);
+            return(
+              <div key={t.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}>{isIn?"↓":"↑"}</div>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:2}}>{fmtB(t.bilag)} · {t.date}</div>
+                </div>
+              </div>
+            );
+          })}
+          {!activity.length&&<div style={{fontSize:12,color:T.muted}}>Nothing this period yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Trial balance — every account's opening balance, the period's movement
+// (difference), and the resulting closing balance, in one table.
+function TrialBalanceScreen({accounts,transactions}){
+  const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7)); // "YYYY-MM"
+  const[fullYear,setFullYear]=useState(false);
+  const[fromAcct,setFromAcct]=useState("");
+  const[toAcct,setToAcct]=useState("");
+  const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
+
+  const year=parseInt(viewMonth.slice(0,4));
+  const monthIdx=parseInt(viewMonth.slice(5,7))-1;
+  const lastDay=new Date(year,monthIdx+1,0).getDate();
+  const filterFrom=fullYear?`${year}-01-01`:`${viewMonth}-01`;
+  const filterTo=fullYear?`${year}-12-31`:`${viewMonth}-${String(lastDay).padStart(2,"0")}`;
+  const periodLabel=fullYear?String(year):new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
+  const stepMonth=(dir)=>{
+    let m=monthIdx+dir,y=year;
+    if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}
+    setViewMonth(`${y}-${String(m+1).padStart(2,"0")}`);
+  };
+
+  const rows=useMemo(()=>{
+    return accounts
+      .filter(a=>(!fromAcct||a.code>=fromAcct)&&(!toAcct||a.code<=toAcct))
+      .map(a=>{
+        const opening=transactions.filter(t=>t.date<filterFrom).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+        const diff=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+        return{code:a.code,name:a.name,opening,diff,closing:opening+diff};
+      })
+      .filter(r=>r.opening!==0||r.diff!==0||r.closing!==0)
+      .sort((a,b)=>a.code.localeCompare(b.code));
+  },[accounts,transactions,filterFrom,filterTo,fromAcct,toAcct]);
+
+  const exportXlsx=()=>{
+    const aoa=[["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Trial balance");
+    XLSX.writeFile(wb,`TrialBalance_${filterFrom}_${filterTo}.xlsx`);
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Trial balance</h1>
+        <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ Export</button>
+      </div>
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+          <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>📅 {periodLabel}</span>
+          <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
+        </div>
+        <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+        <input placeholder="From acct" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100}}/>
+        <input placeholder="To acct" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100}}/>
+      </div>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.sub}}>
+          <td style={{padding:"8px 0",borderBottom:`2px solid ${T.border}`}}>Account</td>
+          <td style={{textAlign:"right",borderBottom:`2px solid ${T.border}`}}>Opening balance</td>
+          <td style={{textAlign:"right",borderBottom:`2px solid ${T.border}`}}>Difference</td>
+          <td style={{textAlign:"right",borderBottom:`2px solid ${T.border}`}}>Closing balance</td>
+        </tr></thead>
+        <tbody>
+          {rows.map(r=>(
+            <tr key={r.code} style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"9px 0",color:T.blue,fontWeight:600}}>{r.code} {r.name}</td>
+              <td style={{textAlign:"right"}}>{fmt(r.opening)}</td>
+              <td style={{textAlign:"right",color:r.diff?T.blue:T.muted}}>{r.diff?fmt(r.diff):"—"}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{fmt(r.closing)}</td>
+            </tr>
+          ))}
+          {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity in this range.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Bank reconciliation — manual statement upload only (no live bank API).
+// Upload a CSV/Excel statement (Date, Description, Amount columns) against a
+// bank account; each unposted line can be "Posted" by choosing which other
+// account it offsets, which creates a real transaction and marks it matched.
+function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine}){
+  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
+  const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
+  const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const[statusTab,setStatusTab]=useState("unmatched");
+  const[selectedLineId,setSelectedLineId]=useState(null);
+  const[offsetCode,setOffsetCode]=useState("");
+  const[uploading,setUploading]=useState(false);
+  const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
+
+  const linesForAccount=useMemo(()=>bankStatementLines.filter(l=>l.accountCode===selectedAccount&&l.date.slice(0,7)===month),[bankStatementLines,selectedAccount,month]);
+  const shown=linesForAccount.filter(l=>statusTab==="matched"?l.posted:!l.posted).sort((a,b)=>a.date.localeCompare(b.date));
+  const selectedLine=shown.find(l=>l.id===selectedLineId)||null;
+
+  const enteredBalance=useMemo(()=>{
+    const monthEnd=new Date(month+"-01");monthEnd.setMonth(monthEnd.getMonth()+1);monthEnd.setDate(0);
+    const asOf=monthEnd.toISOString().slice(0,10);
+    return transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===selectedAccount)return s+t.amount;if(t.creditCode===selectedAccount)return s-t.amount;return s;},0);
+  },[transactions,selectedAccount,month]);
+
+  const offsetOptions=accounts.filter(a=>a.code!==selectedAccount);
+
+  const handleUpload=async(file)=>{
+    if(!selectedAccount){alert("Choose a bank account first.");return;}
+    setUploading(true);
+    await uploadBankStatement(selectedAccount,file);
+    setUploading(false);
+  };
+  const doPost=async()=>{
+    if(!selectedLine||!offsetCode)return;
+    await postBankStatementLine(selectedLine,offsetCode);
+    setSelectedLineId(null);setOffsetCode("");
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
+        <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
+          {uploading?"Uploading…":"⬆ Upload statement"}
+          <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
+        </label>
+      </div>
+      <p style={{fontSize:11,color:T.muted,marginTop:-10,marginBottom:16}}>Expects a spreadsheet with Date, Description, Amount columns (in that order). No live bank connection — upload a statement export whenever you want to reconcile.</p>
+
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);}} style={{...inp,width:220}}>
+          {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+          {!bankAccounts.length&&<option value="">No bank accounts yet</option>}
+        </select>
+        <input type="month" value={month} onChange={e=>{setMonth(e.target.value);setSelectedLineId(null);}} style={{...inp,width:150}}/>
+        <div style={{flex:1}}/>
+        <button onClick={()=>{setStatusTab("unmatched");setSelectedLineId(null);}} style={{background:statusTab==="unmatched"?T.accent:"none",color:statusTab==="unmatched"?"#fff":T.sub,border:`1px solid ${statusTab==="unmatched"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Unmatched</button>
+        <button onClick={()=>{setStatusTab("matched");setSelectedLineId(null);}} style={{background:statusTab==="matched"?T.accent:"none",color:statusTab==="matched"?"#fff":T.sub,border:`1px solid ${statusTab==="matched"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Matched</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:12,color:T.sub}}>Entered in ledger (as of month end)</div>
+          <div style={{fontSize:20,fontWeight:800,color:T.text,marginTop:4}}>{fmt(enteredBalance)}</div>
+        </div>
+        <div style={{background:selectedLine?T.accentLight:"#fff",border:`1px solid ${selectedLine?T.accent:T.border}`,borderRadius:12,padding:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:12,color:selectedLine?T.accent:T.sub}}>{selectedLine?"Selected":"Select a line below"}</div>
+            <div style={{fontSize:20,fontWeight:800,color:selectedLine?T.accent:T.muted,marginTop:4}}>{selectedLine?fmt(selectedLine.amount):"—"}</div>
+          </div>
+          {selectedLine&&statusTab==="unmatched"&&(
+            <button onClick={doPost} disabled={!offsetCode} style={{background:offsetCode?T.accent:T.border,color:offsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:offsetCode?"pointer":"default",fontFamily:"inherit"}}>Post</button>
+          )}
+        </div>
+      </div>
+
+      {selectedLine&&statusTab==="unmatched"&&(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:10}}>Choose account to post against</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:220,overflowY:"auto"}}>
+            {offsetOptions.map(a=>(
+              <div key={a.code} onClick={()=>setOffsetCode(a.code)} style={{display:"flex",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,cursor:"pointer",background:offsetCode===a.code?T.accentLight:"transparent"}}>
+                <span style={{fontSize:13,color:offsetCode===a.code?T.accent:T.sub,fontWeight:offsetCode===a.code?700:400}}>{a.code} {a.name}</span>
+                {offsetCode===a.code&&<span style={{color:T.accent}}>✓</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td>
+        </tr></thead>
+        <tbody>
+          {shown.map(l=>(
+            <tr key={l.id} style={{borderTop:`1px solid ${T.border}`,background:selectedLineId===l.id?T.accentLight:"transparent"}}>
+              <td style={{padding:"9px 0"}}>{statusTab==="unmatched"&&<input type="checkbox" checked={selectedLineId===l.id} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");}}/>}</td>
+              <td>{l.date}</td>
+              <td>{l.description}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{fmt(l.amount)}</td>
+              <td style={{textAlign:"right"}}>{statusTab==="unmatched"&&<button onClick={()=>deleteBankStatementLine(l.id)} title="Delete line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:12}}>✕</button>}</td>
+            </tr>
+          ))}
+          {!shown.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{statusTab==="unmatched"?"No unmatched lines for this account and month. Upload a statement to get started.":"Nothing matched yet."}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AccDropReskontro({value,onChange,accounts,contacts,onContactSelect,side}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
@@ -5393,11 +5808,12 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge}){
+function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge,isDesktop}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[selected,setSelected]=useState([]);
   const[busy,setBusy]=useState(false);
+  const[previewFile,setPreviewFile]=useState(null);
 
   const addFile=async(file)=>{setBusy(true);await onUpload(file);setBusy(false);};
   const deleteFile=async(id)=>{setBusy(true);await onDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
@@ -5436,6 +5852,94 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
     setSelected([]);
     setBusy(false);
   };
+  // Registers the first selected file as a new entry. Multiple selection isn't
+  // fully supported for registration yet — one entry per file, one at a time.
+  const startRegistration=()=>{
+    if(!selected.length)return;
+    registerEntry(selected[0]);
+  };
+
+  if(isDesktop){
+    return(
+      <div style={{display:"flex",gap:0,minHeight:520}}>
+        <div style={{flex:1,paddingRight:16,minWidth:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
+            <div style={{display:"flex",gap:8,position:"relative"}}>
+              <button onClick={()=>setUploadMenu(o=>!o)} disabled={busy} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬆ Upload</button>
+              <button onClick={()=>registerEntry(null)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ New voucher</button>
+              {uploadMenu&&(<>
+                <div onClick={()=>setUploadMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
+                <div style={{position:"absolute",right:0,top:"100%",marginTop:6,width:200,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",overflow:"hidden"}}>
+                  {[{icon:"🖼️",label:"Photo",accept:"image/*"},{icon:"📄",label:"Document",accept:".pdf,.doc,.docx,.xlsx,.csv"}].map((opt,i)=>(
+                    <label key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",borderBottom:i<1?`1px solid ${T.border}`:"none",fontSize:12,fontWeight:600,color:T.text}}>
+                      <span style={{fontSize:15}}>{opt.icon}</span>{opt.label}
+                      <input type="file" accept={opt.accept} style={{display:"none"}} onChange={e=>{if(e.target.files[0])addFile(e.target.files[0]);setUploadMenu(false);}}/>
+                    </label>
+                  ))}
+                </div>
+              </>)}
+            </div>
+          </div>
+          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>Drag and drop files here, or upload manually above.</p>
+
+          {selected.length>0?(
+            <div style={{background:T.accentLight,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{selected.length} of {filtered.length} selected</span>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Start registration</button>
+                {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
+                <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
+              </div>
+            </div>
+          ):(
+            <div style={{position:"relative",marginBottom:12}}>
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
+              <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
+            </div>
+          )}
+
+          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No files yet.</div>}
+            {filtered.map((f,i)=>{
+              const isFocused=previewFile&&previewFile.id===f.id;
+              return(
+                <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
+                  <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+                  </div>
+                  <Menu3 items={[
+                    {icon:"✏️",label:"Rename",action:()=>renameFile(f.id)},
+                    {icon:"📝",label:"Register as Entry",color:T.accent,action:()=>registerEntry(f.id)},
+                    {icon:"🗑",label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
+                  ]}/>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{width:300,flexShrink:0,background:T.bg,borderRadius:12,padding:16,position:"sticky",top:16,alignSelf:"flex-start"}}>
+          {previewFile?(
+            <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:12,color:T.sub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</span>
+                <button onClick={()=>renameFile(previewFile.id)} title="Rename" style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13}}>✏️</button>
+              </div>
+              <div style={{background:"#fff",borderRadius:8,minHeight:340,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`}}>
+                <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{maxWidth:"100%",maxHeight:400,borderRadius:8}}/>
+              </div>
+              <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",marginTop:10,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
+            </>
+          ):(
+            <div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
@@ -6237,12 +6741,23 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
   const[lastDeleted,setLastDeleted]=useState(null);
+  // Desktop gets a persistent sidebar + reflowed Dashboard; mobile keeps the
+  // existing app-style layout untouched. One codebase, no separate app build —
+  // this is just a width check, re-evaluated on resize.
+  const[isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=1024);
+  const[expandedCat,setExpandedCat]=useState(null);
+  const[profileMenuOpen,setProfileMenuOpen]=useState(false);
+  useEffect(()=>{
+    const onResize=()=>setIsDesktop(window.innerWidth>=1024);
+    window.addEventListener("resize",onResize);
+    return()=>window.removeEventListener("resize",onResize);
+  },[]);
 
   const deleteTxnWithUndo=(id)=>{
     const txn=transactions.find(t=>t.id===id);
@@ -6320,7 +6835,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="Settings")return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} onBack={()=>setTab("Dashboard")}/>);
-  if(tab==="Reskontro"){
+  if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
   }
@@ -6344,11 +6859,205 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.aiBookkeeping)return(<DisabledScreen title="AI Bookkeeping" onBack={()=>setTab("Dashboard")}/>);
     return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Files")return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry}/>);
-  if(tab==="Bank"){
+  if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry}/>);
+  if(tab==="Bank"&&!isDesktop){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
   }
+
+  if(isDesktop)return(
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
+      {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
+      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0}}>
+        <div style={{padding:"18px 18px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
+          <div>
+            <div style={{fontSize:12,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Danria</div>
+            <div style={{fontSize:8,color:T.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Accountants</div>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+          <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent",marginBottom:6}}>
+            <span style={{fontSize:14,width:18,textAlign:"center"}}>⊞</span>
+            <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Dashboard</span>
+          </div>
+
+          {[
+            {id:"bookkeeping",label:"Bookkeeping",icon:"✚",items:[
+              {tab:"Transactions",label:"New entry"},
+              {tab:"Entries",label:"All entries"},
+              {tab:"Import",label:"Import Excel",featureKey:"import"},
+            ]},
+            {id:"accounts",label:"Accounts",icon:"◎",items:[
+              {tab:"Accounts",label:"Ledger"},
+              {tab:"TrialBalance",label:"Trial balance"},
+              {tab:"Reskontro",label:"Reskontro",featureKey:"reskontro"},
+              {tab:"Bank",label:"Bank",featureKey:"bank"},
+            ]},
+            {id:"reports",label:"Reports",icon:"↗",items:[
+              {tab:"Reports",label:"Reports",featureKey:"reports"},
+              {tab:"Budget",label:"Budget",featureKey:"budget"},
+              {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
+              {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
+            ]},
+            {id:"tools",label:"Tools",icon:"🤖",items:[
+              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
+              {tab:"Files",label:"Inbox",featureKey:"files"},
+            ]},
+          ].map(cat=>{
+            const visibleItems=cat.items.filter(it=>!it.featureKey||feat[it.featureKey]);
+            if(!visibleItems.length)return null;
+            const isExpanded=expandedCat===cat.id;
+            const containsActive=visibleItems.some(it=>it.tab===tab);
+            return(
+              <div key={cat.id}>
+                <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
+                  <span style={{fontSize:14,width:18,textAlign:"center"}}>{cat.icon}</span>
+                  <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>
+                  <span style={{fontSize:9,color:T.muted,transition:"transform 0.15s",display:"inline-block",transform:isExpanded?"rotate(180deg)":"none"}}>▾</span>
+                </div>
+                {isExpanded&&(
+                  <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
+                    {visibleItems.map(it=>{
+                      const active=tab===it.tab;
+                      return(
+                        <div key={it.tab} onClick={()=>setTab(it.tab)} style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{padding:"12px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
+          {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{
+            const active=tab===item.id;
+            const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
+            return(
+              <div key={item.id} onClick={()=>setTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
+                <span style={{fontSize:14,width:18,textAlign:"center"}}>{item.icon}</span>
+                <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
+                {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px"}}>{bugCount}</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:9,color:T.muted}}>PKR · v2.2</div>
+          <button onClick={onSignOut} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,color:T.sub,fontSize:10,cursor:"pointer",padding:"4px 10px",fontWeight:600}}>Sign out</button>
+        </div>
+      </div>
+
+      <div style={{flex:1,minWidth:0,padding:"18px 28px"}}>
+        {/* Top bar — compact, no period control here (each screen that needs one manages its own) */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
+          <div onClick={()=>setTab("Settings")} title="Company settings" style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0}}>
+            <div style={{width:18,height:18,borderRadius:5,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
+            <span style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:"nowrap"}}>Redrock Danria</span>
+            <span style={{fontSize:8,color:T.accent}}>▾</span>
+          </div>
+          <div style={{position:"relative",width:180}}>
+            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}>🔍</span>
+            <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12}}/>
+          </div>
+          <div style={{flex:1}}/>
+          {(()=>{
+            const bugCount=isAdmin?getBugs().filter(b=>!b.resolved).length:0;
+            return(
+              <div onClick={()=>isAdmin&&setTab("BugLog")} title={isAdmin?"Unresolved bug reports":"No notifications"} style={{position:"relative",background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:isAdmin?"pointer":"default",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                🔔
+                {bugCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{bugCount}</span>}
+              </div>
+            );
+          })()}
+          <div style={{position:"relative"}}>
+            <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:T.accent,cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
+            {profileMenuOpen&&(<>
+              <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+                <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}>👤 Profile</div>
+                <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}>⚙️ Settings</div>
+                <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}>↩ Sign out</div>
+              </div>
+            </>)}
+          </div>
+        </div>
+
+        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab}/>}
+
+        {tab==="Entries"&&(
+          <div style={{maxWidth:900}}>
+            <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+          </div>
+        )}
+
+        {tab==="Transactions"&&(
+          <div style={{maxWidth:600}}>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          </div>
+        )}
+
+        {tab==="Accounts"&&(
+          <div style={{maxWidth:700}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#FCE7F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Accounts</div>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Amounts</div>
+            </div>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+              {[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
+                const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
+                const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
+                const closingBal=openingBal+periodMov;
+                if(closingBal===0)return null;
+                return(
+                  <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0369A1"}}>{a.code} {a.name}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#111827"}}>{closingBal>=0?"+":"-"}{fmt(Math.abs(closingBal))}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tab==="Reskontro"&&(
+          feat.reskontro
+            ?<div style={{maxWidth:1000}}><ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/></div>
+            :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
+        )}
+
+        {tab==="Bank"&&(
+          feat.bank
+            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}/></div>
+            :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
+        )}
+
+        {tab==="Files"&&(
+          <div style={{maxWidth:1000}}>
+            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true}/>
+          </div>
+        )}
+
+        {tab==="TrialBalance"&&(
+          <div style={{maxWidth:900}}>
+            <TrialBalanceScreen accounts={accounts} transactions={transactions}/>
+          </div>
+        )}
+
+        {tab==="Reports"&&(
+          <div style={{maxWidth:900}}>
+            {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
+          </div>
+        )}
+
+        {tab==="Profile"&&<div style={{maxWidth:600}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/></div>}
+      </div>
+    </div>
+  );
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
