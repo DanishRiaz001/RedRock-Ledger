@@ -12,13 +12,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     body{margin:0;padding:0;background:#FAF9F7;font-family:system-ui,-apple-system,sans-serif;}
     input,select,button{font-family:inherit;}
     ::-webkit-scrollbar{display:none;}
     .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}
-    .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#FCE7F3!important;}
+    .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#E8F4F4!important;}
+    .ti{vertical-align:-2px;}
   </style>
 </head>
 <body>
@@ -1745,7 +1747,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         </>)}
       </div>
       <div style={{padding:16}}>
-        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0",background:"#FCE7F3"}}>
+        <div style={{display:"grid",gridTemplateColumns:"24px 46px 42px 1fr 76px",gap:4,padding:"7px 6px",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0",background:"#EEF4F3"}}>
           {[
             {key:"",label:""},
             {key:"bilag",label:"Bilag"},
@@ -2153,7 +2155,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
           {/* ── Column header ── */}
           {viewTxns.length>0&&(
-            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",alignItems:"center",background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"8px 8px 0 0"}}>
+            <div style={{display:"grid",gridTemplateColumns:ROW_COLS,gap:4,padding:"7px 8px",alignItems:"center",background:"#EEF4F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"8px 8px 0 0"}}>
               {/* Checkbox placeholder */}
               <div/>
               <div style={hdStyle}>Bilag</div>
@@ -2185,7 +2187,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
             return(
               <div key={c.id} style={{marginBottom:14}}>
                 {/* Contact header row */}
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",background:"#FCE7F3",borderRadius:"8px 8px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",background:"#EEF4F3",borderRadius:"8px 8px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
                   <span style={{fontSize:10,fontWeight:800,color:"#0369A1",minWidth:36}}>{c.id}</span>
                   <span style={{fontSize:12,fontWeight:800,color:"#0369A1",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                 </div>
@@ -3573,7 +3575,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
             const isIn=isIncomeSK(t.creditCode);
             return(
               <div key={t.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}>{isIn?"↓":"↑"}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}><i className={isIn?"ti ti-arrow-down-left":"ti ti-arrow-up-right"} style={{fontSize:15}}/></div>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
                   <div style={{fontSize:10,color:T.muted,marginTop:2}}>{fmtB(t.bilag)} · {t.date}</div>
@@ -3633,12 +3635,12 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger}){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Trial balance</h1>
-        <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ Export</button>
+        <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export</button>
       </div>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
-          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>📅 {periodLabel}</span>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}><i className="ti ti-calendar" style={{fontSize:13,marginRight:5,color:T.sub}}/>{periodLabel}</span>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
@@ -3655,7 +3657,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger}){
         <tbody>
           {rows.map(r=>(
             <tr key={r.code} style={{borderTop:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 0",color:T.blue,fontWeight:600}}>{r.code} {r.name}</td>
+              <td style={{padding:"9px 0",color:T.accent,fontWeight:600}}>{r.code} {r.name}</td>
               <td style={{textAlign:"right"}}>{fmt(r.opening)}</td>
               <td
                 onClick={()=>{
@@ -3664,7 +3666,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger}){
                   onOpenLedger(acct,filterFrom,filterTo);
                 }}
                 title={r.diff?"View ledger for this account and period":undefined}
-                style={{textAlign:"right",color:r.diff?T.blue:T.muted,cursor:r.diff?"pointer":"default",textDecoration:r.diff?"underline":"none"}}
+                style={{textAlign:"right",color:r.diff?T.accent:T.muted,cursor:r.diff?"pointer":"default",textDecoration:r.diff?"underline":"none"}}
               >{r.diff?fmt(r.diff):"—"}</td>
               <td style={{textAlign:"right",fontWeight:700}}>{fmt(r.closing)}</td>
             </tr>
@@ -3719,7 +3721,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
         <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
-          {uploading?"Uploading…":"⬆ Upload statement"}
+          {uploading?"Uploading…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
           <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
         </label>
       </div>
@@ -4860,11 +4862,11 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
   const closing=opening+periodTotal;
   return(
     <div style={{marginBottom:10}}>
-      <div style={{background:"#FCE7F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",gap:10,padding:"10px 12px"}}>
+      <div style={{background:"#EEF4F3",border:`1px solid ${T.border}`,borderBottom:"none",borderRadius:"10px 10px 0 0",display:"flex",justifyContent:"space-between",gap:10,padding:"10px 12px"}}>
         <div style={{fontSize:12,fontWeight:800,color:"#0369A1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selAcc} {getName(selAcc)}</div>
         <div style={{fontSize:12,fontWeight:900,color:"#111827",whiteSpace:"nowrap"}}>{sign(closing)}</div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 76px",gap:4,padding:"7px 8px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#FCE7F3"}}>
+      <div style={{display:"grid",gridTemplateColumns:"44px 44px 1fr 76px",gap:4,padding:"7px 8px",border:`1px solid ${T.border}`,borderBottom:"none",background:"#EEF4F3"}}>
         {["Date","Bilag","Description","Amount"].map(h=><div key={h} style={{fontSize:9,color:"#111827",fontWeight:800,textTransform:"uppercase",textAlign:h==="Amount"?"right":"left"}}>{h}</div>)}
       </div>
       {accTxns.map((t,i)=>{const mv=t.debitCode===selAcc?t.amount:-t.amount;return(
@@ -6023,8 +6025,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
             <div style={{display:"flex",gap:8,position:"relative"}}>
-              <button onClick={()=>setUploadMenu(o=>!o)} disabled={busy} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬆ Upload</button>
-              <button onClick={()=>registerEntry(null)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ New voucher</button>
+              <button onClick={()=>setUploadMenu(o=>!o)} disabled={busy} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload</button>
+              <button onClick={()=>registerEntry(null)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New voucher</button>
               {uploadMenu&&(<>
                 <div onClick={()=>setUploadMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
                 <div style={{position:"absolute",right:0,top:"100%",marginTop:6,width:200,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",overflow:"hidden"}}>
@@ -7042,29 +7044,29 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent",marginBottom:6}}>
-            <span style={{fontSize:14,width:18,textAlign:"center"}}>⊞</span>
+            <i className="ti ti-layout-dashboard" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Dashboard"?T.accent:T.sub}}/>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Dashboard</span>
           </div>
 
           {[
-            {id:"bookkeeping",label:"Bookkeeping",icon:"✚",items:[
+            {id:"bookkeeping",label:"Bookkeeping",icon:"ti-pencil-plus",items:[
               {tab:"Transactions",label:"New entry"},
               {tab:"Entries",label:"All entries"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
             ]},
-            {id:"accounts",label:"Accounts",icon:"◎",items:[
+            {id:"accounts",label:"Accounts",icon:"ti-book",items:[
               {tab:"Accounts",label:"Ledger"},
               {tab:"TrialBalance",label:"Trial balance"},
               {tab:"Reskontro",label:"Reskontro",featureKey:"reskontro"},
               {tab:"Bank",label:"Bank",featureKey:"bank"},
             ]},
-            {id:"reports",label:"Reports",icon:"↗",items:[
+            {id:"reports",label:"Reports",icon:"ti-report-analytics",items:[
               {tab:"Reports",label:"Reports",featureKey:"reports"},
               {tab:"Budget",label:"Budget",featureKey:"budget"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
             ]},
-            {id:"tools",label:"Tools",icon:"🤖",items:[
+            {id:"tools",label:"Tools",icon:"ti-sparkles",items:[
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
               {tab:"Files",label:"Inbox",featureKey:"files"},
             ]},
@@ -7076,9 +7078,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             return(
               <div key={cat.id}>
                 <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
-                  <span style={{fontSize:14,width:18,textAlign:"center"}}>{cat.icon}</span>
+                  <i className={`ti ${cat.icon}`} style={{fontSize:16,width:18,textAlign:"center",color:containsActive?T.accent:T.sub}}/>
                   <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>
-                  <span style={{fontSize:9,color:T.muted,transition:"transform 0.15s",display:"inline-block",transform:isExpanded?"rotate(180deg)":"none"}}>▾</span>
+                  <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transition:"transform 0.15s",display:"inline-block",transform:isExpanded?"rotate(180deg)":"none"}}/>
                 </div>
                 {isExpanded&&(
                   <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
@@ -7100,9 +7102,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{
             const active=tab===item.id;
             const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
+            const tiIcon={Settings:"ti-settings",Profile:"ti-user",AdminPanel:"ti-shield-lock",BugLog:"ti-bug"}[item.id]||"ti-circle";
             return(
               <div key={item.id} onClick={()=>setTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
-                <span style={{fontSize:14,width:18,textAlign:"center"}}>{item.icon}</span>
+                <i className={`ti ${tiIcon}`} style={{fontSize:16,width:18,textAlign:"center",color:active?T.accent:T.sub}}/>
                 <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px"}}>{bugCount}</span>}
               </div>
@@ -7124,7 +7127,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <span style={{fontSize:8,color:T.accent}}>▾</span>
           </div>
           <div style={{position:"relative",width:180}}>
-            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}>🔍</span>
+            <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
             <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12}}/>
           </div>
           <div style={{flex:1}}/>
@@ -7132,7 +7135,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             const bugCount=isAdmin?getBugs().filter(b=>!b.resolved).length:0;
             return(
               <div onClick={()=>isAdmin&&setTab("BugLog")} title={isAdmin?"Unresolved bug reports":"No notifications"} style={{position:"relative",background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:isAdmin?"pointer":"default",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                🔔
+                <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
                 {bugCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );
@@ -7142,9 +7145,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {profileMenuOpen&&(<>
               <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
               <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
-                <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}>👤 Profile</div>
-                <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}>⚙️ Settings</div>
-                <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}>↩ Sign out</div>
+                <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-user" style={{fontSize:13,marginRight:6}}/>Profile</div>
+                <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-settings" style={{fontSize:13,marginRight:6}}/>Settings</div>
+                <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}><i className="ti ti-logout" style={{fontSize:13,marginRight:6}}/>Sign out</div>
               </div>
             </>)}
           </div>
@@ -7167,7 +7170,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Accounts"&&(
           <div style={{maxWidth:700}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#FCE7F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#EEF4F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
               <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Accounts</div>
               <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Amounts</div>
             </div>
@@ -7179,7 +7182,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 if(closingBal===0)return null;
                 return(
                   <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0369A1"}}>{a.code} {a.name}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:T.accent}}>{a.code} {a.name}</div>
                     <div style={{fontSize:13,fontWeight:800,color:"#111827"}}>{closingBal>=0?"+":"-"}{fmt(Math.abs(closingBal))}</div>
                   </div>
                 );
@@ -7375,7 +7378,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Accounts"&&(
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#FCE7F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#EEF4F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
               <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase",letterSpacing:0}}>Accounts</div>
               <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase",letterSpacing:0,textAlign:"right"}}>Amounts</div>
             </div>
