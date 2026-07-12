@@ -6751,6 +6751,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // existing app-style layout untouched. One codebase, no separate app build —
   // this is just a width check, re-evaluated on resize.
   const[isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=1024);
+  const[debugWinWidth,setDebugWinWidth]=useState(()=>typeof window!=="undefined"?window.innerWidth:0);
+  useEffect(()=>{
+    const onResize2=()=>setDebugWinWidth(window.innerWidth);
+    window.addEventListener("resize",onResize2);
+    return()=>window.removeEventListener("resize",onResize2);
+  },[]);
   const[expandedCat,setExpandedCat]=useState(null);
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   useEffect(()=>{
@@ -6867,6 +6873,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(isDesktop)return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
+      <div style={{position:"fixed",bottom:10,left:10,zIndex:99999,background:"#000",color:"#fff",fontSize:12,padding:"6px 10px",borderRadius:8,fontFamily:"monospace",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>width: {debugWinWidth}px · isDesktop: YES</div>
       {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
       <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0}}>
         <div style={{padding:"18px 18px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
@@ -7061,6 +7068,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
+      <div style={{position:"fixed",bottom:70,left:10,zIndex:99999,background:"#000",color:"#fff",fontSize:12,padding:"6px 10px",borderRadius:8,fontFamily:"monospace",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>width: {debugWinWidth}px · isDesktop: NO</div>
       {/* Sidebar */}
       {sidebarOpen&&(<>
         <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:200}}/>
