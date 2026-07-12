@@ -3590,7 +3590,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
 
 // Trial balance — every account's opening balance, the period's movement
 // (difference), and the resulting closing balance, in one table.
-function TrialBalanceScreen({accounts,transactions}){
+function TrialBalanceScreen({accounts,transactions,onOpenLedger}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7)); // "YYYY-MM"
   const[fullYear,setFullYear]=useState(false);
   const[fromAcct,setFromAcct]=useState("");
@@ -3657,7 +3657,15 @@ function TrialBalanceScreen({accounts,transactions}){
             <tr key={r.code} style={{borderTop:`1px solid ${T.border}`}}>
               <td style={{padding:"9px 0",color:T.blue,fontWeight:600}}>{r.code} {r.name}</td>
               <td style={{textAlign:"right"}}>{fmt(r.opening)}</td>
-              <td style={{textAlign:"right",color:r.diff?T.blue:T.muted}}>{r.diff?fmt(r.diff):"—"}</td>
+              <td
+                onClick={()=>{
+                  if(!r.diff||!onOpenLedger)return;
+                  const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
+                  onOpenLedger(acct,filterFrom,filterTo);
+                }}
+                title={r.diff?"View ledger for this account and period":undefined}
+                style={{textAlign:"right",color:r.diff?T.blue:T.muted,cursor:r.diff?"pointer":"default",textDecoration:r.diff?"underline":"none"}}
+              >{r.diff?fmt(r.diff):"—"}</td>
               <td style={{textAlign:"right",fontWeight:700}}>{fmt(r.closing)}</td>
             </tr>
           ))}
@@ -3775,6 +3783,155 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           {!shown.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{statusTab==="unmatched"?"No unmatched lines for this account and month. Upload a statement to get started.":"Nothing matched yet."}</td></tr>}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Desktop-native Reskontro (customer/supplier ledger) — matches the flat
+// filter-row + grouped-table layout, instead of just embedding the mobile
+// card UI. Note: "Invoice no." and "Due date" from the reference mockup
+// aren't real fields we track (only bilag + date), so this shows what we
+// actually have — Bilag, Date, Description, Amount — rather than fabricate
+// columns with no underlying data.
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger}){
+  const[type,setType]=useState("supplier"); // "customer" | "supplier"
+  const[search,setSearch]=useState("");
+  const[contactFilter,setContactFilter]=useState("");
+  const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const[showMore,setShowMore]=useState(false);
+  const[showMatched,setShowMatched]=useState(false);
+  const[selected,setSelected]=useState({}); // {contactId: [txnIds]}
+
+  const code=type==="customer"?"1500":"2400";
+  const year=parseInt(viewMonth.slice(0,4));
+  const monthIdx=parseInt(viewMonth.slice(5,7))-1;
+  const periodLabel=new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
+  const stepMonth=(dir)=>{
+    let m=monthIdx+dir,y=year;
+    if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}
+    setViewMonth(`${y}-${String(m+1).padStart(2,"0")}`);
+  };
+
+  const relevantContacts=useMemo(()=>contacts.filter(c=>c.type===type),[contacts,type]);
+  const mv=(t)=>t.debitCode===code?t.amount:-t.amount;
+
+  const groups=useMemo(()=>{
+    return relevantContacts
+      .filter(c=>!contactFilter||c.id===contactFilter)
+      .map(c=>{
+        let txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
+        if(!showMatched)txns=txns.filter(t=>!(t.matchedWith&&t.matchedAccount===code));
+        if(search){
+          const q=search.toLowerCase();
+          txns=txns.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q));
+        }
+        txns=txns.sort((a,b)=>a.date.localeCompare(b.date));
+        const total=txns.reduce((s,t)=>s+mv(t),0);
+        return{contact:c,txns,total};
+      })
+      .filter(g=>g.txns.length>0);
+  },[relevantContacts,contactFilter,transactions,code,showMatched,search]);
+
+  const toggleSel=(cid,tid)=>setSelected(p=>{
+    const cur=p[cid]||[];
+    return{...p,[cid]:cur.includes(tid)?cur.filter(x=>x!==tid):[...cur,tid]};
+  });
+  const doMatch=(cid)=>{
+    const ids=selected[cid]||[];
+    const grpTxns=transactions.filter(t=>ids.includes(t.id));
+    const sum=grpTxns.reduce((s,t)=>s+mv(t),0);
+    if(ids.length<2||Math.abs(sum)>=1)return;
+    matchTxns(ids,Date.now().toString(),code);
+    setSelected(p=>({...p,[cid]:[]}));
+  };
+
+  const getName=acctCode=>((accounts.find(a=>a.code===acctCode))||{name:acctCode}).name;
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:20,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
+          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180}}/>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+            <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
+            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
+            <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
+          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160}}>
+            <option value="">All</option>
+            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
+      </div>
+      {showMore&&(
+        <div style={{marginBottom:10}}>
+          <label style={{fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+            <input type="checkbox" checked={showMatched} onChange={e=>setShowMatched(e.target.checked)}/> Show matched entries too
+          </label>
+        </div>
+      )}
+      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>{groups.length} {groups.length===1?"contact":"contacts"} with entries</p>
+
+      {groups.map(({contact,txns,total})=>{
+        const sel=selected[contact.id]||[];
+        const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
+        return(
+          <div key={contact.id} style={{marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <p style={{fontSize:13,fontWeight:700,color:T.text,margin:0}}>{contact.name} — {showMatched?"all":"open"} entries</p>
+              {sel.length>=2&&(
+                <button onClick={()=>doMatch(contact.id)} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
+              )}
+            </div>
+            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+              <thead><tr style={{color:T.muted,fontSize:11}}>
+                <td style={{padding:"6px 0"}}></td><td>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
+              </tr></thead>
+              <tbody>
+                {txns.map(t=>{
+                  const isMatchedHere=!!t.matchedWith&&t.matchedAccount===code;
+                  return(
+                    <tr key={t.id} style={{borderTop:`1px solid ${T.border}`,background:isMatchedHere?T.greenBg:"transparent"}}>
+                      <td style={{padding:"8px 0"}}>
+                        {isMatchedHere?(
+                          <button onClick={()=>window.confirm("Unmatch this entry?")&&unmatchTxns(t.matchedWith)} title="Matched — click to unmatch" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
+                        ):(
+                          <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
+                        )}
+                      </td>
+                      <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
+                      <td>{t.date}</td>
+                      <td>{t.description}</td>
+                      <td style={{textAlign:"right",fontWeight:600}}>{sign(mv(t))}</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{borderTop:`1px solid ${T.border}`,color:T.sub,fontWeight:700}}>
+                  <td colSpan="4" style={{padding:"8px 0"}}>Total</td>
+                  <td style={{textAlign:"right"}}>{sign(total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+      {!groups.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</div>}
     </div>
   );
 }
@@ -6814,7 +6971,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
-  if(ledgerAcc)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
+  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -6849,11 +7006,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
     return(<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="SinkingFunds"){
+  if(tab==="SinkingFunds"&&!isDesktop){
     if(!feat.sinkingFunds)return(<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>);
     return(<SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Budget"){
+  if(tab==="Budget"&&!isDesktop){
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
     return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
   }
@@ -7033,7 +7190,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -7051,8 +7208,20 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="TrialBalance"&&(
           <div style={{maxWidth:900}}>
-            <TrialBalanceScreen accounts={accounts} transactions={transactions}/>
+            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
           </div>
+        )}
+
+        {tab==="Budget"&&(
+          feat.budget
+            ?<div style={{maxWidth:900}}><BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></div>
+            :<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>
+        )}
+
+        {tab==="SinkingFunds"&&(
+          feat.sinkingFunds
+            ?<div style={{maxWidth:700}}><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></div>
+            :<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {tab==="Reports"&&(
@@ -7063,6 +7232,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Profile"&&<div style={{maxWidth:600}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/></div>}
       </div>
+
+      {ledgerAcc&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:600,display:"flex",justifyContent:"center",alignItems:"flex-start",padding:"24px 20px",overflowY:"auto"}}>
+          <div style={{background:T.bg,borderRadius:14,maxWidth:700,width:"100%",maxHeight:"94vh",overflowY:"auto",boxShadow:"0 12px 40px rgba(0,0,0,0.25)"}}>
+            <LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>
+          </div>
+        </div>
+      )}
     </div>
   );
 
