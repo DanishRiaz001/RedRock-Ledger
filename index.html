@@ -456,7 +456,7 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -533,7 +533,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -542,7 +542,7 @@ function AppShell({user}){
       if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null}]);
     }
   };
 
@@ -625,6 +625,48 @@ function AppShell({user}){
     setInvoices(p=>p.map(i=>i.id===id?{...i,status}:i));
     await sb.from("invoices").update({status}).eq("id",id);
   };
+  // Register a payment against an invoice: posts Dr bank / Cr 1500, matches
+  // the payment with the invoice's AR entry (scoped to 1500), marks it paid.
+  const registerInvoicePayment=async(invoice,bankCode,payDate,amount)=>{
+    if(!canEdit)return;
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+    const contact=contacts.find(c=>c.id===invoice.customerId);
+    const desc=`Payment · Invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
+    if(error){alert("Payment posting failed: "+error.message);return;}
+    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)}]);
+    // Full payment → match against the original AR entry and mark paid.
+    if(invoice.txnId&&Math.abs(amount-invoice.total)<1){
+      await matchTransactions([invoice.txnId,data.id],Date.now().toString(),"1500");
+      await updateInvoiceStatus(invoice.id,"paid");
+    }
+  };
+  // Credit note: a negative mirror of the invoice — reverses AR and the sale,
+  // matches both AR entries, marks the original credited. The original is
+  // never deleted; proper accounting keeps both documents.
+  const createCreditNote=async(invoice)=>{
+    if(!canEdit)return;
+    const cnNo=invoiceNoRef.current;
+    invoiceNoRef.current=cnNo+1;
+    setNextInvoiceNo(invoiceNoRef.current);
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+    const today=new Date().toISOString().slice(0,10);
+    const contact=contacts.find(c=>c.id===invoice.customerId);
+    const desc=`Credit note ${cnNo} for invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
+    if(txnErr){alert("Credit note posting failed: "+txnErr.message);return;}
+    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,contactId:invoice.customerId,invoiceNo:String(cnNo)}]);
+    const row={user_id:user.id,invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
+    const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
+    if(invErr){alert("Credit note entry posted but record failed: "+invErr.message);return;}
+    setInvoices(p=>[{id:invData.id,invoiceNo:cnNo,customerId:invoice.customerId,date:today,dueDate:null,periodFrom:invoice.periodFrom,periodTo:invoice.periodTo,saleAccount:invoice.saleAccount,lines:row.lines,vatPct:invoice.vatPct,subtotal:-invoice.subtotal,vatAmount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txnId:txnData.id},...p]);
+    if(invoice.txnId)await matchTransactions([invoice.txnId,txnData.id],Date.now().toString(),"1500");
+    await updateInvoiceStatus(invoice.id,"credited");
+  };
   const deleteInvoice=async(id)=>{
     if(!canEdit)return;
     const inv=invoices.find(i=>i.id===id);
@@ -642,7 +684,7 @@ function AppShell({user}){
     checkTxnLogic(u,"saveEdit");
     setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
     if(!canEdit)return;
-    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null}).eq("id",u.id);
+    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null}).eq("id",u.id);
     if(error)logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
   };
 
@@ -866,7 +908,7 @@ function AppShell({user}){
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
-        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}
+        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -1437,7 +1479,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
         <div style={{background:isReversal?T.redLight:T.blueBg,borderRadius:14,padding:"16px 18px",marginBottom:12,textAlign:"center"}}>
           <div style={{fontSize:11,color:T.sub,fontWeight:600,marginBottom:4}}>AMOUNT</div>
           <div style={{fontSize:28,fontWeight:900,color:isReversal?T.red:T.text}}>{fmt(txn.amount)}</div>
-          <div style={{fontSize:11,color:T.sub,marginTop:4}}>{txn.date}</div>
+          <div style={{fontSize:11,color:T.sub,marginTop:4}}>{txn.date}{txn.invoiceNo?` · Invoice ${txn.invoiceNo}`:""}{txn.dueDate?` · Due ${txn.dueDate}`:""}</div>
         </div>
         {isReversal&&<div style={{background:T.redLight,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:T.red,fontWeight:600,textAlign:"center"}}>🔒 Reversal entries cannot be edited</div>}
         {contact&&(
@@ -3983,11 +4025,12 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             </div>
             <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11}}>
-                <td style={{padding:"6px 0"}}></td><td>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
+                <td style={{padding:"6px 0"}}></td><td>Bilag</td><td>Invoice no.</td><td>Date</td><td>Due date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
               </tr></thead>
               <tbody>
                 {txns.map(t=>{
                   const isMatchedHere=!!t.matchedWith&&t.matchedAccount===code;
+                  const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
                   return(
                     <tr key={t.id} style={{borderTop:`1px solid ${T.border}`,background:isMatchedHere?T.greenBg:"transparent"}}>
                       <td style={{padding:"8px 0"}}>
@@ -3998,14 +4041,16 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                         )}
                       </td>
                       <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
+                      <td style={{color:T.sub}}>{t.invoiceNo||"—"}</td>
                       <td>{t.date}</td>
+                      <td style={{color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
                       <td>{t.description}</td>
                       <td style={{textAlign:"right",fontWeight:600}}>{sign(mv(t))}</td>
                     </tr>
                   );
                 })}
                 <tr style={{borderTop:`1px solid ${T.border}`,color:T.sub,fontWeight:700}}>
-                  <td colSpan="4" style={{padding:"8px 0"}}>Total</td>
+                  <td colSpan="6" style={{padding:"8px 0"}}>Total</td>
                   <td style={{textAlign:"right"}}>{sign(total)}</td>
                 </tr>
               </tbody>
@@ -4213,12 +4258,29 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
 
 // Invoice overview — Tripletex-style aging donut (overdue >30 / 1-30 / not
 // yet due) plus outstanding total and the invoice list.
-function InvoiceOverviewScreen({invoices,contacts,companyProfile,updateInvoiceStatus,deleteInvoice,onNewInvoice}){
+function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,onNewInvoice}){
   const getContactName=id=>{const c=contacts.find(x=>x.id===id);return c?c.name:"Unknown";};
   const today=new Date().toISOString().slice(0,10);
   const daysOverdue=(inv)=>inv.dueDate?Math.floor((new Date(today)-new Date(inv.dueDate))/86400000):0;
 
-  const open=invoices.filter(i=>i.status!=="paid");
+  // Payment registration modal state
+  const bankAccounts=accounts?accounts.filter(a=>getSK(a.code)==="1900"):[];
+  const[payingInv,setPayingInv]=useState(null);
+  const[payBank,setPayBank]=useState("");
+  const[payDate,setPayDate]=useState(today);
+  const[payAmount,setPayAmount]=useState("");
+  const[payBusy,setPayBusy]=useState(false);
+  const openPayModal=(inv)=>{setPayingInv(inv);setPayBank(bankAccounts[0]?bankAccounts[0].code:"");setPayDate(today);setPayAmount(String(inv.total));};
+  const submitPayment=async()=>{
+    if(!payingInv||!payBank||!parseFloat(payAmount)||payBusy)return;
+    setPayBusy(true);
+    await registerInvoicePayment(payingInv,payBank,payDate,parseFloat(payAmount));
+    setPayBusy(false);
+    setPayingInv(null);
+  };
+
+  const isCN=(inv)=>inv.status==="credit_note";
+  const open=invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&!isCN(i));
   const over30=open.filter(i=>daysOverdue(i)>30).reduce((s,i)=>s+i.total,0);
   const over1to30=open.filter(i=>{const d=daysOverdue(i);return d>0&&d<=30;}).reduce((s,i)=>s+i.total,0);
   const notDue=open.filter(i=>daysOverdue(i)<=0).reduce((s,i)=>s+i.total,0);
@@ -4231,6 +4293,41 @@ function InvoiceOverviewScreen({invoices,contacts,companyProfile,updateInvoiceSt
 
   return(
     <div>
+      {payingInv&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:14,padding:22,width:340,boxShadow:"0 12px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Register payment</div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:14}}>Invoice #{payingInv.invoiceNo} · {getContactName(payingInv.customerId)} · total {fmt(payingInv.total)}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Received into</div>
+                <select value={payBank} onChange={e=>setPayBank(e.target.value)} style={{...inp}}>
+                  {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  {!bankAccounts.length&&<option value="">No bank accounts</option>}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+                  <input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+                  <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} style={{...inp}}/>
+                </div>
+              </div>
+              {parseFloat(payAmount)>0&&Math.abs(parseFloat(payAmount)-payingInv.total)>=1&&(
+                <div style={{fontSize:11,color:T.sub,background:T.bg,borderRadius:8,padding:"8px 10px"}}>Partial payment — the entry will post, but the invoice stays open until you match the remainder manually in Reskontro.</div>
+              )}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={submitPayment} disabled={payBusy} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{payBusy?"Posting…":"Register payment"}</button>
+                <button onClick={()=>setPayingInv(null)} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Invoice overview</h1>
         <button onClick={onNewInvoice} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New invoice</button>
@@ -4257,23 +4354,31 @@ function InvoiceOverviewScreen({invoices,contacts,companyProfile,updateInvoiceSt
         </tr></thead>
         <tbody>
           {[...invoices].sort((a,b)=>b.invoiceNo-a.invoiceNo).map(inv=>{
-            const overdue=inv.status!=="paid"&&daysOverdue(inv)>0;
+            const cn=isCN(inv);
+            const overdue=!cn&&inv.status!=="paid"&&inv.status!=="credited"&&daysOverdue(inv)>0;
+            const canPay=!cn&&inv.status!=="paid"&&inv.status!=="credited";
             return(
-              <tr key={inv.id} style={{borderTop:`1px solid ${T.border}`}}>
-                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>#{inv.invoiceNo}</td>
+              <tr key={inv.id} style={{borderTop:`1px solid ${T.border}`,opacity:inv.status==="credited"?0.55:1}}>
+                <td style={{padding:"9px 0",color:cn?T.red:T.accent,fontWeight:700}}>{cn?"CN":"#"}{inv.invoiceNo}</td>
                 <td>{getContactName(inv.customerId)}</td>
                 <td style={{color:T.sub}}>{inv.date}</td>
                 <td style={{color:overdue?T.red:T.sub}}>{inv.dueDate||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700}}>{fmt(inv.total)}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:cn?T.red:T.text}}>{cn?"−":""}{fmt(Math.abs(inv.total))}</td>
                 <td>
-                  <select value={inv.status} onChange={e=>updateInvoiceStatus(inv.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}}>
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="paid">Paid</option>
-                  </select>
+                  {cn?<span style={{fontSize:11,color:T.red,fontWeight:700}}>Credit note</span>
+                    :inv.status==="credited"?<span style={{fontSize:11,color:T.muted,fontWeight:700}}>Credited</span>
+                    :(
+                    <select value={inv.status} onChange={e=>updateInvoiceStatus(inv.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}}>
+                      <option value="draft">Draft</option>
+                      <option value="sent">Sent</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  )}
                 </td>
-                <td style={{textAlign:"right"}}>
-                  <button onClick={()=>window.confirm("Delete this invoice? This also removes its ledger entry.")&&deleteInvoice(inv.id)} title="Delete" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
+                <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                  {canPay&&<button onClick={()=>openPayModal(inv)} title="Register payment" style={{background:T.accentLight,border:"none",borderRadius:6,color:T.accent,cursor:"pointer",fontSize:11,fontWeight:700,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}>Pay</button>}
+                  {canPay&&<button onClick={()=>window.confirm(`Create a credit note reversing invoice #${inv.invoiceNo}? The original stays on record.`)&&createCreditNote(inv)} title="Credit note" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,cursor:"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}>CN</button>}
+                  <button onClick={()=>window.confirm("Delete this invoice? This also removes its ledger entry. For posted invoices, prefer a credit note instead.")&&deleteInvoice(inv.id)} title="Delete" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
                 </td>
               </tr>
             );
@@ -4429,6 +4534,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const[entryMode,setEntryMode]=useState("receipt"); // "receipt" | "supplier" | "customer"
   const[invContactId,setInvContactId]=useState("");
   const[invoiceNo,setInvoiceNo]=useState("");
+  const[invDueDate,setInvDueDate]=useState("");
   const[invAmount,setInvAmount]=useState("");
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
@@ -4440,7 +4546,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const[invPaymentBank,setInvPaymentBank]=useState("");
   const[invPaymentAmount,setInvPaymentAmount]=useState("");
   const[invPaymentDate,setInvPaymentDate]=useState(new Date().toISOString().split("T")[0]);
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment(false);setInvPaymentBank("");setInvPaymentAmount("");};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment(false);setInvPaymentBank("");setInvPaymentAmount("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -4568,6 +4674,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
         amount:absAmt,
         contactId:invContactId,
+        invoiceNo:invoiceNo||null,
+        dueDate:invDueDate||null,
         groupRef,
         attachmentIds:idx===0?invAttachmentIds:undefined,
       });
@@ -4611,6 +4719,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
+        <div style={{display:"flex",gap:8}}>
+          <input placeholder="Invoice no. (optional)" value={form.invoiceNo||""} onChange={e=>setForm(p=>({...p,invoiceNo:e.target.value}))} style={{...inpSm,flex:1}}/>
+          <input type="date" title="Due date (optional)" value={form.dueDate||""} onChange={e=>setForm(p=>({...p,dueDate:e.target.value}))} style={{...inpSm,flex:1}}/>
+        </div>
         <div>
           <input
             placeholder="Amount or expression (e.g. 500+200 or 3*150)"
@@ -4842,10 +4954,14 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
             </div>
 
             {/* Invoice No + Amount */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
                 <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={inpSm}/>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
+                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={inpSm}/>
               </div>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount {invAmount&&parseFloat(invAmount)<0?"(kreditnote)":""}</div>
@@ -7247,7 +7363,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,companyProfile,saveCompanyProfile,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,nextInvoiceNo,companyProfile,saveCompanyProfile,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -7574,7 +7690,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="InvoiceOverview"&&(
           <div style={{maxWidth:900}}>
-            <InvoiceOverviewScreen invoices={invoices} contacts={contacts} companyProfile={companyProfile} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} onNewInvoice={()=>setTab("InvoiceNew")}/>
+            <InvoiceOverviewScreen invoices={invoices} contacts={contacts} accounts={accounts} companyProfile={companyProfile} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} onNewInvoice={()=>setTab("InvoiceNew")}/>
           </div>
         )}
 
