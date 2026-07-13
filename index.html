@@ -7963,30 +7963,39 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
-          <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent",marginBottom:6}}>
-            <i className="ti ti-layout-dashboard" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Dashboard"?T.accent:T.sub}}/>
-            <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Dashboard</span>
+          <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
+            <i className="ti ti-home" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Dashboard"?T.accent:T.sub}}/>
+            <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
+          {feat.bank&&(
+            <div onClick={()=>setTab("Bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Bank"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Bank"?T.accentLight:"transparent"}}>
+              <i className="ti ti-building-bank" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Bank"?T.accent:T.sub}}/>
+              <span style={{fontSize:12,fontWeight:tab==="Bank"?700:400,color:tab==="Bank"?T.accent:T.sub}}>Bank</span>
+            </div>
+          )}
+          <div onClick={()=>setTab("Contacts")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Contacts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Contacts"?T.accentLight:"transparent"}}>
+            <i className="ti ti-users" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Contacts"?T.accent:T.sub}}/>
+            <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
+          </div>
+          {feat.files&&(
+            <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
+              <i className="ti ti-folder" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Files"?T.accent:T.sub}}/>
+              <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Documents</span>
+            </div>
+          )}
 
           {[
-            {id:"bookkeeping",label:"Bookkeeping",icon:"ti-pencil-plus",items:[
+            {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
               {tab:"NewVoucher",label:"New voucher"},
               {tab:"Transactions",label:"New entry"},
-              {tab:"Entries",label:"All entries"},
+              {tab:"Entries",label:"Voucher overview"},
+              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
             ]},
-            {id:"invoicing",label:"Invoicing",icon:"ti-file-invoice",items:[
-              {tab:"InvoiceNew",label:"New invoice"},
-              {tab:"InvoiceOverview",label:"Invoice overview"},
-            ]},
-            {id:"customers",label:"Customers",icon:"ti-users",items:[
-              {tab:"Contacts",label:"Customers and suppliers"},
-            ]},
-            {id:"accounts",label:"Accounts",icon:"ti-book",items:[
-              {tab:"Accounts",label:"Ledger"},
+            {id:"accounting",label:"Accounting",icon:"ti-book",items:[
+              {tab:"Accounts",label:"General ledger"},
               {tab:"TrialBalance",label:"Trial balance"},
-              {tab:"Reskontro",label:"Reskontro",featureKey:"reskontro"},
-              {tab:"Bank",label:"Bank",featureKey:"bank"},
+              {tab:"Reskontro",label:"Customer and supplier ledger",featureKey:"reskontro"},
             ]},
             {id:"reports",label:"Reports",icon:"ti-report-analytics",items:[
               {tab:"Resultat",label:"Income statement"},
@@ -7996,9 +8005,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
             ]},
-            {id:"tools",label:"Tools",icon:"ti-sparkles",items:[
-              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
-              {tab:"Files",label:"Inbox",featureKey:"files"},
+            {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
+              {tab:"InvoiceNew",label:"New invoice"},
+              {tab:"InvoiceOverview",label:"Invoice overview"},
             ]},
           ].map(cat=>{
             const visibleItems=cat.items.filter(it=>!it.featureKey||feat[it.featureKey]);
