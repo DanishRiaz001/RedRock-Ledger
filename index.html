@@ -2633,7 +2633,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,onBack}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,onBack,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -3079,7 +3079,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         {/* Company info — used as the issuer header on invoices */}
         <div style={{background:T.card,borderRadius:14,padding:16,marginBottom:16,border:`1px solid ${T.border}`}}>
           <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Company info (for invoices)</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}:{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
             <input placeholder="Company name" value={companyForm.companyName} onChange={e=>setCompanyForm(p=>({...p,companyName:e.target.value}))} style={inp}/>
             <input placeholder="Address" value={companyForm.address} onChange={e=>setCompanyForm(p=>({...p,address:e.target.value}))} style={inp}/>
             <input placeholder="Mobile" value={companyForm.mobile} onChange={e=>setCompanyForm(p=>({...p,mobile:e.target.value}))} style={inp}/>
@@ -3087,11 +3087,12 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             <input placeholder="Org. number" value={companyForm.orgNumber} onChange={e=>setCompanyForm(p=>({...p,orgNumber:e.target.value}))} style={inp}/>
             <input placeholder="Bank account (for invoices)" value={companyForm.bankAccount} onChange={e=>setCompanyForm(p=>({...p,bankAccount:e.target.value}))} style={inp}/>
             <input type="number" placeholder="Default VAT %" value={companyForm.vatPct} onChange={e=>setCompanyForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>
-            <button onClick={saveCompany} style={{background:companySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{companySaved?"✓ Saved":"Save company info"}</button>
           </div>
+          <button onClick={saveCompany} style={{background:companySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:isDesktop?"auto":"100%",minWidth:isDesktop?180:"auto"}}>{companySaved?"✓ Saved":"Save company info"}</button>
         </div>
 
-        {/* All settings as navigation cards */}
+        {/* All settings as navigation cards — stacked on mobile, 2-column grid on desktop */}
+        <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
         {[
           {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
           {icon:"👥",label:"Manage Contacts",sub:"Customers & suppliers",action:()=>setScreen("contacts"),bg:T.redLight,color:T.red},
@@ -3106,6 +3107,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             <span style={{fontSize:18,color:T.muted}}>›</span>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
@@ -5535,7 +5537,7 @@ const INIT_SF=[
   {id:"SF003",name:"Vacation",goal:150000,saved:62000,color:"#7C3AED",icon:"✈️",months:6},
 ];
 
-function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[],filterFrom,filterTo}){
+function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[],filterFrom,filterTo,isDesktop=false}){
   // No local funds state — always use parent sinkingFunds directly to avoid sync bugs
   const funds=sinkingFunds||[];
   const[showForm,setShowForm]=useState(false);
@@ -5707,8 +5709,8 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
           </div>
         )}
 
-        {/* Fund cards — 2 column grid like uploaded design */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {/* Fund cards — 2 column grid on mobile, 3 on desktop */}
+        <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 1fr 1fr":"1fr 1fr",gap:10}}>
           {activeFunds.map(f=>{
             const pct=Math.min(Math.round(((f.saved||0)/(f.goal||1))*100),100);
             const remaining=Math.max(0,f.goal-(f.saved||0));
@@ -6414,7 +6416,7 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 }
 
 // ─── Budget Module ────────────────────────────────────────────────────────────
-function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplusSetting,sweepBudgetSurplus,sinkingFunds=[],filterFrom,filterTo,onBack}){
+function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplusSetting,sweepBudgetSurplus,sinkingFunds=[],filterFrom,filterTo,onBack,isDesktop=false}){
   const[editModal,setEditModal]=useState(null);
   const[editVal,setEditVal]=useState("");
   const[surplusAction,setSurplusAction]=useState("rollover");
@@ -6656,8 +6658,8 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
           </div>
         </div>
 
-        {/* 2-column account cards — shows all expense accounts with an effective budget */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {/* Account cards — 2 column grid on mobile, 3 on desktop — shows all expense accounts with an effective budget */}
+        <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 1fr 1fr":"1fr 1fr",gap:10}}>
           {expAccounts.filter(a=>getEffective(a.code)>0).map(a=>{
             const budget=getEffective(a.code);
             const rollover=getRollover(a.code);
@@ -8167,8 +8169,24 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <div style={{maxWidth:600}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
             <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
+              <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {[...transactions].sort((a,b)=>b.bilag-a.bilag).slice(0,8).map(t=>(
+                  <div key={t.id} style={{fontSize:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span style={{color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</span>
+                      <span style={{fontWeight:700}}>{fmt(t.amount)}</span>
+                    </div>
+                    <div style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                    <div style={{color:T.muted,fontSize:10}}>{t.date}</div>
+                  </div>
+                ))}
+                {!transactions.length&&<div style={{fontSize:12,color:T.muted}}>Nothing recorded yet.</div>}
+              </div>
+            </div>
           </div>
         )}
 
@@ -8251,13 +8269,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Budget"&&(
           feat.budget
-            ?<div style={{maxWidth:900}}><BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></div>
+            ?<div style={{maxWidth:1000}}><BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>
             :<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {tab==="SinkingFunds"&&(
           feat.sinkingFunds
-            ?<div style={{maxWidth:700}}><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></div>
+            ?<div style={{maxWidth:900}}><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>
             :<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -8267,7 +8285,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Settings"&&<div style={{maxWidth:700}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")}/></div>}
+        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:600}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/></div>}
       </div>
