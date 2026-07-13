@@ -457,7 +457,7 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -591,6 +591,11 @@ function AppShell({user}){
     if(!canEdit)return;
     await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",user.id);
     setBankStatementLines(p=>p.filter(l=>l.id!==id));
+  };
+  const toggleReconciled=async(txnId,value)=>{
+    setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:value}:t));
+    if(!canEdit)return;
+    await sb.from("transactions").update({reconciled:value}).eq("id",txnId);
   };
 
   // Invoices — creating one posts a real transaction (Dr Receivable / Cr sale
@@ -909,7 +914,7 @@ function AppShell({user}){
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
-        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}
+        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -3975,25 +3980,31 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 // Upload a CSV/Excel statement (Date, Description, Amount columns) against a
 // bank account; each unposted line can be "Posted" by choosing which other
 // account it offsets, which creates a real transaction and marks it matched.
-function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine}){
+function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,toggleReconciled}){
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
-  const[statusTab,setStatusTab]=useState("unmatched");
   const[selectedLineId,setSelectedLineId]=useState(null);
   const[offsetCode,setOffsetCode]=useState("");
   const[uploading,setUploading]=useState(false);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
-  const linesForAccount=useMemo(()=>bankStatementLines.filter(l=>l.accountCode===selectedAccount&&l.date.slice(0,7)===month),[bankStatementLines,selectedAccount,month]);
-  const shown=linesForAccount.filter(l=>statusTab==="matched"?l.posted:!l.posted).sort((a,b)=>a.date.localeCompare(b.date));
-  const selectedLine=shown.find(l=>l.id===selectedLineId)||null;
-
+  // Left column: what's actually in the ledger for this account and month.
+  const ledgerEntries=useMemo(()=>transactions.filter(t=>(t.debitCode===selectedAccount||t.creditCode===selectedAccount)&&t.date.slice(0,7)===month).sort((a,b)=>a.date.localeCompare(b.date)),[transactions,selectedAccount,month]);
+  const mv=(t)=>t.debitCode===selectedAccount?t.amount:-t.amount;
   const enteredBalance=useMemo(()=>{
     const monthEnd=new Date(month+"-01");monthEnd.setMonth(monthEnd.getMonth()+1);monthEnd.setDate(0);
     const asOf=monthEnd.toISOString().slice(0,10);
     return transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===selectedAccount)return s+t.amount;if(t.creditCode===selectedAccount)return s-t.amount;return s;},0);
   },[transactions,selectedAccount,month]);
+  const reconciledCount=ledgerEntries.filter(t=>t.reconciled).length;
+
+  // Right column: the uploaded statement lines still needing to be posted.
+  const linesForAccount=useMemo(()=>bankStatementLines.filter(l=>l.accountCode===selectedAccount&&l.date.slice(0,7)===month),[bankStatementLines,selectedAccount,month]);
+  const unmatchedLines=linesForAccount.filter(l=>!l.posted).sort((a,b)=>a.date.localeCompare(b.date));
+  const postedLines=linesForAccount.filter(l=>l.posted);
+  const selectedLine=unmatchedLines.find(l=>l.id===selectedLineId)||null;
+  const statementBalance=linesForAccount.reduce((s,l)=>s+l.amount,0);
 
   const offsetOptions=accounts.filter(a=>a.code!==selectedAccount);
 
@@ -4011,14 +4022,14 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
         <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
           {uploading?"Uploading…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
           <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
         </label>
       </div>
-      <p style={{fontSize:11,color:T.muted,marginTop:-10,marginBottom:16}}>Expects a spreadsheet with Date, Description, Amount columns (in that order). No live bank connection — upload a statement export whenever you want to reconcile.</p>
+      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Expects a spreadsheet with Date, Description, Amount columns (in that order). No live bank connection — upload a statement export whenever you want to reconcile.</p>
 
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);}} style={{...inp,width:220}}>
@@ -4026,58 +4037,80 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           {!bankAccounts.length&&<option value="">No bank accounts yet</option>}
         </select>
         <input type="month" value={month} onChange={e=>{setMonth(e.target.value);setSelectedLineId(null);}} style={{...inp,width:150}}/>
-        <div style={{flex:1}}/>
-        <button onClick={()=>{setStatusTab("unmatched");setSelectedLineId(null);}} style={{background:statusTab==="unmatched"?T.accent:"none",color:statusTab==="unmatched"?"#fff":T.sub,border:`1px solid ${statusTab==="unmatched"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Unmatched</button>
-        <button onClick={()=>{setStatusTab("matched");setSelectedLineId(null);}} style={{background:statusTab==="matched"?T.accent:"none",color:statusTab==="matched"?"#fff":T.sub,border:`1px solid ${statusTab==="matched"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Matched</button>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Left: Entered in ledger */}
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
-          <div style={{fontSize:12,color:T.sub}}>Entered in ledger (as of month end)</div>
-          <div style={{fontSize:20,fontWeight:800,color:T.text,marginTop:4}}>{fmt(enteredBalance)}</div>
-        </div>
-        <div style={{background:selectedLine?T.accentLight:"#fff",border:`1px solid ${selectedLine?T.accent:T.border}`,borderRadius:12,padding:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontSize:12,color:selectedLine?T.accent:T.sub}}>{selectedLine?"Selected":"Select a line below"}</div>
-            <div style={{fontSize:20,fontWeight:800,color:selectedLine?T.accent:T.muted,marginTop:4}}>{selectedLine?fmt(selectedLine.amount):"—"}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Entered in ledger</div>
+            <div style={{fontSize:11,color:T.muted}}>{reconciledCount}/{ledgerEntries.length} reconciled</div>
           </div>
-          {selectedLine&&statusTab==="unmatched"&&(
-            <button onClick={doPost} disabled={!offsetCode} style={{background:offsetCode?T.accent:T.border,color:offsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:offsetCode?"pointer":"default",fontFamily:"inherit"}}>Post</button>
+          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:12}}>{fmt(enteredBalance)}</div>
+          <div style={{maxHeight:420,overflowY:"auto"}}>
+            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+              <thead><tr style={{color:T.muted,fontSize:10}}>
+                <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
+              </tr></thead>
+              <tbody>
+                {ledgerEntries.map(t=>(
+                  <tr key={t.id} style={{borderTop:`1px solid ${T.border}`,background:t.reconciled?T.greenBg:"transparent"}}>
+                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={!!t.reconciled} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
+                    <td style={{color:T.sub}}>{t.date}</td>
+                    <td style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                    <td style={{textAlign:"right",fontWeight:600}}>{sign(mv(t))}</td>
+                  </tr>
+                ))}
+                {!ledgerEntries.length&&<tr><td colSpan="4" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No ledger entries this month.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right: From bank statement */}
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>From bank statement</div>
+            <div style={{fontSize:11,color:T.muted}}>{postedLines.length} posted</div>
+          </div>
+          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:12}}>{fmt(statementBalance)}</div>
+
+          {selectedLine&&(
+            <div style={{background:T.accentLight,borderRadius:10,padding:12,marginBottom:12}}>
+              <div style={{fontSize:11,color:T.accent,fontWeight:700,marginBottom:8}}>Post {fmt(selectedLine.amount)} against:</div>
+              <div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:160,overflowY:"auto",marginBottom:8}}>
+                {offsetOptions.map(a=>(
+                  <div key={a.code} onClick={()=>setOffsetCode(a.code)} style={{display:"flex",justifyContent:"space-between",padding:"6px 8px",borderRadius:6,cursor:"pointer",background:offsetCode===a.code?"#fff":"transparent"}}>
+                    <span style={{fontSize:12,color:offsetCode===a.code?T.accent:T.sub,fontWeight:offsetCode===a.code?700:400}}>{a.code} {a.name}</span>
+                    {offsetCode===a.code&&<span style={{color:T.accent}}>✓</span>}
+                  </div>
+                ))}
+              </div>
+              <button onClick={doPost} disabled={!offsetCode} style={{width:"100%",background:offsetCode?T.accent:T.border,color:offsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"8px",fontSize:12,fontWeight:700,cursor:offsetCode?"pointer":"default",fontFamily:"inherit"}}>Post</button>
+            </div>
           )}
+
+          <div style={{maxHeight:selectedLine?260:420,overflowY:"auto"}}>
+            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+              <thead><tr style={{color:T.muted,fontSize:10}}>
+                <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td>
+              </tr></thead>
+              <tbody>
+                {unmatchedLines.map(l=>(
+                  <tr key={l.id} style={{borderTop:`1px solid ${T.border}`,background:selectedLineId===l.id?T.accentLight:"transparent"}}>
+                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineId===l.id} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");}}/></td>
+                    <td style={{color:T.sub}}>{l.date}</td>
+                    <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.description}</td>
+                    <td style={{textAlign:"right",fontWeight:600}}>{fmt(l.amount)}</td>
+                    <td style={{textAlign:"right"}}><button onClick={()=>deleteBankStatementLine(l.id)} title="Delete line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:11}}>✕</button></td>
+                  </tr>
+                ))}
+                {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-
-      {selectedLine&&statusTab==="unmatched"&&(
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:10}}>Choose account to post against</div>
-          <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:220,overflowY:"auto"}}>
-            {offsetOptions.map(a=>(
-              <div key={a.code} onClick={()=>setOffsetCode(a.code)} style={{display:"flex",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,cursor:"pointer",background:offsetCode===a.code?T.accentLight:"transparent"}}>
-                <span style={{fontSize:13,color:offsetCode===a.code?T.accent:T.sub,fontWeight:offsetCode===a.code?700:400}}>{a.code} {a.name}</span>
-                {offsetCode===a.code&&<span style={{color:T.accent}}>✓</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td>
-        </tr></thead>
-        <tbody>
-          {shown.map(l=>(
-            <tr key={l.id} style={{borderTop:`1px solid ${T.border}`,background:selectedLineId===l.id?T.accentLight:"transparent"}}>
-              <td style={{padding:"9px 0"}}>{statusTab==="unmatched"&&<input type="checkbox" checked={selectedLineId===l.id} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");}}/>}</td>
-              <td>{l.date}</td>
-              <td>{l.description}</td>
-              <td style={{textAlign:"right",fontWeight:700}}>{fmt(l.amount)}</td>
-              <td style={{textAlign:"right"}}>{statusTab==="unmatched"&&<button onClick={()=>deleteBankStatementLine(l.id)} title="Delete line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:12}}>✕</button>}</td>
-            </tr>
-          ))}
-          {!shown.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{statusTab==="unmatched"?"No unmatched lines for this account and month. Upload a statement to get started.":"Nothing matched yet."}</td></tr>}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -4230,6 +4263,233 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         );
       })}
       {!groups.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</div>}
+    </div>
+  );
+}
+
+// Top-level Customers register — Tripletex-style contact master data screen,
+// separate from Reskontro (which is about open items, not contact records).
+function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskontro}){
+  const[type,setType]=useState("customer");
+  const[search,setSearch]=useState("");
+  const[editingId,setEditingId]=useState(null);
+  const[showNew,setShowNew]=useState(false);
+  const[form,setForm]=useState({name:"",email:"",phone:"",address:"",accountNo:""});
+
+  const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())));
+  const code=type==="customer"?"1500":"2400";
+  const getBalance=cid=>transactions.filter(t=>t.contactId===cid).reduce((s,t)=>t.debitCode===code?s+t.amount:t.creditCode===code?s-t.amount:s,0);
+
+  const nextId=()=>{
+    const prefix=type==="customer"?"C":"S";
+    const nums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
+    return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
+  };
+
+  const startEdit=(c)=>{setEditingId(c.id);setForm({name:c.name||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.accountNo||""});setShowNew(false);};
+  const startNew=()=>{setEditingId(null);setForm({name:"",email:"",phone:"",address:"",accountNo:""});setShowNew(true);};
+  const save=()=>{
+    if(!form.name.trim())return;
+    if(editingId){
+      setContacts(p=>p.map(c=>c.id===editingId?{...c,...form}:c));
+      setEditingId(null);
+    }else{
+      setContacts(p=>[...p,{id:nextId(),type,...form}]);
+      setShowNew(false);
+    }
+  };
+  const cancel=()=>{setEditingId(null);setShowNew(false);};
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Customers and suppliers</h1>
+        <button onClick={startNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New {type==="customer"?"customer":"supplier"}</button>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+        <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+        <div style={{flex:1}}/>
+        <input placeholder="Search name or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
+      </div>
+
+      {(showNew||editingId)&&(
+        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>{editingId?"Edit contact":`New ${type}`}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <input placeholder="Name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
+            <input placeholder="Email" type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} style={inp}/>
+            <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
+            <input placeholder="Account no. / IBAN (optional)" value={form.accountNo} onChange={e=>setForm(p=>({...p,accountNo:e.target.value}))} style={inp}/>
+          </div>
+          <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={{...inp,marginBottom:10}}/>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={save} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+            <button onClick={cancel} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}>ID</td><td>Name</td><td>Email</td><td>Phone</td><td style={{textAlign:"right"}}>Balance</td><td></td>
+        </tr></thead>
+        <tbody>
+          {list.map(c=>{
+            const bal=getBalance(c.id);
+            return(
+              <tr key={c.id} style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>{c.id}</td>
+                <td onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:600}}>{c.name}</td>
+                <td style={{color:T.sub}}>{c.email||"—"}</td>
+                <td style={{color:T.sub}}>{c.phone||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:bal>=0?T.green:T.red}}>{sign(bal)}</td>
+                <td style={{textAlign:"right"}}><button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✏️</button></td>
+              </tr>
+            );
+          })}
+          {!list.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {type==="customer"?"customers":"suppliers"} yet.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// New voucher — Tripletex-style registration screen. Pick a voucher type
+// (supplier invoice or receipt), fill it in on the left, attach or pick a
+// document from the Inbox and preview it on the right, then post.
+function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTransaction,onDone}){
+  const[voucherType,setVoucherType]=useState("supplier"); // "supplier" | "receipt"
+  const suppliers=contacts.filter(c=>c.type==="supplier");
+  const expenseAccounts=accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+  const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
+  const today=new Date().toISOString().slice(0,10);
+
+  const[supplierId,setSupplierId]=useState(suppliers[0]?suppliers[0].id:"");
+  const[invoiceNo,setInvoiceNo]=useState("");
+  const[date,setDate]=useState(today);
+  const[dueDate,setDueDate]=useState(today);
+  const[payAccount,setPayAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
+  const[expenseAccount,setExpenseAccount]=useState(expenseAccounts[0]?expenseAccounts[0].code:"");
+  const[amount,setAmount]=useState("");
+  const[description,setDescription]=useState("");
+  const[attachedFileId,setAttachedFileId]=useState(null);
+  const[uploading,setUploading]=useState(false);
+  const[saving,setSaving]=useState(false);
+
+  const attachedFile=inboxFiles.find(f=>f.id===attachedFileId);
+  const valid=parseFloat(amount)>0&&expenseAccount&&(voucherType==="receipt"?payAccount:supplierId);
+
+  const handleUpload=async(file)=>{
+    setUploading(true);
+    const newFile=await uploadInboxFile(file);
+    if(newFile)setAttachedFileId(newFile.id);
+    setUploading(false);
+  };
+
+  const handlePost=async()=>{
+    if(!valid||saving)return;
+    setSaving(true);
+    const supplier=contacts.find(c=>c.id===supplierId);
+    const desc=description||(voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${invoiceNo?" "+invoiceNo:""}`:"Receipt");
+    const form=voucherType==="supplier"
+      ?{date,dueDate,invoiceNo,debitCode:expenseAccount,creditCode:"2400",description:desc,amount:parseFloat(amount),contactId:supplierId,attachmentId:attachedFileId||undefined}
+      :{date,debitCode:expenseAccount,creditCode:payAccount,description:desc,amount:parseFloat(amount),attachmentId:attachedFileId||undefined};
+    await addTransaction(form);
+    setSaving(false);
+    if(onDone)onDone();
+  };
+
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:24,alignItems:"start"}}>
+      <div>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>New voucher</h1>
+        <div style={{display:"flex",gap:8,marginBottom:18}}>
+          <button onClick={()=>setVoucherType("supplier")} style={{background:voucherType==="supplier"?T.accent:"none",color:voucherType==="supplier"?"#fff":T.sub,border:`1px solid ${voucherType==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Supplier invoice</button>
+          <button onClick={()=>setVoucherType("receipt")} style={{background:voucherType==="receipt"?T.accent:"none",color:voucherType==="receipt"?"#fff":T.sub,border:`1px solid ${voucherType==="receipt"?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Receipt</button>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {voucherType==="supplier"&&(
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
+              <select value={supplierId} onChange={e=>setSupplierId(e.target.value)} style={{...inp}}>
+                {!suppliers.length&&<option value="">No suppliers yet</option>}
+                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          {voucherType==="receipt"&&(
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Paid from</div>
+              <select value={payAccount} onChange={e=>setPayAccount(e.target.value)} style={{...inp}}>
+                {!bankAccounts.length&&<option value="">No bank/cash accounts yet</option>}
+                {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Expense account</div>
+            <select value={expenseAccount} onChange={e=>setExpenseAccount(e.target.value)} style={{...inp}}>
+              {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+            </select>
+          </div>
+          {voucherType==="supplier"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice no.</div>
+                <input value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inp}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+                <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
+              </div>
+            </div>
+          )}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+              <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+            <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
+          </div>
+          <button onClick={handlePost} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Posting…":"Post voucher"}</button>
+        </div>
+      </div>
+
+      <div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
+        <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Document</div>
+        {attachedFile?(
+          <>
+            <div style={{background:"#fff",borderRadius:8,minHeight:280,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,marginBottom:10}}>
+              <SignedFileViewer storagePath={attachedFile.storagePath} type={attachedFile.type} name={attachedFile.name} style={{maxWidth:"100%",maxHeight:340,borderRadius:8}}/>
+            </div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedFile.name}</div>
+            <button onClick={()=>setAttachedFileId(null)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px",fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>
+          </>
+        ):(
+          <>
+            <label style={{display:"block",background:"#fff",border:`1px dashed ${T.border}`,borderRadius:8,padding:"30px 10px",textAlign:"center",cursor:uploading?"wait":"pointer",marginBottom:10}}>
+              <div style={{fontSize:12,color:T.sub,fontWeight:600}}>{uploading?"Uploading…":"Upload a document"}</div>
+              <input type="file" accept="image/*,.pdf" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);}}/>
+            </label>
+            {inboxFiles.length>0&&(
+              <select value="" onChange={e=>{if(e.target.value)setAttachedFileId(parseInt(e.target.value));}} style={{...inp,fontSize:12}}>
+                <option value="">— or pick from Inbox —</option>
+                {inboxFiles.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -7073,7 +7333,6 @@ const ADMIN_FEATURES=[
   {id:"tags",label:"Transaction Tags",icon:"🏷️",desc:"Tag entries for filtering"},
   {id:"aiBookkeeping",label:"AI Bookkeeping",icon:"🤖",desc:"Natural-language entry parser"},
   {id:"files",label:"Inbox",icon:"📥",desc:"Upload & manage receipt files"},
-  {id:"darkMode",label:"Dark Mode",icon:"🌙",desc:"Dark theme toggle"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
 ];
 function AdminPanel({onBack,profiles=[],onToggleActive}){
@@ -7564,7 +7823,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,nextInvoiceNo,companyProfile,saveCompanyProfile,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -7614,12 +7873,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
 
 
-  const[darkMode,setDarkMode]=useState(()=>localStorage.getItem("rr_dark")==="1");
   const[entrySearch,setEntrySearch]=useState("");
-  useEffect(()=>{
-    document.body.style.background=darkMode?"#111827":"#FAF9F7";
-    localStorage.setItem("rr_dark",darkMode?"1":"0");
-  },[darkMode]);
   const[bankAttachments,setBankAttachmentsState]=useState(()=>{try{const saved=localStorage.getItem("rr_bank_attachments");return saved?JSON.parse(saved):{}}catch{return{};}});
   const setBankAttachments=(fn)=>{setBankAttachmentsState(prev=>{const next=typeof fn==="function"?fn(prev):fn;try{localStorage.setItem("rr_bank_attachments",JSON.stringify(next));}catch(e){}return next;});};
   const _now=new Date();
@@ -7653,7 +7907,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     import:getFeature("import"),
     cheque:getFeature("cheque"),
     tags:getFeature("tags"),
-    darkMode:getFeature("darkMode"),
     calcAmount:getFeature("calcAmount"),
   };
 
@@ -7717,6 +7970,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
           {[
             {id:"bookkeeping",label:"Bookkeeping",icon:"ti-pencil-plus",items:[
+              {tab:"NewVoucher",label:"New voucher"},
               {tab:"Transactions",label:"New entry"},
               {tab:"Entries",label:"All entries"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
@@ -7724,6 +7978,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {id:"invoicing",label:"Invoicing",icon:"ti-file-invoice",items:[
               {tab:"InvoiceNew",label:"New invoice"},
               {tab:"InvoiceOverview",label:"Invoice overview"},
+            ]},
+            {id:"customers",label:"Customers",icon:"ti-users",items:[
+              {tab:"Contacts",label:"Customers and suppliers"},
             ]},
             {id:"accounts",label:"Accounts",icon:"ti-book",items:[
               {tab:"Accounts",label:"Ledger"},
@@ -7894,6 +8151,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
+        {tab==="NewVoucher"&&(
+          <div style={{maxWidth:1000}}>
+            <NewVoucherScreen accounts={accounts} contacts={contacts} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} addTransaction={addTransaction} onDone={()=>setTab("Dashboard")}/>
+          </div>
+        )}
+
         {tab==="Transactions"&&(
           <div style={{maxWidth:600}}>
             <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
@@ -7923,6 +8186,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
+        {tab==="Contacts"&&(
+          <div style={{maxWidth:900}}>
+            <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} onOpenReskontro={(type)=>setTab("Reskontro")}/>
+          </div>
+        )}
+
         {tab==="Reskontro"&&(
           feat.reskontro
             ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/></div>
@@ -7931,7 +8200,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}/></div>
+            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} toggleReconciled={toggleReconciled}/></div>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -8068,10 +8337,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px",minWidth:16,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );})}
-            <div onClick={()=>setDarkMode(d=>!d)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",margin:"1px 8px",borderRadius:10}}>
-              <span style={{fontSize:16,width:20,textAlign:"center"}}>{darkMode?"☀️":"🌙"}</span>
-              <span style={{fontSize:13,color:T.sub}}>{darkMode?"Light Mode":"Dark Mode"}</span>
-            </div>
           </div>
           <div style={{padding:"14px 16px",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:10,color:T.muted}}>PKR · v2.2</div>
