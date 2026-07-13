@@ -12,6 +12,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -3800,6 +3801,176 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger}){
   );
 }
 
+// Income statement (Resultat) — grouped by account series, with a
+// same-length previous-period comparison column and drill-down to ledger.
+function ResultatScreen({accounts,transactions,onOpenLedger}){
+  const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const[fullYear,setFullYear]=useState(false);
+  const year=parseInt(viewMonth.slice(0,4));
+  const monthIdx=parseInt(viewMonth.slice(5,7))-1;
+  const lastDay=new Date(year,monthIdx+1,0).getDate();
+  const from=fullYear?`${year}-01-01`:`${viewMonth}-01`;
+  const to=fullYear?`${year}-12-31`:`${viewMonth}-${String(lastDay).padStart(2,"0")}`;
+  const periodLabel=fullYear?String(year):new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
+  const stepMonth=(dir)=>{let m=monthIdx+dir,y=year;if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}setViewMonth(`${y}-${String(m+1).padStart(2,"0")}`);};
+
+  const spanDays=Math.round((new Date(to)-new Date(from))/86400000)+1;
+  const prevTo=new Date(new Date(from).getTime()-86400000).toISOString().slice(0,10);
+  const prevFrom=new Date(new Date(from).getTime()-spanDays*86400000).toISOString().slice(0,10);
+
+  const movement=(code,f,t)=>transactions.filter(tx=>tx.date>=f&&tx.date<=t).reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
+
+  const incomeSKs=["3000","3900"];
+  const expenseSKs=["4000","5000","6000","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"];
+
+  const buildGroup=(sks,flip)=>sks.map(sk=>{
+    const grpAccounts=accounts.filter(a=>getSK(a.code)===sk);
+    if(!grpAccounts.length)return null;
+    const rows=grpAccounts.map(a=>{
+      const cur=movement(a.code,from,to)*(flip?-1:1);
+      const prev=movement(a.code,prevFrom,prevTo)*(flip?-1:1);
+      return{code:a.code,name:a.name,cur,prev};
+    }).filter(r=>r.cur!==0||r.prev!==0);
+    if(!rows.length)return null;
+    return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,rows,total:rows.reduce((s,r)=>s+r.cur,0),totalPrev:rows.reduce((s,r)=>s+r.prev,0)};
+  }).filter(Boolean);
+
+  const incomeGroups=buildGroup(incomeSKs,true);
+  const expenseGroups=buildGroup(expenseSKs,false);
+  const totalIncome=incomeGroups.reduce((s,g)=>s+g.total,0);
+  const totalIncomePrev=incomeGroups.reduce((s,g)=>s+g.totalPrev,0);
+  const totalExpense=expenseGroups.reduce((s,g)=>s+g.total,0);
+  const totalExpensePrev=expenseGroups.reduce((s,g)=>s+g.totalPrev,0);
+  const net=totalIncome-totalExpense;
+  const netPrev=totalIncomePrev-totalExpensePrev;
+
+  const GroupRows=({groups})=>groups.map(g=>(
+    <React.Fragment key={g.sk}>
+      <tr style={{borderTop:`1px solid ${T.border}`}}>
+        <td style={{padding:"7px 0",fontWeight:800}}>{g.label}</td>
+        <td style={{textAlign:"right",fontWeight:800}}>{fmt(g.total)}</td>
+        <td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(g.totalPrev)}</td>
+      </tr>
+      {g.rows.map(r=>(
+        <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},from,to)} style={{cursor:"pointer"}}>
+          <td style={{padding:"4px 0",paddingLeft:16,color:T.accent,fontSize:12}}>{r.code} {r.name}</td>
+          <td style={{textAlign:"right",fontSize:12}}>{fmt(r.cur)}</td>
+          <td style={{textAlign:"right",fontSize:11,color:T.muted}}>{fmt(r.prev)}</td>
+        </tr>
+      ))}
+    </React.Fragment>
+  ));
+
+  return(
+    <div>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Income statement</h1>
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+          <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
+          <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
+        </div>
+        <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+      </div>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}></td><td style={{textAlign:"right"}}>{periodLabel}</td><td style={{textAlign:"right"}}>Previous period</td>
+        </tr></thead>
+        <tbody>
+          <tr><td colSpan="3" style={{padding:"8px 0 4px",fontSize:11,fontWeight:800,color:T.green,textTransform:"uppercase"}}>Income</td></tr>
+          <GroupRows groups={incomeGroups}/>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 0",fontWeight:800}}>Total income</td><td style={{textAlign:"right",fontWeight:800}}>{fmt(totalIncome)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(totalIncomePrev)}</td></tr>
+
+          <tr><td colSpan="3" style={{padding:"14px 0 4px",fontSize:11,fontWeight:800,color:"#D97706",textTransform:"uppercase"}}>Expenses</td></tr>
+          <GroupRows groups={expenseGroups}/>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 0",fontWeight:800}}>Total expenses</td><td style={{textAlign:"right",fontWeight:800}}>{fmt(totalExpense)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(totalExpensePrev)}</td></tr>
+
+          <tr style={{borderTop:`2px solid ${T.text}`}}>
+            <td style={{padding:"10px 0",fontWeight:900,fontSize:14}}>Net profit / loss</td>
+            <td style={{textAlign:"right",fontWeight:900,fontSize:14,color:net>=0?T.green:T.red}}>{fmt(net)}</td>
+            <td style={{textAlign:"right",fontWeight:700,fontSize:12,color:T.muted}}>{fmt(netPrev)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Balance sheet — Assets vs Equity+Liabilities at a chosen date, grouped by
+// series, with drill-down and a visible balancing check.
+function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
+  const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
+  const balAt=(code,d)=>transactions.filter(t=>t.date<=d).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+
+  const assetSKs=["1000","1100","1200","1300","1400","1500","1600","1700","1800","1900"];
+  const eqLiabSKs=["2000","2100","2200","2300","2400","2500","2600","2700","2800","2900"];
+
+  const buildGroup=(sks,flip)=>sks.map(sk=>{
+    const grpAccounts=accounts.filter(a=>getSK(a.code)===sk);
+    if(!grpAccounts.length)return null;
+    const rows=grpAccounts.map(a=>({code:a.code,name:a.name,bal:balAt(a.code,asOf)*(flip?-1:1)})).filter(r=>r.bal!==0);
+    if(!rows.length)return null;
+    return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,rows,total:rows.reduce((s,r)=>s+r.bal,0)};
+  }).filter(Boolean);
+
+  const assetGroups=buildGroup(assetSKs,false);
+  const eqLiabGroups=buildGroup(eqLiabSKs,true);
+  const totalAssets=assetGroups.reduce((s,g)=>s+g.total,0);
+  const totalEqLiab=eqLiabGroups.reduce((s,g)=>s+g.total,0);
+  const diff=totalAssets-totalEqLiab;
+
+  const GroupRows=({groups})=>groups.map(g=>(
+    <React.Fragment key={g.sk}>
+      <tr style={{borderTop:`1px solid ${T.border}`}}>
+        <td style={{padding:"7px 0",fontWeight:800}}>{g.label}</td>
+        <td style={{textAlign:"right",fontWeight:800}}>{fmt(g.total)}</td>
+      </tr>
+      {g.rows.map(r=>(
+        <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},"2020-01-01",asOf)} style={{cursor:"pointer"}}>
+          <td style={{padding:"4px 0",paddingLeft:16,color:T.accent,fontSize:12}}>{r.code} {r.name}</td>
+          <td style={{textAlign:"right",fontSize:12}}>{fmt(r.bal)}</td>
+        </tr>
+      ))}
+    </React.Fragment>
+  ));
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:11,color:T.muted}}>As of</span>
+          <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={{...inp,width:150}}/>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+        <div>
+          <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <tbody>
+              <GroupRows groups={assetGroups}/>
+              <tr style={{borderTop:`2px solid ${T.text}`}}><td style={{padding:"8px 0",fontWeight:900}}>Total assets</td><td style={{textAlign:"right",fontWeight:900}}>{fmt(totalAssets)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Equity and liabilities</div>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <tbody>
+              <GroupRows groups={eqLiabGroups}/>
+              <tr style={{borderTop:`2px solid ${T.text}`}}><td style={{padding:"8px 0",fontWeight:900}}>Total equity and liabilities</td><td style={{textAlign:"right",fontWeight:900}}>{fmt(totalEqLiab)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style={{marginTop:20,padding:"12px 16px",borderRadius:10,background:Math.abs(diff)<1?T.greenBg:T.redLight,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:13,fontWeight:700,color:Math.abs(diff)<1?T.green:T.red}}>{Math.abs(diff)<1?"✓ Balanced":"⚠ Out of balance"}</span>
+        {Math.abs(diff)>=1&&<span style={{fontSize:13,fontWeight:700,color:T.red}}>Difference: {fmt(diff)}</span>}
+      </div>
+    </div>
+  );
+}
+
 // Bank reconciliation — manual statement upload only (no live bank API).
 // Upload a CSV/Excel statement (Date, Description, Amount columns) against a
 // bank account; each unposted line can be "Posted" by choosing which other
@@ -4079,9 +4250,9 @@ const monthRangeLabel=(from,to)=>{
 
 // Printable invoice — company (issuer) on the left, INVOICE details on the
 // right, line items table, total. English labels throughout.
-function InvoicePrintView({invoice,contact,companyProfile}){
+function InvoicePrintView({invoice,contact,companyProfile,elementId}){
   return(
-    <div style={{background:"#fff",padding:32,fontFamily:"system-ui,sans-serif",color:"#111827",maxWidth:750,margin:"0 auto"}}>
+    <div id={elementId} style={{background:"#fff",padding:32,fontFamily:"system-ui,sans-serif",color:"#111827",maxWidth:750,margin:"0 auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"2px solid #111827",paddingBottom:16,marginBottom:20}}>
         <div>
           <div style={{fontSize:22,fontWeight:800}}>{companyProfile.companyName||"Your Company Name"}</div>
@@ -4263,6 +4434,25 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
   const today=new Date().toISOString().slice(0,10);
   const daysOverdue=(inv)=>inv.dueDate?Math.floor((new Date(today)-new Date(inv.dueDate))/86400000):0;
 
+  // PDF download: render the invoice off-screen, then hand it to html2pdf.
+  const[pdfInvoice,setPdfInvoice]=useState(null);
+  const[pdfBusy,setPdfBusy]=useState(false);
+  useEffect(()=>{
+    if(!pdfInvoice)return;
+    const t=setTimeout(()=>{
+      const el=document.getElementById("invoice-pdf-target");
+      if(!el||!window.html2pdf){setPdfBusy(false);setPdfInvoice(null);return;}
+      window.html2pdf().from(el).set({
+        margin:0,
+        filename:`${pdfInvoice.status==="credit_note"?"CreditNote":"Invoice"}_${pdfInvoice.invoiceNo}.pdf`,
+        html2canvas:{scale:2},
+        jsPDF:{unit:"pt",format:"a4",orientation:"portrait"},
+      }).save().then(()=>{setPdfBusy(false);setPdfInvoice(null);});
+    },80);
+    return()=>clearTimeout(t);
+  },[pdfInvoice]);
+  const downloadPdf=(inv)=>{setPdfBusy(true);setPdfInvoice(inv);};
+
   // Payment registration modal state
   const bankAccounts=accounts?accounts.filter(a=>getSK(a.code)==="1900"):[];
   const[payingInv,setPayingInv]=useState(null);
@@ -4293,7 +4483,17 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
 
   return(
     <div>
-      {payingInv&&(
+      {pdfInvoice&&(
+        <div style={{position:"fixed",left:-9999,top:0}}>
+          <InvoicePrintView
+            elementId="invoice-pdf-target"
+            invoice={pdfInvoice}
+            contact={contacts.find(c=>c.id===pdfInvoice.customerId)}
+            companyProfile={companyProfile}
+          />
+        </div>
+      )}
+
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:"#fff",borderRadius:14,padding:22,width:340,boxShadow:"0 12px 40px rgba(0,0,0,0.25)"}}>
             <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Register payment</div>
@@ -4376,6 +4576,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
                   )}
                 </td>
                 <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                  <button onClick={()=>downloadPdf(inv)} disabled={pdfBusy} title="Download PDF" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,cursor:pdfBusy?"wait":"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:11}}/></button>
                   {canPay&&<button onClick={()=>openPayModal(inv)} title="Register payment" style={{background:T.accentLight,border:"none",borderRadius:6,color:T.accent,cursor:"pointer",fontSize:11,fontWeight:700,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}>Pay</button>}
                   {canPay&&<button onClick={()=>window.confirm(`Create a credit note reversing invoice #${inv.invoiceNo}? The original stays on record.`)&&createCreditNote(inv)} title="Credit note" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,cursor:"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}>CN</button>}
                   <button onClick={()=>window.confirm("Delete this invoice? This also removes its ledger entry. For posted invoices, prefer a credit note instead.")&&deleteInvoice(inv.id)} title="Delete" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
@@ -7381,6 +7582,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   },[]);
   const[expandedCat,setExpandedCat]=useState(null);
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
+  const[entriesSortKey,setEntriesSortKey]=useState("bilag");
+  const[entriesSortDir,setEntriesSortDir]=useState("desc");
+  const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
   useEffect(()=>{
     const onResize=()=>setIsDesktop(window.innerWidth>=1024);
     window.addEventListener("resize",onResize);
@@ -7528,7 +7732,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Bank",label:"Bank",featureKey:"bank"},
             ]},
             {id:"reports",label:"Reports",icon:"ti-report-analytics",items:[
-              {tab:"Reports",label:"Reports",featureKey:"reports"},
+              {tab:"Resultat",label:"Income statement"},
+              {tab:"BalanceSheet",label:"Balance sheet"},
+              {tab:"Reports",label:"Analytics",featureKey:"reports"},
               {tab:"Budget",label:"Budget",featureKey:"budget"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
@@ -7623,9 +7829,68 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab}/>}
 
         {tab==="Entries"&&(
-          <div style={{maxWidth:900}}>
-            <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+          <div style={{maxWidth:1000}}>
+            {(()=>{
+              const sortKey=entriesSortKey, sortDir=entriesSortDir;
+              const toggleSort=(k)=>{if(sortKey===k)setEntriesSortDir(d=>d==="asc"?"desc":"asc");else{setEntriesSortKey(k);setEntriesSortDir("desc");}};
+              const sorted=[...searchedEntries].sort((a,b)=>{
+                const mul=sortDir==="asc"?1:-1;
+                if(sortKey==="amount")return(a.amount-b.amount)*mul;
+                if(sortKey==="bilag")return(a.bilag-b.bilag)*mul;
+                if(sortKey==="date")return a.date.localeCompare(b.date)*mul;
+                return 0;
+              });
+              const headers=[
+                {key:"bilag",label:"Bilag"},{key:"date",label:"Date"},
+                {key:"",label:"Debit"},{key:"",label:"Credit"},{key:"",label:"Description"},
+                {key:"",label:"Invoice / Due"},{key:"amount",label:"Amount"},
+              ];
+              return(<>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{sorted.length} entries</div>
+                  <div style={{position:"relative",width:220}}>
+                    <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+                    <input placeholder="Search bilag, description, account" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+                  </div>
+                </div>
+                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                  <thead><tr style={{color:T.muted,fontSize:11}}>
+                    {headers.map(h=>(
+                      <td key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"6px 8px 6px 0",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
+                        {h.label}{sortKey===h.key&&h.key&&<span style={{marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>}
+                      </td>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {sorted.map(t=>{
+                      const isRev=!!t.reversalOf;
+                      const isMatched=!!t.matchedWith;
+                      return(
+                        <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
+                          <td style={{padding:"8px 8px 8px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}</td>
+                          <td style={{color:T.sub}}>{t.date}</td>
+                          <td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>
+                          <td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>
+                          <td style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                          <td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>
+                          <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
+                        </tr>
+                      );
+                    })}
+                    {!sorted.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</td></tr>}
+                  </tbody>
+                </table>
+              </>);
+            })()}
+            {entriesDetailTxn&&(
+              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts}
+                fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+                onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
+                onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
+                onReverse={tx=>{reverseTransaction(tx);setEntriesDetailTxn(null);}}
+                onDuplicate={duplicateTransaction}
+                onClose={()=>setEntriesDetailTxn(null)}/>
+            )}
           </div>
         )}
 
@@ -7673,6 +7938,18 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="Files"&&(
           <div style={{maxWidth:1000}}>
             <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true}/>
+          </div>
+        )}
+
+        {tab==="Resultat"&&(
+          <div style={{maxWidth:900}}>
+            <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
+          </div>
+        )}
+
+        {tab==="BalanceSheet"&&(
+          <div style={{maxWidth:900}}>
+            <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
           </div>
         )}
 
