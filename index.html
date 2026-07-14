@@ -408,12 +408,13 @@ function AppShell({user}){
   const[invoices,setInvoices]=useState([]);
   const[recurringInvoices,setRecurringInvoices]=useState([]);
   const[employees,setEmployees]=useState([]);
+  const[auditLog,setAuditLog]=useState([]);
   const[quotes,setQuotes]=useState([]);
   const[nextQuoteNo,setNextQuoteNo]=useState(1);
   const quoteNoRef=React.useRef(1);
   const[nextInvoiceNo,setNextInvoiceNo]=useState(1);
   const invoiceNoRef=React.useRef(1);
-  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:""});
+  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:""});
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
@@ -443,7 +444,8 @@ function AppShell({user}){
       sb.from("recurring_invoices").select("*").eq("user_id",viewingUserId).order("id"),
       sb.from("employees").select("*").eq("user_id",viewingUserId).order("name"),
       sb.from("quotes").select("*").eq("user_id",viewingUserId).order("quote_no",{ascending:false}),
-    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR])=>{
+      sb.from("audit_log").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}).limit(500),
+    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -481,11 +483,12 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||""});
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||""});
       }
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
       setQuotes((qR.data||[]).map(q=>({id:q.id,quoteNo:q.quote_no,customerId:q.customer_id,date:q.date,validUntil:q.valid_until,saleAccount:q.sale_account,lines:q.lines||[],vatPct:parseFloat(q.vat_pct)||0,subtotal:parseFloat(q.subtotal),vatAmount:parseFloat(q.vat_amount),total:parseFloat(q.total),status:q.status,convertedInvoiceId:q.converted_invoice_id})));
+      setAuditLog((auR.data||[]).map(a=>({id:a.id,changedBy:a.changed_by,entityType:a.entity_type,entityId:a.entity_id,bilag:a.bilag,action:a.action,oldValues:a.old_values,newValues:a.new_values,createdAt:a.created_at})));
       const startQuoteNo=(qR.data||[]).reduce((m,q)=>Math.max(m,q.quote_no),0)+1;
       quoteNoRef.current=startQuoteNo;
       setNextQuoteNo(startQuoteNo);
@@ -530,6 +533,24 @@ function AppShell({user}){
     if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||""})));
   };
 
+  // Real period lock — company-wide (via company_profile), not per-device
+  // like the old localStorage version. This actually blocks the mutation
+  // rather than just logging a warning.
+  const isDateLocked=(date)=>!!(date&&companyProfile.periodCloseDate&&date<=companyProfile.periodCloseDate);
+  const blockIfLocked=(date)=>{
+    if(!isDateLocked(date))return false;
+    alert(`This date (${date}) falls within a locked period (closed up to ${companyProfile.periodCloseDate}). Ask an admin to move the lock date in Settings if this needs to change.`);
+    return true;
+  };
+
+  // Audit trail — fire-and-forget; never blocks the actual operation even if
+  // logging itself fails, since the money-move mattering more than the log.
+  const logAudit=(entityType,entityId,bilag,action,oldValues,newValues)=>{
+    if(!canEdit)return;
+    sb.from("audit_log").insert([{user_id:user.id,changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
+      .then(({data,error})=>{if(!error)setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);});
+  };
+
   const checkTxnLogic=(form,ctx)=>{
     // Accounting logic checks — log bugs but never block saving
     if(!form.debitCode||!form.creditCode)logBug("ACCOUNTING","Transaction missing debit or credit account","debit:"+form.debitCode+" credit:"+form.creditCode,ctx);
@@ -541,6 +562,7 @@ function AppShell({user}){
 
   const addTransaction=async(form)=>{
     if(!canEdit)return;
+    if(blockIfLocked(form.date))return;
     checkTxnLogic(form,"addTransaction");
     // Use a ref (not the nextBilag state) so multiple entries saved back-to-back
     // in the same tick (e.g. multi-line entries) each get a unique, correctly
@@ -558,6 +580,7 @@ function AppShell({user}){
       else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null}]);
+      logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
     }
   };
 
@@ -588,6 +611,7 @@ function AppShell({user}){
   };
   const postBankStatementLine=async(line,offsetCode)=>{
     if(!canEdit)return;
+    if(blockIfLocked(line.date))return;
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
@@ -617,6 +641,7 @@ function AppShell({user}){
   // other entry. Status (draft/sent/paid) is tracked separately from posting.
   const createInvoice=async(form)=>{
     if(!canEdit)return null;
+    if(blockIfLocked(form.date))return null;
     const invNo=invoiceNoRef.current;
     invoiceNoRef.current=invNo+1;
     setNextInvoiceNo(invoiceNoRef.current);
@@ -642,13 +667,16 @@ function AppShell({user}){
   };
   const updateInvoiceStatus=async(id,status)=>{
     if(!canEdit)return;
+    const original=invoices.find(i=>i.id===id);
     setInvoices(p=>p.map(i=>i.id===id?{...i,status}:i));
     await sb.from("invoices").update({status}).eq("id",id);
+    if(original)logAudit("invoice",id,null,"status_change",{status:original.status},{status});
   };
   // Register a payment against an invoice: posts Dr bank / Cr 1500, matches
   // the payment with the invoice's AR entry (scoped to 1500), marks it paid.
   const registerInvoicePayment=async(invoice,bankCode,payDate,amount)=>{
     if(!canEdit)return;
+    if(blockIfLocked(payDate))return;
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
@@ -668,18 +696,20 @@ function AppShell({user}){
   // never deleted; proper accounting keeps both documents.
   const createCreditNote=async(invoice)=>{
     if(!canEdit)return;
+    const today=new Date().toISOString().slice(0,10);
+    if(blockIfLocked(today))return;
     const cnNo=invoiceNoRef.current;
     invoiceNoRef.current=cnNo+1;
     setNextInvoiceNo(invoiceNoRef.current);
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const today=new Date().toISOString().slice(0,10);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Credit note ${cnNo} for invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
     const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
     if(txnErr){alert("Credit note posting failed: "+txnErr.message);return;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,contactId:invoice.customerId,invoiceNo:String(cnNo)}]);
+    logAudit("transaction",txnData.id,nb,"create",null,{date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,note:"credit note"});
     const row={user_id:user.id,invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Credit note entry posted but record failed: "+invErr.message);return;}
@@ -697,7 +727,7 @@ function AppShell({user}){
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,updated_at:new Date().toISOString()},{onConflict:"user_id"});
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
@@ -821,21 +851,28 @@ function AppShell({user}){
   };
 
   const saveEdit=async(u)=>{
+    const original=transactions.find(t=>t.id===u.id);
+    if(blockIfLocked(u.date)||(original&&blockIfLocked(original.date)))return;
     checkTxnLogic(u,"saveEdit");
     setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
     if(!canEdit)return;
     const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null}).eq("id",u.id);
     if(error)logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
+    else if(original)logAudit("transaction",u.id,u.bilag,"update",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},{date:u.date,debitCode:u.debitCode,creditCode:u.creditCode,description:u.description,amount:u.amount});
   };
 
   const deleteTxn=async(id)=>{
+    const original=transactions.find(t=>t.id===id);
+    if(original&&blockIfLocked(original.date))return;
     setTransactionsState(p=>p.filter(t=>t.id!==id));
     if(!canEdit)return;
     await sb.from("transactions").delete().eq("id",id);
+    if(original)logAudit("transaction",id,original.bilag,"delete",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},null);
   };
 
   const reverseTransaction=async(t)=>{
     if(!canEdit)return;
+    if(blockIfLocked(t.date))return;
     const rb=bilagRef.current;
     bilagRef.current=rb+1;
     setNextBilag(bilagRef.current);
@@ -846,6 +883,7 @@ function AppShell({user}){
     await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
     if(data){
       setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
+      logAudit("transaction",t.id,t.bilag,"reverse",{reversedBy:null},{reversedBy:rb,reversalBilag:rb});
     }
   };
 
@@ -853,11 +891,14 @@ function AppShell({user}){
     setTransactionsState(p=>p.map(t=>ids.includes(t.id)?{...t,matchedWith:grpId,matchedAccount:accountCode}:t));
     if(!canEdit)return;
     await Promise.all(ids.map(id=>sb.from("transactions").update({matched_with:grpId,matched_account:accountCode}).eq("id",id)));
+    logAudit("match_group",null,null,"match",null,{txnIds:ids,groupId:grpId,accountCode});
   };
   const unmatchTransactions=async(grpId)=>{
+    const affected=transactions.filter(t=>t.matchedWith===grpId).map(t=>t.id);
     setTransactionsState(p=>p.map(t=>t.matchedWith===grpId?{...t,matchedWith:null,matchedAccount:null}:t));
     if(!canEdit)return;
     await sb.from("transactions").update({matched_with:null,matched_account:null}).eq("matched_with",grpId);
+    logAudit("match_group",null,null,"unmatch",{txnIds:affected,groupId:grpId},null);
   };
 
   const saveSinkingFunds=async(list)=>{
@@ -1048,7 +1089,7 @@ function AppShell({user}){
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
-        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice}
+        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -2791,9 +2832,9 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const saveCompany=()=>{if(saveCompanyProfile)saveCompanyProfile(companyForm);setCompanySaved(true);setTimeout(()=>setCompanySaved(false),1800);};
 
   // Period close state — must be before any early returns (screen checks)
-  const[periodClose,setPeriodCloseState]=useState(()=>localStorage.getItem(PERIOD_CLOSE_KEY)||"");
+  const periodClose=companyProfile.periodCloseDate||"";
   const[tempPeriodClose,setTempPeriodClose]=useState(null);
-  const savePeriodClose=(d)=>{setPeriodCloseState(d);if(d)localStorage.setItem(PERIOD_CLOSE_KEY,d);else localStorage.removeItem(PERIOD_CLOSE_KEY);};
+  const savePeriodClose=(d)=>{saveCompanyProfile({...companyProfile,periodCloseDate:d});};
 
   const nextId=type=>{
     const prefix=type==="customer"?"C":"S";
@@ -5560,6 +5601,47 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
   );
 }
 
+// Audit trail — who changed which bilag, when, old vs new values. Read-only
+// by design: the audit_log table has no update/delete policy, so nothing in
+// the app (or anyone with database access through the app) can rewrite history.
+function AuditLogScreen({auditLog,transactions}){
+  const[filter,setFilter]=useState("");
+  const getBilagLabel=(entry)=>entry.bilag?fmtB(entry.bilag):(entry.entityType==="invoice"?`Invoice #${entry.entityId}`:`#${entry.entityId}`);
+  const shown=auditLog.filter(a=>!filter||getBilagLabel(a).toLowerCase().includes(filter.toLowerCase())||(a.action||"").includes(filter.toLowerCase()));
+
+  const renderValue=(v)=>{
+    if(!v)return"—";
+    return Object.entries(v).map(([k,val])=>`${k}: ${val}`).join(", ");
+  };
+
+  const actionStyle=(a)=>({create:T.green,update:T.blue,delete:T.red,status_change:"#D97706",reverse:"#D97706",match:T.green,unmatch:T.red}[a]||T.sub);
+
+  return(
+    <div>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 6px"}}>Audit trail</h1>
+      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Read-only history of every create, edit, and delete on transactions and invoice status. Nothing here can be altered after the fact.</p>
+      <input placeholder="Search by bilag or action" value={filter} onChange={e=>setFilter(e.target.value)} style={{...inp,width:260,marginBottom:16}}/>
+      <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}>When</td><td>Entity</td><td>Action</td><td>Before</td><td>After</td>
+        </tr></thead>
+        <tbody>
+          {shown.slice(0,300).map(a=>(
+            <tr key={a.id} style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"7px 0",color:T.sub,whiteSpace:"nowrap"}}>{new Date(a.createdAt).toLocaleString()}</td>
+              <td style={{color:T.accent,fontWeight:700}}>{getBilagLabel(a)}</td>
+              <td style={{color:actionStyle(a.action),fontWeight:700,textTransform:"capitalize"}}>{a.action.replace("_"," ")}</td>
+              <td style={{color:T.muted,maxWidth:220}}>{renderValue(a.oldValues)}</td>
+              <td style={{color:T.text,maxWidth:220}}>{renderValue(a.newValues)}</td>
+            </tr>
+          ))}
+          {!shown.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No audit history yet — it starts recording from here forward.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AccDropReskontro({value,onChange,accounts,contacts,onContactSelect,side}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
@@ -7503,6 +7585,62 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
   const[pwdErr,setPwdErr]=useState("");
   const[pwdSaving,setPwdSaving]=useState(false);
 
+  // 2FA — real Supabase Auth MFA (TOTP), not a placeholder toggle.
+  const[mfaFactors,setMfaFactors]=useState([]);
+  const[mfaLoading,setMfaLoading]=useState(true);
+  const[mfaEnrolling,setMfaEnrolling]=useState(false);
+  const[mfaQr,setMfaQr]=useState("");
+  const[mfaSecret,setMfaSecret]=useState("");
+  const[mfaFactorId,setMfaFactorId]=useState("");
+  const[mfaCode,setMfaCode]=useState("");
+  const[mfaMsg,setMfaMsg]=useState("");
+  const[mfaErr,setMfaErr]=useState("");
+  const[mfaBusy,setMfaBusy]=useState(false);
+
+  useEffect(()=>{
+    sb.auth.mfa.listFactors().then(({data,error})=>{
+      if(!error&&data)setMfaFactors(data.totp||[]);
+      setMfaLoading(false);
+    }).catch(()=>setMfaLoading(false));
+  },[]);
+
+  const startMfaEnroll=async()=>{
+    setMfaErr("");setMfaMsg("");setMfaBusy(true);
+    const{data,error}=await sb.auth.mfa.enroll({factorType:"totp"});
+    setMfaBusy(false);
+    if(error){setMfaErr(error.message);return;}
+    setMfaFactorId(data.id);
+    setMfaQr(data.totp.qr_code);
+    setMfaSecret(data.totp.secret);
+    setMfaEnrolling(true);
+  };
+  const confirmMfaEnroll=async()=>{
+    if(!mfaCode.trim()){setMfaErr("Enter the 6-digit code from your authenticator app.");return;}
+    setMfaBusy(true);setMfaErr("");
+    const{data:chData,error:chErr}=await sb.auth.mfa.challenge({factorId:mfaFactorId});
+    if(chErr){setMfaErr(chErr.message);setMfaBusy(false);return;}
+    const{error:vErr}=await sb.auth.mfa.verify({factorId:mfaFactorId,challengeId:chData.id,code:mfaCode.trim()});
+    setMfaBusy(false);
+    if(vErr){setMfaErr("Code didn't match — check your authenticator app and try again.");return;}
+    setMfaMsg("Two-factor authentication is now enabled.");
+    setMfaEnrolling(false);setMfaCode("");setMfaQr("");setMfaSecret("");
+    const{data}=await sb.auth.mfa.listFactors();
+    if(data)setMfaFactors(data.totp||[]);
+  };
+  const cancelMfaEnroll=async()=>{
+    if(mfaFactorId)await sb.auth.mfa.unenroll({factorId:mfaFactorId}).catch(()=>{});
+    setMfaEnrolling(false);setMfaQr("");setMfaSecret("");setMfaCode("");setMfaFactorId("");setMfaErr("");
+  };
+  const disableMfa=async(factorId)=>{
+    if(!window.confirm("Disable two-factor authentication? Your account will only need a password to sign in.")) return;
+    setMfaBusy(true);
+    const{error}=await sb.auth.mfa.unenroll({factorId});
+    setMfaBusy(false);
+    if(error){setMfaErr(error.message);return;}
+    setMfaFactors(p=>p.filter(f=>f.id!==factorId));
+    setMfaMsg("Two-factor authentication disabled.");
+  };
+
   const changePassword=async()=>{
     setPwdErr("");setPwdMsg("");
     if(newPwd.length<6){setPwdErr("Password must be at least 6 characters.");return;}
@@ -7546,6 +7684,39 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
     </>
   );
 
+  const mfaSection=(
+    <>
+      {mfaLoading?(
+        <div style={{fontSize:12,color:T.muted}}>Checking status…</div>
+      ):mfaEnrolling?(
+        <>
+          <div style={{fontSize:12,color:T.sub,marginBottom:10}}>Scan this QR code with an authenticator app (Google Authenticator, Authy, 1Password), then enter the 6-digit code it shows.</div>
+          {mfaQr&&<div style={{background:"#fff",padding:10,borderRadius:8,marginBottom:10,display:"inline-block"}} dangerouslySetInnerHTML={{__html:mfaQr}}/>}
+          {mfaSecret&&<div style={{fontSize:10,color:T.muted,marginBottom:10,wordBreak:"break-all"}}>Can't scan? Enter this key manually: <b>{mfaSecret}</b></div>}
+          <input value={mfaCode} onChange={e=>setMfaCode(e.target.value)} placeholder="6-digit code" style={{...inp,fontSize:13,marginBottom:8}}/>
+          {mfaErr&&<div style={{fontSize:11,color:T.red,marginBottom:8}}>{mfaErr}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={confirmMfaEnroll} disabled={mfaBusy} style={{...btnGhost,flex:1,color:T.accent,borderColor:T.accent,opacity:mfaBusy?0.6:1}}>{mfaBusy?"Verifying…":"Verify and enable"}</button>
+            <button onClick={cancelMfaEnroll} style={{...btnGhost,flex:1,color:T.muted,borderColor:T.border}}>Cancel</button>
+          </div>
+        </>
+      ):mfaFactors.length>0?(
+        <>
+          <div style={{fontSize:12,color:T.green,fontWeight:700,marginBottom:10}}>✓ Two-factor authentication is enabled</div>
+          {mfaErr&&<div style={{fontSize:11,color:T.red,marginBottom:8}}>{mfaErr}</div>}
+          {mfaMsg&&<div style={{fontSize:11,color:T.green,marginBottom:8}}>{mfaMsg}</div>}
+          <button onClick={()=>disableMfa(mfaFactors[0].id)} disabled={mfaBusy} style={{...btnGhost,width:"100%",color:T.red,borderColor:T.red,opacity:mfaBusy?0.6:1}}>{mfaBusy?"Disabling…":"Disable two-factor authentication"}</button>
+        </>
+      ):(
+        <>
+          <div style={{fontSize:12,color:T.sub,marginBottom:10}}>Add an authenticator app as a second step when signing in — recommended for any account handling real financial records.</div>
+          {mfaErr&&<div style={{fontSize:11,color:T.red,marginBottom:8}}>{mfaErr}</div>}
+          <button onClick={startMfaEnroll} disabled={mfaBusy} style={{...btnGhost,width:"100%",color:T.accent,borderColor:T.accent,opacity:mfaBusy?0.6:1}}>{mfaBusy?"Starting…":"Enable two-factor authentication"}</button>
+        </>
+      )}
+    </>
+  );
+
   const personalSection=(
     <>
       <div style={{marginBottom:8}}>
@@ -7580,6 +7751,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
           </div>
           <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
             <ProfileRow icon="ti-lock" label="Change password" sub="Update your account password" onClick={()=>setOpenRow(o=>o==="password"?null:"password")} expanded={openRow==="password"}>{passwordSection}</ProfileRow>
+            <ProfileRow icon="ti-shield-lock" label="Two-factor authentication" sub={mfaFactors.length>0?"Enabled":"Not enabled"} onClick={()=>setOpenRow(o=>o==="mfa"?null:"mfa")} expanded={openRow==="mfa"}>{mfaSection}</ProfileRow>
           </div>
           <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
             <ProfileRow icon="ti-settings" label="Company settings" sub="Currency, accounts, backup & more" onClick={()=>onNavigate&&onNavigate("Settings")}/>
@@ -7618,6 +7790,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
         <ProfileRow icon="ti-user" label="Personal information" onClick={()=>setOpenRow(o=>o==="personal"?null:"personal")} expanded={openRow==="personal"}>{personalSection}</ProfileRow>
         <div style={{height:1,background:T.border,marginLeft:70}}/>
         <ProfileRow icon="ti-lock" label="Change password" onClick={()=>setOpenRow(o=>o==="password"?null:"password")} expanded={openRow==="password"}>{passwordSection}</ProfileRow>
+        <ProfileRow icon="ti-shield-lock" label="Two-factor authentication" onClick={()=>setOpenRow(o=>o==="mfa"?null:"mfa")} expanded={openRow==="mfa"}>{mfaSection}</ProfileRow>
       </div>
 
       <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8,paddingLeft:2}}>App settings</div>
@@ -8654,11 +8827,12 @@ const SIDEBAR=[
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},
   {id:"AdminPanel",icon:"🛡️",label:"Admin Panel",group:"system"},
   {id:"BugLog",icon:"🐛",label:"Bug Log",group:"system"},
+  {id:"AuditLog",icon:"📜",label:"Audit Trail",group:"system"},
 ];
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -8754,6 +8928,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
+  if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
@@ -8882,7 +9057,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           })}
 
           <div style={{padding:"12px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-          {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{
+          {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||isAdmin)).map(item=>{
             const active=tab===item.id;
             const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
             const tiIcon={Settings:"ti-settings",Profile:"ti-user",AdminPanel:"ti-shield-lock",BugLog:"ti-bug"}[item.id]||"ti-circle";
@@ -9133,6 +9308,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
+        {tab==="AuditLog"&&(
+          <div style={{maxWidth:1000}}>
+            <AuditLogScreen auditLog={auditLog} transactions={transactions}/>
+          </div>
+        )}
+
         {tab==="Employees"&&(
           <div style={{maxWidth:900}}>
             <EmployeesScreen employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee}/>
@@ -9241,7 +9422,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             })}
             {/* System group */}
             <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-            {SIDEBAR.filter(i=>i.group==="system"&&(i.id!=="AdminPanel"&&i.id!=="BugLog"||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
+            {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
               <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                 <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
                 <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
