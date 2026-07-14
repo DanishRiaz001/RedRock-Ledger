@@ -258,17 +258,57 @@ function Spinner(){return <div style={{textAlign:"center",padding:60,color:"#9CA
 function SignedFileViewer({storagePath,type,name,style}){
   const[url,setUrl]=useState(null);
   const[loading,setLoading]=useState(true);
+  const[extractedText,setExtractedText]=useState("");
+  const[extracting,setExtracting]=useState(false);
   useEffect(()=>{
     let alive=true;
     setLoading(true);
+    setExtractedText("");
     getSignedUrl(storagePath).then(u=>{if(alive){setUrl(u);setLoading(false);}});
     return()=>{alive=false;};
   },[storagePath]);
+  const isImage=type&&type.startsWith("image");
+  const extractText=async()=>{
+    if(!url)return;
+    setExtracting(true);
+    try{
+      const imgResp=await fetch(url);
+      const blob=await imgResp.blob();
+      const base64=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result.split(",")[1]);
+        reader.onerror=reject;
+        reader.readAsDataURL(blob);
+      });
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        model:"claude-sonnet-4-6",max_tokens:1500,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:blob.type||"image/jpeg",data:base64}},
+          {type:"text",text:"Transcribe every piece of text visible in this image exactly as it appears, preserving line breaks. Return only the transcribed text, nothing else — no commentary."},
+        ]}],
+      })});
+      const data=await res.json();
+      const text=data.content.map(b=>b.text||"").join("");
+      setExtractedText(text.trim()||"No text found in this image.");
+    }catch(e){setExtractedText("Couldn't read text from this image.");}
+    setExtracting(false);
+  };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
-  return(type&&type.startsWith("image"))
-    ?<img src={url} style={style} alt={name||"attachment"}/>
-    :<iframe src={url} style={{border:"none",background:"#fff",...style}} title={name||"attachment"}/>;
+  if(!isImage)return<iframe src={url} style={{border:"none",background:"#fff",...style}} title={name||"attachment"}/>;
+  return(
+    <div>
+      <img src={url} style={style} alt={name||"attachment"}/>
+      {extractedText?(
+        <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10}}>
+          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Extracted text — select to copy</div>
+          <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
+        </div>
+      ):(
+        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#0D7377",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
+      )}
+    </div>
+  );
 }
 
 function LoginScreen({onLogin}){
@@ -467,7 +507,7 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -570,7 +610,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -579,7 +619,7 @@ function AppShell({user}){
       if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
     }
   };
@@ -4936,23 +4976,33 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
   const[voucherType,setVoucherType]=useState("supplier"); // "supplier" | "receipt"
   const suppliers=contacts.filter(c=>c.type==="supplier");
   const expenseAccounts=accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
-  const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
   const today=new Date().toISOString().slice(0,10);
 
   const[supplierId,setSupplierId]=useState(suppliers[0]?suppliers[0].id:"");
   const[invoiceNo,setInvoiceNo]=useState("");
   const[date,setDate]=useState(today);
   const[dueDate,setDueDate]=useState(today);
-  const[payAccount,setPayAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[expenseAccount,setExpenseAccount]=useState(expenseAccounts[0]?expenseAccounts[0].code:"");
   const[amount,setAmount]=useState("");
+  const[vatPct,setVatPct]=useState("0");
   const[description,setDescription]=useState("");
   const[attachedFileId,setAttachedFileId]=useState(null);
   const[uploading,setUploading]=useState(false);
   const[saving,setSaving]=useState(false);
 
+  // Receipt mode is plain double-entry — any debit account, any credit
+  // account, no "paid from" assumption baked in.
+  const[debitCode,setDebitCode]=useState(expenseAccounts[0]?expenseAccounts[0].code:"");
+  const[creditCode,setCreditCode]=useState(accounts[0]?accounts[0].code:"");
+
   const attachedFile=inboxFiles.find(f=>f.id===attachedFileId);
-  const valid=parseFloat(amount)>0&&expenseAccount&&(voucherType==="receipt"?payAccount:supplierId);
+  const grossAmount=parseFloat(amount)||0;
+  const vatRate=parseFloat(vatPct)||0;
+  const vatAmount=grossAmount-(grossAmount/(1+vatRate/100));
+  const netAmount=grossAmount-vatAmount;
+  const valid=voucherType==="supplier"
+    ?(grossAmount>0&&expenseAccount&&supplierId)
+    :(grossAmount>0&&debitCode&&creditCode&&debitCode!==creditCode);
 
   const handleUpload=async(file)=>{
     setUploading(true);
@@ -4967,8 +5017,8 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
     const supplier=contacts.find(c=>c.id===supplierId);
     const desc=description||(voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${invoiceNo?" "+invoiceNo:""}`:"Receipt");
     const form=voucherType==="supplier"
-      ?{date,dueDate,invoiceNo,debitCode:expenseAccount,creditCode:"2400",description:desc,amount:parseFloat(amount),contactId:supplierId,attachmentId:attachedFileId||undefined}
-      :{date,debitCode:expenseAccount,creditCode:payAccount,description:desc,amount:parseFloat(amount),attachmentId:attachedFileId||undefined};
+      ?{date,dueDate,invoiceNo,debitCode:expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:supplierId,attachmentId:attachedFileId||undefined,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
+      :{date,debitCode,creditCode,description:desc,amount:grossAmount,attachmentId:attachedFileId||undefined};
     await addTransaction(form);
     setSaving(false);
     if(onDone)onDone();
@@ -4984,56 +5034,100 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {voucherType==="supplier"&&(
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
-              <select value={supplierId} onChange={e=>setSupplierId(e.target.value)} style={{...inp}}>
-                {!suppliers.length&&<option value="">No suppliers yet</option>}
-                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
-          {voucherType==="receipt"&&(
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Paid from</div>
-              <select value={payAccount} onChange={e=>setPayAccount(e.target.value)} style={{...inp}}>
-                {!bankAccounts.length&&<option value="">No bank/cash accounts yet</option>}
-                {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-              </select>
-            </div>
-          )}
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Expense account</div>
-            <select value={expenseAccount} onChange={e=>setExpenseAccount(e.target.value)} style={{...inp}}>
-              {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-            </select>
-          </div>
-          {voucherType==="supplier"&&(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {voucherType==="supplier"?(
+            <>
               <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice no.</div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
+                <select value={supplierId} onChange={e=>setSupplierId(e.target.value)} style={{...inp}}>
+                  {!suppliers.length&&<option value="">No suppliers yet</option>}
+                  {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+                  <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
                 <input value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inp}}/>
               </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
-                <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
+              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`}}>
+                <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>Costs</div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Cost account</div>
+                    <select value={expenseAccount} onChange={e=>setExpenseAccount(e.target.value)} style={{...inp}}>
+                      {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount incl. VAT</div>
+                      <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
+                      <select value={vatPct} onChange={e=>setVatPct(e.target.value)} style={{...inp}}>
+                        <option value="0">0% — Not liable to VAT</option>
+                        <option value="5">5%</option>
+                        <option value="17">17%</option>
+                        <option value="18">18%</option>
+                        <option value="25">25%</option>
+                      </select>
+                    </div>
+                  </div>
+                  {vatRate>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+                      <span>Net: {fmt(netAmount)}</span>
+                      <span>VAT: {fmt(vatAmount)}</span>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                    <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
+                  </div>
+                </div>
               </div>
-            </div>
+            </>
+          ):(
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
+                  <select value={debitCode} onChange={e=>setDebitCode(e.target.value)} style={{...inp}}>
+                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Credit account</div>
+                  <select value={creditCode} onChange={e=>setCreditCode(e.target.value)} style={{...inp}}>
+                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              {debitCode===creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+                  <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
+              </div>
+            </>
           )}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
-              <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
-            </div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-            <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
-          </div>
           <button onClick={handlePost} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Posting…":"Post voucher"}</button>
         </div>
       </div>
@@ -5062,6 +5156,199 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Register voucher queue — the real batch flow: step through every selected
+// file with Previous/Next, "Remove from queue" (skips without deleting), and
+// per-item Create. Each file keeps its own draft as you navigate away and back.
+function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone}){
+  const[queue,setQueue]=useState(fileIds);
+  const[idx,setIdx]=useState(0);
+  const[formsByFile,setFormsByFile]=useState({});
+  const[postedIds,setPostedIds]=useState([]);
+  const[posting,setPosting]=useState(false);
+
+  const suppliers=contacts.filter(c=>c.type==="supplier");
+  const expenseAccounts=accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+  const today=new Date().toISOString().slice(0,10);
+  const currentFileId=queue[idx];
+  const currentFile=inboxFiles.find(f=>f.id===currentFileId);
+
+  const defaultForm=(fid)=>{
+    const f=inboxFiles.find(x=>x.id===fid);
+    return{voucherType:"supplier",supplierId:suppliers[0]?suppliers[0].id:"",invoiceNo:"",date:today,dueDate:today,expenseAccount:expenseAccounts[0]?expenseAccounts[0].code:"",amount:"",vatPct:"0",description:f?f.name.replace(/\.[^.]+$/,""):"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",creditCode:accounts[0]?accounts[0].code:""};
+  };
+  const form=formsByFile[currentFileId]||defaultForm(currentFileId);
+  const setForm=(updates)=>setFormsByFile(p=>({...p,[currentFileId]:{...(p[currentFileId]||defaultForm(currentFileId)),...updates}}));
+
+  const grossAmount=parseFloat(form.amount)||0;
+  const vatRate=parseFloat(form.vatPct)||0;
+  const vatAmount=grossAmount-(grossAmount/(1+vatRate/100));
+  const netAmount=grossAmount-vatAmount;
+  const valid=form.voucherType==="supplier"?(grossAmount>0&&form.expenseAccount&&form.supplierId):(grossAmount>0&&form.debitCode&&form.creditCode&&form.debitCode!==form.creditCode);
+  const alreadyPosted=postedIds.includes(currentFileId);
+
+  const goto=(newIdx)=>{if(newIdx>=0&&newIdx<queue.length)setIdx(newIdx);};
+  const removeFromQueue=()=>{
+    const newQueue=queue.filter(id=>id!==currentFileId);
+    if(!newQueue.length){onDone();return;}
+    setQueue(newQueue);
+    setIdx(i=>Math.min(i,newQueue.length-1));
+  };
+  const postCurrent=async()=>{
+    if(!valid||alreadyPosted||posting)return;
+    setPosting(true);
+    const supplier=contacts.find(c=>c.id===form.supplierId);
+    const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
+    const txnForm=form.voucherType==="supplier"
+      ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
+      :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
+    await addTransaction(txnForm);
+    setPosting(false);
+    setPostedIds(p=>[...p,currentFileId]);
+    if(idx<queue.length-1)goto(idx+1);
+    else onDone();
+  };
+
+  if(!currentFile)return null;
+  const navBtn={background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#fff",zIndex:900,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"16px 24px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>Register voucher</h1>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>goto(0)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>«</button>
+            <button onClick={()=>goto(idx-1)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>‹</button>
+            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:60,textAlign:"center"}}>{idx+1} of {queue.length}</span>
+            <button onClick={()=>goto(idx+1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>›</button>
+            <button onClick={()=>goto(queue.length-1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>»</button>
+            {alreadyPosted&&<span style={{fontSize:11,color:T.green,fontWeight:700,marginLeft:8}}>✓ Posted</span>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={removeFromQueue} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Remove from queue</button>
+          <button onClick={onDone} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+        </div>
+      </div>
+
+      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+        <div style={{flex:1,padding:24,overflowY:"auto",maxWidth:560}}>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
+            <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
+              <option value="supplier">Supplier invoice (simple registration)</option>
+              <option value="receipt">Receipt</option>
+            </select>
+          </div>
+
+          {form.voucherType==="supplier"?(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
+                <select value={form.supplierId} onChange={e=>setForm({supplierId:e.target.value})} style={{...inp}}>
+                  {!suppliers.length&&<option value="">No suppliers yet</option>}
+                  {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+                  <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+                  <input type="date" value={form.dueDate} onChange={e=>setForm({dueDate:e.target.value})} style={{...inp}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
+                <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp}}/>
+              </div>
+              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`}}>
+                <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>Costs</div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Cost account</div>
+                    <select value={form.expenseAccount} onChange={e=>setForm({expenseAccount:e.target.value})} style={{...inp}}>
+                      {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount incl. VAT</div>
+                      <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
+                      <select value={form.vatPct} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp}}>
+                        <option value="0">0% — Not liable to VAT</option>
+                        <option value="5">5%</option>
+                        <option value="17">17%</option>
+                        <option value="18">18%</option>
+                        <option value="25">25%</option>
+                      </select>
+                    </div>
+                  </div>
+                  {vatRate>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+                      <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                    <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
+                  <select value={form.debitCode} onChange={e=>setForm({debitCode:e.target.value})} style={{...inp}}>
+                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Credit account</div>
+                  <select value={form.creditCode} onChange={e=>setForm({creditCode:e.target.value})} style={{...inp}}>
+                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              {form.debitCode===form.creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+                  <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+                  <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
+              </div>
+            </div>
+          )}
+
+          <button onClick={postCurrent} disabled={!valid||alreadyPosted||posting} style={{marginTop:20,background:alreadyPosted?T.greenBg:(valid?T.accent:T.border),color:alreadyPosted?T.green:(valid?"#fff":T.muted),border:"none",borderRadius:10,padding:"12px 24px",fontWeight:700,fontSize:14,cursor:valid&&!alreadyPosted?"pointer":"default",fontFamily:"inherit"}}>
+            {alreadyPosted?"✓ Already posted":posting?"Creating…":"Create"}
+          </button>
+        </div>
+
+        <div style={{width:420,borderLeft:`1px solid ${T.border}`,padding:16,overflowY:"auto",background:T.bg,flexShrink:0}}>
+          <div style={{fontSize:12,color:T.sub,fontWeight:600,marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentFile.name}</div>
+          <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",minHeight:400,borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
+        </div>
       </div>
     </div>
   );
@@ -7983,7 +8270,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge,isDesktop}){
+function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge,isDesktop,onStartRegistration}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[selected,setSelected]=useState([]);
@@ -8027,11 +8314,12 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
     setSelected([]);
     setBusy(false);
   };
-  // Registers the first selected file as a new entry. Multiple selection isn't
-  // fully supported for registration yet — one entry per file, one at a time.
+  // "Start registration" opens the real multi-item queue (forward/back through
+  // each selected file) instead of only registering the first one.
   const startRegistration=()=>{
     if(!selected.length)return;
-    registerEntry(selected[0]);
+    if(onStartRegistration)onStartRegistration(selected);
+    else registerEntry(selected[0]);
   };
 
   if(isDesktop){
@@ -8081,7 +8369,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
               return(
                 <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
                   <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
-                  <div style={{flex:1,minWidth:0}}>
+                  <div onDoubleClick={e=>{e.stopPropagation();renameFile(f.id);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
                     <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
@@ -9025,6 +9313,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[assistantOpen,setAssistantOpen]=useState(false);
+  const[registrationQueue,setRegistrationQueue]=useState(null);
+  const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
+  const[entriesDisplayCols,setEntriesDisplayCols]=useState({date:true,accounts:true,invoiceRef:true});
   const[entriesSortKey,setEntriesSortKey]=useState("bilag");
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
   const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
@@ -9129,7 +9420,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.aiBookkeeping)return(<DisabledScreen title="AI Bookkeeping" onBack={()=>setTab("Dashboard")}/>);
     return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry}/>);
+  if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} onStartRegistration={setRegistrationQueue}/>);
   if(tab==="Bank"&&!isDesktop){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
@@ -9365,17 +9656,37 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 if(sortKey==="date")return a.date.localeCompare(b.date)*mul;
                 return 0;
               });
+              const cols=entriesDisplayCols;
               const headers=[
-                {key:"bilag",label:"Bilag"},{key:"date",label:"Date"},
-                {key:"",label:"Debit"},{key:"",label:"Credit"},{key:"",label:"Description"},
-                {key:"",label:"Invoice / Due"},{key:"amount",label:"Amount"},
-              ];
+                {key:"bilag",label:"Bilag",always:true},
+                {key:"date",label:"Date",show:cols.date},
+                {key:"",label:"Debit",show:cols.accounts},{key:"",label:"Credit",show:cols.accounts},
+                {key:"",label:"Description",always:true},
+                {key:"",label:"Invoice / Due",show:cols.invoiceRef},
+                {key:"amount",label:"Amount",always:true},
+              ].filter(h=>h.always||h.show);
               return(<>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{sorted.length} entries</div>
-                  <div style={{position:"relative",width:220}}>
-                    <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
-                    <input placeholder="Search bilag, description, account" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <div style={{position:"relative"}}>
+                      <button onClick={()=>setDisplayOptionsOpen(o=>!o)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Display options</button>
+                      {displayOptionsOpen&&(<>
+                        <div onClick={()=>setDisplayOptionsOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+                        <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14}}>
+                          <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Display options</div>
+                          {[["date","Show date"],["accounts","Show debit/credit accounts"],["invoiceRef","Show invoice no. / due date"]].map(([key,label])=>(
+                            <label key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,padding:"6px 0",cursor:"pointer"}}>
+                              <input type="checkbox" checked={cols[key]} onChange={()=>setEntriesDisplayCols(p=>({...p,[key]:!p[key]}))}/>{label}
+                            </label>
+                          ))}
+                        </div>
+                      </>)}
+                    </div>
+                    <div style={{position:"relative",width:220}}>
+                      <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+                      <input placeholder="Search bilag, description, account" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+                    </div>
                   </div>
                 </div>
                 <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
@@ -9393,16 +9704,16 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                       return(
                         <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
                           <td style={{padding:"8px 8px 8px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}</td>
-                          <td style={{color:T.sub}}>{t.date}</td>
-                          <td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>
-                          <td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>
+                          {cols.date&&<td style={{color:T.sub}}>{t.date}</td>}
+                          {cols.accounts&&<td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>}
+                          {cols.accounts&&<td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>}
                           <td style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                          <td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>
+                          {cols.invoiceRef&&<td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>}
                           <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
                         </tr>
                       );
                     })}
-                    {!sorted.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</td></tr>}
+                    {!sorted.length&&<tr><td colSpan={headers.length} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</td></tr>}
                   </tbody>
                 </table>
               </>);
@@ -9496,7 +9807,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Files"&&(
           <div style={{maxWidth:1000}}>
-            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true}/>
+            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
           </div>
         )}
 
@@ -9603,6 +9914,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>
           </div>
         </div>
+      )}
+      {registrationQueue&&(
+        <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransaction} onDone={()=>setRegistrationQueue(null)}/>
       )}
     </div>
   );
