@@ -2767,7 +2767,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,onBack,isDesktop=false}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -3011,12 +3011,12 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
       <div style={{padding:16}}>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>💾 Export Backup</div>
-          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Downloads all your data as a single JSON file — transactions, accounts, contacts, sinking funds, budgets and profile.</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Downloads everything as one JSON file — transactions, accounts, contacts, invoices, quotes, recurring invoices, employees, sinking funds, budgets, company profile, and your app profile. Use this to migrate out or keep an offline copy.</div>
           <button style={btnRed} onClick={()=>{
             try{
               const sf=sinkingFunds||[];
               const profile=JSON.parse(localStorage.getItem("rr_profile")||"{}");
-              const backup={version:2,date:new Date().toISOString(),accounts,contacts,sinkingFunds:sf,budgets:budgets||[],profile};
+              const backup={version:3,date:new Date().toISOString(),accounts,contacts,transactions:transactions||[],invoices:invoices||[],quotes:quotes||[],recurringInvoices:recurringInvoices||[],employees:employees||[],companyProfile:companyProfile||{},sinkingFunds:sf,budgets:budgets||[],profile};
               const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
               const url=URL.createObjectURL(blob);
               const a=document.createElement("a");
@@ -8754,7 +8754,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
-  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
@@ -9169,7 +9169,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>}
+        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
       </div>
