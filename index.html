@@ -483,7 +483,7 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||""});
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English"});
       }
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
@@ -727,7 +727,7 @@ function AppShell({user}){
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",updated_at:new Date().toISOString()},{onConflict:"user_id"});
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
@@ -3764,6 +3764,51 @@ function ConicChart({data,size=132,donut=true}){
   );
 }
 
+// Assistant — static feature guidance, not a chatbot. Organized by workflow
+// so a new user (or someone who's forgotten where something lives) can find
+// the answer in a few seconds without leaving the app.
+const ASSISTANT_TOPICS=[
+  {icon:"ti-receipt-2",title:"Recording a transaction",body:"Voucher → New voucher for a supplier invoice or receipt with a document attached, or Voucher → New entry for a plain manual debit/credit. AI bookkeeping (under Voucher) lets you type or photograph a receipt instead — it reads the amount, date, and vendor and drafts the entry for you."},
+  {icon:"ti-file-invoice",title:"Invoicing a customer",body:"Invoice → New invoice: pick the customer, a 3xxx sale account, the month(s) covered, and a rate — it calculates the total and posts to Receivable automatically. Once paid, use Pay on that invoice in Invoice overview to register the payment and auto-match it. Need to reverse one instead of deleting it? Use CN (credit note)."},
+  {icon:"ti-building-bank",title:"Reconciling the bank",title2:"",body:"Bank → upload a statement export (Date, Description, Amount columns). Unmatched lines show on the right; tick one, choose which account it offsets, and Post — that creates the real ledger entry and marks it matched."},
+  {icon:"ti-users",title:"Customers, suppliers, and aging",body:"Customers holds contact records (add an email here to enable emailing invoices later). Accounting → Customer and supplier ledger shows open items grouped by contact with due dates — click a Bilag to see the entry, or select two or more entries that net to zero and Match them off."},
+  {icon:"ti-report-analytics",title:"Reports",body:"Income statement and Balance sheet are real grouped reports with drill-down — click any account line to jump to its ledger. Trial balance and General ledger give you every account's opening/movement/closing. VAT report totals what's been collected on invoices (sales side only for now)."},
+  {icon:"ti-download",title:"Exporting your data",body:"The download icon in the top bar exports whatever screen you're on — PDF always works, Excel is available on Reskontro, the Accounts list, and an open account ledger. Settings → Backup & Restore downloads everything as one file — your full data, any time."},
+  {icon:"ti-shield-lock",title:"Security",body:"Profile → Two-factor authentication adds a real authenticator-app step to sign-in. Admin Panel → Audit Trail (if you're an admin) shows every create, edit, delete, and reversal on transactions and invoices — nothing there can be changed after the fact."},
+];
+function AssistantPanel({onClose}){
+  const[openIdx,setOpenIdx]=useState(0);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:800,display:"flex",justifyContent:"center",alignItems:"flex-start",padding:"40px 20px"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:560,width:"100%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:"#fff"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <i className="ti ti-sparkles" style={{fontSize:16,color:T.accent}}/>
+            <span style={{fontSize:15,fontWeight:800,color:T.text}}>Assistant</span>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:T.muted}}>✕</button>
+        </div>
+        <div style={{padding:16}}>
+          <p style={{fontSize:12,color:T.muted,margin:"0 0 14px"}}>Quick guidance for the main workflows. Tap a topic to expand it.</p>
+          {ASSISTANT_TOPICS.map((topic,i)=>{
+            const open=openIdx===i;
+            return(
+              <div key={i} style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"}}>
+                <div onClick={()=>setOpenIdx(o=>o===i?-1:i)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",background:open?T.accentLight:"#fff"}}>
+                  <i className={`ti ${topic.icon}`} style={{fontSize:16,color:T.accent}}/>
+                  <span style={{fontSize:13,fontWeight:700,color:T.text,flex:1}}>{topic.title}</span>
+                  <i className="ti ti-chevron-down" style={{fontSize:13,color:T.muted,transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}/>
+                </div>
+                {open&&<div style={{padding:"0 14px 14px",fontSize:12,color:T.sub,lineHeight:1.6}}>{topic.body}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
@@ -4752,6 +4797,134 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
           {!list.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {type==="customer"?"customers":"suppliers"} yet.</td></tr>}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Company information — full details screen, matching Tripletex's Company
+// information layout: identity/address on the left, contact/business details
+// on the right. Separate from the smaller invoice-header card in Settings.
+function CompanyInfoScreen({companyProfile,saveCompanyProfile}){
+  const[form,setForm]=useState(companyProfile);
+  const[saved,setSaved]=useState(false);
+  const save=()=>{saveCompanyProfile(form);setSaved(true);setTimeout(()=>setSaved(false),1800);};
+  const set=(k)=>e=>setForm(p=>({...p,[k]:e.target.value}));
+
+  return(
+    <div style={{maxWidth:900}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Company information</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:20}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Company details</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px 32px"}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name</div>
+            <input value={form.companyName} onChange={set("companyName")} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Telephone number</div>
+            <input value={form.phone||""} onChange={set("phone")} style={inp}/>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Address</div>
+            <input value={form.address} onChange={set("address")} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Telephone no. mobile</div>
+            <input value={form.mobile} onChange={set("mobile")} style={inp}/>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Postcode</div>
+              <input value={form.postcode||""} onChange={set("postcode")} style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>City</div>
+              <input value={form.city||""} onChange={set("city")} style={inp}/>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Fax number</div>
+            <input value={form.faxNumber||""} onChange={set("faxNumber")} style={inp}/>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Organisation number</div>
+            <input value={form.orgNumber} onChange={set("orgNumber")} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Email address</div>
+            <input type="email" value={form.email} onChange={set("email")} style={inp}/>
+          </div>
+
+          <div></div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Website</div>
+            <input value={form.website||""} onChange={set("website")} style={inp}/>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Bank account (for invoices)</div>
+            <input value={form.bankAccount} onChange={set("bankAccount")} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Form of business organization</div>
+            <select value={form.formOfBusiness||""} onChange={set("formOfBusiness")} style={inp}>
+              <option value="">—</option>
+              <option>Sole proprietorship</option>
+              <option>Partnership</option>
+              <option>Private limited company</option>
+              <option>Public limited company</option>
+              <option>Non-profit / NGO</option>
+            </select>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
+            <input type="number" value={form.vatPct} onChange={e=>setForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+            <select value={form.currency||"PKR"} onChange={set("currency")} style={inp}>
+              <option>PKR</option><option>NOK</option><option>USD</option><option>EUR</option><option>GBP</option>
+            </select>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Fiscal year starts</div>
+            <select value={form.fiscalYearStartMonth||1} onChange={e=>setForm(p=>({...p,fiscalYearStartMonth:parseInt(e.target.value)}))} style={inp}>
+              {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m,i)=><option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Language</div>
+            <select value={form.language||"English"} onChange={set("language")} style={inp}>
+              <option>English</option><option>Norwegian</option><option>Urdu</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{marginTop:20,display:"flex",alignItems:"center",gap:12}}>
+          {form.logoDataUrl?(
+            <img src={form.logoDataUrl} style={{width:48,height:48,objectFit:"contain",borderRadius:8,border:`1px solid ${T.border}`}}/>
+          ):(
+            <div style={{width:48,height:48,borderRadius:8,border:`1px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:T.muted}}>No logo</div>
+          )}
+          <label style={{fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer"}}>
+            {form.logoDataUrl?"Change logo":"Upload logo"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+              const file=e.target.files[0];
+              if(!file)return;
+              const reader=new FileReader();
+              reader.onload=ev=>setForm(p=>({...p,logoDataUrl:ev.target.result}));
+              reader.readAsDataURL(file);
+            }}/>
+          </label>
+        </div>
+
+        <button onClick={save} style={{marginTop:20,background:saved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{saved?"✓ Saved":"Save"}</button>
+      </div>
     </div>
   );
 }
@@ -8850,6 +9023,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   },[]);
   const[expandedCat,setExpandedCat]=useState(null);
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
+  const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
+  const[assistantOpen,setAssistantOpen]=useState(false);
   const[entriesSortKey,setEntriesSortKey]=useState("bilag");
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
   const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
@@ -8960,6 +9135,53 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))}/></div></div>);
   }
 
+  // Contextual export — Excel for the screens with structured tabular data
+  // (Reskontro, Accounts overview, an open account ledger), PDF generically
+  // for whatever's currently visible in the content area.
+  const exportCurrentToExcel=()=>{
+    let aoa=[];
+    let filename="export";
+    if(ledgerAcc){
+      const rows=[...transactions].filter(t=>t.date>=filterFrom&&t.date<=filterTo&&(t.debitCode===ledgerAcc.code||t.creditCode===ledgerAcc.code)).sort((a,b)=>a.date.localeCompare(b.date));
+      aoa=[["Bilag","Date","Description","Movement"],...rows.map(t=>{
+        const mv=t.debitCode===ledgerAcc.code?t.amount:-t.amount;
+        return[fmtB(t.bilag),t.date,t.description,mv];
+      })];
+      filename=`Ledger_${ledgerAcc.code}_${filterFrom}_${filterTo}`;
+    } else if(tab==="Reskontro"){
+      aoa=[["Contact","Type","Bilag","Date","Description","Amount"]];
+      contacts.forEach(c=>{
+        const code=c.type==="customer"?"1500":"2400";
+        transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)).forEach(t=>{
+          const mv=t.debitCode===code?t.amount:-t.amount;
+          aoa.push([c.name,c.type,fmtB(t.bilag),t.date,t.description,mv]);
+        });
+      });
+      filename="Reskontro";
+    } else if(tab==="Accounts"){
+      aoa=[["Code","Name","Balance"]];
+      accounts.forEach(a=>{
+        const bal=transactions.reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+        if(bal!==0)aoa.push([a.code,a.name,bal]);
+      });
+      filename="Accounts";
+    } else {
+      alert("Excel export isn't set up for this screen yet — try PDF instead.");
+      return;
+    }
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Export");
+    XLSX.writeFile(wb,`${filename}.xlsx`);
+    setDownloadMenuOpen(false);
+  };
+  const exportCurrentToPdf=()=>{
+    const el=document.getElementById("main-content-area");
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    setDownloadMenuOpen(false);
+  };
+  const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts";
+
   if(isDesktop)return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
       <div style={{position:"fixed",bottom:10,left:10,zIndex:99999,background:"#000",color:"#fff",fontSize:12,padding:"6px 10px",borderRadius:8,fontFamily:"monospace",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>width: {debugWinWidth}px · isDesktop: YES</div>
@@ -9025,6 +9247,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"QuoteOverview",label:"Quotes"},
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
+              {tab:"CompanyInfo",label:"Company information"},
               {tab:"Employees",label:"Employees"},
               {tab:"Settings",label:"Company settings"},
             ]},
@@ -9076,19 +9299,34 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
       </div>
 
-      <div style={{flex:1,minWidth:0,padding:"18px 28px"}}>
-        {/* Top bar — compact, no period control here (each screen that needs one manages its own) */}
+      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"18px 28px"}}>
+        {/* Top bar — company pill left; Assistant, search, download, bell, profile right */}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
-          <div onClick={()=>setTab("Settings")} title="Company settings" style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0}}>
+          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0}}>
             <div style={{width:18,height:18,borderRadius:5,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
             <span style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:"nowrap"}}>Redrock Danria</span>
             <span style={{fontSize:8,color:T.accent}}>▾</span>
           </div>
+          <div style={{flex:1}}/>
+          <button onClick={()=>setAssistantOpen(true)} style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,border:"none",borderRadius:16,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:T.accent,fontFamily:"inherit",flexShrink:0}}>
+            <i className="ti ti-sparkles" style={{fontSize:13}}/>Assistant
+          </button>
           <div style={{position:"relative",width:180}}>
             <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
             <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12}}/>
           </div>
-          <div style={{flex:1}}/>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <i className="ti ti-download" style={{fontSize:15,color:T.sub}}/>
+            </button>
+            {downloadMenuOpen&&(<>
+              <div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+                <div onClick={exportCurrentToPdf} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:6}}/>Download as PDF</div>
+                <div onClick={excelAvailable?exportCurrentToExcel:undefined} style={{padding:"10px 14px",fontSize:12,cursor:excelAvailable?"pointer":"default",color:excelAvailable?T.text:T.muted,fontWeight:600,opacity:excelAvailable?1:0.5}}><i className="ti ti-file-type-xls" style={{fontSize:13,marginRight:6}}/>Download as Excel{!excelAvailable&&" (not on this screen)"}</div>
+              </div>
+            </>)}
+          </div>
           {(()=>{
             const bugCount=isAdmin?getBugs().filter(b=>!b.resolved).length:0;
             return(
@@ -9110,6 +9348,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             </>)}
           </div>
         </div>
+
+        {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab}/>}
 
@@ -9313,6 +9553,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <AuditLogScreen auditLog={auditLog} transactions={transactions}/>
           </div>
         )}
+
+        {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
 
         {tab==="Employees"&&(
           <div style={{maxWidth:900}}>
