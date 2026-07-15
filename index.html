@@ -318,6 +318,7 @@ function LoginScreen({onLogin}){
   const[err,setErr]=useState("");
   const[loading,setLoading]=useState(false);
   const[done,setDone]=useState(false);
+  const[publicPage,setPublicPage]=useState(null); // null | "pricing" | "privacy" | "terms" | "status"
   const inp2={background:"#FAF9F7",border:`1px solid ${T.border}`,borderRadius:12,color:T.text,padding:"13px 16px",width:"100%",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
   const handle=async()=>{
     setErr("");setLoading(true);
@@ -334,6 +335,76 @@ function LoginScreen({onLogin}){
     setLoading(false);
   };
   const onKey=e=>{if(e.key==="Enter")handle();};
+
+  if(publicPage)return(
+    <div style={{minHeight:"100vh",background:"#FAF9F7",padding:"40px 20px",fontFamily:"system-ui,sans-serif"}}>
+      <div style={{maxWidth:publicPage==="pricing"?900:600,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <img src={LOGO_FULL_B64} style={{width:180,objectFit:"contain"}}/>
+        </div>
+        <button onClick={()=>setPublicPage(null)} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:20}}>← Back to sign in</button>
+
+        {publicPage==="pricing"&&(<>
+          <h1 style={{fontSize:28,fontWeight:900,color:"#0F172A",textAlign:"center",marginBottom:8}}>Simple pricing for real bookkeeping</h1>
+          <p style={{fontSize:14,color:"#64748B",textAlign:"center",marginBottom:36,maxWidth:520,margin:"0 auto 36px"}}>Double-entry accounting, invoicing, bank reconciliation, and AI-assisted entry — without needing to think like an accountant.</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:32}}>
+            {PACKAGE_TIERS.map(tier=>(
+              <div key={tier.id} style={{background:"#fff",border:`2px solid ${tier.id==="standard"?tier.color:"#E2E8F0"}`,borderRadius:16,padding:24,position:"relative"}}>
+                {tier.id==="standard"&&<div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:tier.color,color:"#fff",fontSize:10,fontWeight:800,padding:"3px 12px",borderRadius:20}}>MOST POPULAR</div>}
+                <div style={{fontSize:16,fontWeight:800,color:"#0F172A",marginBottom:4}}>{tier.label}</div>
+                <div style={{fontSize:24,fontWeight:900,color:tier.color,marginBottom:16}}>{tier.price}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {ADMIN_FEATURES.filter(f=>tier.features.includes(f.id)).map(f=>(
+                    <div key={f.id} style={{fontSize:12,color:"#334155",display:"flex",alignItems:"center",gap:6}}><span style={{color:tier.color}}>✓</span>{f.label}</div>
+                  ))}
+                  {tier.id!=="complete"&&<div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>+ {ADMIN_FEATURES.length-tier.features.length} more on higher plans</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p style={{textAlign:"center",fontSize:12,color:"#94A3B8"}}>All plans include double-entry bookkeeping, invoicing, and reports. Contact us to get started.</p>
+        </>)}
+
+        {publicPage==="privacy"&&(
+          <div style={{background:"#fff",borderRadius:16,padding:28,border:"1px solid #E2E8F0",fontSize:13,color:"#334155",lineHeight:1.7}}>
+            <h2 style={{fontSize:18,fontWeight:800,marginBottom:14}}>Privacy Policy</h2>
+            <p>Your financial data belongs to you. We store it securely using Supabase (PostgreSQL) with row-level security, meaning your data is isolated from every other account on this platform.</p>
+            <p>We do not sell, share, or use your financial data for advertising. Data you enter — transactions, invoices, contacts, company information — is used only to provide the accounting features you're using.</p>
+            <p>Uploaded documents (receipts, invoices) are stored in encrypted cloud storage and are only accessible to your account and platform administrators for support purposes.</p>
+            <p>You can export a complete copy of your data at any time from Settings → Backup & Restore.</p>
+            <p style={{color:"#94A3B8",fontSize:11,marginTop:20}}>This is a working draft — have a lawyer review it before relying on it for real customers.</p>
+          </div>
+        )}
+
+        {publicPage==="terms"&&(
+          <div style={{background:"#fff",borderRadius:16,padding:28,border:"1px solid #E2E8F0",fontSize:13,color:"#334155",lineHeight:1.7}}>
+            <h2 style={{fontSize:18,fontWeight:800,marginBottom:14}}>Terms of Service</h2>
+            <p>By using this software, you agree to use it for legitimate business accounting purposes. You are responsible for the accuracy of the data you enter.</p>
+            <p>This software is provided to assist with bookkeeping; it does not constitute professional accounting, tax, or legal advice. Consult a qualified accountant for advice specific to your business and jurisdiction.</p>
+            <p>Accounts may be suspended for abuse, non-payment, or violation of these terms. You may export your data and close your account at any time.</p>
+            <p style={{color:"#94A3B8",fontSize:11,marginTop:20}}>This is a working draft — have a lawyer review it before relying on it for real customers.</p>
+          </div>
+        )}
+
+        {publicPage==="status"&&(
+          <div style={{background:"#fff",borderRadius:16,padding:28,border:"1px solid #E2E8F0"}}>
+            <h2 style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#334155"}}>System Status</h2>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"#E6F6F1",borderRadius:10,marginBottom:12}}>
+              <span style={{width:10,height:10,borderRadius:"50%",background:T.green,display:"inline-block"}}/>
+              <span style={{fontSize:13,fontWeight:700,color:T.green}}>All systems operational</span>
+            </div>
+            <div style={{fontSize:12,color:"#64748B",lineHeight:1.8}}>
+              <div>Application — Operational</div>
+              <div>Database — Operational</div>
+              <div>File storage — Operational</div>
+              <div>AI bookkeeping — Operational</div>
+            </div>
+            <p style={{fontSize:11,color:"#94A3B8",marginTop:16}}>This is a static status page for now — a real incident history and uptime monitoring would replace this before launch.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   if(done)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",padding:24}}>
@@ -395,6 +466,11 @@ function LoginScreen({onLogin}){
         </div>
 
         <div style={{textAlign:"center",marginTop:20,fontSize:10,color:"#CBD5E1",letterSpacing:0.5}}>REDROCK DANRIA ACCOUNTANTS · SECURE LOGIN</div>
+        <div style={{display:"flex",justifyContent:"center",gap:14,marginTop:14}}>
+          {[["pricing","Pricing"],["privacy","Privacy"],["terms","Terms"],["status","Status"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setPublicPage(id)} style={{background:"none",border:"none",color:"#94A3B8",fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>{label}</button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -589,6 +665,14 @@ function AppShell({user}){
     if(!canEdit)return;
     sb.from("audit_log").insert([{user_id:user.id,changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
       .then(({data,error})=>{if(!error)setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);});
+  };
+
+  // Usage analytics — lightweight page-view logging, fire-and-forget, never
+  // blocks anything. Tells admins what's actually used, not a full platform.
+  const logUsageEvent=(tabName)=>{
+    sb.from("usage_events").insert([{user_id:user.id,tab_name:tabName}]).then(({error})=>{
+      if(error)console.error("Usage log failed:",error);
+    });
   };
 
   const checkTxnLogic=(form,ctx)=>{
@@ -1129,7 +1213,7 @@ function AppShell({user}){
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
-        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog}
+        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
     </div>
@@ -2733,7 +2817,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
-function AccountPlanScreen({accounts,onSave,transactions,onBack}){
+function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false});
@@ -2787,9 +2871,14 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   };
 
   return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
-      <BackHeader title="Account Plan" sub="SETTINGS" onBack={onBack}/>
-      <div style={{padding:16}}>
+    <div style={isDesktop?{maxWidth:800}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Account plan</h1>
+          <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="Account Plan" sub="SETTINGS" onBack={onBack}/>}
+      <div style={isDesktop?{}:{padding:16}}>
         <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:12}}/>
         <button style={{...btnRed,marginBottom:14}} onClick={()=>setShowNew(s=>!s)}>{showNew?"✕ Cancel":"+ New Account"}</button>
         {showNew&&<Card style={{marginBottom:14}}><SL>New Account</SL><div style={{display:"flex",flexDirection:"column",gap:10}}><input placeholder="Code e.g. 4005" value={newAcc.code} onChange={e=>setNewAcc(p=>({...p,code:e.target.value}))} style={inp}/><input placeholder="Name e.g. Office Supplies" value={newAcc.name} onChange={e=>setNewAcc(p=>({...p,name:e.target.value}))} style={inp}/><div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px",lineHeight:1.7}}>1000–1999 = Assets · 2000–2999 = Equity & Liabilities · 3000–3999 = Revenue · 4000–7999 = Expenses · 8000–8999 = Finance Items · 9000–9999 = Internal</div><SaveFlashButton onClick={()=>{if(!newAcc.code.trim()||!newAcc.name.trim())return;if(list.some(a=>a.code===newAcc.code.trim())){alert("Code already exists.");return;}const updated=[...list,{code:newAcc.code.trim(),name:newAcc.name.trim(),matchable:false}];setList(updated);onSave(updated,null);setNewAcc({code:"",name:""});setShowNew(false);}} label="Add Account"/></div></Card>}
@@ -2848,7 +2937,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack}){
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,isDesktop=false}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -2889,9 +2978,14 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const deleteContact=id=>setContacts(contacts.filter(c=>c.id!==id));
 
   if(screen==="currency")return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Currency" sub="SETTINGS" onBack={()=>setScreen(null)}/>
-      <div style={{padding:16}}>
+    <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Currency</h1>
+          <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="Currency" sub="SETTINGS" onBack={()=>setScreen(null)}/>}
+      <div style={isDesktop?{}:{padding:16}}>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Primary Currency</div>
           <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Used for all amounts and reports throughout the app.</div>
@@ -2949,7 +3043,16 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         saveSinkingFunds((sinkingFunds||[]).filter(x=>x.id!==id));
       };
       return(
-        <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+        <div style={isDesktop?{maxWidth:700}:{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+          {isDesktop?(
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Sinking funds</h1>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={openSfNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add</button>
+                <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+              </div>
+            </div>
+          ):(
           <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
             <button onClick={()=>setScreen(null)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
             <div style={{flex:1}}>
@@ -2958,7 +3061,8 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             </div>
             <button onClick={openSfNew} style={{background:"rgba(255,255,255,0.15)",border:"0.5px solid rgba(255,255,255,0.3)",borderRadius:9,color:"#fff",cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ Add</button>
           </div>
-          <div style={{padding:16}}>
+          )}
+          <div style={isDesktop?{}:{padding:16}}>
             {/* Add / Edit Form */}
             {sfShowForm&&(
               <div style={{background:"#fff",borderRadius:14,border:`1.5px solid ${T.accent}`,padding:"14px 16px",marginBottom:14,boxShadow:"0 4px 16px rgba(13,115,119,0.12)"}}>
@@ -3046,9 +3150,14 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   }
 
   if(screen==="periodclose")return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Period Close" sub="SETTINGS" onBack={()=>setScreen(null)}/>
-      <div style={{padding:16}}>
+    <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Period close</h1>
+          <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="Period Close" sub="SETTINGS" onBack={()=>setScreen(null)}/>}
+      <div style={isDesktop?{}:{padding:16}}>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔒 Lock Period Until Date</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.6}}>
@@ -3087,9 +3196,14 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   );
 
   if(screen==="backup")return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Backup & Restore" sub="DATA" onBack={()=>setScreen(null)}/>
-      <div style={{padding:16}}>
+    <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Backup and restore</h1>
+          <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="Backup & Restore" sub="DATA" onBack={()=>setScreen(null)}/>}
+      <div style={isDesktop?{}:{padding:16}}>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>💾 Export Backup</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Downloads everything as one JSON file — transactions, accounts, contacts, invoices, quotes, recurring invoices, employees, sinking funds, budgets, company profile, and your app profile. Use this to migrate out or keep an offline copy.</div>
@@ -3175,7 +3289,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
@@ -3214,9 +3328,14 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         supplier:contacts.filter(c=>c.type==="supplier"&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase()))),
       };
       return(
-        <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-          <BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>setScreen(null)}/>
-          <div style={{padding:16}}>
+        <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+          {isDesktop?(
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Manage contacts</h1>
+              <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+            </div>
+          ):<BackHeader title="Manage Contacts" sub="RESKONTRO · SETTINGS" onBack={()=>setScreen(null)}/>}
+          <div style={isDesktop?{}:{padding:16}}>
             {saved&&<div style={{background:"#DCFCE7",border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",fontSize:12,color:"#166534",fontWeight:700,marginBottom:12}}>✓ Saved</div>}
             <input placeholder="Search contacts…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:10}}/>
             <button onClick={openNew} style={{...btnRed,marginBottom:14}}>+ New Contact</button>
@@ -3338,7 +3457,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
         {[
           {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
-          {icon:"👥",label:"Manage Contacts",sub:"Customers & suppliers",action:()=>setScreen("contacts"),bg:T.redLight,color:T.red},
+          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
           {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
           {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
           {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
@@ -3849,6 +3968,81 @@ function AssistantPanel({onClose}){
   );
 }
 
+// First-run onboarding — three quick steps: company basics, a look at the
+// chart of accounts already set up, and a nudge to the first real entry.
+// Skippable at every step; never shown again once dismissed or once real
+// data exists.
+function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,onSkip}){
+  const[step,setStep]=useState(0);
+  const[name,setName]=useState(companyProfile.companyName||"");
+  const[currency,setCurrency]=useState(companyProfile.currency||"PKR");
+
+  const saveAndNext=()=>{
+    saveCompanyProfile({...companyProfile,companyName:name,currency});
+    setStep(1);
+  };
+
+  const steps=[
+    {
+      title:"Welcome — let's set up your company",
+      body:(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Company name</div>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your business name" style={{...inp}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Currency</div>
+            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inp}}>
+              <option>PKR</option><option>NOK</option><option>USD</option><option>EUR</option><option>GBP</option>
+            </select>
+          </div>
+        </div>
+      ),
+      action:{label:"Continue",onClick:saveAndNext,disabled:!name.trim()},
+    },
+    {
+      title:"Your chart of accounts is ready",
+      body:(
+        <div>
+          <p style={{fontSize:13,color:"#64748B",marginBottom:14,lineHeight:1.6}}>We've set up a standard double-entry chart of accounts — {accounts.length} accounts covering assets, liabilities, equity, income, and expenses. You can add, rename, or remove any of them later from Settings → Account Plan.</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {accounts.slice(0,10).map(a=>(
+              <span key={a.code} style={{fontSize:11,background:"#F1F5F9",color:"#475569",padding:"4px 10px",borderRadius:20,fontWeight:600}}>{a.code} {a.name}</span>
+            ))}
+            {accounts.length>10&&<span style={{fontSize:11,color:"#94A3B8",padding:"4px 10px"}}>+{accounts.length-10} more</span>}
+          </div>
+        </div>
+      ),
+      action:{label:"Continue",onClick:()=>setStep(2)},
+    },
+    {
+      title:"Ready to record your first entry",
+      body:(
+        <p style={{fontSize:13,color:"#64748B",lineHeight:1.6}}>Use <b>Voucher → New voucher</b> for a supplier invoice or receipt, <b>Voucher → New entry</b> for a plain manual entry, or just type or photograph a receipt with <b>AI bookkeeping</b> and let it draft the entry for you. The Assistant button (top right, on desktop) has quick guidance any time you need it.</p>
+      ),
+      action:{label:"Get started",onClick:onFinish},
+    },
+  ];
+  const current=steps[step];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#FAF9F7",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{maxWidth:440,width:"100%",background:"#fff",borderRadius:20,padding:32,boxShadow:"0 20px 60px rgba(0,0,0,0.1)",border:"1px solid #E2E8F0"}}>
+        <div style={{display:"flex",gap:6,marginBottom:24}}>
+          {steps.map((_,i)=>(
+            <div key={i} style={{flex:1,height:4,borderRadius:2,background:i<=step?T.accent:"#E2E8F0"}}/>
+          ))}
+        </div>
+        <div style={{fontSize:18,fontWeight:800,color:"#0F172A",marginBottom:16}}>{current.title}</div>
+        <div style={{marginBottom:24}}>{current.body}</div>
+        <button onClick={current.action.onClick} disabled={current.action.disabled} style={{width:"100%",background:current.action.disabled?"#E2E8F0":T.accent,color:current.action.disabled?"#94A3B8":"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:current.action.disabled?"default":"pointer",fontFamily:"inherit",marginBottom:10}}>{current.action.label}</button>
+        <button onClick={onSkip} style={{width:"100%",background:"none",border:"none",color:"#94A3B8",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Skip setup</button>
+      </div>
+    </div>
+  );
+}
+
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
@@ -3912,10 +4106,32 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
 
   const activity=[...transactions].sort((a,b)=>b.bilag-a.bilag).slice(0,6);
 
+  // Editable homescreen — show/hide widgets, persisted per device.
+  const WIDGET_KEY="rr_dashboard_widgets";
+  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true};}});
+  const[customizing,setCustomizing]=useState(false);
+  const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
+  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed"};
+
   return(
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10,position:"relative"}}>
+        <button onClick={()=>setCustomizing(o=>!o)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-layout-grid" style={{fontSize:13,marginRight:5}}/>Customize</button>
+        {customizing&&(<>
+          <div onClick={()=>setCustomizing(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+          <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14}}>
+            <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Show on dashboard</div>
+            {Object.keys(WIDGET_LABELS).map(key=>(
+              <label key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,padding:"6px 0",cursor:"pointer"}}>
+                <input type="checkbox" checked={widgets[key]} onChange={()=>toggleWidget(key)}/>{WIDGET_LABELS[key]}
+              </label>
+            ))}
+          </div>
+        </>)}
+      </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:20,alignItems:"start"}}>
       <div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
+        {widgets.kpis&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
           {kpis.map(k=>{
             const positive=k.delta>=0;
             return(
@@ -3927,9 +4143,9 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
               </div>
             );
           })}
-        </div>
+        </div>}
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+        {widgets.charts&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
           <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Balance composition</div>
             <div style={{display:"flex",alignItems:"center",gap:20}}>
@@ -3956,9 +4172,9 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+        {widgets.entries&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text}}>All entries</div>
             <div style={{display:"flex",gap:6}}>
@@ -3983,10 +4199,10 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
               {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
 
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
+      {widgets.activity&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
         <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Activity</div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           {activity.map(t=>{
@@ -4003,7 +4219,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
           })}
           {!activity.length&&<div style={{fontSize:12,color:T.muted}}>Nothing this period yet.</div>}
         </div>
-      </div>
+      </div>}
+    </div>
     </div>
   );
 }
@@ -4287,7 +4504,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 // VAT report — calculated from VAT captured on sales invoices. Honest scope
 // note shown in the UI: supplier vouchers/receipts don't capture purchase VAT
 // separately yet, so this is sales (output) VAT only, not a full net position.
-function VATReportScreen({invoices,contacts}){
+function VATReportScreen({invoices,contacts,transactions}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const year=parseInt(viewMonth.slice(0,4));
@@ -4308,10 +4525,17 @@ function VATReportScreen({invoices,contacts}){
     return Object.values(m).sort((a,b)=>b.rate-a.rate);
   },[periodInvoices]);
 
+  // Purchase (input) VAT — captured on supplier invoice vouchers (Cr 2400
+  // with a vat_amount set). Closes the gap where only sales VAT was tracked.
+  const periodPurchases=useMemo(()=>(transactions||[]).filter(t=>inPeriod(t.date)&&t.vatAmount!=null&&t.creditCode==="2400").sort((a,b)=>a.date.localeCompare(b.date)),[transactions,viewMonth,fullYear]);
+  const totalPurchaseVat=periodPurchases.reduce((s,t)=>s+(t.vatAmount||0),0);
+  const totalPurchaseNet=periodPurchases.reduce((s,t)=>s+(t.amount-(t.vatAmount||0)),0);
+  const netVatPosition=totalVat-totalPurchaseVat;
+
   return(
     <div>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 6px"}}>VAT report</h1>
-      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Sales (output) VAT only, calculated from invoices. Purchase (input) VAT isn't captured on vouchers yet, so this isn't a full net VAT position — see roadmap.</p>
+      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Sales VAT from invoices, purchase VAT from supplier vouchers where VAT was entered. Vouchers created before VAT capture was added, or without a VAT % set, won't appear on the purchase side.</p>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -4321,6 +4545,15 @@ function VATReportScreen({invoices,contacts}){
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
       </div>
 
+      <div style={{background:netVatPosition>=0?T.redLight:T.greenBg,border:`1px solid ${netVatPosition>=0?T.red:T.green}`,borderRadius:12,padding:18,marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:12,color:netVatPosition>=0?T.red:T.green,fontWeight:700}}>{netVatPosition>=0?"Net VAT payable":"Net VAT reclaimable"}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:2}}>VAT collected on sales minus VAT paid on purchases</div>
+        </div>
+        <div style={{fontSize:24,fontWeight:900,color:netVatPosition>=0?T.red:T.green}}>{fmt(Math.abs(netVatPosition))}</div>
+      </div>
+
+      <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>Sales (output VAT)</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:20}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
           <div style={{fontSize:12,color:T.sub}}>Sales excl. VAT</div>
@@ -4351,7 +4584,7 @@ function VATReportScreen({invoices,contacts}){
       )}
 
       <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>Invoices this period</div>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:24}}>
         <thead><tr style={{color:T.muted,fontSize:11}}>
           <td style={{padding:"6px 0"}}>Invoice</td><td>Customer</td><td>Date</td><td style={{textAlign:"right"}}>Excl. VAT</td><td style={{textAlign:"right"}}>VAT</td><td style={{textAlign:"right"}}>Total</td>
         </tr></thead>
@@ -4367,6 +4600,36 @@ function VATReportScreen({invoices,contacts}){
             </tr>
           ))}
           {!periodInvoices.length&&<tr><td colSpan="6" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No invoices this period.</td></tr>}
+        </tbody>
+      </table>
+
+      <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>Purchases (input VAT)</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:12,color:T.sub}}>Purchases excl. VAT</div>
+          <div style={{fontSize:18,fontWeight:800,color:T.text,marginTop:4}}>{fmt(totalPurchaseNet)}</div>
+        </div>
+        <div style={{background:T.redLight,border:`1px solid ${T.red}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:12,color:T.red}}>VAT paid</div>
+          <div style={{fontSize:18,fontWeight:800,color:T.red,marginTop:4}}>{fmt(totalPurchaseVat)}</div>
+        </div>
+      </div>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}>Bilag</td><td>Description</td><td>Date</td><td style={{textAlign:"right"}}>Excl. VAT</td><td style={{textAlign:"right"}}>VAT</td><td style={{textAlign:"right"}}>Total</td>
+        </tr></thead>
+        <tbody>
+          {periodPurchases.map(t=>(
+            <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"7px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+              <td>{t.description}</td>
+              <td style={{color:T.sub}}>{t.date}</td>
+              <td style={{textAlign:"right"}}>{fmt(t.amount-(t.vatAmount||0))}</td>
+              <td style={{textAlign:"right"}}>{fmt(t.vatAmount||0)}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
+            </tr>
+          ))}
+          {!periodPurchases.length&&<tr><td colSpan="6" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No supplier vouchers with VAT recorded this period.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -5236,8 +5499,8 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         </div>
       </div>
 
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        <div style={{flex:1,padding:24,overflowY:"auto",maxWidth:560}}>
+      <div style={{flex:1,display:"flex",flexWrap:"wrap",overflow:"auto"}}>
+        <div style={{flex:"1 1 400px",padding:24,overflowY:"visible",maxWidth:560}}>
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
             <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
@@ -5345,7 +5608,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
           </button>
         </div>
 
-        <div style={{width:420,borderLeft:`1px solid ${T.border}`,padding:16,overflowY:"auto",background:T.bg,flexShrink:0}}>
+        <div style={{flex:"1 1 320px",minWidth:280,borderLeft:`1px solid ${T.border}`,padding:16,overflowY:"visible",background:T.bg}}>
           <div style={{fontSize:12,color:T.sub,fontWeight:600,marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentFile.name}</div>
           <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",minHeight:400,borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
         </div>
@@ -8715,15 +8978,49 @@ const ADMIN_FEATURES=[
   {id:"files",label:"Inbox",icon:"📥",desc:"Upload & manage receipt files"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
 ];
-function AdminPanel({onBack,profiles=[],onToggleActive}){
+// Package tiers — bulk-assigns per-user feature overrides to match a plan.
+// This is the enforcement layer on top of the existing feature-flag system;
+// pricing itself is still whatever's agreed manually, this just gates access.
+const PACKAGE_TIERS=[
+  {id:"basic",label:"Basic",price:"PKR 1,500/mo",color:"#6B7280",features:["reports","calcAmount"]},
+  {id:"standard",label:"Standard",price:"PKR 3,000/mo",color:"#0057B8",features:["bank","reskontro","budget","reports","files","calcAmount","import","aiBookkeeping"]},
+  {id:"complete",label:"Complete",price:"PKR 5,000/mo",color:"#0D7377",features:ADMIN_FEATURES.map(f=>f.id)},
+];
+const USER_PACKAGE_KEY="rr_user_packages";
+const getUserPackages=()=>{try{return JSON.parse(localStorage.getItem(USER_PACKAGE_KEY)||"{}")}catch{return{};}};
+function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[search,setSearch]=useState("");
   const[userStatusTab,setUserStatusTab]=useState("active");
+  const[usageEvents,setUsageEvents]=useState([]);
+  const[usageLoading,setUsageLoading]=useState(false);
+  useEffect(()=>{
+    if(tab!=="analytics"||usageEvents.length)return;
+    setUsageLoading(true);
+    sb.from("usage_events").select("tab_name,created_at").order("created_at",{ascending:false}).limit(5000).then(({data,error})=>{
+      if(!error)setUsageEvents(data||[]);
+      setUsageLoading(false);
+    });
+  },[tab]);
   const[features,setFeaturesState]=useState(()=>getAdminFeatures());
   const[userFeats,setUserFeatsState]=useState(()=>{
     try{return JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}")}catch{return{};}
   });
+  const[userPackages,setUserPackagesState]=useState(()=>getUserPackages());
+  const applyPackage=(userId,tierId)=>{
+    const tier=PACKAGE_TIERS.find(t=>t.id===tierId);
+    if(!tier)return;
+    const cur=userFeats[userId]||{};
+    const updated={...cur};
+    ADMIN_FEATURES.forEach(f=>{updated[f.id]=tier.features.includes(f.id);});
+    const n={...userFeats,[userId]:updated};
+    setUserFeatsState(n);
+    localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
+    const np={...userPackages,[userId]:tierId};
+    setUserPackagesState(np);
+    localStorage.setItem(USER_PACKAGE_KEY,JSON.stringify(np));
+  };
 
   const toggleGlobal=(id)=>{
     const n={...features,[id]:features[id]===false?true:false};
@@ -8764,6 +9061,73 @@ function AdminPanel({onBack,profiles=[],onToggleActive}){
     const deactBtnStyle=isDeact
       ?{background:T.green,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"}
       :{background:"#fee2e2",color:T.red,border:"1px solid "+T.red,borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"};
+
+    if(isDesktop)return(
+      <div style={{maxWidth:900}}>
+        <button onClick={()=>setSelUser(null)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:14,padding:0}}>‹ Back to users</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:20,alignItems:"start"}}>
+          <div>
+            <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20,marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+                <div style={{width:56,height:56,borderRadius:"50%",background:isDeact?"#e5e7eb":T.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:18,fontWeight:800,flexShrink:0}}>{isDeact?"🚫":"#"+userNum}</div>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email||"User"}</div>
+                  <div style={{fontSize:12,color:T.muted}}>{p.email}</div>
+                  <div style={{display:"flex",gap:5,marginTop:6}}>
+                    {isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED / PENDING</span>}
+                    {p.is_admin&&<span style={{fontSize:10,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800}}>ADMIN</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{fontSize:11,color:T.muted,borderTop:`1px solid ${T.border}`,paddingTop:10}}>Joined: {p.created_at?p.created_at.slice(0,10):"—"}</div>
+            </div>
+            <div style={{background:isDeact?"#fff8f8":"#fff",borderRadius:14,border:`1px solid ${isDeact?T.red:T.border}`,padding:20}}>
+              <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:10}}>{isDeact?"Account deactivated / pending":"Account active"}</div>
+              {p.is_admin
+                ?<div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.orange,fontWeight:600}}>⚠️ Admin accounts cannot be deactivated.</div>
+                :<button onClick={()=>toggleDeactivate(p.id,isDeact)} style={deactBtnStyle}>{isDeact?"✅ Activate / Approve Account":"🚫 Deactivate Account"}</button>
+              }
+            </div>
+          <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20,marginTop:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Package</div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Assigning a package bulk-sets this user's features to match that plan.</div>
+            <div style={{display:"flex",gap:8}}>
+              {PACKAGE_TIERS.map(tier=>{
+                const active=userPackages[p.id]===tier.id;
+                return(
+                  <button key={tier.id} onClick={()=>applyPackage(p.id,tier.id)} style={{flex:1,background:active?tier.color:"#fff",color:active?"#fff":T.sub,border:`1.5px solid ${active?tier.color:T.border}`,borderRadius:10,padding:"10px 8px",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                    <div style={{fontSize:12,fontWeight:800}}>{tier.label}</div>
+                    <div style={{fontSize:10,marginTop:2,opacity:0.85}}>{tier.price}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Feature access</div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:14}}>Toggle features for this user specifically.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {ADMIN_FEATURES.map(f=>{
+                const gOn=isGlobalOn(f.id);
+                const uOn=isUserOn(p.id,f.id);
+                return(
+                  <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.bg,borderRadius:10,border:`1px solid ${T.border}`,opacity:gOn?1:0.4}}>
+                    <span style={{fontSize:18}}>{f.icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,color:T.text,fontWeight:600}}>{f.label}</div>
+                      {!gOn&&<div style={{fontSize:10,color:T.red,fontWeight:600}}>Globally disabled</div>}
+                    </div>
+                    <Toggle on={uOn} onClick={()=>toggleUser(p.id,f.id)} disabled={!gOn||isDeact}/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
         <BackHeader title={p.display_name||p.email||"User"} sub="USER DETAIL · ADMIN" onBack={()=>setSelUser(null)}/>
@@ -8793,6 +9157,22 @@ function AdminPanel({onBack,profiles=[],onToggleActive}){
             }
           </div>
 
+          <div style={{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:16,marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:4}}>Package</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Bulk-sets this user's features to match a plan.</div>
+            <div style={{display:"flex",gap:6}}>
+              {PACKAGE_TIERS.map(tier=>{
+                const active=userPackages[p.id]===tier.id;
+                return(
+                  <button key={tier.id} onClick={()=>applyPackage(p.id,tier.id)} style={{flex:1,background:active?tier.color:"#fff",color:active?"#fff":T.sub,border:`1.5px solid ${active?tier.color:T.border}`,borderRadius:10,padding:"8px 6px",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                    <div style={{fontSize:11,fontWeight:800}}>{tier.label}</div>
+                    <div style={{fontSize:9,marginTop:2,opacity:0.85}}>{tier.price}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:16}}>
             <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:4}}>Feature Access</div>
             <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Toggle features for this user.</div>
@@ -8812,6 +9192,120 @@ function AdminPanel({onBack,profiles=[],onToggleActive}){
             })}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if(isDesktop){
+    const activeProfiles=filteredProfiles.filter(p=>p.is_active!==false);
+    const inactiveProfiles=filteredProfiles.filter(p=>p.is_active===false);
+    const shownProfiles=userStatusTab==="active"?activeProfiles:inactiveProfiles;
+    return(
+      <div style={{maxWidth:1000}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Admin panel</h1>
+        <div style={{display:"flex",gap:8,marginBottom:18}}>
+          {[["global","Global"],["users","Per user"],["analytics","Analytics"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?T.accent:"none",color:tab===id?"#fff":T.sub,border:`1px solid ${tab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ))}
+        </div>
+
+        {tab==="global"&&(
+          <>
+            <div style={{background:T.accentLight,borderRadius:10,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`,fontSize:12,color:T.accent,fontWeight:600}}>Global toggles apply to all users. Per-user overrides live in the Per user tab.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              {ADMIN_FEATURES.map(f=>(
+                <div key={f.id} style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,padding:14,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{f.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{f.label}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:1}}>{f.desc}</div>
+                  </div>
+                  <Toggle on={isGlobalOn(f.id)} onClick={()=>toggleGlobal(f.id)}/>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab==="users"&&(
+          <>
+            <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+              <div style={{position:"relative",width:260}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}>🔍</span>
+                <input placeholder="Search by name or email..." value={search||""} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:36}}/>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                {[["active","Active ("+activeProfiles.length+")"],["inactive","Inactive / Pending ("+inactiveProfiles.length+")"]].map(([id,label])=>(
+                  <button key={id} onClick={()=>setUserStatusTab(id)} style={{background:userStatusTab===id?T.accent:"none",color:userStatusTab===id?"#fff":T.sub,border:`1px solid ${userStatusTab===id?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+              <thead><tr style={{color:T.muted,fontSize:11}}>
+                <td style={{padding:"6px 0"}}>#</td><td>Name</td><td>Email</td><td>Joined</td><td></td><td></td>
+              </tr></thead>
+              <tbody>
+                {shownProfiles.map(p=>{
+                  const isDeact=p.is_active===false;
+                  const realIdx=profiles.findIndex(x=>x.id===p.id);
+                  return(
+                    <tr key={p.id} className="rr-table-row" onClick={()=>setSelUser(p)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
+                      <td style={{padding:"10px 0",color:T.muted}}>{isDeact?"🚫":"#"+(realIdx+1)}</td>
+                      <td style={{fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}{p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,marginLeft:6}}>ADMIN</span>}</td>
+                      <td style={{color:T.sub}}>{p.email}</td>
+                      <td style={{color:T.muted,fontSize:12}}>{p.created_at?p.created_at.slice(0,10):"—"}</td>
+                      <td>{isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}</td>
+                      <td style={{textAlign:"right",color:T.muted}}>›</td>
+                    </tr>
+                  );
+                })}
+                {!shownProfiles.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{userStatusTab==="active"?"No active users found.":"No deactivated or pending users."}</td></tr>}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {tab==="analytics"&&(()=>{
+          const counts={};
+          usageEvents.forEach(e=>{counts[e.tab_name]=(counts[e.tab_name]||0)+1;});
+          const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+          const maxCount=sorted.length?sorted[0][1]:1;
+          const last7=usageEvents.filter(e=>new Date(e.created_at)>=new Date(Date.now()-7*86400000)).length;
+          return(
+            <div>
+              <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Page views across all users, last {usageEvents.length} events logged. Tells you what's actually used, not a full analytics platform.</p>
+              {usageLoading?(
+                <div style={{textAlign:"center",padding:30,color:T.muted}}>Loading…</div>
+              ):(
+                <>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
+                    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+                      <div style={{fontSize:12,color:T.sub}}>Total events logged</div>
+                      <div style={{fontSize:22,fontWeight:800,color:T.text,marginTop:4}}>{usageEvents.length}</div>
+                    </div>
+                    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+                      <div style={{fontSize:12,color:T.sub}}>Views in the last 7 days</div>
+                      <div style={{fontSize:22,fontWeight:800,color:T.text,marginTop:4}}>{last7}</div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Most-viewed screens</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {sorted.map(([name,count])=>(
+                      <div key={name} style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{width:140,fontSize:12,color:T.text,fontWeight:600,flexShrink:0}}>{name}</div>
+                        <div style={{flex:1,background:T.bg,borderRadius:6,height:16,overflow:"hidden"}}>
+                          <div style={{width:`${(count/maxCount)*100}%`,height:"100%",background:T.accent,borderRadius:6}}/>
+                        </div>
+                        <div style={{width:40,textAlign:"right",fontSize:12,color:T.muted}}>{count}</div>
+                      </div>
+                    ))}
+                    {!sorted.length&&<div style={{textAlign:"center",padding:30,color:T.muted}}>No usage data yet.</div>}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -9293,7 +9787,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -9303,6 +9797,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // existing app-style layout untouched. One codebase, no separate app build —
   // this is just a width check, re-evaluated on resize.
   const[isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=1024);
+  const[onboardingDismissed,setOnboardingDismissedState]=useState(()=>{try{return localStorage.getItem("rr_onboarding_done")==="1";}catch{return false;}});
+  const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem("rr_onboarding_done","1");}catch{}};
+  useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
   const[debugWinWidth,setDebugWinWidth]=useState(()=>typeof window!=="undefined"?window.innerWidth:0);
   useEffect(()=>{
     const onResize2=()=>setDebugWinWidth(window.innerWidth);
@@ -9369,6 +9866,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
 
+  // First-run onboarding — shown once, until the company has a name saved or
+  // it's explicitly skipped. Doesn't block returning users at all.
+  if(!onboardingDismissed&&!companyProfile.companyName&&!transactions.length)return(
+    <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab("Transactions");}} onSkip={dismissOnboarding}/>
+  );
+
   if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
@@ -9392,10 +9895,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
   }
 
-  if(tab==="AdminPanel")return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
+  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
   if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
-  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")}/>);
+  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
@@ -9819,7 +10322,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="VATReport"&&(
           <div style={{maxWidth:900}}>
-            <VATReportScreen invoices={invoices} contacts={contacts}/>
+            <VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>
           </div>
         )}
 
@@ -9867,6 +10370,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
 
+        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} isDesktop={true}/>:null)}
+
         {tab==="Employees"&&(
           <div style={{maxWidth:900}}>
             <EmployeesScreen employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee}/>
@@ -9903,7 +10408,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>}
+        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isDesktop={true}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
       </div>
