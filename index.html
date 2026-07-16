@@ -4612,17 +4612,17 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
           <td style={{padding:"9px 14px"}}></td><td>Closed</td><td>Voucher</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td style={{textAlign:"right",padding:"9px 14px"}}>Balance</td>
         </tr></thead>
         <tbody>
-          <tr style={{background:T.accentLight}}>
-            <td colSpan="7" style={{padding:"9px 14px",fontWeight:800,color:T.accent}}>{currentAccount.code} {currentAccount.name}</td>
+          <tr style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+            <td colSpan="7" style={{padding:"9px 14px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
           </tr>
-          <tr>
-            <td colSpan="6" style={{padding:"9px 14px",color:T.sub}}>Opening balance</td>
-            <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px"}}>{fmt(openingBal)}</td>
+          <tr style={{borderBottom:`1px solid ${T.border}`}}>
+            <td colSpan="6" style={{padding:"9px 14px",color:T.text}}>Opening balance</td>
+            <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{fmt(openingBal)}</td>
           </tr>
           {shownRows.map((r,i)=>{
             const isMatchedHere=!!r.matchedWith&&r.matchedAccount===currentCode;
             return(
-              <tr key={r.id} className="rr-table-row" style={{background:i%2===0?"#fff":T.bg}}>
+              <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:"9px 14px"}}>
                   {isMatchedHere?null:<input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)}/>}
                 </td>
@@ -4632,17 +4632,17 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                   ):null}
                 </td>
                 <td onClick={()=>setDetailTxn(r)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(r.bilag)}</td>
-                <td style={{color:T.sub}}>{r.date}</td>
-                <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</td>
-                <td style={{textAlign:"right",fontWeight:600}}>{sign(r.movement)}</td>
+                <td style={{color:T.text}}>{r.date}</td>
+                <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}}>{r.description}</td>
+                <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.movement)}</td>
                 <td style={{textAlign:"right",color:T.muted,padding:"9px 14px"}}>{fmt(r.balance)}</td>
               </tr>
             );
           })}
           {!shownRows.length&&<tr><td colSpan="7" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
           <tr style={{borderTop:`1px solid ${T.border}`}}>
-            <td colSpan="6" style={{padding:"7px 0",color:T.sub}}>Changes in period</td>
-            <td style={{textAlign:"right",fontWeight:600}}>{sign(periodMovement)}</td>
+            <td colSpan="6" style={{padding:"7px 0",color:T.text}}>Changes in period</td>
+            <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
           </tr>
           <tr style={{borderTop:`2px solid ${T.text}`,fontWeight:800}}>
             <td colSpan="6" style={{padding:"8px 0"}}>Closing balance</td>
@@ -4727,9 +4727,9 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts})
         </tr></thead>
         <tbody>
           {rows.map((r,i)=>(
-            <tr key={r.code} className="rr-table-row" style={{background:i%2===0?"#fff":T.bg}}>
-              <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} style={{padding:"11px 14px",color:T.accent,fontWeight:600,cursor:onSaveAccounts?"pointer":"default"}}>{r.code} {r.name}</td>
-              <td style={{textAlign:"right",padding:"11px 14px"}}>{fmt(r.opening)}</td>
+            <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+              <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} style={{padding:"11px 14px",color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default"}}>{r.code} {r.name}</td>
+              <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmt(r.opening)}</td>
               <td
                 onClick={()=>{
                   if(!r.diff||!onOpenLedger)return;
@@ -4737,9 +4737,9 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts})
                   onOpenLedger(acct,filterFrom,filterTo);
                 }}
                 title={r.diff?"View ledger for this account and period":undefined}
-                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,cursor:r.diff?"pointer":"default"}}
+                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
               >{r.diff?fmt(r.diff):"—"}</td>
-              <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>{fmt(r.closing)}</td>
+              <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
             </tr>
           ))}
           {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity in this range.</td></tr>}
@@ -5187,25 +5187,25 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 
       {accountLedgers.map(({account,opening,rows,closing})=>(
         <div key={account.code} style={{marginBottom:22,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"9px 14px",background:T.accentLight}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.accent}}>{account.code} {account.name}</div>
-            <div style={{fontSize:12,color:T.accent}}>Opening {fmt(opening)}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"9px 14px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>{account.code} {account.name}</div>
+            <div style={{fontSize:12,color:T.text}}>Opening {fmt(opening)}</div>
           </div>
           <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <tbody>
               {rows.map((r,i)=>(
-                <tr key={r.id} className="rr-table-row" style={{background:i%2===0?"#fff":T.bg}}>
-                  <td style={{padding:"7px 14px",color:T.sub,width:80}}>{r.date}</td>
+                <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                  <td style={{padding:"7px 14px",color:T.text,width:80}}>{r.date}</td>
                   <td onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{color:T.accent,fontWeight:600,width:60,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</td>
-                  <td>{r.description}</td>
-                  <td style={{textAlign:"right",fontWeight:600,width:100}}>{sign(r.mv)}</td>
+                  <td style={{color:T.text}}>{r.description}</td>
+                  <td style={{textAlign:"right",fontWeight:600,width:100,color:T.text}}>{sign(r.mv)}</td>
                   <td style={{textAlign:"right",color:T.muted,width:100,padding:"7px 14px"}}>{fmt(r.running)}</td>
                 </tr>
               ))}
               <tr style={{borderTop:`2px solid ${T.border}`,fontWeight:800,background:"#fff"}}>
-                <td colSpan="3" style={{padding:"9px 14px"}}>Closing balance</td>
+                <td colSpan="3" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
                 <td></td>
-                <td style={{textAlign:"right",padding:"9px 14px"}}>{fmt(closing)}</td>
+                <td style={{textAlign:"right",padding:"9px 14px",color:T.text}}>{fmt(closing)}</td>
               </tr>
             </tbody>
           </table>
@@ -5482,7 +5482,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                   const isMatchedHere=!!t.matchedWith&&t.matchedAccount===code;
                   const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
                   return(
-                    <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:(i%2===0?"#fff":T.bg)}}>
+                    <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
                       <td style={{padding:"9px 14px"}}>
                         {isMatchedHere?(
                           <button onClick={()=>window.confirm("Unmatch this entry?")&&unmatchTxns(t.matchedWith)} title="Matched — click to unmatch" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
@@ -5492,10 +5492,10 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                       </td>
                       <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{padding:"9px 0",color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.invoiceNo||"—"}</td>
-                      <td>{t.date}</td>
+                      <td style={{color:T.text}}>{t.date}</td>
                       <td style={{color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
-                      <td>{t.description}</td>
-                      <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px"}}>{sign(mv(t))}</td>
+                      <td style={{color:T.text}}>{t.description}</td>
+                      <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{sign(mv(t))}</td>
                     </tr>
                   );
                 })}
@@ -11107,19 +11107,18 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Amounts</div>
             </div>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
-              {(()=>{let shownIdx=0;return[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
+              {[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
                 const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const closingBal=openingBal+periodMov;
                 if(closingBal===0)return null;
-                const idx=shownIdx++;
                 return(
-                  <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:idx%2===0?"#fff":T.bg}}>
+                  <div key={a.code} className="rr-table-row" onClick={()=>setLedgerAcc(a)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
                     <div style={{fontSize:13,fontWeight:700,color:T.accent}}>{a.code} {a.name}</div>
-                    <div style={{fontSize:13,fontWeight:800,color:"#111827"}}>{closingBal>=0?"+":"-"}{fmt(Math.abs(closingBal))}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:T.text}}>{closingBal>=0?"+":"-"}{fmt(Math.abs(closingBal))}</div>
                   </div>
                 );
-              });})()}
+              })}
             </div>
           </div>
         )}
