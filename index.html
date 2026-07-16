@@ -10930,6 +10930,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
 
+        {ledgerAcc?(
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onClose={()=>setLedgerAcc(null)}/>
+        ):(<>
+
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab}/>}
 
         {tab==="Entries"&&(
@@ -11220,15 +11224,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isDesktop={true}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
+
+        </>)}
       </div>
 
-      {ledgerAcc&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:600,display:"flex",justifyContent:"center",alignItems:"flex-start",padding:"24px 20px",overflowY:"auto"}}>
-          <div style={{background:"#fff",borderRadius:14,maxWidth:1000,width:"100%",maxHeight:"94vh",overflowY:"auto",boxShadow:"0 12px 40px rgba(0,0,0,0.25)",padding:24}}>
-            <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onClose={()=>setLedgerAcc(null)}/>
-          </div>
-        </div>
-      )}
       {registrationQueue&&(
         <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransaction} onDone={()=>setRegistrationQueue(null)}/>
       )}
