@@ -715,18 +715,65 @@ function AppShell({user}){
   const uploadBankStatement=async(accountCode,file)=>{
     if(!canEdit)return;
     try{
-      const buf=await file.arrayBuffer();
-      const wb=XLSX.read(buf,{type:"array"});
+      const isCsv=/\.csv$/i.test(file.name)||file.type==="text/csv";
+      const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      if(!json.length){alert("That file appears to be empty.");return;}
+
       const toDateStr=(d)=>{
         if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
         const s=String(d).trim();
         const parsed=Date.parse(s);
         return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
       };
-      const rows=json.map(r=>({date:toDateStr(r[0]),description:String(r[1]||"").trim(),amount:parseFloat(r[2])})).filter(r=>r.date&&!isNaN(r.amount)&&r.amount!==0);
-      if(!rows.length){alert("Couldn't find valid rows. Expected columns: Date, Description, Amount.");return;}
+      const toNum=(v)=>{
+        if(typeof v==="number")return v;
+        const cleaned=String(v).replace(/[, ]/g,"").replace(/^\((.*)\)$/,"-$1"); // handles "1,234.50" and "(500)" negatives
+        const n=parseFloat(cleaned);
+        return isNaN(n)?null:n;
+      };
+
+      // Detect a header row and column meanings by name, instead of assuming
+      // a fixed Date/Description/Amount order — real bank exports vary a lot.
+      let headerRow=null,dataStart=0;
+      const firstRowText=json[0].map(c=>String(c).toLowerCase().trim());
+      if(firstRowText.some(c=>["date","description","amount","balance","narrative","details","debit","credit"].includes(c))){
+        headerRow=firstRowText;dataStart=1;
+      }
+      const findCol=(names)=>headerRow?headerRow.findIndex(h=>names.includes(h)):-1;
+      let dateCol=headerRow?findCol(["date","transaction date","value date"]):0;
+      let descCol=headerRow?findCol(["description","narrative","details","particulars"]):1;
+      let amountCol=headerRow?findCol(["amount"]):2;
+      let debitCol=headerRow?findCol(["debit","withdrawal"]):-1;
+      let creditCol=headerRow?findCol(["credit","deposit"]):-1;
+      let balanceCol=headerRow?findCol(["balance","running balance","closing balance"]):-1;
+      if(dateCol<0)dateCol=0;
+      if(descCol<0)descCol=1;
+
+      let rows=json.slice(dataStart).map(r=>{
+        const date=toDateStr(r[dateCol]);
+        const description=String(r[descCol]||"").trim();
+        let amount=null;
+        if(amountCol>=0)amount=toNum(r[amountCol]);
+        else if(debitCol>=0||creditCol>=0){
+          const dr=debitCol>=0?toNum(r[debitCol]):null;
+          const cr=creditCol>=0?toNum(r[creditCol]):null;
+          amount=(cr||0)-(dr||0);
+        }
+        return{date,description,amount,balance:balanceCol>=0?toNum(r[balanceCol]):null};
+      }).filter(r=>r.date);
+
+      // No usable amount anywhere, but a running balance exists — derive each
+      // line's amount from the change in balance instead.
+      if(rows.length&&rows.every(r=>r.amount==null)&&rows.some(r=>r.balance!=null)){
+        rows=rows.map((r,i)=>i===0?{...r,amount:0}:{...r,amount:Math.round(((r.balance||0)-(rows[i-1].balance||0))*100)/100});
+        rows=rows.slice(1); // first row has no prior balance to diff against
+      }
+
+      rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
+      if(!rows.length){alert("Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.");return;}
+
       const dbRows=rows.map(r=>({user_id:user.id,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
       const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
       if(error){alert("Upload failed: "+error.message);return;}
@@ -3929,40 +3976,68 @@ function ConicChart({data,size=132,donut=true}){
 const ASSISTANT_TOPICS=[
   {icon:"ti-receipt-2",title:"Recording a transaction",body:"Voucher → New voucher for a supplier invoice or receipt with a document attached, or Voucher → New entry for a plain manual debit/credit. AI bookkeeping (under Voucher) lets you type or photograph a receipt instead — it reads the amount, date, and vendor and drafts the entry for you."},
   {icon:"ti-file-invoice",title:"Invoicing a customer",body:"Invoice → New invoice: pick the customer, a 3xxx sale account, the month(s) covered, and a rate — it calculates the total and posts to Receivable automatically. Once paid, use Pay on that invoice in Invoice overview to register the payment and auto-match it. Need to reverse one instead of deleting it? Use CN (credit note)."},
-  {icon:"ti-building-bank",title:"Reconciling the bank",title2:"",body:"Bank → upload a statement export (Date, Description, Amount columns). Unmatched lines show on the right; tick one, choose which account it offsets, and Post — that creates the real ledger entry and marks it matched."},
+  {icon:"ti-building-bank",title:"Reconciling the bank",body:"Bank → upload a CSV or Excel statement export (flexible column order — Date + Amount, or Debit/Credit, or a running Balance). Unmatched lines show on the right; tick one, choose which account it offsets, and Post — that creates the real ledger entry and marks it matched."},
   {icon:"ti-users",title:"Customers, suppliers, and aging",body:"Customers holds contact records (add an email here to enable emailing invoices later). Accounting → Customer and supplier ledger shows open items grouped by contact with due dates — click a Bilag to see the entry, or select two or more entries that net to zero and Match them off."},
-  {icon:"ti-report-analytics",title:"Reports",body:"Income statement and Balance sheet are real grouped reports with drill-down — click any account line to jump to its ledger. Trial balance and General ledger give you every account's opening/movement/closing. VAT report totals what's been collected on invoices (sales side only for now)."},
+  {icon:"ti-report-analytics",title:"Reports",body:"Income statement and Balance sheet are real grouped reports with drill-down — click any account line to jump to its ledger. Trial balance and General ledger give you every account's opening/movement/closing. VAT report shows both sales and purchase VAT with a net position."},
   {icon:"ti-download",title:"Exporting your data",body:"The download icon in the top bar exports whatever screen you're on — PDF always works, Excel is available on Reskontro, the Accounts list, and an open account ledger. Settings → Backup & Restore downloads everything as one file — your full data, any time."},
   {icon:"ti-shield-lock",title:"Security",body:"Profile → Two-factor authentication adds a real authenticator-app step to sign-in. Admin Panel → Audit Trail (if you're an admin) shows every create, edit, delete, and reversal on transactions and invoices — nothing there can be changed after the fact."},
 ];
+const ASSISTANT_CONTEXT=ASSISTANT_TOPICS.map(t=>`${t.title}: ${t.body}`).join("\n\n");
+
+// Assistant — a real chat widget (bottom-right popup), calling the same
+// Claude API pattern used elsewhere in the app (AI bookkeeping, OCR). Answers
+// free-form questions about how to use the software, grounded in the actual
+// feature list above rather than inventing capabilities that don't exist.
 function AssistantPanel({onClose}){
-  const[openIdx,setOpenIdx]=useState(0);
+  const[messages,setMessages]=useState([{role:"assistant",content:"Hi! Ask me anything about using RedRock Ledger — invoicing, bank reconciliation, reports, or any other feature.",isGreeting:true}]);
+  const[input,setInput]=useState("");
+  const[sending,setSending]=useState(false);
+  const scrollRef=React.useRef(null);
+  useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},[messages,sending]);
+
+  const send=async()=>{
+    const text=input.trim();
+    if(!text||sending)return;
+    const userMsg={role:"user",content:text};
+    const newMessages=[...messages,userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setSending(true);
+    try{
+      const systemPrompt=`You are the in-app assistant for RedRock Ledger, a double-entry accounting web app. Answer questions about HOW TO USE THE SOFTWARE clearly and briefly — 2-4 sentences unless real detail is needed. Only answer questions about using this software's actual features, grounded in the list below; don't invent capabilities that aren't listed. If asked for accounting, tax, or legal advice, say you're a feature guide, not an accountant, and suggest a qualified professional.\n\nFEATURES:\n${ASSISTANT_CONTEXT}`;
+      const apiMessages=newMessages.filter(m=>!m.isGreeting).map(m=>({role:m.role,content:m.content}));
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        model:"claude-sonnet-4-6",max_tokens:500,system:systemPrompt,messages:apiMessages,
+      })});
+      const data=await res.json();
+      const replyText=(data.content||[]).map(b=>b.text||"").join("").trim();
+      setMessages(p=>[...p,{role:"assistant",content:replyText||"I couldn't come up with an answer just now — try rephrasing?"}]);
+    }catch(e){
+      setMessages(p=>[...p,{role:"assistant",content:"Something went wrong reaching the assistant. Try again in a moment."}]);
+    }
+    setSending(false);
+  };
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:800,display:"flex",justifyContent:"center",alignItems:"flex-start",padding:"40px 20px"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:560,width:"100%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:"#fff"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <i className="ti ti-sparkles" style={{fontSize:16,color:T.accent}}/>
-            <span style={{fontSize:15,fontWeight:800,color:T.text}}>Assistant</span>
+    <div style={{position:"fixed",bottom:20,right:20,zIndex:800,width:360,maxWidth:"calc(100vw - 32px)",height:520,maxHeight:"calc(100vh - 90px)",background:"#fff",borderRadius:16,boxShadow:"0 20px 50px rgba(0,0,0,0.22)",display:"flex",flexDirection:"column",overflow:"hidden",border:`1px solid ${T.border}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",background:T.accent,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <i className="ti ti-sparkles" style={{fontSize:16,color:"#fff"}}/>
+          <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Assistant</span>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#fff"}}>✕</button>
+      </div>
+      <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:14,display:"flex",flexDirection:"column",gap:10,background:T.bg}}>
+        {messages.map((m,i)=>(
+          <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%",background:m.role==="user"?T.accent:"#fff",color:m.role==="user"?"#fff":T.text,border:m.role==="user"?"none":`1px solid ${T.border}`,borderRadius:14,padding:"9px 13px",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap"}}>
+            {m.content}
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:T.muted}}>✕</button>
-        </div>
-        <div style={{padding:16}}>
-          <p style={{fontSize:12,color:T.muted,margin:"0 0 14px"}}>Quick guidance for the main workflows. Tap a topic to expand it.</p>
-          {ASSISTANT_TOPICS.map((topic,i)=>{
-            const open=openIdx===i;
-            return(
-              <div key={i} style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"}}>
-                <div onClick={()=>setOpenIdx(o=>o===i?-1:i)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",background:open?T.accentLight:"#fff"}}>
-                  <i className={`ti ${topic.icon}`} style={{fontSize:16,color:T.accent}}/>
-                  <span style={{fontSize:13,fontWeight:700,color:T.text,flex:1}}>{topic.title}</span>
-                  <i className="ti ti-chevron-down" style={{fontSize:13,color:T.muted,transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}/>
-                </div>
-                {open&&<div style={{padding:"0 14px 14px",fontSize:12,color:T.sub,lineHeight:1.6}}>{topic.body}</div>}
-              </div>
-            );
-          })}
-        </div>
+        ))}
+        {sending&&<div style={{alignSelf:"flex-start",background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 13px",fontSize:12,color:T.muted}}>Thinking…</div>}
+      </div>
+      <div style={{display:"flex",gap:8,padding:12,borderTop:`1px solid ${T.border}`,flexShrink:0,background:"#fff"}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send();}} placeholder="Ask a question…" style={{...inp,flex:1,height:36,fontSize:13}}/>
+        <button onClick={send} disabled={sending||!input.trim()} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:sending||!input.trim()?0.5:1}}><i className="ti ti-send" style={{fontSize:15}}/></button>
       </div>
     </div>
   );
@@ -4777,7 +4852,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
         </label>
       </div>
-      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Expects a spreadsheet with Date, Description, Amount columns (in that order). No live bank connection — upload a statement export whenever you want to reconcile.</p>
+      <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Upload a CSV or Excel export — column order doesn't need to match exactly. Works with a Date + Amount column, separate Debit/Credit columns, or just a running Balance column. No live bank connection.</p>
 
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);}} style={{...inp,width:220}}>
@@ -7147,22 +7222,32 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   const onTrackCount=activeFunds.filter(f=>getRisk(f).label==="On track"||getRisk(f).label==="Complete").length;
 
   return(
-    <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+    <div style={isDesktop?{maxWidth:900}:{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       {(menuOpen||cardMenu)&&<div onClick={()=>{setMenuOpen(false);setCardMenu(null);}} style={{position:"fixed",inset:0,zIndex:90}}/>}
 
       {/* Header */}
-      <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-        <div style={{flex:1}}>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Savings Goals</div>
-          <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Sinking Funds</div>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Sinking funds</h1>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={openNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>+ Add</button>
+            <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to dashboard</button>
+          </div>
         </div>
-        <button onClick={openNew} style={{background:"rgba(255,255,255,0.15)",border:"0.5px solid rgba(255,255,255,0.3)",borderRadius:9,color:"#fff",cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
-          <span style={{fontSize:16,fontWeight:300}}>+</span> Add
-        </button>
-      </div>
+      ):(
+        <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Savings Goals</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Sinking Funds</div>
+          </div>
+          <button onClick={openNew} style={{background:"rgba(255,255,255,0.15)",border:"0.5px solid rgba(255,255,255,0.3)",borderRadius:9,color:"#fff",cursor:"pointer",padding:"6px 14px",fontSize:12,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+            <span style={{fontSize:16,fontWeight:300}}>+</span> Add
+          </button>
+        </div>
+      )}
 
-      <div style={{padding:"16px"}}>
+      <div style={isDesktop?{}:{padding:"16px"}}>
         {/* Summary stats row — 3 cards like uploaded design */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
           <div style={{background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:10,padding:"12px 10px"}}>
@@ -8068,7 +8153,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
   };
 
   return(
-    <div style={{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+    <div style={isDesktop?{maxWidth:1000}:{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       {cardMenu&&<div onClick={()=>setCardMenu(null)} style={{position:"fixed",inset:0,zIndex:90}}/>}
 
       {/* Edit modal */}
@@ -8103,15 +8188,22 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
       )}
 
       {/* Header */}
-      <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-        <div style={{flex:1}}>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Monthly Planning</div>
-          <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Budget — {bSelMonth===-1?bSelYear:`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]} ${bSelYear}`}</div>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Budget — {bSelMonth===-1?bSelYear:`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]} ${bSelYear}`}</h1>
+          <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to dashboard</button>
         </div>
-      </div>
+      ):(
+        <div style={{background:T.header,padding:"16px",display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",fontSize:20,cursor:"pointer",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Monthly Planning</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Budget — {bSelMonth===-1?bSelYear:`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]} ${bSelYear}`}</div>
+          </div>
+        </div>
+      )}
 
-      <div style={{padding:16}}>
+      <div style={isDesktop?{}:{padding:16}}>
         {/* Arc gauge hero card */}
         <div style={{background:"#1A1A2E",borderRadius:20,padding:"20px 16px 16px",marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -8770,7 +8862,7 @@ function DisabledScreen({title,onBack}){
 }
 
 // ─── Cheque Tracker ───────────────────────────────────────────────────────────
-function ChequeScreen({onBack}){
+function ChequeScreen({onBack,isDesktop=false}){
   const KEY="rr_cheques";
   const[cheques,setChequesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
   const[showForm,setShowForm]=useState(false);
@@ -8788,6 +8880,63 @@ function ChequeScreen({onBack}){
   const[tab,setTab]=useState("issued");
   const list=cheques.filter(c=>c.type===tab);
   const STATUS_COLOR={pending:T.orange,cleared:T.green,bounced:T.red,cancelled:T.muted};
+
+  const formCard=(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <input placeholder="Cheque No." value={form.number} onChange={e=>setForm(p=>({...p,number:e.target.value}))} style={inp}/>
+      <input placeholder="Party name" value={form.party} onChange={e=>setForm(p=>({...p,party:e.target.value}))} style={inp}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <input type="number" placeholder="Amount" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/>
+        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/>
+      </div>
+      <input placeholder="Bank (optional)" value={form.bank} onChange={e=>setForm(p=>({...p,bank:e.target.value}))} style={inp}/>
+      <SaveFlashButton onClick={addCheque} label="Add Cheque"/>
+    </div>
+  );
+
+  if(isDesktop){
+    const totalPending=list.filter(c=>c.status==="pending").reduce((s,c)=>s+c.amount,0);
+    return(
+      <div style={{maxWidth:900}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Cheque tracker</h1>
+          <button onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}} style={{background:showForm?"none":T.accent,color:showForm?T.sub:"#fff",border:`1px solid ${showForm?T.border:T.accent}`,borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"Cancel":`+ Add ${tab} cheque`}</button>
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {["issued","received"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?T.accent:"none",color:tab===t?"#fff":T.sub,border:`1px solid ${tab===t?T.accent:T.border}`,borderRadius:8,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t} ({cheques.filter(c=>c.type===t).length})</button>
+          ))}
+          <div style={{flex:1}}/>
+          <div style={{fontSize:12,color:T.muted}}>Pending: <span style={{fontWeight:800,color:T.orange}}>{fmt(totalPending)}</span></div>
+        </div>
+        {showForm&&<div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`,marginBottom:16,maxWidth:500}}>{formCard}</div>}
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{color:T.muted,fontSize:11}}>
+            <td style={{padding:"6px 0"}}>Cheque no.</td><td>Party</td><td>Date</td><td>Bank</td><td style={{textAlign:"right"}}>Amount</td><td>Status</td><td></td>
+          </tr></thead>
+          <tbody>
+            {list.map(c=>(
+              <tr key={c.id} style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>#{c.number}</td>
+                <td style={{fontWeight:600}}>{c.party}</td>
+                <td style={{color:T.sub}}>{c.date}</td>
+                <td style={{color:T.sub}}>{c.bank||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700}}>{fmt(c.amount)}</td>
+                <td>
+                  <select value={c.status} onChange={e=>updateStatus(c.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:c.status==="cleared"?T.greenBg:c.status==="bounced"?T.redLight:c.status==="cancelled"?T.bg:T.orangeBg,color:STATUS_COLOR[c.status],fontWeight:700,textTransform:"capitalize"}}>
+                    {["pending","cleared","bounced","cancelled"].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+                <td style={{textAlign:"right"}}><button onClick={()=>deleteCheque(c.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+              </tr>
+            ))}
+            {!list.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {tab} cheques yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       <BackHeader title="Cheque Tracker" sub="ISSUED & RECEIVED" onBack={onBack}/>
@@ -8800,20 +8949,7 @@ function ChequeScreen({onBack}){
         <button style={{...btnRed,marginBottom:12}} onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}}>
           {showForm?"✕ Cancel":`+ Add ${tab} cheque`}
         </button>
-        {showForm&&(
-          <Card style={{marginBottom:12}}>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <input placeholder="Cheque No." value={form.number} onChange={e=>setForm(p=>({...p,number:e.target.value}))} style={inp}/>
-              <input placeholder="Party name" value={form.party} onChange={e=>setForm(p=>({...p,party:e.target.value}))} style={inp}/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <input type="number" placeholder="Amount" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/>
-                <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/>
-              </div>
-              <input placeholder="Bank (optional)" value={form.bank} onChange={e=>setForm(p=>({...p,bank:e.target.value}))} style={inp}/>
-              <SaveFlashButton onClick={addCheque} label="Add Cheque"/>
-            </div>
-          </Card>
-        )}
+        {showForm&&<Card style={{marginBottom:12}}>{formCard}</Card>}
         {list.map(c=>(
           <div key={c.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"13px 14px",marginBottom:8}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -9915,7 +10051,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
     return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Cheques"){
+  if(tab==="Cheques"&&!isDesktop){
     if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
     return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
@@ -9990,22 +10126,22 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
-            <i className="ti ti-home" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Dashboard"?T.accent:T.sub}}/>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
           {feat.bank&&(
             <div onClick={()=>setTab("Bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Bank"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Bank"?T.accentLight:"transparent"}}>
-              <i className="ti ti-building-bank" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Bank"?T.accent:T.sub}}/>
+              <div style={{width:24,height:24,borderRadius:8,background:tab==="Bank"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:tab==="Bank"?"#fff":T.sub}}/></div>
               <span style={{fontSize:12,fontWeight:tab==="Bank"?700:400,color:tab==="Bank"?T.accent:T.sub}}>Bank</span>
             </div>
           )}
           <div onClick={()=>setTab("Contacts")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Contacts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Contacts"?T.accentLight:"transparent"}}>
-            <i className="ti ti-users" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Contacts"?T.accent:T.sub}}/>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
           </div>
           {feat.files&&(
             <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
-              <i className="ti ti-folder" style={{fontSize:16,width:18,textAlign:"center",color:tab==="Files"?T.accent:T.sub}}/>
+              <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
               <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Documents</span>
             </div>
           )}
@@ -10013,6 +10149,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
               {tab:"NewVoucher",label:"New voucher"},
+              {tab:"Files",label:"Voucher inbox",featureKey:"files"},
               {tab:"Transactions",label:"New entry"},
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
@@ -10053,7 +10190,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             return(
               <div key={cat.id}>
                 <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
-                  <i className={`ti ${cat.icon}`} style={{fontSize:16,width:18,textAlign:"center",color:containsActive?T.accent:T.sub}}/>
+                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <i className={`ti ${cat.icon}`} style={{fontSize:13,color:containsActive?"#fff":T.sub}}/>
+                  </div>
                   <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transition:"transform 0.15s",display:"inline-block",transform:isExpanded?"rotate(180deg)":"none"}}/>
                 </div>
@@ -10095,9 +10234,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
       <div id="main-content-area" style={{flex:1,minWidth:0,padding:"18px 28px"}}>
         {/* Top bar — company pill left; Assistant, search, download, bell, profile right */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
-          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0}}>
-            <div style={{width:18,height:18,borderRadius:5,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18,background:"linear-gradient(135deg, #EAF5F4 0%, #F7F8FA 100%)",borderRadius:14,padding:"10px 14px",border:`1px solid ${T.border}`}}>
+          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:"#fff",borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,boxShadow:"0 1px 3px rgba(13,115,119,0.12)"}}>
+            <div style={{width:18,height:18,borderRadius:5,background:"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
             <span style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:"nowrap"}}>Redrock Danria</span>
             <span style={{fontSize:8,color:T.accent}}>▾</span>
           </div>
@@ -10400,6 +10539,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           feat.sinkingFunds
             ?<div style={{maxWidth:900}}><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")} isDesktop={true}/></div>
             :<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>
+        )}
+
+        {tab==="Cheques"&&(
+          feat.cheque
+            ?<ChequeScreen onBack={()=>setTab("Dashboard")} isDesktop={true}/>
+            :<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {tab==="Reports"&&(
