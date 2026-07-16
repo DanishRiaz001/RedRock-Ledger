@@ -16,12 +16,36 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-    body{margin:0;padding:0;background:#FAF9F7;font-family:system-ui,-apple-system,sans-serif;}
+    body{margin:0;padding:0;background:#F5F9FA;font-family:system-ui,-apple-system,sans-serif;}
     input,select,button{font-family:inherit;}
     ::-webkit-scrollbar{display:none;}
     .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}
-    .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#E8F4F4!important;}
+    .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#E6F4F1!important;}
     .ti{vertical-align:-2px;}
+    /* Watery glass utilities — secondary buttons and floating chrome */
+    .rr-glass-btn{
+      background:rgba(255,255,255,0.45);
+      border:1px solid #E4EDED;
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
+      color:#1F2937;
+      transition:background .15s ease,border-color .15s ease;
+    }
+    .rr-glass-btn:hover{background:#FFFFFF;border-color:#D1E2E2;}
+    .rr-glass-card{
+      background:rgba(255,255,255,0.75);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      border:1px solid #E4EDED;
+    }
+    .rr-btn-primary{
+      background:#FF5A1F;
+      color:#fff;
+      border:none;
+      box-shadow:0 1px 0 rgba(255,255,255,0.25) inset, 0 2px 6px rgba(255,90,31,0.25);
+      transition:background .15s ease;
+    }
+    .rr-btn-primary:hover{background:#E04810;}
   </style>
 </head>
 <body>
@@ -305,7 +329,7 @@ function SignedFileViewer({storagePath,type,name,style}){
           <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
         </div>
       ):(
-        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#0D7377",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
+        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#FF5A1F",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
       )}
     </div>
   );
@@ -412,7 +436,7 @@ function LoginScreen({onLogin}){
         <img src={LOGO_FULL_B64} style={{width:220,marginBottom:24,objectFit:"contain"}}/>
         <div style={{fontSize:16,fontWeight:800,marginBottom:8,color:"#0F172A"}}>{mode==="signup"?"Check your email":"Reset link sent"}</div>
         <div style={{fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.6}}>{mode==="signup"?`We sent a confirmation link. Click it, then come back to sign in. This app is invite-only, so an admin still needs to approve your account before you'll see any data — contact ${SUPPORT_EMAIL} if you're in a hurry.`:"Check your email for a reset link."}</div>
-        <button style={{background:"linear-gradient(135deg,#0D7377,#0A5C60)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
+        <button style={{background:"linear-gradient(135deg,#FF5A1F,#E04810)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
       </div>
     </div>
   );
@@ -447,7 +471,7 @@ function LoginScreen({onLogin}){
           <button
             onClick={handle}
             disabled={loading}
-            style={{background:"linear-gradient(135deg,#0D7377,#0A5C60)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:800,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:14,opacity:loading?0.7:1}}
+            style={{background:"linear-gradient(135deg,#FF5A1F,#E04810)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:800,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:14,opacity:loading?0.7:1}}
           >
             {loading?"...":{login:"Sign In",signup:"Create Account",forgot:"Send Reset Link"}[mode]}
           </button>
@@ -1315,8 +1339,8 @@ function AppShell({user}){
       <style>{`@keyframes rr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:20}}/>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
-        <div style={{width:10,height:10,border:"1.5px solid #0D7377",borderTopColor:"transparent",borderRadius:"50%",animation:"rr-spin 0.8s linear infinite",flexShrink:0}}/>
-        <span style={{fontSize:9,fontWeight:600,color:"#0D7377",letterSpacing:1.5,textTransform:"uppercase"}}>Welcome</span>
+        <div style={{width:10,height:10,border:"1.5px solid #FF5A1F",borderTopColor:"transparent",borderRadius:"50%",animation:"rr-spin 0.8s linear infinite",flexShrink:0}}/>
+        <span style={{fontSize:9,fontWeight:600,color:"#FF5A1F",letterSpacing:1.5,textTransform:"uppercase"}}>Welcome</span>
       </div>
     </div>
   );
@@ -1361,24 +1385,38 @@ function Root(){
 
 
 const T = {
-  // Backgrounds
-  bg:"#FAF9F7",
-  card:"#FFFFFF",
-  border:"#EEEBE6",
+  // --- COLOR PALETTE — "Watery White & Coral Orange" ---
+  bg:"#F5F9FA",              // soft, pale aqua-white background
+  card:"#FFFFFF",            // pure white for cards
+  cardBg:"#FFFFFF",          // alias, matches spec naming
+  cardBgGlass:"rgba(255,255,255,0.75)", // translucent glass layer — pair with backdrop-filter:blur(12px)
+  border:"#E4EDED",          // crisp, ultra-light water-grey border
+  borderActive:"#D1E2E2",    // slightly deeper border for active/focus states
   // Brand
   header:"#0D7377",
   sidebar:"#0A5C60",
-  accent:"#0D7377",
-  accentLight:"#E8F4F4",
-  accentMid:"#B2D8DA",
-  // Semantic
+  accent:"#FF5A1F",          // vibrant coral/watery-sun orange — primary brand color
+  accentHover:"#E04810",     // deeper orange for hover/active
+  accentLight:"#FFF0EA",     // super-soft orange tint for highlights/badges (accentSubtle)
+  accentMid:"#FFD2BC",
+  // Aquatic teal — used for positive/success indicators
+  waterTeal:"#14B8A6",
+  waterTealSubtle:"#E6F4F1", // light glassy teal, used for alternating row tint
+  // Semantic (danger/error stays a true red — kept visually distinct from the
+  // primary orange so "delete" and "save" buttons never read as the same action)
   red:"#DC2626",redLight:"#FEF2F2",redMid:"#FECACA",
-  green:"#059669",greenBg:"#ECFDF5",
+  green:"#14B8A6",greenBg:"#E6F4F1",   // now aliased to waterTeal for positive values
   blue:"#0D7377",blueBg:"#E8F4F4",
   orange:"#D97706",orangeBg:"#FFFBEB",
   purple:"#7C3AED",purpleBg:"#EDE9FE",
-  // Typography
-  text:"#1A1A2A",sub:"#6B7280",muted:"#9CA3AF",
+  // Typography colors
+  text:"#1F2937",sub:"#6B7280",muted:"#9CA3AF",
+  // --- SPACING SCALE (4px grid) — for new/updated components going forward ---
+  spacing:{xs:"4px",sm:"8px",md:"12px",lg:"16px",xl:"24px",xxl:"32px"},
+  // --- CORNER SCALE ---
+  radius:{sm:"6px",md:"10px",lg:"14px",xl:"18px"},
+  // --- TYPE SCALE ---
+  type:{xs:"11px",sm:"13px",md:"15px",lg:"18px",xl:"22px"},
 };
 const inp={background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,color:T.text,padding:"10px 13px",width:"100%",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 const btnRed={background:T.accent,color:"#fff",border:"none",borderRadius:12,padding:"11px 18px",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"};
@@ -2173,11 +2211,11 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   const exportLedgerPDF=()=>{
     const w=window.open("","_blank");
     let rows=allRows.map(r=>`<tr><td>${r.date}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</td><td style="text-align:right">${sign(r.balance)}</td></tr>`).join("");
-    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:#0D7377;color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
+    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:#FF5A1F;color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
     <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Period: ${from} → ${to}</p>
     <table><thead><tr><th>Date</th><th>Ref No</th><th>Description</th><th style="text-align:right">Movement</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="foot"><div><div class="lbl">Opening</div><div class="val">${sign(openingBal)}</div></div><div><div class="lbl">Period</div><div class="val">${sign(periodMovement)}</div></div><div><div class="lbl">Closing</div><div class="val">${sign(closingBal)}</div></div></div>
-    <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+    <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#FF5A1F;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
     </body></html>`);
     w.document.close();setTimeout(()=>w.print(),400);
   };
@@ -2192,7 +2230,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     const blocks=items.map((r,i)=>`
       <div style="border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px;${i>0?"page-break-inside:avoid;":""}">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-weight:bold;color:#0D7377">${fmtB(r.bilag)}</span>
+          <span style="font-weight:bold;color:#FF5A1F">${fmtB(r.bilag)}</span>
           <span style="color:#888;font-size:11px">${r.date}</span>
         </div>
         <div style="font-size:13px;margin-bottom:6px">${r.description}</div>
@@ -2205,7 +2243,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
       <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Merged export of ${items.length} selected entries</p>
       ${blocks}
       <div style="display:flex;justify-content:space-between;padding:12px 16px;background:#f0f0f0;border-radius:8px;font-weight:bold"><span>Total</span><span>${sign(total)}</span></div>
-      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#0D7377;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#FF5A1F;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
       </body></html>`);
     w.document.close();setTimeout(()=>w.print(),400);
   };
@@ -3350,7 +3388,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔎 Recover local budgets</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Budgets used to be saved only on this device. If you had budgets set before they moved to the cloud, this finds them on this browser and imports them properly — safe to run more than once.</div>
-          <button style={{...btnRed,background:"#0D7377"}} onClick={()=>{
+          <button style={{...btnRed,background:T.waterTeal}} onClick={()=>{
             if(!saveBudget){alert("Budget saving isn't available right now.");return;}
             const found=[]; // {year, month, entries:[{code,amount}]}
             for(let i=0;i<localStorage.length;i++){
@@ -10773,22 +10811,22 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
           {feat.bank&&(
             <div onClick={()=>setTab("Bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Bank"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Bank"?T.accentLight:"transparent"}}>
-              <div style={{width:24,height:24,borderRadius:8,background:tab==="Bank"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:tab==="Bank"?"#fff":T.sub}}/></div>
+              <div style={{width:24,height:24,borderRadius:8,background:tab==="Bank"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:tab==="Bank"?"#fff":T.sub}}/></div>
               <span style={{fontSize:12,fontWeight:tab==="Bank"?700:400,color:tab==="Bank"?T.accent:T.sub}}>Bank</span>
             </div>
           )}
           <div onClick={()=>setTab("Contacts")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Contacts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Contacts"?T.accentLight:"transparent"}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
           </div>
           {feat.files&&(
             <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
-              <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
+              <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
               <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Documents</span>
             </div>
           )}
@@ -10842,7 +10880,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             return(
               <div key={cat.id}>
                 <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                     <i className={`ti ${cat.icon}`} style={{fontSize:13,color:containsActive?"#fff":T.sub}}/>
                   </div>
                   <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>
@@ -10886,27 +10924,27 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
       <div id="main-content-area" style={{flex:1,minWidth:0,padding:"18px 28px"}}>
         {/* Top bar — company pill left; Assistant, search, download, bell, profile right */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18,background:"linear-gradient(135deg, #EAF5F4 0%, #F7F8FA 100%)",borderRadius:14,padding:"10px 14px",border:`1px solid ${T.border}`}}>
-          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:"#fff",borderRadius:16,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,boxShadow:"0 1px 3px rgba(13,115,119,0.12)"}}>
-            <div style={{width:18,height:18,borderRadius:5,background:"linear-gradient(135deg, #14A19C 0%, #0D7377 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
-            <span style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:"nowrap"}}>Redrock Danria</span>
-            <span style={{fontSize:8,color:T.accent}}>▾</span>
+        <div className="rr-glass-card" style={{position:"sticky",top:0,zIndex:50,display:"flex",alignItems:"center",gap:8,marginBottom:18,borderRadius:T.radius.xl,padding:"10px 14px"}}>
+          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:"#fff",borderRadius:20,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(20,184,166,0.10)"}}>
+            <div style={{width:18,height:18,borderRadius:5,background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
+            <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
+            <span style={{fontSize:8,color:T.sub}}>▾</span>
           </div>
           <div style={{flex:1}}/>
-          <button onClick={()=>setAssistantOpen(true)} style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,border:"none",borderRadius:16,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:T.accent,fontFamily:"inherit",flexShrink:0}}>
-            <i className="ti ti-sparkles" style={{fontSize:13}}/>Assistant
+          <button onClick={()=>setAssistantOpen(true)} className="rr-glass-btn" style={{display:"flex",alignItems:"center",gap:6,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",flexShrink:0}}>
+            <i className="ti ti-sparkles" style={{fontSize:13,color:T.accent}}/>Assistant
           </button>
           <div style={{position:"relative",width:180}}>
             <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-            <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12}}/>
+            <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12,background:"#fff"}}/>
           </div>
           <div style={{position:"relative"}}>
-            <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" className="rr-glass-btn" style={{borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
               <i className="ti ti-download" style={{fontSize:15,color:T.sub}}/>
             </button>
             {downloadMenuOpen&&(<>
               <div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
                 <div onClick={exportCurrentToPdf} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:6}}/>Download as PDF</div>
                 <div onClick={excelAvailable?exportCurrentToExcel:undefined} style={{padding:"10px 14px",fontSize:12,cursor:excelAvailable?"pointer":"default",color:excelAvailable?T.text:T.muted,fontWeight:600,opacity:excelAvailable?1:0.5}}><i className="ti ti-file-type-xls" style={{fontSize:13,marginRight:6}}/>Download as Excel{!excelAvailable&&" (not on this screen)"}</div>
               </div>
@@ -10915,14 +10953,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           {(()=>{
             const bugCount=isAdmin?getBugs().filter(b=>!b.resolved).length:0;
             return(
-              <div onClick={()=>isAdmin&&setTab("BugLog")} title={isAdmin?"Unresolved bug reports":"No notifications"} style={{position:"relative",background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:isAdmin?"pointer":"default",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <div onClick={()=>isAdmin&&setTab("BugLog")} title={isAdmin?"Unresolved bug reports":"No notifications"} className="rr-glass-btn" style={{position:"relative",borderRadius:T.radius.sm,width:30,height:30,cursor:isAdmin?"pointer":"default",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
-                {bugCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{bugCount}</span>}
+                {bugCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.red,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{bugCount}</span>}
               </div>
             );
           })()}
           <div style={{position:"relative"}}>
-            <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:T.accent,cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
+            <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
             {profileMenuOpen&&(<>
               <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
               <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
