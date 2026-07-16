@@ -4658,20 +4658,33 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   );
 }
 
-function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts}){
+function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport}){
   const today=new Date().toISOString().slice(0,10);
   const[filterFrom,setFilterFrom]=useState(`${today.slice(0,4)}-01-01`);
   const[filterTo,setFilterTo]=useState(`${today.slice(0,4)}-12-31`);
   const[fromAcct,setFromAcct]=useState("");
   const[toAcct,setToAcct]=useState("");
   const[periodPickerOpen,setPeriodPickerOpen]=useState(false);
+  const[filtersOpen,setFiltersOpen]=useState(false);
+  const[activeCategories,setActiveCategories]=useState(null); // null = all; Set of SERIES keys otherwise
+  const[reportSearch,setReportSearch]=useState("");
   const[editingAccount,setEditingAccount]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const periodLabel=filterFrom.slice(0,4)===filterTo.slice(0,4)&&filterFrom.slice(5)==="01-01"&&filterTo.slice(5)==="12-31"?filterFrom.slice(0,4):`${filterFrom} – ${filterTo}`;
 
+  const categoryKeys=useMemo(()=>Object.keys(SERIES).filter(k=>accounts.some(a=>getSK(a.code)===k)),[accounts]);
+  const toggleCategory=(k)=>setActiveCategories(prev=>{
+    const cur=prev||new Set(categoryKeys);
+    const next=new Set(cur);
+    if(next.has(k))next.delete(k);else next.add(k);
+    return next;
+  });
+
   const rows=useMemo(()=>{
     return accounts
       .filter(a=>(!fromAcct||a.code>=fromAcct)&&(!toAcct||a.code<=toAcct))
+      .filter(a=>!activeCategories||activeCategories.has(getSK(a.code)))
+      .filter(a=>!reportSearch||a.code.includes(reportSearch)||a.name.toLowerCase().includes(reportSearch.toLowerCase()))
       .map(a=>{
         const opening=transactions.filter(t=>t.date<filterFrom).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
         const diff=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
@@ -4679,19 +4692,20 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts})
       })
       .filter(r=>r.opening!==0||r.diff!==0||r.closing!==0)
       .sort((a,b)=>a.code.localeCompare(b.code));
-  },[accounts,transactions,filterFrom,filterTo,fromAcct,toAcct]);
+  },[accounts,transactions,filterFrom,filterTo,fromAcct,toAcct,activeCategories,reportSearch]);
 
-  const exportXlsx=()=>{
-    const aoa=[["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet(aoa);
-    XLSX.utils.book_append_sheet(wb,ws,"Trial balance");
-    XLSX.writeFile(wb,`TrialBalance_${filterFrom}_${filterTo}.xlsx`);
-  };
-  const exportPdf=()=>{
-    const el=document.getElementById("trialbalance-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`TrialBalance_${filterFrom}_${filterTo}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
-  };
+  // Register this screen's Excel export with the global top-bar download
+  // button — no local export buttons cluttering the report itself.
+  useEffect(()=>{
+    if(!registerExcelExport)return;
+    registerExcelExport(()=>{
+      const aoa=[["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb,ws,"Trial balance");
+      XLSX.writeFile(wb,`TrialBalance_${filterFrom}_${filterTo}.xlsx`);
+    });
+  },[rows,filterFrom,filterTo,registerExcelExport]);
 
   return(
     <div>
@@ -4701,22 +4715,49 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts})
       {editingAccount&&onSaveAccounts&&(
         <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Trial balance</h1>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
-          <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
+
+      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 14px"}}>Trial balance</h1>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+              <i className="ti ti-filter" style={{fontSize:14,color:T.sub}}/>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Filters</span>
+              {activeCategories&&<span style={{fontSize:10,background:T.accentLight,color:T.accent,borderRadius:10,padding:"1px 6px",fontWeight:700}}>{activeCategories.size}</span>}
+            </button>
+            {filtersOpen&&(<>
+              <div onClick={()=>setFiltersOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+              <div style={{position:"absolute",left:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:240,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",padding:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontSize:12,fontWeight:800,color:T.text}}>Account categories</div>
+                  <button onClick={()=>setActiveCategories(null)} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Show all</button>
+                </div>
+                {categoryKeys.map(k=>{
+                  const isOn=!activeCategories||activeCategories.has(k);
+                  return(
+                    <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,padding:"6px 0",cursor:"pointer"}}>
+                      <input type="checkbox" checked={isOn} onChange={()=>toggleCategory(k)}/>
+                      <span>{SERIES[k].icon} {SERIES[k].name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </>)}
+          </div>
+          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+            <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
+          </button>
+          <input placeholder="From acct" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
+          <input placeholder="To acct" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
+          <div style={{position:"relative",flex:"1 1 200px",minWidth:180}}>
+            <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
+            <input placeholder="Search within report…" value={reportSearch} onChange={e=>setReportSearch(e.target.value)} style={{...inp,paddingLeft:32,background:"#fff"}}/>
+          </div>
         </div>
       </div>
+
       <div id="trialbalance-print-area">
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
-        <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-          <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
-          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
-        </button>
-        <input placeholder="From acct" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100}}/>
-        <input placeholder="To acct" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100}}/>
-      </div>
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
@@ -4742,7 +4783,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts})
               <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
             </tr>
           ))}
-          {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity in this range.</td></tr>}
+          {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</td></tr>}
         </tbody>
       </table>
       </div>
@@ -10621,6 +10662,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[onboardingDismissed,setOnboardingDismissedState]=useState(()=>{try{return localStorage.getItem("rr_onboarding_done")==="1";}catch{return false;}});
   const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem("rr_onboarding_done","1");}catch{}};
   useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
+  useEffect(()=>{setScreenExcelExport(null);},[tab]);
   const[debugWinWidth,setDebugWinWidth]=useState(()=>typeof window!=="undefined"?window.innerWidth:0);
   useEffect(()=>{
     const onResize2=()=>setDebugWinWidth(window.innerWidth);
@@ -10630,6 +10672,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[expandedCat,setExpandedCat]=useState(null);
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
+  const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
@@ -10754,6 +10797,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // (Reskontro, Accounts overview, an open account ledger), PDF generically
   // for whatever's currently visible in the content area.
   const exportCurrentToExcel=()=>{
+    if(screenExcelExport){screenExcelExport();setDownloadMenuOpen(false);return;}
     let aoa=[];
     let filename="export";
     if(ledgerAcc){
@@ -10795,7 +10839,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
     setDownloadMenuOpen(false);
   };
-  const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts";
+  const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts"||!!screenExcelExport;
 
   if(isDesktop)return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
@@ -11173,7 +11217,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="TrialBalance"&&(
           <div style={{maxWidth:900}}>
-            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts}/>
+            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)}/>
           </div>
         )}
 
