@@ -3049,11 +3049,10 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
         {Object.entries(SERIES).map(([key,s])=>{
           const grp=filtered.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
           if(!grp.length)return null;
-          return(<div key={key} style={{marginBottom:20}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase"}}>{s.name}</span></div>
-            <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-            {grp.map((a,gi)=>{const ri=list.findIndex(x=>x.code===a.code);const isE=editingIdx===ri;const hasT=hasTxns(a.code);return(
-              <div key={a.code} style={{padding:"12px 14px",borderTop:gi>0?`1px solid ${T.border}`:"none"}}>
+          return(<div key={key} style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:s.color,textTransform:"uppercase"}}>{s.name}</span></div>
+            {grp.map(a=>{const ri=list.findIndex(x=>x.code===a.code);const isE=editingIdx===ri;const hasT=hasTxns(a.code);return(
+              <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6}}>
                 {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Edit Account</div>
                   <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}>
@@ -3083,10 +3082,10 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                   </div>
                 </div>):(
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div onClick={()=>openEdit(ri)} style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:"pointer"}}>
-                      <span style={{fontSize:13,fontWeight:700,color:T.accent,flexShrink:0}}>{a.code}</span>
-                      <span style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
-                      {a.matchable&&<span style={{fontSize:9,background:T.greenBg,color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
+                    <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                      <span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800,flexShrink:0}}>{a.code}</span>
+                      <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                      {a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
                       {hasT&&<span style={{fontSize:9,background:"#FEF3C7",color:T.orange,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>Has Txns</span>}
                     </div>
                     <button style={{...btnSm,flexShrink:0,marginLeft:8}} onClick={()=>openEdit(ri)}>✏️ Edit</button>
@@ -3094,7 +3093,6 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                 )}
               </div>
             );})}
-            </div>
           </div>);
         })}
         <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>← Back</button></div>
@@ -3622,17 +3620,17 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         {/* All settings as navigation cards — stacked on mobile, 2-column grid on desktop */}
         <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
         {[
-          {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan")},
-          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts")},
-          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds")},
-          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency")},
-          {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose")},
-          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup")},
+          {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
+          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
+          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
+          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
+          {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
+          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
         ].map((item,i)=>(
           <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{background:T.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{item.icon}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div></div>
-            <span style={{fontSize:18,color:T.accent,flexShrink:0}}>›</span>
+            <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1}}>{item.sub}</div></div>
+            <span style={{fontSize:18,color:T.muted}}>›</span>
           </div>
         ))}
         </div>
@@ -4572,28 +4570,27 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       {detailTxn&&(
         <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
-      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
-          <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
+        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+      </div>
+
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{position:"relative",width:170}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{position:"relative",width:170}}>
-            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
-            <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12,background:"#fff"}}/>
-          </div>
-          <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:240,background:"#fff"}}>
-            {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-          </select>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"#fff",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
-            <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"#fff",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
-          </div>
-          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-            <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
-            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
-          </button>
+        <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:240}}>
+          {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+        </select>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"none",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
+          <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"none",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
         </div>
+        <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+          <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
+          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
+        </button>
       </div>
 
       {selected.length>0&&(
@@ -5466,37 +5463,35 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   return(
     <div>
-      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"#fff",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
-            <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"#fff",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
-          </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
         </div>
+      </div>
 
-        <div style={{display:"flex",gap:20,alignItems:"flex-end",flexWrap:"wrap"}}>
-          <div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
-            <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180,background:"#fff"}}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
-            <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
-              <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
-              <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
-              <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
-            </div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
-            <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160,background:"#fff"}}>
-              <option value="">All</option>
-              {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
+      <div style={{display:"flex",gap:20,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
+          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180}}/>
         </div>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+            <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
+            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
+            <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
+          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160}}>
+            <option value="">All</option>
+            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
       </div>
       {showMore&&(
         <div style={{marginBottom:10}}>
@@ -5624,29 +5619,27 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
         </div>
       )}
 
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.sub,background:T.bg}}>
-          <td style={{padding:"11px 14px",fontWeight:700}}>ID</td><td style={{fontWeight:700}}>Name</td><td style={{fontWeight:700}}>Email</td><td style={{fontWeight:700}}>Phone</td><td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Balance</td><td></td>
+        <thead><tr style={{color:T.muted,fontSize:11}}>
+          <td style={{padding:"6px 0"}}>ID</td><td>Name</td><td>Email</td><td>Phone</td><td style={{textAlign:"right"}}>Balance</td><td></td>
         </tr></thead>
         <tbody>
           {list.map(c=>{
             const bal=getBalance(c.id);
             return(
-              <tr key={c.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                <td style={{padding:"11px 14px",color:T.text,fontWeight:600}}>{c.id}</td>
-                <td onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:600,color:T.accent}}>{c.name}</td>
-                <td style={{color:T.text}}>{c.email||"—"}</td>
-                <td style={{color:T.text}}>{c.phone||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:bal>=0?T.green:T.red}}>{sign(bal)}</td>
-                <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✏️</button></td>
+              <tr key={c.id} style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>{c.id}</td>
+                <td onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:600}}>{c.name}</td>
+                <td style={{color:T.sub}}>{c.email||"—"}</td>
+                <td style={{color:T.sub}}>{c.phone||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:bal>=0?T.green:T.red}}>{sign(bal)}</td>
+                <td style={{textAlign:"right"}}><button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✏️</button></td>
               </tr>
             );
           })}
           {!list.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {type==="customer"?"customers":"suppliers"} yet.</td></tr>}
         </tbody>
       </table>
-      </div>
     </div>
   );
 }
@@ -6502,9 +6495,10 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
         </div>
       </div>
 
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Invoice</td><td>Customer</td><td>Date</td><td>Due date</td><td style={{textAlign:"right"}}>Total</td><td>Status</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Invoice</td><td style={{fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Due date</td><td style={{textAlign:"right",fontWeight:700}}>Total</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {[...invoices].sort((a,b)=>b.invoiceNo-a.invoiceNo).map(inv=>{
@@ -6512,11 +6506,11 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
             const overdue=!cn&&inv.status!=="paid"&&inv.status!=="credited"&&daysOverdue(inv)>0;
             const canPay=!cn&&inv.status!=="paid"&&inv.status!=="credited";
             return(
-              <tr key={inv.id} style={{borderTop:`1px solid ${T.border}`,opacity:inv.status==="credited"?0.55:1}}>
-                <td style={{padding:"9px 0",color:cn?T.red:T.accent,fontWeight:700}}>{cn?"CN":"#"}{inv.invoiceNo}</td>
-                <td>{getContactName(inv.customerId)}</td>
-                <td style={{color:T.sub}}>{inv.date}</td>
-                <td style={{color:overdue?T.red:T.sub}}>{inv.dueDate||"—"}</td>
+              <tr key={inv.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:inv.status==="credited"?0.55:1}}>
+                <td style={{padding:"11px 14px",color:cn?T.red:T.accent,fontWeight:700}}>{cn?"CN":"#"}{inv.invoiceNo}</td>
+                <td style={{color:T.text}}>{getContactName(inv.customerId)}</td>
+                <td style={{color:T.text}}>{inv.date}</td>
+                <td style={{color:overdue?T.red:T.text,fontWeight:overdue?700:400}}>{inv.dueDate||"—"}</td>
                 <td style={{textAlign:"right",fontWeight:700,color:cn?T.red:T.text}}>{cn?"−":""}{fmt(Math.abs(inv.total))}</td>
                 <td>
                   {cn?<span style={{fontSize:11,color:T.red,fontWeight:700}}>Credit note</span>
@@ -6529,7 +6523,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
                     </select>
                   )}
                 </td>
-                <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                <td style={{textAlign:"right",whiteSpace:"nowrap",padding:"11px 14px"}}>
                   <button onClick={()=>downloadPdf(inv)} disabled={pdfBusy} title="Download PDF" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,cursor:pdfBusy?"wait":"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:11}}/></button>
                   <button onClick={()=>emailInvoice(inv)} title="Email to customer" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.sub,cursor:"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}><i className="ti ti-mail" style={{fontSize:11}}/></button>
                   {canPay&&<button onClick={()=>openPayModal(inv)} title="Register payment" style={{background:T.accentLight,border:"none",borderRadius:6,color:T.accent,cursor:"pointer",fontSize:11,fontWeight:700,padding:"4px 8px",marginRight:4,fontFamily:"inherit"}}>Pay</button>}
@@ -6542,6 +6536,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
           {!invoices.length&&<tr><td colSpan="7" style={{padding:"30px 0",textAlign:"center",color:T.muted}}>No invoices yet. Create your first one.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -6621,24 +6616,26 @@ function RecurringInvoicesScreen({recurringInvoices,contacts,accounts,createRecu
         </div>
       )}
 
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Customer</td><td>Account</td><td style={{textAlign:"right"}}>Monthly rate</td><td>Last generated</td><td>Active</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Account</td><td style={{textAlign:"right",fontWeight:700}}>Monthly rate</td><td style={{fontWeight:700}}>Last generated</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {recurringInvoices.map(r=>(
-            <tr key={r.id} style={{borderTop:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 0",fontWeight:600}}>{getContactName(r.customerId)}</td>
-              <td style={{color:T.sub}}>{r.saleAccount}</td>
-              <td style={{textAlign:"right",fontWeight:700}}>{fmt(r.monthlyRate)}</td>
-              <td style={{color:T.sub}}>{r.lastGeneratedPeriod||"—"}</td>
+            <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+              <td style={{padding:"11px 14px",fontWeight:600,color:T.text}}>{getContactName(r.customerId)}</td>
+              <td style={{color:T.text}}>{r.saleAccount}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.monthlyRate)}</td>
+              <td style={{color:T.text}}>{r.lastGeneratedPeriod||"—"}</td>
               <td><input type="checkbox" checked={r.active} onChange={()=>updateRecurringInvoice(r.id,{active:!r.active})}/></td>
-              <td style={{textAlign:"right"}}><button onClick={()=>window.confirm("Delete this recurring template?")&&deleteRecurringInvoice(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+              <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>window.confirm("Delete this recurring template?")&&deleteRecurringInvoice(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
             </tr>
           ))}
           {!recurringInvoices.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No recurring templates yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -6699,19 +6696,20 @@ function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee
         <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive employees too
       </label>
 
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Name</td><td>Role</td><td>Contact</td><td>Start date</td><td style={{textAlign:"right"}}>Salary</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{fontWeight:700}}>Role</td><td style={{fontWeight:700}}>Contact</td><td style={{fontWeight:700}}>Start date</td><td style={{textAlign:"right",fontWeight:700}}>Salary</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {shown.map(e=>(
-            <tr key={e.id} style={{borderTop:`1px solid ${T.border}`,opacity:e.active?1:0.5}}>
-              <td style={{padding:"9px 0",fontWeight:700}}>{e.name}</td>
-              <td style={{color:T.sub}}>{e.role||"—"}</td>
-              <td style={{color:T.sub,fontSize:12}}>{e.email||e.phone||"—"}</td>
-              <td style={{color:T.sub}}>{e.startDate||"—"}</td>
-              <td style={{textAlign:"right",fontWeight:600}}>{e.salary?fmt(e.salary):"—"}</td>
-              <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+            <tr key={e.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:e.active?1:0.5}}>
+              <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{e.name}</td>
+              <td style={{color:T.text}}>{e.role||"—"}</td>
+              <td style={{color:T.text,fontSize:12}}>{e.email||e.phone||"—"}</td>
+              <td style={{color:T.text}}>{e.startDate||"—"}</td>
+              <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{e.salary?fmt(e.salary):"—"}</td>
+              <td style={{textAlign:"right",whiteSpace:"nowrap",padding:"11px 14px"}}>
                 <button onClick={()=>startEdit(e)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13,marginRight:6}}>✏️</button>
                 <button onClick={()=>updateEmployee(e.id,{active:!e.active})} title={e.active?"Mark inactive":"Mark active"} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:12,marginRight:6}}>{e.active?"⏸":"▶"}</button>
                 <button onClick={()=>window.confirm(`Remove ${e.name} from employees?`)&&deleteEmployee(e.id)} title="Delete" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
@@ -6721,6 +6719,7 @@ function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee
           {!shown.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No employees yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -6841,23 +6840,25 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
           <button onClick={save} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
         </div>
       )}
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Name</td><td style={{textAlign:"right"}}>Price</td><td>Sale account</td><td>Active</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{textAlign:"right",fontWeight:700}}>Price</td><td style={{fontWeight:700}}>Sale account</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {posProducts.map(p=>(
-            <tr key={p.id} style={{borderTop:`1px solid ${T.border}`,opacity:p.active?1:0.5}}>
-              <td style={{padding:"9px 0",fontWeight:700}}>{p.name}</td>
-              <td style={{textAlign:"right",fontWeight:600}}>{fmt(p.price)}</td>
-              <td style={{color:T.sub}}>{p.saleAccount}</td>
+            <tr key={p.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:p.active?1:0.5}}>
+              <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{p.name}</td>
+              <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{fmt(p.price)}</td>
+              <td style={{color:T.text}}>{p.saleAccount}</td>
               <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
-              <td style={{textAlign:"right"}}><button onClick={()=>window.confirm(`Delete ${p.name}?`)&&deletePosProduct(p.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+              <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>window.confirm(`Delete ${p.name}?`)&&deletePosProduct(p.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
             </tr>
           ))}
           {!posProducts.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No products yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -6963,25 +6964,27 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
       )}
 
       <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>Past runs</div>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Period</td><td>Date</td><td style={{textAlign:"right"}}>Gross</td><td style={{textAlign:"right"}}>Deductions</td><td style={{textAlign:"right"}}>Net</td><td>Employees</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Period</td><td style={{fontWeight:700}}>Date</td><td style={{textAlign:"right",fontWeight:700}}>Gross</td><td style={{textAlign:"right",fontWeight:700}}>Deductions</td><td style={{textAlign:"right",fontWeight:700}}>Net</td><td style={{fontWeight:700}}>Employees</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {payrollRuns.map(r=>(
-            <tr key={r.id} style={{borderTop:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 0",fontWeight:700}}>{r.period}</td>
-              <td style={{color:T.sub}}>{r.runDate}</td>
-              <td style={{textAlign:"right"}}>{fmt(r.totalGross)}</td>
-              <td style={{textAlign:"right"}}>{fmt(r.totalDeductions)}</td>
-              <td style={{textAlign:"right",fontWeight:700}}>{fmt(r.totalNet)}</td>
-              <td style={{color:T.sub}}>{r.lines.length}</td>
-              <td style={{textAlign:"right"}}><button onClick={()=>window.confirm("Delete this payroll run record? This does NOT reverse its ledger entries — reverse those separately in Entries if needed.")&&deletePayrollRun(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+            <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+              <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{r.period}</td>
+              <td style={{color:T.text}}>{r.runDate}</td>
+              <td style={{textAlign:"right",color:T.text}}>{fmt(r.totalGross)}</td>
+              <td style={{textAlign:"right",color:T.text}}>{fmt(r.totalDeductions)}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.totalNet)}</td>
+              <td style={{color:T.text}}>{r.lines.length}</td>
+              <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>window.confirm("Delete this payroll run record? This does NOT reverse its ledger entries — reverse those separately in Entries if needed.")&&deletePayrollRun(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
             </tr>
           ))}
           {!payrollRuns.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No payroll runs yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -7095,18 +7098,19 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Quotes</h1>
         <button onClick={onNewQuote} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New quote</button>
       </div>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>Quote</td><td>Customer</td><td>Date</td><td>Valid until</td><td style={{textAlign:"right"}}>Total</td><td>Status</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Quote</td><td style={{fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Valid until</td><td style={{textAlign:"right",fontWeight:700}}>Total</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {[...quotes].sort((a,b)=>b.quoteNo-a.quoteNo).map(q=>(
-            <tr key={q.id} style={{borderTop:`1px solid ${T.border}`,opacity:q.status==="converted"||q.status==="declined"?0.6:1}}>
-              <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>#{q.quoteNo}</td>
-              <td>{getContactName(q.customerId)}</td>
-              <td style={{color:T.sub}}>{q.date}</td>
-              <td style={{color:T.sub}}>{q.validUntil||"—"}</td>
-              <td style={{textAlign:"right",fontWeight:700}}>{fmt(q.total)}</td>
+            <tr key={q.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:q.status==="converted"||q.status==="declined"?0.6:1}}>
+              <td style={{padding:"11px 14px",color:T.accent,fontWeight:700}}>#{q.quoteNo}</td>
+              <td style={{color:T.text}}>{getContactName(q.customerId)}</td>
+              <td style={{color:T.text}}>{q.date}</td>
+              <td style={{color:T.text}}>{q.validUntil||"—"}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(q.total)}</td>
               <td>
                 {q.status==="converted"?<span style={{fontSize:11,color:T.green,fontWeight:700}}>✓ Converted</span>:(
                   <select value={q.status} onChange={e=>updateQuoteStatus(q.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit"}}>
@@ -7117,7 +7121,7 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
                   </select>
                 )}
               </td>
-              <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              <td style={{textAlign:"right",whiteSpace:"nowrap",padding:"11px 14px"}}>
                 {q.status!=="converted"&&(
                   <button onClick={()=>doConvert(q)} disabled={converting===q.id} style={{background:T.accentLight,border:"none",borderRadius:6,color:T.accent,cursor:"pointer",fontSize:11,fontWeight:700,padding:"4px 8px",marginRight:6,fontFamily:"inherit"}}>{converting===q.id?"Converting…":"Convert"}</button>
                 )}
@@ -7128,6 +7132,7 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
           {!quotes.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No quotes yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -10680,7 +10685,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
-  const[accountsSearch,setAccountsSearch]=useState("");
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
@@ -11152,23 +11156,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Accounts"&&(()=>{
-          const sorted=[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).filter(a=>!accountsSearch||a.code.includes(accountsSearch)||a.name.toLowerCase().includes(accountsSearch.toLowerCase()));
-          return(
+        {tab==="Accounts"&&(
           <div style={{maxWidth:700}}>
-            <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
-              <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 14px"}}>Accounts</h1>
-              <div style={{position:"relative",maxWidth:260}}>
-                <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-                <input placeholder="Search accounts…" value={accountsSearch} onChange={e=>setAccountsSearch(e.target.value)} style={{...inp,paddingLeft:32,background:"#fff"}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.bg,padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
-              <div style={{fontSize:11,color:T.text,fontWeight:800,textTransform:"uppercase"}}>Account</div>
-              <div style={{fontSize:11,color:T.text,fontWeight:800,textTransform:"uppercase"}}>Balance</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#EEF4F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Accounts</div>
+              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Amounts</div>
             </div>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
-              {sorted.map(a=>{
+              {[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
                 const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const closingBal=openingBal+periodMov;
@@ -11180,11 +11175,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   </div>
                 );
               })}
-              {!sorted.length&&<div style={{padding:"24px 14px",textAlign:"center",color:T.muted,fontSize:13}}>No accounts match this search.</div>}
             </div>
           </div>
-          );
-        })()}
+        )}
 
         {tab==="Contacts"&&(
           <div style={{maxWidth:900}}>
