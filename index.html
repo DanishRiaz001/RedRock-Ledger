@@ -3049,10 +3049,11 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
         {Object.entries(SERIES).map(([key,s])=>{
           const grp=filtered.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
           if(!grp.length)return null;
-          return(<div key={key} style={{marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:s.color,textTransform:"uppercase"}}>{s.name}</span></div>
-            {grp.map(a=>{const ri=list.findIndex(x=>x.code===a.code);const isE=editingIdx===ri;const hasT=hasTxns(a.code);return(
-              <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6}}>
+          return(<div key={key} style={{marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase"}}>{s.name}</span></div>
+            <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+            {grp.map((a,gi)=>{const ri=list.findIndex(x=>x.code===a.code);const isE=editingIdx===ri;const hasT=hasTxns(a.code);return(
+              <div key={a.code} style={{padding:"12px 14px",borderTop:gi>0?`1px solid ${T.border}`:"none"}}>
                 {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Edit Account</div>
                   <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}>
@@ -3082,10 +3083,10 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                   </div>
                 </div>):(
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                      <span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800,flexShrink:0}}>{a.code}</span>
-                      <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
-                      {a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
+                    <div onClick={()=>openEdit(ri)} style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:"pointer"}}>
+                      <span style={{fontSize:13,fontWeight:700,color:T.accent,flexShrink:0}}>{a.code}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                      {a.matchable&&<span style={{fontSize:9,background:T.greenBg,color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
                       {hasT&&<span style={{fontSize:9,background:"#FEF3C7",color:T.orange,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>Has Txns</span>}
                     </div>
                     <button style={{...btnSm,flexShrink:0,marginLeft:8}} onClick={()=>openEdit(ri)}>✏️ Edit</button>
@@ -3093,6 +3094,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                 )}
               </div>
             );})}
+            </div>
           </div>);
         })}
         <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>← Back</button></div>
@@ -3620,17 +3622,17 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         {/* All settings as navigation cards — stacked on mobile, 2-column grid on desktop */}
         <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
         {[
-          {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
-          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
-          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
-          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
-          {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
-          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
+          {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan")},
+          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts")},
+          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds")},
+          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency")},
+          {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose")},
+          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup")},
         ].map((item,i)=>(
           <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
-            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1}}>{item.sub}</div></div>
-            <span style={{fontSize:18,color:T.muted}}>›</span>
+            <div style={{background:T.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{item.icon}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div></div>
+            <span style={{fontSize:18,color:T.accent,flexShrink:0}}>›</span>
           </div>
         ))}
         </div>
@@ -4570,27 +4572,28 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       {detailTxn&&(
         <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
-        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
-      </div>
-
-      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
-        <div style={{position:"relative",width:170}}>
-          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
-          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
+          <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
         </div>
-        <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:240}}>
-          {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-        </select>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"none",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
-          <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"none",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{position:"relative",width:170}}>
+            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+            <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12,background:"#fff"}}/>
+          </div>
+          <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:240,background:"#fff"}}>
+            {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+          </select>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"#fff",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
+            <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"#fff",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
+          </div>
+          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+            <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
+          </button>
         </div>
-        <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-          <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
-          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
-        </button>
       </div>
 
       {selected.length>0&&(
@@ -5463,35 +5466,37 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
-          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
-        </div>
-      </div>
-
-      <div style={{display:"flex",gap:20,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
-          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180}}/>
-        </div>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
-          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
-            <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
-            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
-            <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"#fff",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+            <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"#fff",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
           </div>
         </div>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
-          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160}}>
-            <option value="">All</option>
-            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+
+        <div style={{display:"flex",gap:20,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
+            <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180,background:"#fff"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
+              <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
+              <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
+              <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
+            <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160,background:"#fff"}}>
+              <option value="">All</option>
+              {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
         </div>
-        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
       </div>
       {showMore&&(
         <div style={{marginBottom:10}}>
@@ -5619,27 +5624,29 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
         </div>
       )}
 
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>ID</td><td>Name</td><td>Email</td><td>Phone</td><td style={{textAlign:"right"}}>Balance</td><td></td>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700}}>ID</td><td style={{fontWeight:700}}>Name</td><td style={{fontWeight:700}}>Email</td><td style={{fontWeight:700}}>Phone</td><td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Balance</td><td></td>
         </tr></thead>
         <tbody>
           {list.map(c=>{
             const bal=getBalance(c.id);
             return(
-              <tr key={c.id} style={{borderTop:`1px solid ${T.border}`}}>
-                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>{c.id}</td>
-                <td onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:600}}>{c.name}</td>
-                <td style={{color:T.sub}}>{c.email||"—"}</td>
-                <td style={{color:T.sub}}>{c.phone||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700,color:bal>=0?T.green:T.red}}>{sign(bal)}</td>
-                <td style={{textAlign:"right"}}><button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✏️</button></td>
+              <tr key={c.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"11px 14px",color:T.text,fontWeight:600}}>{c.id}</td>
+                <td onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:600,color:T.accent}}>{c.name}</td>
+                <td style={{color:T.text}}>{c.email||"—"}</td>
+                <td style={{color:T.text}}>{c.phone||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:bal>=0?T.green:T.red}}>{sign(bal)}</td>
+                <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✏️</button></td>
               </tr>
             );
           })}
           {!list.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {type==="customer"?"customers":"suppliers"} yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -10673,6 +10680,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
+  const[accountsSearch,setAccountsSearch]=useState("");
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
@@ -11144,14 +11152,23 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Accounts"&&(
+        {tab==="Accounts"&&(()=>{
+          const sorted=[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).filter(a=>!accountsSearch||a.code.includes(accountsSearch)||a.name.toLowerCase().includes(accountsSearch.toLowerCase()));
+          return(
           <div style={{maxWidth:700}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#EEF4F3",padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
-              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Accounts</div>
-              <div style={{fontSize:11,color:"#111827",fontWeight:800,textTransform:"uppercase"}}>Amounts</div>
+            <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
+              <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 14px"}}>Accounts</h1>
+              <div style={{position:"relative",maxWidth:260}}>
+                <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
+                <input placeholder="Search accounts…" value={accountsSearch} onChange={e=>setAccountsSearch(e.target.value)} style={{...inp,paddingLeft:32,background:"#fff"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.bg,padding:"10px 14px",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+              <div style={{fontSize:11,color:T.text,fontWeight:800,textTransform:"uppercase"}}>Account</div>
+              <div style={{fontSize:11,color:T.text,fontWeight:800,textTransform:"uppercase"}}>Balance</div>
             </div>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
-              {[...accounts].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
+              {sorted.map(a=>{
                 const openingBal=transactions.filter(t=>t.date<filterFrom).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const periodMov=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((sum,t)=>{if(t.debitCode===a.code)return sum+t.amount;if(t.creditCode===a.code)return sum-t.amount;return sum;},0);
                 const closingBal=openingBal+periodMov;
@@ -11163,9 +11180,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   </div>
                 );
               })}
+              {!sorted.length&&<div style={{padding:"24px 14px",textAlign:"center",color:T.muted,fontSize:13}}>No accounts match this search.</div>}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {tab==="Contacts"&&(
           <div style={{maxWidth:900}}>
