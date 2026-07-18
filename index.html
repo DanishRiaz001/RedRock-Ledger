@@ -1875,13 +1875,70 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners}){
+// Change log — who posted or edited this specific entry, and when. A new row
+// appears every time it's saved, even if the same field changes back and
+// forth many times; nothing is ever overwritten or summarized away.
+function resolveUserName(userId,profiles,currentUserId){
+  if(!userId)return"Unknown";
+  if(userId===currentUserId)return"You";
+  const p=(profiles||[]).find(x=>x.id===userId);
+  if(p)return p.display_name||p.email||"Team member";
+  return"Team member";
+}
+const FIELD_LABELS={date:"Date",debitCode:"Debit account",creditCode:"Credit account",description:"Description",amount:"Amount",status:"Status",reversedBy:"Reversed by"};
+function ChangeLogModal({entries,profiles,currentUserId,onClose}){
+  const sorted=[...entries].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{fontSize:15,fontWeight:800,color:T.text}}>Change log</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+        </div>
+        {!sorted.length&&<div style={{textAlign:"center",color:T.muted,padding:"20px 0",fontSize:13}}>No history recorded for this entry yet.</div>}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {sorted.map(log=>{
+            const who=resolveUserName(log.changedBy,profiles,currentUserId);
+            const when=new Date(log.createdAt);
+            const changedFields=log.oldValues&&log.newValues?Object.keys(log.newValues).filter(k=>FIELD_LABELS[k]&&log.oldValues[k]!==log.newValues[k]):[];
+            const actionLabel={create:"Created",update:"Edited",delete:"Deleted",reverse:"Reversed"}[log.action]||log.action;
+            const actionColor={create:T.waterTeal,update:T.accent,delete:T.red,reverse:T.orange}[log.action]||T.sub;
+            return(
+              <div key={log.id} style={{border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{fontSize:11,fontWeight:800,color:actionColor,background:actionColor+"18",padding:"2px 9px",borderRadius:8,textTransform:"uppercase",letterSpacing:0.3}}>{actionLabel}</span>
+                  <span style={{fontSize:11,color:T.muted}}>{when.toLocaleDateString()} · {when.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                </div>
+                <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:changedFields.length?6:0}}>{who}</div>
+                {changedFields.length>0&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    {changedFields.map(k=>(
+                      <div key={k} style={{fontSize:11,color:T.sub}}>
+                        <span style={{fontWeight:600}}>{FIELD_LABELS[k]}:</span>{" "}
+                        <span style={{textDecoration:"line-through",color:T.muted}}>{String(log.oldValues[k])}</span>{" → "}
+                        <span style={{color:T.text,fontWeight:600}}>{String(log.newValues[k])}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId}){
   const[showEdit,setShowEdit]=useState(false);
+  const[showChangeLog,setShowChangeLog]=useState(false);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isReversed=!!txn.reversedBy;
   const isReversal=!!txn.reversalOf;
   const contact=txn.contactId?contacts.find(c=>c.id===txn.contactId):null;
+  const entryLog=useMemo(()=>auditLog.filter(a=>a.entityType==="transaction"&&(a.entityId===txn.id||a.bilag===txn.bilag)),[auditLog,txn.id,txn.bilag]);
 
   // Attachments now live in Supabase (Storage + inbox_files/txn_attachments) —
   // fetched fresh for this transaction on open rather than read from localStorage.
@@ -1934,13 +1991,17 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
             {isReversal&&<div style={{fontSize:11,color:T.red,marginTop:2}}>↩ Reversal of {fmtB(txn.reversalOf)}</div>}
           </div>
           <div style={{display:"flex",gap:8}}>
-            {!isReversal&&!isReversed&&!txn.matchedWith&&(
-              <Menu3 items={[
+            {showChangeLog&&(
+              <ChangeLogModal entries={entryLog} profiles={profiles} currentUserId={currentUserId} onClose={()=>setShowChangeLog(false)}/>
+            )}
+            <Menu3 items={[
+              ...(!isReversal&&!isReversed&&!txn.matchedWith?[
                 {icon:"✏️",label:"Edit Entry",action:()=>setShowEdit(true)},
                 {icon:"⧉",label:"Duplicate",action:()=>{if(onDuplicate)onDuplicate(txn);onClose();}},
                 {icon:"↩️",label:"Reverse Entry",action:()=>{onReverse(txn);onClose();}},
-              ]}/>
-            )}
+              ]:[]),
+              {icon:"📜",label:"Change log",action:()=>setShowChangeLog(true)},
+            ]}/>
             {isReversed&&!isReversal&&(
               <span style={{fontSize:10,background:T.redLight,color:T.red,padding:"4px 8px",borderRadius:8,fontWeight:700}}>🔒 Reversed</span>
             )}
@@ -2017,7 +2078,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate}){
+function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -2029,6 +2090,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
     <>
       {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
         onEdit={u=>{onEdit(u);setDetail(false);}}
         onDelete={id=>{onDelete(id);setDetail(false);}}
         onReverse={tx=>{onReverse(tx);setDetail(false);}}
@@ -2146,7 +2208,7 @@ const PERIOD_CLOSE_KEY="rr_period_close";
 const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
 const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
@@ -2257,6 +2319,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
         onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
         onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
         onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}}
@@ -2455,7 +2518,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -2579,6 +2642,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
           fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+          auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
@@ -4569,7 +4633,7 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
 // account switcher (jump between accounts without closing), All/Open entries
 // toggle, a period picker, and the grouped opening/entries/changes/closing
 // table with a "closed" (matched) indicator per line.
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onClose}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog=[],profiles=[],currentUserId,onClose}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[filterFrom,setFilterFrom]=useState(initFrom);
   const[filterTo,setFilterTo]=useState(initTo);
@@ -4613,7 +4677,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
@@ -7498,7 +7562,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   // Contact is auto-typed (Customer/Supplier) when the entry touches AR (1500) or AP (2400);
   // otherwise the picker is still shown, but optional and lists all contacts.
   const autoNeedContact=form.debitCode==="1500"||form.creditCode==="1500"||form.debitCode==="2400"||form.creditCode==="2400";
-  const needContact=true; // always allow tagging a contact on a receipt entry
+  const needContact=autoNeedContact; // only show the contact picker when the entry actually touches AR (1500) or AP (2400)
   const contactType=form.debitCode==="1500"||form.creditCode==="1500"?"customer":"supplier";
   const contactMode=autoNeedContact?contactType:"all";
   // AR/AP entries filter contacts by type; otherwise show everyone (customers & suppliers)
@@ -8303,7 +8367,7 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 }
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
-function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[]}){
+function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[],isDesktop=false}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
@@ -8321,6 +8385,55 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   const expenses=useMemo(()=>{const m={};activeRTxns.forEach(t=>{if(EXPENSE_SERIES.has(getSK(t.debitCode))){m[t.debitCode]=(m[t.debitCode]||0)+t.amount;}});return m;},[activeRTxns]);
   const totalInc=Object.values(income).reduce((s,v)=>s+v,0);
   const totalExp=Object.values(expenses).reduce((s,v)=>s+v,0);
+
+  // Analytics — top expenses, 6-month trend, and smart suggestions. Hoisted
+  // here (not nested in the render IIFE) so both mobile and desktop views
+  // can use the same computation without duplicating it.
+  const analyticsData=useMemo(()=>{
+    const expMap={};
+    transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).forEach(t=>{
+      expMap[t.debitCode]=(expMap[t.debitCode]||0)+t.amount;
+    });
+    const topExp=Object.entries(expMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const maxExp=topExp.length?topExp[0][1]:1;
+
+    const months=[];
+    for(let i=5;i>=0;i--){
+      const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
+      const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
+      const from=`${y}-${m}-01`;
+      const last=new Date(y,d.getMonth()+1,0).getDate();
+      const to=`${y}-${m}-${String(last).padStart(2,"0")}`;
+      const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+      const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+      months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
+    }
+    const maxBar=Math.max(...months.map(m=>Math.max(m.inc,m.exp)),1);
+
+    const sfFunds2=sinkingFunds||[];
+    const rPeriodDate=new Date(rFrom);
+    const rY=rPeriodDate.getFullYear(),rM=rPeriodDate.getMonth();
+    const budgets2={};
+    (budgets||[]).filter(b=>b.year===rY&&b.month===rM).forEach(b=>{budgets2[b.code]=b.amount;});
+    const totalInc2=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const totalExp2=Object.values(expMap).reduce((s,v)=>s+v,0);
+    const expRatio=totalInc2>0?(totalExp2/totalInc2)*100:0;
+
+    const suggestions=[];
+    if(expRatio>80&&totalInc2>0) suggestions.push({icon:"⚠️",color:"#a32d2d",bg:"#fcebeb",text:`Expenses are ${Math.round(expRatio)}% of income this period — leaving little margin. Consider reducing top spending categories.`});
+    if(months.length>=2){
+      const last2=months[months.length-1];const prev2=months[months.length-2];
+      if(prev2.exp>0&&last2.exp>prev2.exp*1.2) suggestions.push({icon:"📈",color:"#854f0b",bg:"#faeeda",text:`Expenses rose ${Math.round(((last2.exp-prev2.exp)/prev2.exp)*100)}% last month vs the month before. Review new or unusual charges.`});
+      if(prev2.inc>0&&last2.inc<prev2.inc*0.8) suggestions.push({icon:"📉",color:"#a32d2d",bg:"#fcebeb",text:`Income dropped ${Math.round(((prev2.inc-last2.inc)/prev2.inc)*100)}% last month. Investigate if receivables are delayed.`});
+    }
+    if(topExp.length&&totalInc2>0&&topExp[0][1]/totalInc2>0.4) suggestions.push({icon:"💡",color:"#854f0b",bg:"#faeeda",text:`"${getName(topExp[0][0])}" alone accounts for ${Math.round((topExp[0][1]/totalInc2)*100)}% of income — highest single expense category.`});
+    const sfAtRisk=sfFunds2.filter(f=>{if(!f.months||f.months<=0)return false;const needed=Math.ceil((f.goal-(f.saved||0))/f.months);const totalMonthly2=sfFunds2.reduce((s,x)=>{if(!x.months||x.months<=0)return s;return s+Math.ceil((x.goal-(x.saved||0))/x.months);},0);return needed>totalMonthly2*0.5;});
+    if(sfAtRisk.length) suggestions.push({icon:"🎯",color:"#7c3aed",bg:"#ede9fe",text:`${sfAtRisk.length} sinking fund${sfAtRisk.length>1?"s":""} (${sfAtRisk.map(f=>f.name).join(", ")}) behind schedule. Increase monthly contributions.`});
+    const overBudget=Object.entries(budgets2).filter(([code,b])=>{if(!b)return false;const act=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&t.debitCode===code).reduce((s,t)=>s+t.amount,0);return act>b;});
+    if(overBudget.length) suggestions.push({icon:"💰",color:"#a32d2d",bg:"#fcebeb",text:`${overBudget.length} budget${overBudget.length>1?"s are":" is"} over limit: ${overBudget.map(([c])=>getName(c)).join(", ")}.`});
+
+    return{topExp,maxExp,months,maxBar,suggestions};
+  },[transactions,rFrom,rTo,sinkingFunds,budgets]);
 
   const exportCSV=(rows,filename)=>{
     const csv=rows.map(r=>r.join(",")).join("\n");
@@ -8492,6 +8605,169 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
   const TAB_STYLE=(active)=>({padding:"8px 16px",fontSize:12,fontWeight:active?800:600,color:active?"#fff":T.sub,background:active?T.blue:"transparent",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit"});
 
+  if(isDesktop){
+    const{topExp,maxExp,months,maxBar,suggestions}=analyticsData;
+    return(
+      <div style={{maxWidth:1000}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Analytics</h1>
+        <div style={{display:"flex",gap:6,marginBottom:20}}>
+          {[["resultat","Income statement"],["balanse","Balance sheet"],["account","Account ledger"],["analytics","Trends & insights"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setRTab(id)} style={{background:rTab===id?T.accent:"none",color:rTab===id?"#fff":T.sub,border:`1px solid ${rTab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ))}
+        </div>
+
+        {rTab==="resultat"&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:20}}>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:20}}>
+              <div style={{fontSize:11,fontWeight:800,color:T.waterTeal,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>Income</div>
+              {Object.entries(income).map(([c,a])=>(
+                <div key={c} onClick={()=>{setRTab("account");setSelAcc(c);}} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`,cursor:"pointer"}}>
+                  <span style={{fontSize:13,color:T.text}}>{c} · {getName(c)}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:T.waterTeal}}>+{fmtRs(a)}</span>
+                </div>
+              ))}
+              {!Object.keys(income).length&&<div style={{fontSize:12,color:T.muted,padding:"8px 0"}}>No income entries this period.</div>}
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:12,paddingTop:12,borderTop:`2px solid ${T.border}`,fontWeight:800}}>
+                <span style={{fontSize:13,color:T.text}}>Total income</span><span style={{fontSize:14,color:T.waterTeal}}>+{fmtRs(totalInc)}</span>
+              </div>
+            </div>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:20}}>
+              <div style={{fontSize:11,fontWeight:800,color:T.accent,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>Expenses</div>
+              {Object.entries(expenses).map(([c,a])=>(
+                <div key={c} onClick={()=>{setRTab("account");setSelAcc(c);}} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`,cursor:"pointer"}}>
+                  <span style={{fontSize:13,color:T.text}}>{c} · {getName(c)}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:T.accent}}>−{fmtRs(a)}</span>
+                </div>
+              ))}
+              {!Object.keys(expenses).length&&<div style={{fontSize:12,color:T.muted,padding:"8px 0"}}>No expense entries this period.</div>}
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:12,paddingTop:12,borderTop:`2px solid ${T.border}`,fontWeight:800}}>
+                <span style={{fontSize:13,color:T.text}}>Total expenses</span><span style={{fontSize:14,color:T.accent}}>−{fmtRs(totalExp)}</span>
+              </div>
+            </div>
+            <div style={{gridColumn:"1/-1",background:totalInc-totalExp>=0?T.waterTealSubtle:T.accentLight,borderRadius:T.radius.xl,padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:14,fontWeight:700,color:T.text}}>Net profit / loss — {rFrom} to {rTo}</span>
+              <span style={{fontSize:24,fontWeight:900,color:totalInc-totalExp>=0?T.waterTeal:T.accent}}>{signRs(totalInc-totalExp)}</span>
+            </div>
+          </div>
+        )}
+
+        {rTab==="balanse"&&(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,overflow:"hidden"}}>
+            {Object.entries(SERIES).map(([key,s])=>{
+              const grp=accounts.filter(a=>getSK(a.code)===key);
+              if(!grp.length)return null;
+              const total=grp.reduce((sum,a)=>sum+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0);
+              return(
+                <div key={key} style={{borderBottom:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px",background:T.bg}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text,textTransform:"uppercase",letterSpacing:0.4}}>{s.icon} {s.name}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:total>=0?T.waterTeal:T.accent}}>{signRs(total)}</div>
+                  </div>
+                  {grp.map(a=>{
+                    const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);
+                    return(
+                      <div key={a.code} onClick={()=>{setRTab("account");setSelAcc(a.code);}} style={{display:"flex",justifyContent:"space-between",padding:"8px 20px 8px 34px",cursor:"pointer",fontSize:12}} className="rr-sidebar-item">
+                        <span style={{color:T.text}}>{a.code} · {a.name}</span>
+                        <span style={{fontWeight:600,color:T.text}}>{signRs(bal)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {rTab==="account"&&(
+          <div>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:16,marginBottom:16,maxWidth:400}}>
+              <AccDropFlat value={selAcc} onChange={setSelAcc} accounts={accounts}/>
+            </div>
+            <AccLedgerTable selAcc={selAcc} transactions={transactions} rFrom={rFrom} rTo={rTo} getName={getName}/>
+          </div>
+        )}
+
+        {rTab==="analytics"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:20}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:2}}>Income & expenses — last 6 months</div>
+              <div style={{fontSize:11,color:T.muted,marginBottom:18}}>Watch the shape, not just the numbers</div>
+              <div style={{display:"flex",gap:10,alignItems:"flex-end",height:140,marginBottom:10}}>
+                {months.map((m,i)=>(
+                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <div style={{width:"100%",display:"flex",gap:3,alignItems:"flex-end",height:110}}>
+                      <div style={{flex:1,background:T.waterTeal,borderRadius:"4px 4px 0 0",height:`${Math.round((m.inc/maxBar)*110)}px`,minHeight:m.inc?3:0}}/>
+                      <div style={{flex:1,background:T.accent,borderRadius:"4px 4px 0 0",height:`${Math.round((m.exp/maxBar)*110)}px`,minHeight:m.exp?3:0}}/>
+                    </div>
+                    <div style={{fontSize:11,color:T.muted,fontWeight:600}}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:20,justifyContent:"center",marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:10,height:10,background:T.waterTeal,borderRadius:3}}/><span style={{fontSize:12,color:T.sub}}>Income</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:10,height:10,background:T.accent,borderRadius:3}}/><span style={{fontSize:12,color:T.sub}}>Expenses</span></div>
+              </div>
+              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:14,display:"flex",flexDirection:"column",gap:8}}>
+                {months.slice(-3).map((m,i,arr)=>{
+                  const prev=arr[i-1];
+                  const chg=prev&&prev.net!==0?Math.round(((m.net-prev.net)/Math.abs(prev.net))*100):null;
+                  return(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontSize:13,fontWeight:600,color:T.text}}>{m.label}</span>
+                      <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                        <span style={{fontSize:12,color:T.waterTeal}}>+{fmtRs(m.inc)}</span>
+                        <span style={{fontSize:12,color:T.accent}}>−{fmtRs(m.exp)}</span>
+                        <span style={{fontSize:13,fontWeight:800,color:m.net>=0?T.waterTeal:T.accent,minWidth:90,textAlign:"right"}}>{signRs(m.net)}</span>
+                        {chg!==null&&<span style={{fontSize:10,fontWeight:700,color:chg>=0?T.waterTeal:T.accent,background:chg>=0?T.waterTealSubtle:T.accentLight,borderRadius:8,padding:"2px 8px"}}>{chg>=0?"+":""}{chg}%</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:20}}>
+              <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:20}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:16}}>Top expenses — {rFrom.slice(0,7)}</div>
+                {topExp.length?topExp.map(([c,a])=>(
+                  <div key={c} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                      <span style={{fontSize:12,color:T.text,fontWeight:600}}>{getName(c)}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{fmtRs(a)}</span>
+                    </div>
+                    <div style={{background:T.bg,borderRadius:5,height:7,overflow:"hidden"}}>
+                      <div style={{width:`${Math.round((a/maxExp)*100)}%`,height:"100%",background:T.accent,borderRadius:5}}/>
+                    </div>
+                  </div>
+                )):<div style={{fontSize:13,color:T.muted,padding:"10px 0"}}>No expense data for this period.</div>}
+              </div>
+
+              <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,padding:20}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:16}}>Insights & alerts</div>
+                {suggestions.length>0?(
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {suggestions.map((s,i)=>(
+                      <div key={i} style={{background:s.bg,borderRadius:10,padding:"11px 13px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <span style={{fontSize:15,flexShrink:0}}>{s.icon}</span>
+                        <span style={{fontSize:12,color:s.color,lineHeight:1.5}}>{s.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                ):(
+                  <div style={{textAlign:"center",padding:"16px 0"}}>
+                    <div style={{fontSize:22,marginBottom:6}}>✅</div>
+                    <div style={{fontSize:13,fontWeight:700,color:T.waterTeal}}>Looking good</div>
+                    <div style={{fontSize:11,color:T.muted,marginTop:3}}>No issues detected for this period.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div>
       {/* Tab switcher */}
@@ -8584,55 +8860,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       )}
 
       {rTab==="analytics"&&(()=>{
-        // Top expenses for period — exclude reversed
-        const expMap={};
-        transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).forEach(t=>{
-          expMap[t.debitCode]=(expMap[t.debitCode]||0)+t.amount;
-        });
-        const topExp=Object.entries(expMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
-        const maxExp=topExp.length?topExp[0][1]:1;
-
-        // Month over month — last 6 months, exclude reversed
-        const months=[];
-        for(let i=5;i>=0;i--){
-          const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);
-          const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,"0");
-          const from=`${y}-${m}-01`;
-          const last=new Date(y,d.getMonth()+1,0).getDate();
-          const to=`${y}-${m}-${String(last).padStart(2,"0")}`;
-          const inc=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
-          const exp=transactions.filter(t=>t.date>=from&&t.date<=to&&!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0);
-          months.push({label:d.toLocaleString("default",{month:"short"}),inc,exp,net:inc-exp});
-        }
-        const maxBar=Math.max(...months.map(m=>Math.max(m.inc,m.exp)),1);
-
-        // Sinking funds for suggestions
-        const sfFunds2=sinkingFunds||[];
-        // Best-effort: match the report period to a calendar month/year and use that
-        // month's own budget amounts (rollover isn't factored in here — see the
-        // Budget screen for the full rollover-aware view).
-        const rPeriodDate=new Date(rFrom);
-        const rY=rPeriodDate.getFullYear(),rM=rPeriodDate.getMonth();
-        const budgets2={};
-        (budgets||[]).filter(b=>b.year===rY&&b.month===rM).forEach(b=>{budgets2[b.code]=b.amount;});
-        const totalInc2=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
-        const totalExp2=Object.values(expMap).reduce((s,v)=>s+v,0);
-        const expRatio=totalInc2>0?(totalExp2/totalInc2)*100:0;
-
-        // Smart suggestions — only show if there is an issue
-        const suggestions=[];
-        if(expRatio>80&&totalInc2>0) suggestions.push({icon:"⚠️",color:"#a32d2d",bg:"#fcebeb",text:`Expenses are ${Math.round(expRatio)}% of income this period — leaving little margin. Consider reducing top spending categories.`});
-        if(months.length>=2){
-          const last2=months[months.length-1];const prev2=months[months.length-2];
-          if(prev2.exp>0&&last2.exp>prev2.exp*1.2) suggestions.push({icon:"📈",color:"#854f0b",bg:"#faeeda",text:`Expenses rose ${Math.round(((last2.exp-prev2.exp)/prev2.exp)*100)}% last month vs the month before. Review new or unusual charges.`});
-          if(prev2.inc>0&&last2.inc<prev2.inc*0.8) suggestions.push({icon:"📉",color:"#a32d2d",bg:"#fcebeb",text:`Income dropped ${Math.round(((prev2.inc-last2.inc)/prev2.inc)*100)}% last month. Investigate if receivables are delayed.`});
-        }
-        if(topExp.length&&totalInc2>0&&topExp[0][1]/totalInc2>0.4) suggestions.push({icon:"💡",color:"#854f0b",bg:"#faeeda",text:`"${getName(topExp[0][0])}" alone accounts for ${Math.round((topExp[0][1]/totalInc2)*100)}% of income — highest single expense category.`});
-        const sfAtRisk=sfFunds2.filter(f=>{if(!f.months||f.months<=0)return false;const needed=Math.ceil((f.goal-(f.saved||0))/f.months);const totalMonthly2=sfFunds2.reduce((s,x)=>{if(!x.months||x.months<=0)return s;return s+Math.ceil((x.goal-(x.saved||0))/x.months);},0);return needed>totalMonthly2*0.5;});
-        if(sfAtRisk.length) suggestions.push({icon:"🎯",color:"#7c3aed",bg:"#ede9fe",text:`${sfAtRisk.length} sinking fund${sfAtRisk.length>1?"s":""} (${sfAtRisk.map(f=>f.name).join(", ")}) behind schedule. Increase monthly contributions.`});
-        const overBudget=Object.entries(budgets2).filter(([code,b])=>{if(!b)return false;const act=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&t.debitCode===code).reduce((s,t)=>s+t.amount,0);return act>b;});
-        if(overBudget.length) suggestions.push({icon:"💰",color:"#a32d2d",bg:"#fcebeb",text:`${overBudget.length} budget${overBudget.length>1?"s are":" is"} over limit: ${overBudget.map(([c])=>getName(c)).join(", ")}.`});
-
+        const{topExp,maxExp,months,maxBar,suggestions}=analyticsData;
         return(
           <div>
             {/* Overall expense graph */}
@@ -10948,7 +11176,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab("Transactions");}} onSkip={dismissOnboarding}/>
   );
 
-  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
+  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -10968,7 +11196,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
@@ -10977,7 +11205,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -11247,7 +11475,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
 
         {ledgerAcc?(
-          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onClose={()=>setLedgerAcc(null)}/>
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS}/>}
@@ -11332,7 +11560,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </>);
             })()}
             {entriesDetailTxn&&(
-              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts}
+              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}
                 fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
                 onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
                 onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
@@ -11537,8 +11765,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Reports"&&(
-          <div style={{maxWidth:900}}>
-            {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
+          <div style={{maxWidth:1000}}>
+            {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} isDesktop={true}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
 
@@ -11672,7 +11900,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
           </div>
         )}
 
