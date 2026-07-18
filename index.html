@@ -5975,8 +5975,8 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
   };
 
   return(
-    <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:24,alignItems:"start"}}>
-      <div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:24}}>
+      <div style={{flex:"1 1 500px"}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>New voucher</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
           <button onClick={()=>setVoucherType("supplier")} style={{background:voucherType==="supplier"?T.accent:"none",color:voucherType==="supplier"?"#fff":T.sub,border:`1px solid ${voucherType==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Supplier invoice</button>
@@ -6082,7 +6082,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
         </div>
       </div>
 
-      <div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
+      <div style={{flex:"1 1 300px",minWidth:280,background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
         <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Document</div>
         {attachedFile?(
           <>
