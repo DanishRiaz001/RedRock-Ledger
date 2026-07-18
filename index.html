@@ -22,6 +22,11 @@
     .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}
     .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#E6F4F1!important;}
     .ti{vertical-align:-2px;}
+    table{font-variant-numeric:tabular-nums;}
+    .rr-sticky-thead thead tr{position:sticky;top:58px;z-index:5;box-shadow:0 1px 0 rgba(0,0,0,0.04);}
+    .rr-sidebar-item:hover{background:#F5F9FA;}
+    .rr-sidebar-item .rr-sidebar-pin{opacity:0;transition:opacity .12s ease;}
+    .rr-sidebar-item:hover .rr-sidebar-pin{opacity:1;}
     /* Watery glass utilities — secondary buttons and floating chrome */
     .rr-glass-btn{
       background:rgba(255,255,255,0.45);
@@ -3559,10 +3564,38 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     return <ManageContactsInner/>;
   }
 
+  const setupSteps=[
+    {done:!!companyProfile.companyName,label:"Company name set",action:()=>{}},
+    {done:accounts.some(a=>a.matchable),label:"At least one account customized",action:()=>setScreen("plan")},
+    {done:invoices.length>0,label:"First invoice created",action:()=>onNavigate&&onNavigate("InvoiceNew")},
+    {done:transactions.length>0,label:"First entry recorded",action:()=>onNavigate&&onNavigate("Transactions")},
+  ];
+  const setupDone=setupSteps.filter(s=>s.done).length;
+  const[checklistDismissed,setChecklistDismissed]=useState(()=>{try{return localStorage.getItem("rr_checklist_dismissed")==="1";}catch{return false;}});
+  const dismissChecklist=()=>{setChecklistDismissed(true);try{localStorage.setItem("rr_checklist_dismissed","1");}catch{}};
+
   return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
-      <BackHeader title="Settings" sub="REDROCK ACCOUNTING" onBack={onBack}/>
-      <div style={{padding:16}}>
+    <div style={isDesktop?{maxWidth:900}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
+      {isDesktop?(
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Settings</h1>
+      ):<BackHeader title="Settings" sub="REDROCK ACCOUNTING" onBack={onBack}/>}
+      <div style={isDesktop?{}:{padding:16}}>
+        {setupDone<setupSteps.length&&!checklistDismissed&&(
+          <div style={{background:"#fff",borderRadius:14,padding:16,marginBottom:16,border:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:12,fontWeight:800,color:T.text}}>Getting started ({setupDone}/{setupSteps.length})</div>
+              <button onClick={dismissChecklist} style={{background:"none",border:"none",color:T.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Dismiss</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {setupSteps.map((s,i)=>(
+                <div key={i} onClick={s.done?undefined:s.action} style={{display:"flex",alignItems:"center",gap:8,cursor:s.done?"default":"pointer"}}>
+                  <i className={s.done?"ti ti-circle-check-filled":"ti ti-circle"} style={{fontSize:15,color:s.done?T.green:T.border}}/>
+                  <span style={{fontSize:12,color:s.done?T.muted:T.text,textDecoration:s.done?"line-through":"none"}}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Stats row */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
           {[{label:"Accounts",val:accounts.length,icon:"📒"},{label:"Contacts",val:contacts.length,icon:"👥"},{label:"Currency",val:primaryCurrency,icon:"💱"}].map((s,i)=>(
@@ -4238,7 +4271,7 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
-function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}){
+function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={}}){
   // Dashboard is intentionally all-time — no date filter here. If you need a
   // specific period, use Trial Balance or Reports, which each have their own.
   const today=new Date().toISOString().slice(0,10);
@@ -4300,10 +4333,10 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
 
   // Editable homescreen — show/hide widgets, persisted per device.
   const WIDGET_KEY="rr_dashboard_widgets";
-  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true};}});
+  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,recent:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true,recent:true};}});
   const[customizing,setCustomizing]=useState(false);
   const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
-  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed"};
+  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed"};
 
   return(
     <div>
@@ -4375,7 +4408,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
               ))}
             </div>
           </div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <thead><tr style={{color:T.muted,fontSize:11}}>
               <td style={{padding:"6px 0"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
             </tr></thead>
@@ -4388,7 +4421,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
                   <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
                 </tr>
               ))}
-              {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
+              {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
             </tbody>
           </table>
         </div>}
@@ -4410,6 +4443,18 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate}
             );
           })}
           {!activity.length&&<div style={{fontSize:12,color:T.muted}}>Nothing this period yet.</div>}
+        </div>
+      </div>}
+
+      {widgets.recent&&recentTabs.length>0&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18,marginTop:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Recently viewed</div>
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {recentTabs.map(rt=>(
+            <div key={rt} onClick={()=>onNavigate&&onNavigate(rt)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,cursor:"pointer"}} className="rr-sidebar-item">
+              <i className="ti ti-history" style={{fontSize:13,color:T.muted}}/>
+              <span style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tabLabels[rt]||rt}</span>
+            </div>
+          ))}
         </div>
       </div>}
     </div>
@@ -4607,7 +4652,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       )}
 
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
           <td style={{padding:"9px 14px"}}></td><td>Closed</td><td>Voucher</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td style={{textAlign:"right",padding:"9px 14px"}}>Balance</td>
         </tr></thead>
@@ -4639,7 +4684,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
               </tr>
             );
           })}
-          {!shownRows.length&&<tr><td colSpan="7" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
+          {!shownRows.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
           <tr style={{borderTop:`1px solid ${T.border}`}}>
             <td colSpan="6" style={{padding:"7px 0",color:T.text}}>Changes in period</td>
             <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
@@ -4693,6 +4738,24 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       .filter(r=>r.opening!==0||r.diff!==0||r.closing!==0)
       .sort((a,b)=>a.code.localeCompare(b.code));
   },[accounts,transactions,filterFrom,filterTo,fromAcct,toAcct,activeCategories,reportSearch]);
+
+  // Grouped by account category with a subtotal per group — closer to how a
+  // real trial balance is presented to accountants than a flat list.
+  const groupedRows=useMemo(()=>{
+    const bySk={};
+    rows.forEach(r=>{
+      const sk=getSK(r.code);
+      if(!bySk[sk])bySk[sk]=[];
+      bySk[sk].push(r);
+    });
+    return Object.entries(bySk).map(([sk,items])=>({
+      sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,
+      items,
+      opening:items.reduce((s,r)=>s+r.opening,0),
+      diff:items.reduce((s,r)=>s+r.diff,0),
+      closing:items.reduce((s,r)=>s+r.closing,0),
+    }));
+  },[rows]);
 
   // Register this screen's Excel export with the global top-bar download
   // button — no local export buttons cluttering the report itself.
@@ -4759,7 +4822,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Account</td>
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance</td>
@@ -4767,21 +4830,34 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
         </tr></thead>
         <tbody>
-          {rows.map((r,i)=>(
-            <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-              <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} style={{padding:"11px 14px",color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default"}}>{r.code} {r.name}</td>
-              <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmt(r.opening)}</td>
-              <td
-                onClick={()=>{
-                  if(!r.diff||!onOpenLedger)return;
-                  const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
-                  onOpenLedger(acct,filterFrom,filterTo);
-                }}
-                title={r.diff?"View ledger for this account and period":undefined}
-                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
-              >{r.diff?fmt(r.diff):"—"}</td>
-              <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
-            </tr>
+          {groupedRows.map(g=>(
+            <React.Fragment key={g.sk}>
+              <tr style={{background:T.bg}}>
+                <td colSpan="4" style={{padding:"7px 14px",fontWeight:700,fontSize:11,color:T.sub,textTransform:"uppercase",letterSpacing:0.4}}>{SERIES[g.sk]?SERIES[g.sk].icon:""} {g.label}</td>
+              </tr>
+              {g.items.map(r=>(
+                <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                  <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} title={`${r.code} ${r.name}`} style={{padding:"11px 14px",paddingLeft:24,color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
+                  <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmt(r.opening)}</td>
+                  <td
+                    onClick={()=>{
+                      if(!r.diff||!onOpenLedger)return;
+                      const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
+                      onOpenLedger(acct,filterFrom,filterTo);
+                    }}
+                    title={r.diff?"View ledger for this account and period":undefined}
+                    style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
+                  >{r.diff?fmt(r.diff):"—"}</td>
+                  <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
+                </tr>
+              ))}
+              <tr style={{borderBottom:`2px solid ${T.border}`}}>
+                <td style={{padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>Subtotal — {g.label}</td>
+                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.opening)}</td>
+                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.diff)}</td>
+                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.closing)}</td>
+              </tr>
+            </React.Fragment>
           ))}
           {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</td></tr>}
         </tbody>
@@ -4872,7 +4948,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
       </div>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.muted,fontSize:11}}>
           <td style={{padding:"6px 0"}}></td><td style={{textAlign:"right"}}>{periodLabel}</td><td style={{textAlign:"right"}}>Previous period</td>
         </tr></thead>
@@ -4973,10 +5049,10 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
         {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
       </div>
       <div id="balancesheet-print-area">
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={assetGroups}/>
@@ -4990,7 +5066,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
         </div>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Equity and liabilities</div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={eqLiabGroups}/>
@@ -5095,7 +5171,7 @@ function VATReportScreen({invoices,contacts,transactions}){
       {byRate.length>1&&(
         <div style={{marginBottom:20}}>
           <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>By rate</div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 0"}}>Rate</td><td style={{textAlign:"right"}}>Sales excl. VAT</td><td style={{textAlign:"right"}}>VAT</td></tr></thead>
             <tbody>{byRate.map(r=>(
               <tr key={r.rate} style={{borderTop:`1px solid ${T.border}`}}>
@@ -5122,7 +5198,7 @@ function VATReportScreen({invoices,contacts,transactions}){
               <td style={{textAlign:"right",fontWeight:700}}>{fmt(i.total)}</td>
             </tr>
           ))}
-          {!periodInvoices.length&&<tr><td colSpan="6" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No invoices this period.</td></tr>}
+          {!periodInvoices.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No invoices this period.</td></tr>}
         </tbody>
       </table>
 
@@ -5137,7 +5213,7 @@ function VATReportScreen({invoices,contacts,transactions}){
           <div style={{fontSize:18,fontWeight:800,color:T.red,marginTop:4}}>{fmt(totalPurchaseVat)}</div>
         </div>
       </div>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.muted,fontSize:11}}>
           <td style={{padding:"6px 0"}}>Bilag</td><td>Description</td><td>Date</td><td style={{textAlign:"right"}}>Excl. VAT</td><td style={{textAlign:"right"}}>VAT</td><td style={{textAlign:"right"}}>Total</td>
         </tr></thead>
@@ -5152,7 +5228,7 @@ function VATReportScreen({invoices,contacts,transactions}){
               <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
             </tr>
           ))}
-          {!periodPurchases.length&&<tr><td colSpan="6" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No supplier vouchers with VAT recorded this period.</td></tr>}
+          {!periodPurchases.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No supplier vouchers with VAT recorded this period.</td></tr>}
         </tbody>
       </table>
       </div>
@@ -5347,7 +5423,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
                     <td style={{textAlign:"right",fontWeight:600}}>{sign(mv(t))}</td>
                   </tr>
                 ))}
-                {!ledgerEntries.length&&<tr><td colSpan="4" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No ledger entries this month.</td></tr>}
+                {!ledgerEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No ledger entries this month.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -5391,7 +5467,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
                     <td style={{textAlign:"right"}}><button onClick={()=>deleteBankStatementLine(l.id)} title="Delete line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:11}}>✕</button></td>
                   </tr>
                 ))}
-                {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"20px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
+                {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -5415,6 +5491,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const[showMore,setShowMore]=useState(false);
   const[showMatched,setShowMatched]=useState(false);
   const[selected,setSelected]=useState({}); // {contactId: [txnIds]}
+  const[collapsedIds,setCollapsedIds]=useState(new Set());
+  const toggleCollapse=(id)=>setCollapsedIds(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
 
   const code=type==="customer"?"1500":"2400";
   const year=parseInt(viewMonth.slice(0,4));
@@ -5428,6 +5506,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   const relevantContacts=useMemo(()=>contacts.filter(c=>c.type===type),[contacts,type]);
   const mv=(t)=>t.debitCode===code?t.amount:-t.amount;
+  const[minAmount,setMinAmount]=useState("");
+  const[maxAmount,setMaxAmount]=useState("");
 
   const groups=useMemo(()=>{
     return relevantContacts
@@ -5439,12 +5519,14 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           const q=search.toLowerCase();
           txns=txns.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q));
         }
+        if(minAmount)txns=txns.filter(t=>Math.abs(mv(t))>=parseFloat(minAmount));
+        if(maxAmount)txns=txns.filter(t=>Math.abs(mv(t))<=parseFloat(maxAmount));
         txns=txns.sort((a,b)=>a.date.localeCompare(b.date));
         const total=txns.reduce((s,t)=>s+mv(t),0);
         return{contact:c,txns,total};
       })
       .filter(g=>g.txns.length>0);
-  },[relevantContacts,contactFilter,transactions,code,showMatched,search]);
+  },[relevantContacts,contactFilter,transactions,code,showMatched,search,minAmount,maxAmount]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -5461,6 +5543,28 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   const getName=acctCode=>((accounts.find(a=>a.code===acctCode))||{name:acctCode}).name;
 
+  // Aging summary — computed from ALL open (unmatched) entries of the current
+  // type, regardless of the month filter above, since aging is about "right
+  // now," not a specific period.
+  const aging=useMemo(()=>{
+    const today=new Date().toISOString().slice(0,10);
+    const buckets={notDue:0,d1_30:0,d31_60:0,d61_90:0,d90plus:0};
+    relevantContacts.forEach(c=>{
+      transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code)).forEach(t=>{
+        const amt=mv(t);
+        if(!t.dueDate){buckets.notDue+=amt;return;}
+        const days=Math.floor((new Date(today)-new Date(t.dueDate))/86400000);
+        if(days<=0)buckets.notDue+=amt;
+        else if(days<=30)buckets.d1_30+=amt;
+        else if(days<=60)buckets.d31_60+=amt;
+        else if(days<=90)buckets.d61_90+=amt;
+        else buckets.d90plus+=amt;
+      });
+    });
+    return buckets;
+  },[relevantContacts,transactions,code]);
+  const agingTotal=Object.values(aging).reduce((s,v)=>s+v,0);
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -5469,6 +5573,21 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
           <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
         </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
+        {[
+          {label:"Not yet due",value:aging.notDue,color:T.text},
+          {label:"1–30 days",value:aging.d1_30,color:"#D97706"},
+          {label:"31–60 days",value:aging.d31_60,color:"#D97706"},
+          {label:"61–90 days",value:aging.d61_90,color:T.red},
+          {label:"90+ days",value:aging.d90plus,color:T.red},
+        ].map(b=>(
+          <div key={b.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+            <div style={{fontSize:10,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>{b.label}</div>
+            <div style={{fontSize:15,fontWeight:800,color:b.color}}>{fmt(b.value)}</div>
+          </div>
+        ))}
       </div>
 
       <div style={{display:"flex",gap:20,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
@@ -5491,13 +5610,21 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
+        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
       </div>
       {showMore&&(
-        <div style={{marginBottom:10}}>
+        <div style={{marginBottom:16,background:T.bg,borderRadius:10,padding:14,display:"flex",gap:20,alignItems:"flex-end",flexWrap:"wrap"}}>
           <label style={{fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
             <input type="checkbox" checked={showMatched} onChange={e=>setShowMatched(e.target.checked)}/> Show matched entries too
           </label>
+          <div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Min amount</div>
+            <input type="number" placeholder="0" value={minAmount} onChange={e=>setMinAmount(e.target.value)} style={{...inp,width:110,background:"#fff"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Max amount</div>
+            <input type="number" placeholder="Any" value={maxAmount} onChange={e=>setMaxAmount(e.target.value)} style={{...inp,width:110,background:"#fff"}}/>
+          </div>
         </div>
       )}
       <p style={{fontSize:12,color:T.muted,marginBottom:16}}>{groups.length} {groups.length===1?"contact":"contacts"} with entries</p>
@@ -5505,16 +5632,35 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       {groups.map(({contact,txns,total})=>{
         const sel=selected[contact.id]||[];
         const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
+        // Trend — outstanding balance now vs. 3 months ago, using the contact's
+        // full history (not just what's currently filtered/shown).
+        const threeMonthsAgo=(()=>{const d=new Date();d.setMonth(d.getMonth()-3);return d.toISOString().slice(0,10);})();
+        const balanceThen=transactions.filter(t=>t.contactId===contact.id&&(t.debitCode===code||t.creditCode===code)&&t.date<threeMonthsAgo&&!(t.matchedWith&&t.matchedAccount===code)).reduce((s,t)=>s+mv(t),0);
+        const trendDelta=total-balanceThen;
+        // Auto-collapse individual contacts once the list gets long, or when
+        // a specific contact filter is picked, show it expanded regardless.
+        const defaultCollapsed=groups.length>4&&!contactFilter;
+        const isCollapsed=collapsedIds.has(contact.id)?!defaultCollapsed:defaultCollapsed;
         return(
           <div key={contact.id} style={{marginBottom:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <p style={{fontSize:13,fontWeight:700,color:T.text,margin:0}}>{contact.name} — {showMatched?"all":"open"} entries</p>
+            <div onClick={()=>toggleCollapse(contact.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,cursor:"pointer"}}>
+              <p style={{fontSize:13,fontWeight:700,color:T.text,margin:0,display:"flex",alignItems:"center",gap:8}}>
+                <i className={isCollapsed?"ti ti-chevron-right":"ti ti-chevron-down"} style={{fontSize:13,color:T.muted}}/>
+                {contact.name} — {showMatched?"all":"open"} entries
+                <span style={{fontWeight:800,color:total>=0?T.text:T.red}}>{sign(total)}</span>
+                {Math.abs(trendDelta)>=1&&(
+                  <span title={`Outstanding balance vs. 3 months ago (${fmt(balanceThen)})`} style={{fontSize:10,fontWeight:700,color:trendDelta>0?T.red:T.green,background:trendDelta>0?T.redLight:T.greenBg,padding:"2px 7px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <i className={trendDelta>0?"ti ti-trending-up":"ti ti-trending-down"} style={{fontSize:11}}/>{fmt(Math.abs(trendDelta))} vs 3mo ago
+                  </span>
+                )}
+              </p>
               {sel.length>=2&&(
-                <button onClick={()=>doMatch(contact.id)} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
+                <button onClick={e=>{e.stopPropagation();doMatch(contact.id);}} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
               )}
             </div>
+            {!isCollapsed&&(
             <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
                 <td style={{padding:"9px 14px"}}></td><td style={{padding:"9px 0"}}>Bilag</td><td>Invoice no.</td><td>Date</td><td>Due date</td><td>Description</td><td style={{textAlign:"right",padding:"9px 14px"}}>Amount</td>
               </tr></thead>
@@ -5547,6 +5693,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               </tbody>
             </table>
             </div>
+            )}
           </div>
         );
       })}
@@ -5619,7 +5766,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
         </div>
       )}
 
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.muted,fontSize:11}}>
           <td style={{padding:"6px 0"}}>ID</td><td>Name</td><td>Email</td><td>Phone</td><td style={{textAlign:"right"}}>Balance</td><td></td>
         </tr></thead>
@@ -6496,7 +6643,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
       </div>
 
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Invoice</td><td style={{fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Due date</td><td style={{textAlign:"right",fontWeight:700}}>Total</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -6533,7 +6680,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
               </tr>
             );
           })}
-          {!invoices.length&&<tr><td colSpan="7" style={{padding:"30px 0",textAlign:"center",color:T.muted}}>No invoices yet. Create your first one.</td></tr>}
+          {!invoices.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No invoices yet. Create your first one.</td></tr>}
         </tbody>
       </table>
       </div>
@@ -6617,7 +6764,7 @@ function RecurringInvoicesScreen({recurringInvoices,contacts,accounts,createRecu
       )}
 
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Account</td><td style={{textAlign:"right",fontWeight:700}}>Monthly rate</td><td style={{fontWeight:700}}>Last generated</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -6697,7 +6844,7 @@ function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee
       </label>
 
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{fontWeight:700}}>Role</td><td style={{fontWeight:700}}>Contact</td><td style={{fontWeight:700}}>Start date</td><td style={{textAlign:"right",fontWeight:700}}>Salary</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -6841,7 +6988,7 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
         </div>
       )}
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{textAlign:"right",fontWeight:700}}>Price</td><td style={{fontWeight:700}}>Sale account</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -6965,7 +7112,7 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
 
       <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>Past runs</div>
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Period</td><td style={{fontWeight:700}}>Date</td><td style={{textAlign:"right",fontWeight:700}}>Gross</td><td style={{textAlign:"right",fontWeight:700}}>Deductions</td><td style={{textAlign:"right",fontWeight:700}}>Net</td><td style={{fontWeight:700}}>Employees</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -7099,7 +7246,7 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
         <button onClick={onNewQuote} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New quote</button>
       </div>
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Quote</td><td style={{fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Valid until</td><td style={{textAlign:"right",fontWeight:700}}>Total</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
@@ -9635,7 +9782,7 @@ function ChequeScreen({onBack,isDesktop=false}){
   if(isDesktop){
     const totalPending=list.filter(c=>c.status==="pending").reduce((s,c)=>s+c.amount,0);
     return(
-      <div style={{maxWidth:900}}>
+      <div style={{maxWidth:1000}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Cheque tracker</h1>
           <button onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}} style={{background:showForm?"none":T.accent,color:showForm?T.sub:"#fff",border:`1px solid ${showForm?T.border:T.accent}`,borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"Cancel":`+ Add ${tab} cheque`}</button>
@@ -9648,29 +9795,31 @@ function ChequeScreen({onBack,isDesktop=false}){
           <div style={{fontSize:12,color:T.muted}}>Pending: <span style={{fontWeight:800,color:T.orange}}>{fmt(totalPending)}</span></div>
         </div>
         {showForm&&<div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`,marginBottom:16,maxWidth:500}}>{formCard}</div>}
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{color:T.muted,fontSize:11}}>
-            <td style={{padding:"6px 0"}}>Cheque no.</td><td>Party</td><td>Date</td><td>Bank</td><td style={{textAlign:"right"}}>Amount</td><td>Status</td><td></td>
+        <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+        <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{color:T.sub,background:T.bg}}>
+            <td style={{padding:"11px 14px",fontWeight:700}}>Cheque no.</td><td style={{fontWeight:700}}>Party</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Bank</td><td style={{textAlign:"right",fontWeight:700}}>Amount</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
           </tr></thead>
           <tbody>
             {list.map(c=>(
-              <tr key={c.id} style={{borderTop:`1px solid ${T.border}`}}>
-                <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>#{c.number}</td>
-                <td style={{fontWeight:600}}>{c.party}</td>
-                <td style={{color:T.sub}}>{c.date}</td>
-                <td style={{color:T.sub}}>{c.bank||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700}}>{fmt(c.amount)}</td>
+              <tr key={c.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"11px 14px",color:T.accent,fontWeight:700}}>#{c.number}</td>
+                <td style={{fontWeight:600,color:T.text}}>{c.party}</td>
+                <td style={{color:T.text}}>{c.date}</td>
+                <td style={{color:T.text}}>{c.bank||"—"}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(c.amount)}</td>
                 <td>
                   <select value={c.status} onChange={e=>updateStatus(c.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:c.status==="cleared"?T.greenBg:c.status==="bounced"?T.redLight:c.status==="cancelled"?T.bg:T.orangeBg,color:STATUS_COLOR[c.status],fontWeight:700,textTransform:"capitalize"}}>
                     {["pending","cleared","bounced","cancelled"].map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td style={{textAlign:"right"}}><button onClick={()=>deleteCheque(c.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+                <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>deleteCheque(c.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
               </tr>
             ))}
             {!list.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {tab} cheques yet.</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
     );
   }
@@ -10114,7 +10263,7 @@ function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
                 ))}
               </div>
             </div>
-            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11}}>
                 <td style={{padding:"6px 0"}}>#</td><td>Name</td><td>Email</td><td>Joined</td><td></td><td></td>
               </tr></thead>
@@ -10675,13 +10824,62 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem("rr_onboarding_done","1");}catch{}};
   useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
   useEffect(()=>{setScreenExcelExport(null);},[tab]);
-  const[debugWinWidth,setDebugWinWidth]=useState(()=>typeof window!=="undefined"?window.innerWidth:0);
+  const[recentTabs,setRecentTabsState]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_recent_tabs")||"[]");}catch{return[];}});
+  const NON_TRACKED_TABS=["Dashboard","Settings","Profile","AdminPanel","BugLog","AuditLog"];
   useEffect(()=>{
-    const onResize2=()=>setDebugWinWidth(window.innerWidth);
-    window.addEventListener("resize",onResize2);
-    return()=>window.removeEventListener("resize",onResize2);
+    if(NON_TRACKED_TABS.includes(tab))return;
+    setRecentTabsState(prev=>{
+      const next=[tab,...prev.filter(t=>t!==tab)].slice(0,6);
+      try{localStorage.setItem("rr_recent_tabs",JSON.stringify(next));}catch{}
+      return next;
+    });
+  },[tab]);
+  const TAB_LABELS={NewVoucher:"New voucher",Files:"Voucher inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",Contacts:"Customers"};
+  const searchInputRef=useRef(null);
+  // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
+  // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
+  // any input/select/textarea so normal typing (including Cmd+A, etc.) is untouched.
+  useEffect(()=>{
+    const handler=(e)=>{
+      const tag=(e.target.tagName||"").toLowerCase();
+      const typing=tag==="input"||tag==="select"||tag==="textarea"||e.target.isContentEditable;
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){
+        e.preventDefault();
+        if(searchInputRef.current)searchInputRef.current.focus();
+        return;
+      }
+      if(typing)return;
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="n"){e.preventDefault();setTab("Transactions");}
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="i"){e.preventDefault();setTab("InvoiceNew");}
+    };
+    window.addEventListener("keydown",handler);
+    return()=>window.removeEventListener("keydown",handler);
   },[]);
   const[expandedCat,setExpandedCat]=useState(null);
+  // Auto-expand whichever sidebar category contains the current screen, so
+  // arriving via a pin/shortcut/direct link doesn't leave the sidebar looking
+  // like nothing is selected. Users can still manually collapse afterward.
+  const TAB_TO_CATEGORY={
+    NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",
+    Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
+    Resultat:"reports",BalanceSheet:"reports",VATReport:"reports",Reports:"reports",Budget:"reports",SinkingFunds:"reports",Cheques:"reports",
+    InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",
+    CompanyInfo:"company",Employees:"company",Payroll:"company",Settings:"company",
+    POS:"pos",POSProducts:"pos",
+  };
+  useEffect(()=>{
+    const cat=TAB_TO_CATEGORY[tab];
+    if(cat)setExpandedCat(cat);
+  },[tab]);
+  const[pinnedTabs,setPinnedTabsState]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_pinned_tabs")||"[]");}catch{return[];}});
+  const togglePin=(tabId,label)=>{
+    setPinnedTabsState(prev=>{
+      const exists=prev.some(p=>p.tab===tabId);
+      const next=exists?prev.filter(p=>p.tab!==tabId):[...prev,{tab:tabId,label}];
+      try{localStorage.setItem("rr_pinned_tabs",JSON.stringify(next));}catch{}
+      return next;
+    });
+  };
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
@@ -10690,6 +10888,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
   const[entriesDisplayCols,setEntriesDisplayCols]=useState({date:true,accounts:true,invoiceRef:true});
   const[entriesSortKey,setEntriesSortKey]=useState("bilag");
+  const[entriesShowCount,setEntriesShowCount]=useState(50);
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
   const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
   useEffect(()=>{
@@ -10722,6 +10921,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
 
   const[entrySearch,setEntrySearch]=useState("");
+  useEffect(()=>{setEntriesShowCount(50);},[entrySearch]);
   const[bankAttachments,setBankAttachmentsState]=useState(()=>{try{const saved=localStorage.getItem("rr_bank_attachments");return saved?JSON.parse(saved):{}}catch{return{};}});
   const setBankAttachments=(fn)=>{setBankAttachmentsState(prev=>{const next=typeof fn==="function"?fn(prev):fn;try{localStorage.setItem("rr_bank_attachments",JSON.stringify(next));}catch(e){}return next;});};
   const _now=new Date();
@@ -10855,7 +11055,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   if(isDesktop)return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
-      <div style={{position:"fixed",bottom:10,left:10,zIndex:99999,background:"#000",color:"#fff",fontSize:12,padding:"6px 10px",borderRadius:8,fontFamily:"monospace",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>width: {debugWinWidth}px · isDesktop: YES</div>
       {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
       <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0}}>
         <div style={{padding:"18px 18px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
@@ -10866,6 +11065,21 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+          {pinnedTabs.length>0&&(
+            <>
+              <div style={{padding:"2px 16px 6px 13px",fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Favorites</div>
+              {pinnedTabs.map(p=>{
+                const active=tab===p.tab;
+                return(
+                  <div key={p.tab} onClick={()=>setTab(p.tab)} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
+                    <i className="ti ti-star-filled" style={{fontSize:12,color:active?T.accent:"#FBBF24",flexShrink:0,width:18,textAlign:"center"}}/>
+                    <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
+                  </div>
+                );
+              })}
+              <div style={{borderTop:`1px solid ${T.border}`,margin:"6px 16px 6px 13px"}}/>
+            </>
+          )}
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
@@ -10896,6 +11110,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
             ]},
+            {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
+              {tab:"InvoiceNew",label:"New invoice"},
+              {tab:"InvoiceOverview",label:"Invoice overview"},
+              {tab:"RecurringInvoices",label:"Recurring invoices"},
+              {tab:"QuoteNew",label:"New quote"},
+              {tab:"QuoteOverview",label:"Quotes"},
+            ]},
             {id:"accounting",label:"Accounting",icon:"ti-book",items:[
               {tab:"Accounts",label:"Account ledger"},
               {tab:"GeneralLedger",label:"General ledger (combined)"},
@@ -10910,13 +11131,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Budget",label:"Budget",featureKey:"budget"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
-            ]},
-            {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
-              {tab:"InvoiceNew",label:"New invoice"},
-              {tab:"InvoiceOverview",label:"Invoice overview"},
-              {tab:"RecurringInvoices",label:"Recurring invoices"},
-              {tab:"QuoteNew",label:"New quote"},
-              {tab:"QuoteOverview",label:"Quotes"},
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
@@ -10946,9 +11160,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
                     {visibleItems.map(it=>{
                       const active=tab===it.tab;
+                      const isPinned=pinnedTabs.some(p=>p.tab===it.tab);
                       return(
-                        <div key={it.tab} onClick={()=>setTab(it.tab)} style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
-                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
+                        <div key={it.tab} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6}}>
+                          <span onClick={()=>setTab(it.tab)} style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
+                          <i onClick={()=>togglePin(it.tab,it.label)} title={isPinned?"Remove from Favorites":"Add to Favorites"} className={isPinned?"ti ti-star-filled":"ti ti-star rr-sidebar-pin"} style={{fontSize:12,color:isPinned?"#FBBF24":T.muted,cursor:"pointer",flexShrink:0}}/>
                         </div>
                       );
                     })}
@@ -10978,7 +11194,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
       </div>
 
-      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"18px 28px"}}>
+      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px"}}>
         {/* Top bar — company pill left; Assistant, search, download, bell, profile right */}
         <div className="rr-glass-card" style={{position:"sticky",top:0,zIndex:50,display:"flex",alignItems:"center",gap:8,marginBottom:18,borderRadius:T.radius.xl,padding:"10px 14px"}}>
           <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:"#fff",borderRadius:20,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(20,184,166,0.10)"}}>
@@ -10992,7 +11208,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </button>
           <div style={{position:"relative",width:180}}>
             <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-            <input placeholder="Search" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12,background:"#fff"}}/>
+            <input ref={searchInputRef} placeholder="Search" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12,background:"#fff"}}/>
           </div>
           <div style={{position:"relative"}}>
             <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" className="rr-glass-btn" style={{borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -11034,7 +11250,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
-        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab}/>}
+        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS}/>}
 
         {tab==="Entries"&&(
           <div style={{maxWidth:1000}}>
@@ -11081,7 +11297,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                     </div>
                   </div>
                 </div>
-                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
                   <thead><tr style={{color:T.muted,fontSize:11}}>
                     {headers.map(h=>(
                       <td key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"6px 8px 6px 0",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
@@ -11090,7 +11306,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                     ))}
                   </tr></thead>
                   <tbody>
-                    {sorted.map(t=>{
+                    {sorted.slice(0,entriesShowCount).map(t=>{
                       const isRev=!!t.reversalOf;
                       const isMatched=!!t.matchedWith;
                       return(
@@ -11108,6 +11324,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                     {!sorted.length&&<tr><td colSpan={headers.length} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</td></tr>}
                   </tbody>
                 </table>
+                {sorted.length>entriesShowCount&&(
+                  <div style={{textAlign:"center",padding:"14px 0"}}>
+                    <button onClick={()=>setEntriesShowCount(c=>c+50)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 20px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Load more ({sorted.length-entriesShowCount} remaining)</button>
+                  </div>
+                )}
               </>);
             })()}
             {entriesDetailTxn&&(
@@ -11204,31 +11425,31 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="GeneralLedger"&&(
-          <div style={{maxWidth:900}}>
+          <div style={{maxWidth:1000}}>
             <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc}/>
           </div>
         )}
 
         {tab==="VATReport"&&(
-          <div style={{maxWidth:900}}>
+          <div style={{maxWidth:1000}}>
             <VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>
           </div>
         )}
 
         {tab==="Resultat"&&(
-          <div style={{maxWidth:900}}>
+          <div style={{maxWidth:1000}}>
             <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
           </div>
         )}
 
         {tab==="BalanceSheet"&&(
-          <div style={{maxWidth:900}}>
+          <div style={{maxWidth:1000}}>
             <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
           </div>
         )}
 
         {tab==="TrialBalance"&&(
-          <div style={{maxWidth:900}}>
+          <div style={{maxWidth:1000}}>
             <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)}/>
           </div>
         )}
@@ -11336,7 +11557,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:80}}>
-      <div style={{position:"fixed",bottom:70,left:10,zIndex:99999,background:"#000",color:"#fff",fontSize:12,padding:"6px 10px",borderRadius:8,fontFamily:"monospace",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>width: {debugWinWidth}px · isDesktop: NO</div>
       {/* Sidebar */}
       {sidebarOpen&&(<>
         <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:200}}/>
