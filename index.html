@@ -289,10 +289,14 @@ function SignedFileViewer({storagePath,type,name,style}){
   const[loading,setLoading]=useState(true);
   const[extractedText,setExtractedText]=useState("");
   const[extracting,setExtracting]=useState(false);
+  const[zoom,setZoom]=useState(1);
+  const[pan,setPan]=useState({x:0,y:0});
+  const dragRef=React.useRef(null);
   useEffect(()=>{
     let alive=true;
     setLoading(true);
     setExtractedText("");
+    setZoom(1);setPan({x:0,y:0});
     getSignedUrl(storagePath).then(u=>{if(alive){setUrl(u);setLoading(false);}});
     return()=>{alive=false;};
   },[storagePath]);
@@ -322,12 +326,34 @@ function SignedFileViewer({storagePath,type,name,style}){
     }catch(e){setExtractedText("Couldn't read text from this image.");}
     setExtracting(false);
   };
+  const startDrag=(e)=>{
+    if(zoom<=1)return;
+    const startX=e.clientX,startY=e.clientY;
+    const startPan={...pan};
+    dragRef.current={startX,startY,startPan};
+    const onMove=(ev)=>{
+      if(!dragRef.current)return;
+      setPan({x:startPan.x+(ev.clientX-startX),y:startPan.y+(ev.clientY-startY)});
+    };
+    const onUp=()=>{dragRef.current=null;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+    window.addEventListener("mousemove",onMove);
+    window.addEventListener("mouseup",onUp);
+  };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
   if(!isImage)return<iframe src={url} style={{border:"none",background:"#fff",...style}} title={name||"attachment"}/>;
   return(
     <div>
-      <img src={url} style={style} alt={name||"attachment"}/>
+      <div style={{position:"relative",overflow:"hidden",borderRadius:8,background:"#fafafa",...style,padding:0}}>
+        <div onMouseDown={startDrag} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",cursor:zoom>1?"grab":"default",overflow:"hidden"}}>
+          <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
+        </div>
+        <div style={{position:"absolute",bottom:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
+          <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>−</button>
+          <button onClick={()=>{setZoom(1);setPan({x:0,y:0});}} title="Reset zoom" style={{fontSize:11,border:"none",background:"none",cursor:"pointer",color:"#374151",padding:"0 6px",fontWeight:600}}>{Math.round(zoom*100)}%</button>
+          <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>+</button>
+        </div>
+      </div>
       {extractedText?(
         <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10}}>
           <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Extracted text — select to copy</div>
@@ -336,6 +362,35 @@ function SignedFileViewer({storagePath,type,name,style}){
       ):(
         <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#FF5A1F",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
       )}
+    </div>
+  );
+}
+
+// A real resizable split — drag the divider with the mouse to widen either
+// side. Used anywhere a form sits next to a document/image preview.
+function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxRightWidth=640}){
+  const[rightWidth,setRightWidth]=useState(defaultRightWidth);
+  const draggingRef=React.useRef(false);
+  const startDrag=(e)=>{
+    e.preventDefault();
+    draggingRef.current={startX:e.clientX,startWidth:rightWidth};
+    const onMove=(ev)=>{
+      if(!draggingRef.current)return;
+      const delta=draggingRef.current.startX-ev.clientX;
+      const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
+      setRightWidth(next);
+    };
+    const onUp=()=>{draggingRef.current=null;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+    window.addEventListener("mousemove",onMove);
+    window.addEventListener("mouseup",onUp);
+  };
+  return(
+    <div style={{display:"flex",alignItems:"flex-start",gap:0,minWidth:0}}>
+      <div style={{flex:1,minWidth:0}}>{left}</div>
+      <div onMouseDown={startDrag} title="Drag to resize" style={{width:8,alignSelf:"stretch",cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <div style={{width:3,height:40,borderRadius:2,background:"#E4EDED"}}/>
+      </div>
+      <div style={{width:rightWidth,flexShrink:0,minWidth:minRightWidth}}>{right}</div>
     </div>
   );
 }
@@ -1759,8 +1814,8 @@ function Menu3({items}){
         <div style={{position:"absolute",right:0,top:28,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
           {items.map((item,i)=>(
             <div key={i} onClick={()=>{if(!item.disabled){setOpen(false);item.action();}}}
-              style={{padding:"9px 12px",fontSize:9,cursor:item.disabled?"not-allowed":"pointer",color:item.disabled?T.muted:item.color||T.blue,fontWeight:600,borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:6,opacity:item.disabled?0.5:1}}>
-              <span style={{fontSize:11}}>{item.icon}</span>{item.label}
+              style={{padding:"9px 12px",fontSize:12,cursor:item.disabled?"not-allowed":"pointer",color:item.disabled?T.muted:item.color||T.text,fontWeight:500,borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:item.icon?6:0,opacity:item.disabled?0.5:1,whiteSpace:"nowrap"}}>
+              {item.icon&&<span style={{fontSize:11}}>{item.icon}</span>}{item.label}
             </div>
           ))}
         </div>
@@ -3170,7 +3225,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isDesktop=false}){
+function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -3723,6 +3778,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
           {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
           {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
           {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
+          ...(isAdmin?[{icon:"🐞",label:"Bug Log",sub:"Errors reported by the app",action:()=>onNavigate&&onNavigate("BugLog"),bg:"#FEE2E2",color:T.red}]:[]),
         ].map((item,i)=>(
           <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
@@ -4671,6 +4727,10 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
   const switchAccount=(code)=>{setCurrentCode(code);setSelected([]);setSearch("");};
 
+  const allSelectableIds=shownRows.filter(r=>!(r.matchedWith&&r.matchedAccount===currentCode)).map(r=>r.id);
+  const allSelected=allSelectableIds.length>0&&allSelectableIds.every(id=>selected.includes(id));
+  const toggleSelectAll=()=>setSelected(allSelected?[]:allSelectableIds);
+
   return(
     <div>
       {periodPickerOpen&&(
@@ -4679,46 +4739,44 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       {detailTxn&&(
         <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
         <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
       </div>
 
-      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
-        <div style={{position:"relative",width:170}}>
-          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
-          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:14}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{position:"relative",width:170}}>
+            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+            <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
+          </div>
+          <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:220}}>
+            {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+          </select>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"none",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
+            <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"none",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
+          </div>
+          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+            <i className="ti ti-calendar" style={{fontSize:12,color:T.sub}}/>
+            <span style={{fontSize:12,fontWeight:700,color:T.text}}>{periodLabel}</span>
+          </button>
+          {/* Match controls live right here in the filter row — never a
+              separate row that pushes the table down when you select rows. */}
+          {selected.length>0&&(
+            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+              <span style={{fontSize:11,color:T.sub}}>{selected.length} selected · Net: <span style={{fontWeight:700,color:Math.abs(selSum)<1?T.green:T.red}}>{sign(selSum)}</span></span>
+              <button onClick={()=>setSelected([])} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
+              <button onClick={doMatch} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.green:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>Match ✓</button>
+            </div>
+          )}
         </div>
-        <select value={currentCode} onChange={e=>switchAccount(e.target.value)} style={{...inp,width:240}}>
-          {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-        </select>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"none",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
-          <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"none",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
-        </div>
-        <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-          <i className="ti ti-calendar" style={{fontSize:13,color:T.sub}}/>
-          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{periodLabel}</span>
-        </button>
       </div>
 
-      {selected.length>0&&(
-        <div style={{background:T.header,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <span style={{fontSize:12,color:"#aaa"}}>{selected.length} selected · Net: </span>
-            <span style={{fontSize:12,fontWeight:700,color:Math.abs(selSum)<1?"#4ade80":"#f87171"}}>{sign(selSum)}</span>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setSelected([])} style={{background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
-            <button onClick={doMatch} style={{background:Math.abs(selSum)<1?T.green:"#555",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:Math.abs(selSum)<1?1:0.5}}>Match ✓</button>
-          </div>
-        </div>
-      )}
-
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
-          <td style={{padding:"9px 14px"}}></td><td>Closed</td><td>Voucher</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td style={{textAlign:"right",padding:"9px 14px"}}>Balance</td>
+      <div style={{maxHeight:"65vh",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.muted,fontSize:11,background:T.bg,position:"sticky",top:0,zIndex:2}}>
+          <td style={{padding:"9px 14px"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/></td><td>Closed</td><td>Voucher</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td style={{textAlign:"right",padding:"9px 14px"}}>Balance</td>
         </tr></thead>
         <tbody>
           <tr style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
@@ -4803,23 +4861,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       .sort((a,b)=>a.code.localeCompare(b.code));
   },[accounts,transactions,filterFrom,filterTo,fromAcct,toAcct,activeCategories,reportSearch]);
 
-  // Grouped by account category with a subtotal per group — closer to how a
-  // real trial balance is presented to accountants than a flat list.
-  const groupedRows=useMemo(()=>{
-    const bySk={};
-    rows.forEach(r=>{
-      const sk=getSK(r.code);
-      if(!bySk[sk])bySk[sk]=[];
-      bySk[sk].push(r);
-    });
-    return Object.entries(bySk).map(([sk,items])=>({
-      sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,
-      items,
-      opening:items.reduce((s,r)=>s+r.opening,0),
-      diff:items.reduce((s,r)=>s+r.diff,0),
-      closing:items.reduce((s,r)=>s+r.closing,0),
-    }));
-  },[rows]);
 
   // Register this screen's Excel export with the global top-bar download
   // button — no local export buttons cluttering the report itself.
@@ -4843,8 +4884,8 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
       )}
 
-      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"18px 20px",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 14px"}}>Trial balance</h1>
+      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"14px 16px",marginBottom:14}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 12px"}}>Trial balance</h1>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -4885,43 +4926,30 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       </div>
 
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.sub,background:T.bg}}>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,maxHeight:"65vh",overflowY:"auto"}}>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <thead><tr style={{color:T.sub,background:T.bg,position:"sticky",top:0,zIndex:2,boxShadow:`0 1px 0 ${T.border}`}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Account</td>
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance</td>
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Difference</td>
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
         </tr></thead>
         <tbody>
-          {groupedRows.map(g=>(
-            <React.Fragment key={g.sk}>
-              <tr style={{background:T.bg}}>
-                <td colSpan="4" style={{padding:"7px 14px",fontWeight:700,fontSize:11,color:T.sub,textTransform:"uppercase",letterSpacing:0.4}}>{SERIES[g.sk]?SERIES[g.sk].icon:""} {g.label}</td>
-              </tr>
-              {g.items.map(r=>(
-                <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                  <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} title={`${r.code} ${r.name}`} style={{padding:"11px 14px",paddingLeft:24,color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
-                  <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmt(r.opening)}</td>
-                  <td
-                    onClick={()=>{
-                      if(!r.diff||!onOpenLedger)return;
-                      const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
-                      onOpenLedger(acct,filterFrom,filterTo);
-                    }}
-                    title={r.diff?"View ledger for this account and period":undefined}
-                    style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
-                  >{r.diff?fmt(r.diff):"—"}</td>
-                  <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
-                </tr>
-              ))}
-              <tr style={{borderBottom:`2px solid ${T.border}`}}>
-                <td style={{padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>Subtotal — {g.label}</td>
-                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.opening)}</td>
-                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.diff)}</td>
-                <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,fontSize:12,color:T.sub}}>{fmt(g.closing)}</td>
-              </tr>
-            </React.Fragment>
+          {rows.map(r=>(
+            <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+              <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} title={`${r.code} ${r.name}`} style={{padding:"11px 14px",color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
+              <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmt(r.opening)}</td>
+              <td
+                onClick={()=>{
+                  if(!r.diff||!onOpenLedger)return;
+                  const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
+                  onOpenLedger(acct,filterFrom,filterTo);
+                }}
+                title={r.diff?"View ledger for this account and period":undefined}
+                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
+              >{r.diff?fmt(r.diff):"—"}</td>
+              <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmt(r.closing)}</td>
+            </tr>
           ))}
           {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</td></tr>}
         </tbody>
@@ -5547,13 +5575,12 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport}){
   const[type,setType]=useState("supplier"); // "customer" | "supplier"
   const[search,setSearch]=useState("");
   const[contactFilter,setContactFilter]=useState("");
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
-  const[showMore,setShowMore]=useState(false);
-  const[showMatched,setShowMatched]=useState(false);
+  const[entriesView,setEntriesView]=useState("open"); // "open" | "closed" | "all"
   const[selected,setSelected]=useState({}); // {contactId: [txnIds]}
   const[collapsedIds,setCollapsedIds]=useState(new Set());
   const toggleCollapse=(id)=>setCollapsedIds(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
@@ -5578,7 +5605,10 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       .filter(c=>!contactFilter||c.id===contactFilter)
       .map(c=>{
         let txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
-        if(!showMatched)txns=txns.filter(t=>!(t.matchedWith&&t.matchedAccount===code));
+        const isMatched=(t)=>!!(t.matchedWith&&t.matchedAccount===code);
+        if(entriesView==="open")txns=txns.filter(t=>!isMatched(t));
+        else if(entriesView==="closed")txns=txns.filter(t=>isMatched(t));
+        // "all" — no filter, shows both matched and unmatched
         if(search){
           const q=search.toLowerCase();
           txns=txns.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q));
@@ -5590,7 +5620,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         return{contact:c,txns,total};
       })
       .filter(g=>g.txns.length>0);
-  },[relevantContacts,contactFilter,transactions,code,showMatched,search,minAmount,maxAmount]);
+  },[relevantContacts,contactFilter,transactions,code,entriesView,search,minAmount,maxAmount]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -5607,31 +5637,29 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   const getName=acctCode=>((accounts.find(a=>a.code===acctCode))||{name:acctCode}).name;
 
-  // Aging summary — computed from ALL open (unmatched) entries of the current
-  // type, regardless of the month filter above, since aging is about "right
-  // now," not a specific period.
-  const aging=useMemo(()=>{
-    const today=new Date().toISOString().slice(0,10);
-    const buckets={notDue:0,d1_30:0,d31_60:0,d61_90:0,d90plus:0};
-    relevantContacts.forEach(c=>{
-      transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code)).forEach(t=>{
-        const amt=mv(t);
-        if(!t.dueDate){buckets.notDue+=amt;return;}
-        const days=Math.floor((new Date(today)-new Date(t.dueDate))/86400000);
-        if(days<=0)buckets.notDue+=amt;
-        else if(days<=30)buckets.d1_30+=amt;
-        else if(days<=60)buckets.d31_60+=amt;
-        else if(days<=90)buckets.d61_90+=amt;
-        else buckets.d90plus+=amt;
+  const totalEntryCount=groups.reduce((s,g)=>s+g.txns.length,0);
+
+  // Register the Excel export with the global download button — exports
+  // exactly what's visible right now (respecting Entries View / search /
+  // contact filter), never the whole unfiltered ledger.
+  useEffect(()=>{
+    if(!registerExcelExport)return;
+    registerExcelExport(()=>{
+      const aoa=[["Contact","Bilag","Invoice no.","Date","Due date","Description","Amount"]];
+      groups.forEach(({contact,txns})=>{
+        txns.forEach(t=>aoa.push([contact.name,fmtB(t.bilag),t.invoiceNo||"",t.date,t.dueDate||"",t.description,mv(t)]));
+        aoa.push([`Total for ${contact.name}`,"","","","","",groups.find(g=>g.contact.id===contact.id).total]);
       });
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb,ws,type==="customer"?"Customer ledger":"Supplier ledger");
+      XLSX.writeFile(wb,`${type==="customer"?"CustomerLedger":"SupplierLedger"}_${entriesView}_${viewMonth}.xlsx`);
     });
-    return buckets;
-  },[relevantContacts,transactions,code]);
-  const agingTotal=Object.values(aging).reduce((s,v)=>s+v,0);
+  },[groups,type,entriesView,viewMonth,registerExcelExport]);
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
         <div style={{display:"flex",gap:6}}>
           <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
@@ -5639,60 +5667,46 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
-        {[
-          {label:"Not yet due",value:aging.notDue,color:T.text},
-          {label:"1–30 days",value:aging.d1_30,color:"#D97706"},
-          {label:"31–60 days",value:aging.d31_60,color:"#D97706"},
-          {label:"61–90 days",value:aging.d61_90,color:T.red},
-          {label:"90+ days",value:aging.d90plus,color:T.red},
-        ].map(b=>(
-          <div key={b.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
-            <div style={{fontSize:10,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>{b.label}</div>
-            <div style={{fontSize:15,fontWeight:800,color:b.color}}>{fmt(b.value)}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:"flex",gap:20,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Search bilag or description</div>
-          <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:180}}/>
-        </div>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Period</div>
-          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
-            <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
-            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{periodLabel}</span>
-            <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
-          </div>
-        </div>
-        <div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>{type==="customer"?"Customer":"Supplier"}</div>
-          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:160}}>
-            <option value="">All</option>
-            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <button onClick={()=>setShowMore(s=>!s)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",paddingBottom:8}}>{showMore?"Fewer options ←":"More options →"}</button>
-      </div>
-      {showMore&&(
-        <div style={{marginBottom:16,background:T.bg,borderRadius:10,padding:14,display:"flex",gap:20,alignItems:"flex-end",flexWrap:"wrap"}}>
-          <label style={{fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
-            <input type="checkbox" checked={showMatched} onChange={e=>setShowMatched(e.target.checked)}/> Show matched entries too
-          </label>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:14}}>
+        <div style={{display:"flex",gap:14,alignItems:"flex-end",flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Min amount</div>
-            <input type="number" placeholder="0" value={minAmount} onChange={e=>setMinAmount(e.target.value)} style={{...inp,width:110,background:"#fff"}}/>
+            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Period</div>
+            <div style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:7,padding:"4px 8px"}}>
+              <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
+              <span style={{fontSize:12,fontWeight:700,color:T.text,minWidth:78,textAlign:"center"}}>{periodLabel}</span>
+              <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
+            </div>
           </div>
           <div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Max amount</div>
-            <input type="number" placeholder="Any" value={maxAmount} onChange={e=>setMaxAmount(e.target.value)} style={{...inp,width:110,background:"#fff"}}/>
+            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>{type==="customer"?"Customer":"Supplier"}</div>
+            <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:150,padding:"6px 10px",fontSize:12}}>
+              <option value="">All {type==="customer"?"customers":"suppliers"}</option>
+              {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{position:"relative",width:200}}>
+            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Search</div>
+            <i className="ti ti-search" style={{position:"absolute",left:9,top:27,color:T.muted,fontSize:12}}/>
+            <input placeholder="Search voucher, invoice, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:28,padding:"6px 10px 6px 28px",fontSize:12}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Entries View</div>
+            <div style={{display:"flex",gap:5}}>
+              {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
+                <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accentLight:"none",color:entriesView===id?T.accent:T.sub,border:`1px solid ${entriesView===id?T.accent:T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{label}</button>
+              ))}
+            </div>
           </div>
         </div>
-      )}
-      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>{groups.length} {groups.length===1?"contact":"contacts"} with entries</p>
+      </div>
 
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <p style={{fontSize:12,color:T.muted,margin:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} {totalEntryCount===1?"entry":"entries"}</p>
+      </div>
+
+      {/* Fixed filters above, this part scrolls independently so long lists
+          never push the period/search/entries-view controls off screen. */}
+      <div style={{maxHeight:"65vh",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:16,background:T.bg}}>
       {groups.map(({contact,txns,total})=>{
         const sel=selected[contact.id]||[];
         const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
@@ -5710,7 +5724,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             <div onClick={()=>toggleCollapse(contact.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,cursor:"pointer"}}>
               <p style={{fontSize:13,fontWeight:700,color:T.text,margin:0,display:"flex",alignItems:"center",gap:8}}>
                 <i className={isCollapsed?"ti ti-chevron-right":"ti ti-chevron-down"} style={{fontSize:13,color:T.muted}}/>
-                {contact.name} — {showMatched?"all":"open"} entries
+                {contact.name} — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} entries
                 <span style={{fontWeight:800,color:total>=0?T.text:T.red}}>{sign(total)}</span>
                 {Math.abs(trendDelta)>=1&&(
                   <span title={`Outstanding balance vs. 3 months ago (${fmt(balanceThen)})`} style={{fontSize:10,fontWeight:700,color:trendDelta>0?T.red:T.green,background:trendDelta>0?T.redLight:T.greenBg,padding:"2px 7px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}>
@@ -5724,7 +5738,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             </div>
             {!isCollapsed&&(
             <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-            <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
                 <td style={{padding:"9px 14px"}}></td><td style={{padding:"9px 0"}}>Bilag</td><td>Invoice no.</td><td>Date</td><td>Due date</td><td>Description</td><td style={{textAlign:"right",padding:"9px 14px"}}>Amount</td>
               </tr></thead>
@@ -5762,6 +5776,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         );
       })}
       {!groups.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</div>}
+      </div>
     </div>
   );
 }
@@ -6008,6 +6023,9 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
   // account, no "paid from" assumption baked in.
   const[debitCode,setDebitCode]=useState(expenseAccounts[0]?expenseAccounts[0].code:"");
   const[creditCode,setCreditCode]=useState(accounts[0]?accounts[0].code:"");
+  const[receiptContactId,setReceiptContactId]=useState("");
+  const receiptNeedContact=debitCode==="1500"||creditCode==="1500"||debitCode==="2400"||creditCode==="2400";
+  const receiptContactType=(debitCode==="1500"||creditCode==="1500")?"customer":"supplier";
 
   const attachedFile=inboxFiles.find(f=>f.id===attachedFileId);
   const grossAmount=parseFloat(amount)||0;
@@ -6032,15 +6050,15 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
     const desc=description||(voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${invoiceNo?" "+invoiceNo:""}`:"Receipt");
     const form=voucherType==="supplier"
       ?{date,dueDate,invoiceNo,debitCode:expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:supplierId,attachmentId:attachedFileId||undefined,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
-      :{date,debitCode,creditCode,description:desc,amount:grossAmount,attachmentId:attachedFileId||undefined};
+      :{date,debitCode,creditCode,description:desc,amount:grossAmount,attachmentId:attachedFileId||undefined,contactId:receiptNeedContact&&receiptContactId?receiptContactId:undefined};
     await addTransaction(form);
     setSaving(false);
     if(onDone)onDone();
   };
 
   return(
-    <div style={{display:"flex",flexWrap:"wrap",gap:24}}>
-      <div style={{flex:"1 1 500px"}}>
+    <ResizableSplit left={(
+      <div>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>New voucher</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
           <button onClick={()=>setVoucherType("supplier")} style={{background:voucherType==="supplier"?T.accent:"none",color:voucherType==="supplier"?"#fff":T.sub,border:`1px solid ${voucherType==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Supplier invoice</button>
@@ -6126,6 +6144,12 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                 </div>
               </div>
               {debitCode===creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
+              {receiptNeedContact&&(
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{receiptContactType==="customer"?"Customer":"Supplier"}</div>
+                  <ContactSearchInline contacts={contacts} value={receiptContactId} onChange={setReceiptContactId} type={receiptContactType}/>
+                </div>
+              )}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
@@ -6145,13 +6169,13 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
           <button onClick={handlePost} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Posting…":"Post voucher"}</button>
         </div>
       </div>
-
-      <div style={{flex:"1 1 300px",minWidth:280,background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
+    )} right={(
+      <div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`}}>
         <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Document</div>
         {attachedFile?(
           <>
-            <div style={{background:"#fff",borderRadius:8,minHeight:280,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,marginBottom:10}}>
-              <SignedFileViewer storagePath={attachedFile.storagePath} type={attachedFile.type} name={attachedFile.name} style={{maxWidth:"100%",maxHeight:340,borderRadius:8}}/>
+            <div style={{background:"#fff",borderRadius:8,height:440,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,marginBottom:10}}>
+              <SignedFileViewer storagePath={attachedFile.storagePath} type={attachedFile.type} name={attachedFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
             </div>
             <div style={{fontSize:11,color:T.sub,marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedFile.name}</div>
             <button onClick={()=>setAttachedFileId(null)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px",fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>
@@ -6171,7 +6195,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
           </>
         )}
       </div>
-    </div>
+    )}/>
   );
 }
 
@@ -9814,21 +9838,20 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
           </div>
           <p style={{fontSize:12,color:T.muted,marginBottom:14}}>Drag and drop files here, or upload manually above.</p>
 
-          {selected.length>0?(
-            <div style={{background:T.accentLight,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{selected.length} of {filtered.length} selected</span>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Start registration</button>
-                {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
-                <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
-              </div>
-            </div>
-          ):(
-            <div style={{position:"relative",marginBottom:12}}>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
+            <div style={{position:"relative",flex:1}}>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
               <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
             </div>
-          )}
+            {selected.length>0&&(
+              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
+                <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
+                {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
+                <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
+              </div>
+            )}
+          </div>
 
           <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
             {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No files yet.</div>}
@@ -9842,9 +9865,9 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
                   <Menu3 items={[
-                    {icon:"✏️",label:"Rename",action:()=>renameFile(f.id)},
-                    {icon:"📝",label:"Register as Entry",color:T.accent,action:()=>registerEntry(f.id)},
-                    {icon:"🗑",label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
+                    {label:"Rename",action:()=>renameFile(f.id)},
+                    {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
+                    {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
                 </div>
               );
@@ -9939,10 +9962,10 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
                   <Menu3 items={[
-                    {icon:"👁",label:"View",action:()=>setViewing(f)},
-                    {icon:"✏️",label:"Rename",action:()=>renameFile(f.id)},
-                    {icon:"📝",label:"Register as Entry",color:T.accent,action:()=>registerEntry(f.id)},
-                    {icon:"🗑",label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
+                    {label:"View",action:()=>setViewing(f)},
+                    {label:"Rename",action:()=>renameFile(f.id)},
+                    {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
+                    {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
                 </div>
                 {inlinePreview===f.id&&(
@@ -10096,7 +10119,7 @@ function ChequeScreen({onBack,isDesktop=false}){
 
 
 // ─── Bug Log Screen ───────────────────────────────────────────────────────────
-function BugLogScreen({onBack}){
+function BugLogScreen({onBack,isDesktop=false}){
   const[bugs,setBugs]=React.useState(()=>getBugs().reverse());
   const[filter,setFilter]=React.useState("all"); // all | unresolved | JS_ERROR | ACCOUNTING | DB_ERROR | PROMISE
   const[search,setSearch]=React.useState("");
@@ -10131,18 +10154,23 @@ function BugLogScreen({onBack}){
   };
 
   return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Bug Log" sub={"ADMIN · "+counts.unresolved+" UNRESOLVED"} onBack={onBack}/>
+    <div style={isDesktop?{maxWidth:1000}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bug log</h1>
+          <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="Bug Log" sub={"ADMIN · "+counts.unresolved+" UNRESOLVED"} onBack={onBack}/>}
 
       {/* Summary bar */}
-      <div style={{background:"#1a1a18",padding:"10px 16px",display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{background:isDesktop?"#fff":"#1a1a18",border:isDesktop?`1px solid ${T.border}`:"none",borderRadius:isDesktop?10:0,padding:"10px 16px",display:"flex",gap:10,flexWrap:"wrap",marginBottom:isDesktop?12:0}}>
         {[["all","All",counts.total,"#93A8D0"],["unresolved","Unresolved",counts.unresolved,"#f87171"],
           ...Object.entries(typeCounts).map(([t,c])=>[t,t.replace("_"," "),c,TYPE_COLOR[t]||"#888"])
         ].map(([id,label,count,color])=>(
           <button key={id} onClick={()=>setFilter(id)}
-            style={{background:filter===id?"rgba(255,255,255,0.15)":"transparent",border:`1px solid ${filter===id?"rgba(255,255,255,0.3)":"transparent"}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+            style={{background:filter===id?(isDesktop?T.bg:"rgba(255,255,255,0.15)"):"transparent",border:`1px solid ${filter===id?(isDesktop?T.border:"rgba(255,255,255,0.3)"):"transparent"}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
             <span style={{fontSize:10,color,fontWeight:700}}>{label}</span>
-            <span style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginLeft:5}}>{count}</span>
+            <span style={{fontSize:10,color:isDesktop?T.muted:"rgba(255,255,255,0.4)",marginLeft:5}}>{count}</span>
           </button>
         ))}
       </div>
@@ -11050,6 +11078,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=1024);
   const[onboardingDismissed,setOnboardingDismissedState]=useState(()=>{try{return localStorage.getItem("rr_onboarding_done")==="1";}catch{return false;}});
   const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem("rr_onboarding_done","1");}catch{}};
+  // Same as addTransaction, but also raises a save notification on the bell
+  // icon — used by the flows where "did that actually save?" matters most:
+  // registering vouchers from the Inbox, and the plain New Entry form.
+  const addTransactionNotified=async(form)=>{
+    const result=await addTransaction(form);
+    pushToast(`Saved: ${form.description||"New entry"} — ${fmt(form.amount)}`);
+    return result;
+  };
   useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
   useEffect(()=>{setScreenExcelExport(null);},[tab]);
   const[recentTabs,setRecentTabsState]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_recent_tabs")||"[]");}catch{return[];}});
@@ -11062,7 +11098,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"New voucher",Files:"Voucher inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"New voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -11111,6 +11147,16 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
+  // Save notifications — shown via the bell icon. A real, lightweight toast
+  // system (not tied to bug reports, which live in Settings now).
+  const[toasts,setToasts]=useState([]);
+  const[toastPanelOpen,setToastPanelOpen]=useState(false);
+  const pushToast=(message)=>{
+    const id=Date.now()+Math.random();
+    setToasts(prev=>[{id,message,at:new Date().toISOString(),read:false},...prev].slice(0,20));
+  };
+  const unreadToastCount=toasts.filter(t=>!t.read).length;
+  const markToastsRead=()=>setToasts(prev=>prev.map(t=>({...t,read:true})));
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
@@ -11200,9 +11246,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   }
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
-  if(tab==="BugLog")return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
+  if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
-  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>);
+  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
@@ -11322,17 +11368,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
           </div>
-          {feat.files&&(
-            <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
-              <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
-              <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Documents</span>
-            </div>
-          )}
+          <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
+            <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Inbox</span>
+          </div>
 
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
               {tab:"NewVoucher",label:"New voucher"},
-              {tab:"Files",label:"Voucher inbox",featureKey:"files"},
               {tab:"Transactions",label:"New entry"},
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
@@ -11450,15 +11493,26 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </div>
             </>)}
           </div>
-          {(()=>{
-            const bugCount=isAdmin?getBugs().filter(b=>!b.resolved).length:0;
-            return(
-              <div onClick={()=>isAdmin&&setTab("BugLog")} title={isAdmin?"Unresolved bug reports":"No notifications"} className="rr-glass-btn" style={{position:"relative",borderRadius:T.radius.sm,width:30,height:30,cursor:isAdmin?"pointer":"default",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
-                {bugCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.red,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{bugCount}</span>}
+          <div style={{position:"relative"}}>
+            <div onClick={()=>{setToastPanelOpen(o=>!o);if(!toastPanelOpen)markToastsRead();}} title="Notifications" className="rr-glass-btn" style={{position:"relative",borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
+              {unreadToastCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.accent,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{unreadToastCount}</span>}
+            </div>
+            {toastPanelOpen&&(<>
+              <div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:360,overflowY:"auto",boxShadow:"0 8px 24px rgba(20,40,40,0.12)"}}>
+                <div style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:T.text,textTransform:"uppercase",letterSpacing:0.4,borderBottom:`1px solid ${T.border}`}}>Notifications</div>
+                {toasts.length?toasts.map(t=>(
+                  <div key={t.id} style={{padding:"10px 14px",fontSize:12,color:T.text,borderBottom:`1px solid ${T.border}`}}>
+                    <div>{t.message}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{new Date(t.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                )):(
+                  <div style={{padding:"20px 14px",fontSize:12,color:T.muted,textAlign:"center"}}>Nothing yet — saved entries will show up here.</div>
+                )}
               </div>
-            );
-          })()}
+            </>)}
+          </div>
           <div style={{position:"relative"}}>
             <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
             {profileMenuOpen&&(<>
@@ -11579,13 +11633,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1000}}>
-            <NewVoucherScreen accounts={accounts} contacts={contacts} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} addTransaction={addTransaction} onDone={()=>setTab("Dashboard")}/>
+            <NewVoucherScreen accounts={accounts} contacts={contacts} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} addTransaction={addTransactionNotified} onDone={()=>setTab("Dashboard")}/>
           </div>
         )}
 
         {tab==="Transactions"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
               <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -11636,7 +11690,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -11706,6 +11760,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
+        {tab==="BugLog"&&(isAdmin?<BugLogScreen onBack={()=>setTab("Settings")} isDesktop={true}/>:null)}
+
         {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
 
         {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} isDesktop={true}/>:null)}
@@ -11770,7 +11826,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isDesktop={true}/></div>}
+        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 
@@ -11778,7 +11834,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
       </div>
 
       {registrationQueue&&(
-        <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransaction} onDone={()=>setRegistrationQueue(null)}/>
+        <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
       )}
     </div>
   );
@@ -11905,7 +11961,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransaction(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
