@@ -670,7 +670,7 @@ function AppShell({user}){
         setAccountsState(DEFAULT_ACCOUNTS);
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
-      setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||""})));
+      setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
@@ -736,7 +736,27 @@ function AppShell({user}){
     setContactsState(list);
     if(!canEdit)return;
     await sb.from("contacts").delete().eq("user_id",user.id);
-    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||""})));
+    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
+  };
+
+  // Merge two contacts — every transaction pointing at the duplicate gets
+  // reassigned to the one being kept, then the duplicate is removed. Contacts
+  // must be the same type (can't merge a customer into a supplier).
+  const mergeContacts=async(keepId,removeId)=>{
+    if(!canEdit||keepId===removeId)return{error:"Nothing to merge."};
+    const keep=contacts.find(c=>c.id===keepId);
+    const remove=contacts.find(c=>c.id===removeId);
+    if(!keep||!remove)return{error:"Contact not found."};
+    if(keep.type!==remove.type)return{error:"Can't merge a customer into a supplier (or vice versa)."};
+    const affectedIds=transactions.filter(t=>t.contactId===removeId).map(t=>t.id);
+    if(affectedIds.length){
+      const{error}=await sb.from("transactions").update({contact_id:keepId}).in("id",affectedIds);
+      if(error)return{error:"Couldn't reassign transactions: "+error.message};
+      setTransactionsState(p=>p.map(t=>t.contactId===removeId?{...t,contactId:keepId}:t));
+    }
+    const newList=contacts.filter(c=>c.id!==removeId);
+    await setContacts(newList);
+    return{count:affectedIds.length};
   };
 
   // Real period lock — company-wide (via company_profile), not per-device
@@ -1197,7 +1217,7 @@ function AppShell({user}){
     await sb.from("pos_products").delete().eq("id",id).eq("user_id",user.id);
     setPosProducts(p=>p.filter(x=>x.id!==id));
   };
-  const completeSale=async(cart,paymentAccount)=>{
+  const completeSale=async(cart,paymentAccount,mode="sale")=>{
     if(!canEdit||!cart.length)return;
     if(blockIfLocked(new Date().toISOString().slice(0,10)))return;
     const today=new Date().toISOString().slice(0,10);
@@ -1209,8 +1229,13 @@ function AppShell({user}){
       bySaleAccount[item.saleAccount]=(bySaleAccount[item.saleAccount]||0)+lineTotal;
     });
     const itemSummary=cart.map(i=>`${i.qty}x ${i.name}`).join(", ");
+    const isRefund=mode==="refund";
     for(const[saleAccount,amount]of Object.entries(bySaleAccount)){
-      await addTransaction({date:today,debitCode:paymentAccount,creditCode:saleAccount,description:`POS sale — ${itemSummary}`,amount});
+      // A refund is the sale reversed — Dr the sale account (reducing income),
+      // Cr the payment account (cash/bank going back out).
+      await addTransaction(isRefund
+        ?{date:today,debitCode:saleAccount,creditCode:paymentAccount,description:`POS refund — ${itemSummary}`,amount}
+        :{date:today,debitCode:paymentAccount,creditCode:saleAccount,description:`POS sale — ${itemSummary}`,amount});
     }
   };
 
@@ -3216,6 +3241,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   const[origCode,setOrigCode]=useState("");
   const[newAcc,setNewAcc]=useState({code:"",name:"",notes:"",defaultVatPct:""});
   const[showNew,setShowNew]=useState(false);
+  const[acctImporting,setAcctImporting]=useState(false);
   const[search,setSearch]=useState("");
   const filtered=list.filter(a=>a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -3267,7 +3293,44 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
       {isDesktop?(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Account plan</h1>
-          <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{
+              const aoa=[["Code","Name","Matchable"],...list.map(a=>[a.code,a.name,a.matchable?"yes":"no"])];
+              const wb=XLSX.utils.book_new();
+              const ws=XLSX.utils.aoa_to_sheet(aoa);
+              XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
+              XLSX.writeFile(wb,"ChartOfAccounts.xlsx");
+            }} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export</button>
+            <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:acctImporting?"wait":"pointer",fontFamily:"inherit"}}>
+              <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>{acctImporting?"Importing…":"Import"}
+              <input type="file" accept=".csv,.xlsx,.xls" disabled={acctImporting} style={{display:"none"}} onChange={async e=>{
+                const file=e.target.files[0];e.target.value="";
+                if(!file)return;
+                setAcctImporting(true);
+                try{
+                  const isCsv=/\.csv$/i.test(file.name);
+                  const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+                  const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+                  const existingCodes=new Set(list.map(a=>a.code));
+                  const newAccts=[];let skipped=0;
+                  json.forEach(row=>{
+                    const code=String(row.Code||row.code||"").trim();
+                    const name=String(row.Name||row.name||"").trim();
+                    if(!code||!name||existingCodes.has(code)){skipped++;return;}
+                    existingCodes.add(code);
+                    newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
+                  });
+                  if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
+                  const updated=[...list,...newAccts];
+                  setList(updated);
+                  onSave(updated,null);
+                  alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
+                }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+                setAcctImporting(false);
+              }}/>
+            </label>
+            <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+          </div>
         </div>
       ):<BackHeader title="Account Plan" sub="SETTINGS" onBack={onBack}/>}
       <div style={isDesktop?{}:{padding:16}}>
@@ -4531,10 +4594,10 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   const kpis=[
-    {label:"Cash and bank",value:cashNow,delta:cashNow-cashPrev},
-    {label:"Receivable",value:arNow,delta:arNow-arPrev},
-    {label:"Payable",value:apNow,delta:apNow-apPrev},
-    {label:"Net profit",value:net,delta:net-netPrev},
+    {label:"Cash and bank",value:cashNow,delta:cashNow-cashPrev,goTo:"Bank"},
+    {label:"Receivable",value:arNow,delta:arNow-arPrev,goTo:"Reskontro"},
+    {label:"Payable",value:apNow,delta:apNow-apPrev,goTo:"Reskontro"},
+    {label:"Net profit",value:net,delta:net-netPrev,goTo:"Resultat"},
   ];
 
   const donutData=[
@@ -4597,7 +4660,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
           {kpis.map(k=>{
             const positive=k.delta>=0;
             return(
-              <div key={k.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px"}}>
+              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",cursor:k.goTo?"pointer":"default"}} className={k.goTo?"rr-sidebar-item":""}>
                 <div style={{fontSize:12,color:T.sub,marginBottom:8}}>{k.label}</div>
                 <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:6}}>{fmt(k.value)}</div>
                 <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:positive?T.greenBg:T.redLight,color:positive?T.green:T.red}}>{positive?"+":"−"}{fmt(Math.abs(k.delta))}</span>
@@ -6030,7 +6093,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
 // Top-level Customers register — Tripletex-style contact master data screen,
 // separate from Reskontro (which is about open items, not contact records).
-function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskontro}){
+function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro}){
   const[type,setType]=useState("customer");
   const[search,setSearch]=useState("");
   const[editingId,setEditingId]=useState(null);
@@ -6072,6 +6135,10 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
   };
   const[importing,setImporting]=useState(false);
   const[importError,setImportError]=useState("");
+  const[showMerge,setShowMerge]=useState(false);
+  const[mergeKeepId,setMergeKeepId]=useState("");
+  const[mergeRemoveId,setMergeRemoveId]=useState("");
+  const[merging,setMerging]=useState(false);
   const importContacts=async(file)=>{
     setImportError("");setImporting(true);
     try{
@@ -6117,10 +6184,46 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
             <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>{importing?"Importing…":"Import"}
             <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])importContacts(e.target.files[0]);e.target.value="";}}/>
           </label>
+          {mergeContacts&&<button onClick={()=>setShowMerge(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-git-merge" style={{fontSize:13,marginRight:5}}/>Merge</button>}
           <button onClick={startNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New {type==="customer"?"customer":"supplier"}</button>
         </div>
       </div>
       {importError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:14}}>{importError}</div>}
+
+      {showMerge&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!merging&&setShowMerge(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:440,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Merge duplicate contacts</div>
+            <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Every transaction on the duplicate gets reassigned to the one you keep, then the duplicate is removed. This can't be undone.</p>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Duplicate (will be removed)</div>
+              <select value={mergeRemoveId} onChange={e=>setMergeRemoveId(e.target.value)} style={{...inp}}>
+                <option value="">— Select —</option>
+                {contacts.filter(c=>c.id!==mergeKeepId).map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Merge into (will be kept)</div>
+              <select value={mergeKeepId} onChange={e=>setMergeKeepId(e.target.value)} style={{...inp}}>
+                <option value="">— Select —</option>
+                {contacts.filter(c=>c.id!==mergeRemoveId).map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={async()=>{
+                if(!mergeKeepId||!mergeRemoveId)return;
+                setMerging(true);
+                const result=await mergeContacts(mergeKeepId,mergeRemoveId);
+                setMerging(false);
+                if(result.error){alert(result.error);return;}
+                alert(`Merged — ${result.count} transaction${result.count===1?"":"s"} reassigned.`);
+                setShowMerge(false);setMergeKeepId("");setMergeRemoveId("");
+              }} disabled={!mergeKeepId||!mergeRemoveId||merging} style={{flex:1,background:mergeKeepId&&mergeRemoveId?T.accent:T.border,color:mergeKeepId&&mergeRemoveId?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:mergeKeepId&&mergeRemoveId?"pointer":"default",fontFamily:"inherit"}}>{merging?"Merging…":"Merge"}</button>
+              <button onClick={()=>{setShowMerge(false);setMergeKeepId("");setMergeRemoveId("");}} disabled={merging} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
@@ -6817,6 +6920,8 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   const[date,setDate]=useState(today);
   const[dueDate,setDueDate]=useState(today);
   const[vatPct,setVatPct]=useState(companyProfile.vatPct||0);
+  const[discountType,setDiscountType]=useState("pct"); // "pct" | "fixed"
+  const[discountValue,setDiscountValue]=useState("");
   const[saving,setSaving]=useState(false);
 
   const contact=customers.find(c=>c.id===customerId);
@@ -6829,7 +6934,9 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   },[customerId,date]);
   const qty=monthsBetween(periodFrom,periodTo);
   const price=parseFloat(unitPrice)||0;
-  const subtotal=qty*price;
+  const rawSubtotal=qty*price;
+  const discountAmount=discountType==="pct"?rawSubtotal*(parseFloat(discountValue)||0)/100:Math.min(rawSubtotal,parseFloat(discountValue)||0);
+  const subtotal=rawSubtotal-discountAmount;
   const vatAmount=subtotal*(parseFloat(vatPct)||0)/100;
   const total=subtotal+vatAmount;
   const autoDesc=contact?`${contact.name} — ${qty} month${qty>1?"s":""} (${monthRangeLabel(periodFrom,periodTo)})`:"";
@@ -6850,7 +6957,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
     const form={
       customerId,saleAccount,date,dueDate,periodFrom,periodTo,
       description:effectiveDesc,vatPct:parseFloat(vatPct)||0,
-      lines:[{description:effectiveDesc,qty,unitPrice:price}],
+      lines:[{description:effectiveDesc,qty,unitPrice:price,discountType:discountAmount>0?discountType:null,discountValue:discountAmount>0?parseFloat(discountValue)||0:0,discountAmount}],
       subtotal,vatAmount,total,
     };
     const inv=await createInvoice(form);
@@ -6898,6 +7005,24 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
             <input value={effectiveDesc} onChange={e=>{setDescription(e.target.value);setDescTouched(true);}} style={{...inp}}/>
           </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Discount (optional)</div>
+              <input type="number" placeholder="0" value={discountValue} onChange={e=>setDiscountValue(e.target.value)} style={{...inp}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Discount type</div>
+              <select value={discountType} onChange={e=>setDiscountType(e.target.value)} style={{...inp}}>
+                <option value="pct">Percent (%)</option>
+                <option value="fixed">Fixed amount</option>
+              </select>
+            </div>
+          </div>
+          {discountAmount>0&&(
+            <div style={{fontSize:11,color:T.muted,display:"flex",justifyContent:"space-between"}}>
+              <span>Discount applied: −{fmt(discountAmount)}</span><span>Subtotal after discount: {fmt(subtotal)}</span>
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
@@ -7378,10 +7503,12 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
   // from other entries touching the same bank/cash account.
   const todaysSales=useMemo(()=>{
     const today=new Date().toISOString().slice(0,10);
-    const todays=transactions.filter(t=>t.date===today&&t.description&&t.description.startsWith("POS sale"));
-    return{count:todays.length,total:todays.reduce((s,t)=>s+t.amount,0)};
+    const sales=transactions.filter(t=>t.date===today&&t.description&&t.description.startsWith("POS sale"));
+    const refunds=transactions.filter(t=>t.date===today&&t.description&&t.description.startsWith("POS refund"));
+    return{count:sales.length,total:sales.reduce((s,t)=>s+t.amount,0)-refunds.reduce((s,t)=>s+t.amount,0),refundCount:refunds.length,refundTotal:refunds.reduce((s,t)=>s+t.amount,0)};
   },[transactions]);
 
+  const[saleMode,setSaleMode]=useState("sale"); // "sale" | "refund"
   const addToCart=(p)=>setCart(prev=>{
     const existing=prev.find(i=>i.id===p.id);
     if(existing)return prev.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i);
@@ -7394,7 +7521,7 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
   const checkout=async()=>{
     if(!cart.length||!payAccount||completing)return;
     setCompleting(true);
-    await completeSale(cart,payAccount);
+    await completeSale(cart,payAccount,saleMode);
     setCompleting(false);
     setLastSaleTotal(total);
     setCart([]);
@@ -7426,8 +7553,14 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
       </div>
 
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18,position:"sticky",top:16}}>
-        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Cart</div>
-        {lastSaleTotal!=null&&<div style={{background:T.greenBg,color:T.green,borderRadius:8,padding:"10px 12px",fontSize:12,fontWeight:700,marginBottom:12}}>✓ Sale completed — {fmt(lastSaleTotal)}</div>}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text}}>Cart</div>
+          <div style={{display:"flex",gap:4}}>
+            <button onClick={()=>setSaleMode("sale")} style={{background:saleMode==="sale"?T.accent:"none",color:saleMode==="sale"?"#fff":T.sub,border:`1px solid ${saleMode==="sale"?T.accent:T.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Sale</button>
+            <button onClick={()=>setSaleMode("refund")} style={{background:saleMode==="refund"?T.red:"none",color:saleMode==="refund"?"#fff":T.sub,border:`1px solid ${saleMode==="refund"?T.red:T.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Refund</button>
+          </div>
+        </div>
+        {lastSaleTotal!=null&&<div style={{background:T.greenBg,color:T.green,borderRadius:8,padding:"10px 12px",fontSize:12,fontWeight:700,marginBottom:12}}>✓ {saleMode==="refund"?"Refund":"Sale"} completed — {fmt(lastSaleTotal)}</div>}
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16,maxHeight:320,overflowY:"auto"}}>
           {cart.map(i=>(
             <div key={i.id} style={{display:"flex",alignItems:"center",gap:8}}>
@@ -7447,12 +7580,12 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
           <span>Total</span><span>{fmt(total)}</span>
         </div>
         <div style={{marginBottom:12}}>
-          <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Paid into</div>
+          <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{saleMode==="refund"?"Refunded from":"Paid into"}</div>
           <select value={payAccount} onChange={e=>setPayAccount(e.target.value)} style={{...inp}}>
             {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
           </select>
         </div>
-        <button onClick={checkout} disabled={!cart.length||!payAccount||completing} style={{width:"100%",background:cart.length&&payAccount?T.accent:T.border,color:cart.length&&payAccount?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:cart.length&&payAccount?"pointer":"default",fontFamily:"inherit"}}>{completing?"Completing…":"Complete sale"}</button>
+        <button onClick={checkout} disabled={!cart.length||!payAccount||completing} style={{width:"100%",background:!cart.length||!payAccount?T.border:(saleMode==="refund"?T.red:T.accent),color:cart.length&&payAccount?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:cart.length&&payAccount?"pointer":"default",fontFamily:"inherit"}}>{completing?"Completing…":saleMode==="refund"?"Complete refund":"Complete sale"}</button>
       </div>
     </div>
   );
@@ -10745,6 +10878,7 @@ function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
   const[selUser,setSelUser]=useState(null);
   const[search,setSearch]=useState("");
   const[userStatusTab,setUserStatusTab]=useState("active");
+  const[selectedUserIds,setSelectedUserIds]=useState([]);
   const[usageEvents,setUsageEvents]=useState([]);
   const[usageLoading,setUsageLoading]=useState(false);
   useEffect(()=>{
@@ -10991,27 +11125,39 @@ function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
                   <button key={id} onClick={()=>setUserStatusTab(id)} style={{background:userStatusTab===id?T.accent:"none",color:userStatusTab===id?"#fff":T.sub,border:`1px solid ${userStatusTab===id?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
                 ))}
               </div>
+              {selectedUserIds.length>0&&(
+                <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:12,color:T.sub}}>{selectedUserIds.length} selected</span>
+                  <button onClick={()=>{selectedUserIds.forEach(id=>{const p=profiles.find(x=>x.id===id);if(p&&!p.is_admin)toggleDeactivate(id,p.is_active===false);});setSelectedUserIds([]);}} style={{background:T.greenBg,color:T.green,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Activate all</button>
+                  <button onClick={()=>{selectedUserIds.forEach(id=>{const p=profiles.find(x=>x.id===id);if(p&&!p.is_admin&&p.is_active!==false)toggleDeactivate(id,false);});setSelectedUserIds([]);}} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Deactivate all</button>
+                </div>
+              )}
             </div>
             <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11}}>
-                <td style={{padding:"6px 0"}}>#</td><td>Name</td><td>Email</td><td>Joined</td><td></td><td></td>
+                <td style={{padding:"6px 0"}}><input type="checkbox" checked={shownProfiles.length>0&&shownProfiles.every(p=>selectedUserIds.includes(p.id))} onChange={()=>{
+                  if(shownProfiles.every(p=>selectedUserIds.includes(p.id)))setSelectedUserIds(prev=>prev.filter(id=>!shownProfiles.some(p=>p.id===id)));
+                  else setSelectedUserIds(prev=>[...new Set([...prev,...shownProfiles.map(p=>p.id)])]);
+                }}/></td><td>#</td><td>Name</td><td>Email</td><td>Joined</td><td></td><td></td>
               </tr></thead>
               <tbody>
                 {shownProfiles.map(p=>{
                   const isDeact=p.is_active===false;
                   const realIdx=profiles.findIndex(x=>x.id===p.id);
+                  const isSel=selectedUserIds.includes(p.id);
                   return(
-                    <tr key={p.id} className="rr-table-row" onClick={()=>setSelUser(p)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
-                      <td style={{padding:"10px 0",color:T.muted}}>{isDeact?"🚫":"#"+(realIdx+1)}</td>
-                      <td style={{fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}{p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,marginLeft:6}}>ADMIN</span>}</td>
-                      <td style={{color:T.sub}}>{p.email}</td>
-                      <td style={{color:T.muted,fontSize:12}}>{p.created_at?p.created_at.slice(0,10):"—"}</td>
-                      <td>{isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}</td>
-                      <td style={{textAlign:"right",color:T.muted}}>›</td>
+                    <tr key={p.id} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",background:isSel?T.accentLight:"transparent"}}>
+                      <td style={{padding:"10px 0"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={isSel} onChange={()=>setSelectedUserIds(prev=>isSel?prev.filter(id=>id!==p.id):[...prev,p.id])}/></td>
+                      <td onClick={()=>setSelUser(p)} style={{color:T.muted}}>{isDeact?"🚫":"#"+(realIdx+1)}</td>
+                      <td onClick={()=>setSelUser(p)} style={{fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}{p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,marginLeft:6}}>ADMIN</span>}</td>
+                      <td onClick={()=>setSelUser(p)} style={{color:T.sub}}>{p.email}</td>
+                      <td onClick={()=>setSelUser(p)} style={{color:T.muted,fontSize:12}}>{p.created_at?p.created_at.slice(0,10):"—"}</td>
+                      <td onClick={()=>setSelUser(p)}>{isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}</td>
+                      <td onClick={()=>setSelUser(p)} style={{textAlign:"right",color:T.muted}}>›</td>
                     </tr>
                   );
                 })}
-                {!shownProfiles.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{userStatusTab==="active"?"No active users found.":"No deactivated or pending users."}</td></tr>}
+                {!shownProfiles.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{userStatusTab==="active"?"No active users found.":"No deactivated or pending users."}</td></tr>}
               </tbody>
             </table>
           </>
@@ -12174,7 +12320,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Contacts"&&(
           <div style={{maxWidth:900}}>
-            <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} onOpenReskontro={(type)=>setTab("Reskontro")}/>
+            <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} mergeContacts={mergeContacts} onOpenReskontro={(type)=>setTab("Reskontro")}/>
           </div>
         )}
 
