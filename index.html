@@ -4570,10 +4570,10 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
 
   // Editable homescreen — show/hide widgets, persisted per device.
   const WIDGET_KEY="rr_dashboard_widgets";
-  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,recent:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true,recent:true};}});
+  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,recent:true,banks:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true,recent:true,banks:true};}});
   const[customizing,setCustomizing]=useState(false);
   const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
-  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed"};
+  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed",banks:"Bank accounts"};
 
   return(
     <div>
@@ -4694,6 +4694,32 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
           ))}
         </div>
       </div>}
+
+      {widgets.banks&&(()=>{
+        const bankAccts=accounts.filter(a=>getSK(a.code)==="1900");
+        if(!bankAccts.length)return null;
+        const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+        return(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18,marginTop:16}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Bank accounts</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {bankAccts.map(a=>{
+                const bal=getBal(a.code);
+                return(
+                  <div key={a.code} onClick={()=>onNavigate&&onNavigate("Bank")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"4px 0"}}>
+                    <span style={{fontSize:12,color:T.text}}>{a.name}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:bal>=0?T.waterTeal:T.accent}}>{sign(bal)}</span>
+                  </div>
+                );
+              })}
+              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:2,display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.text}}>Total</span>
+                <span style={{fontSize:13,fontWeight:800,color:T.text}}>{sign(bankAccts.reduce((s,a)=>s+getBal(a.code),0))}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
     </div>
   );
@@ -5830,6 +5856,33 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   const totalEntryCount=groups.reduce((s,g)=>s+g.txns.length,0);
 
+  // Statement of account — a real printable document listing a contact's
+  // open items, meant to be sent to them (not just for internal viewing).
+  const printStatement=(contact,txns,total)=>{
+    const rows=txns.map(t=>`<tr><td>${fmtB(t.bilag)}</td><td>${t.date}</td><td>${t.dueDate||"—"}</td><td>${t.description}</td><td style="text-align:right">${fmt(mv(t))}</td></tr>`).join("");
+    const w=window.open("","_blank");
+    w.document.write(`<!DOCTYPE html><html><head><title>Statement — ${contact.name}</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
+      h1{font-size:20px;font-weight:bold;margin-bottom:2px;}
+      .sub{font-size:12px;color:#666;margin-bottom:24px;}
+      table{width:100%;border-collapse:collapse;margin-top:14px;}
+      th{background:#F5F9FA;color:#374151;padding:8px 10px;text-align:left;font-size:11px;border-bottom:2px solid #ddd;}
+      td{padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;}
+      .total-row td{font-weight:bold;border-top:2px solid #333;font-size:13px;}
+      @media print{.btn-bar{display:none;}}
+    </style></head><body>
+      <h1>Statement of Account</h1>
+      <div class="sub">${contact.name} — as of ${new Date().toISOString().slice(0,10)}</div>
+      <table>
+        <thead><tr><th>Bilag</th><th>Date</th><th>Due date</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="total-row"><td colspan="4">Total outstanding</td><td style="text-align:right">${fmt(total)}</td></tr></tfoot>
+      </table>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+    </body></html>`);
+    w.document.close();
+  };
+
   // Register the Excel export with the global download button — exports
   // exactly what's visible right now (respecting Entries View / search /
   // contact filter), never the whole unfiltered ledger.
@@ -5923,9 +5976,12 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                   </span>
                 )}
               </p>
-              {sel.length>=2&&(
-                <button onClick={e=>{e.stopPropagation();doMatch(contact.id);}} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
-              )}
+              <div style={{display:"flex",gap:8,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                <button onClick={()=>printStatement(contact,txns,total)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Statement</button>
+                {sel.length>=2&&(
+                  <button onClick={()=>doMatch(contact.id)} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
+                )}
+              </div>
             </div>
             {!isCollapsed&&(
             <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
@@ -6006,12 +6062,65 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
   };
   const cancel=()=>{setEditingId(null);setShowNew(false);};
 
+  const exportContacts=()=>{
+    const aoa=[["Type","Name","Email","Phone","Address","Account no.","Payment terms (days)","Credit limit"],
+      ...contacts.map(c=>[c.type,c.name,c.email||"",c.phone||"",c.address||"",c.accountNo||"",c.paymentTermsDays!=null?c.paymentTermsDays:30,c.creditLimit!=null?c.creditLimit:""])];
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Contacts");
+    XLSX.writeFile(wb,"Contacts.xlsx");
+  };
+  const[importing,setImporting]=useState(false);
+  const[importError,setImportError]=useState("");
+  const importContacts=async(file)=>{
+    setImportError("");setImporting(true);
+    try{
+      const isCsv=/\.csv$/i.test(file.name);
+      const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+      const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const existingCustomerNums=contacts.filter(c=>c.type==="customer").map(c=>parseInt((c.id||"").slice(1))||0);
+      const existingSupplierNums=contacts.filter(c=>c.type==="supplier").map(c=>parseInt((c.id||"").slice(1))||0);
+      let nextC=(existingCustomerNums.length?Math.max(...existingCustomerNums):0)+1;
+      let nextS=(existingSupplierNums.length?Math.max(...existingSupplierNums):0)+1;
+      const newContacts=[];
+      let skipped=0;
+      json.forEach(row=>{
+        const name=String(row.Name||row.name||"").trim();
+        if(!name){skipped++;return;}
+        const rowType=String(row.Type||row.type||"customer").toLowerCase().includes("supplier")?"supplier":"customer";
+        const id=rowType==="customer"?`C${String(nextC++).padStart(3,"0")}`:`S${String(nextS++).padStart(3,"0")}`;
+        newContacts.push({
+          id,type:rowType,name,
+          email:String(row.Email||row.email||"").trim(),
+          phone:String(row.Phone||row.phone||"").trim(),
+          address:String(row.Address||row.address||"").trim(),
+          accountNo:String(row["Account no."]||row.accountNo||"").trim(),
+          paymentTermsDays:parseInt(row["Payment terms (days)"]||row.paymentTermsDays)||30,
+          creditLimit:row["Credit limit"]?parseFloat(row["Credit limit"]):null,
+        });
+      });
+      if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}. Expected a Name column at minimum.`);setImporting(false);return;}
+      setContacts(p=>[...p,...newContacts]);
+      alert(`Imported ${newContacts.length} contact${newContacts.length===1?"":"s"}${skipped?` (${skipped} skipped — missing a name)`:""}.`);
+    }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+    setImporting(false);
+  };
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Customers and suppliers</h1>
-        <button onClick={startNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New {type==="customer"?"customer":"supplier"}</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={exportContacts} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export</button>
+          <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>
+            <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>{importing?"Importing…":"Import"}
+            <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])importContacts(e.target.files[0]);e.target.value="";}}/>
+          </label>
+          <button onClick={startNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New {type==="customer"?"customer":"supplier"}</button>
+        </div>
       </div>
+      {importError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:14}}>{importError}</div>}
 
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
@@ -7257,12 +7366,21 @@ function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee
 // Point of Sale — checkout: tap products to build a cart, choose how it was
 // paid, complete the sale. No barcode scanner or receipt printer hardware —
 // that needs device-specific integration this environment can't set up.
-function POSScreen({posProducts,accounts,completeSale,onManageProducts}){
+function POSScreen({posProducts,accounts,transactions=[],completeSale,onManageProducts}){
   const[cart,setCart]=useState([]); // [{id,name,price,saleAccount,qty}]
   const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"||a.code==="1001");
   const[payAccount,setPayAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[completing,setCompleting]=useState(false);
   const[lastSaleTotal,setLastSaleTotal]=useState(null);
+
+  // Today's sales — every transaction posted by completeSale carries the
+  // "POS sale —" description prefix, which is how we tell POS sales apart
+  // from other entries touching the same bank/cash account.
+  const todaysSales=useMemo(()=>{
+    const today=new Date().toISOString().slice(0,10);
+    const todays=transactions.filter(t=>t.date===today&&t.description&&t.description.startsWith("POS sale"));
+    return{count:todays.length,total:todays.reduce((s,t)=>s+t.amount,0)};
+  },[transactions]);
 
   const addToCart=(p)=>setCart(prev=>{
     const existing=prev.find(i=>i.id===p.id);
@@ -7291,6 +7409,10 @@ function POSScreen({posProducts,accounts,completeSale,onManageProducts}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Point of sale</h1>
           <button onClick={onManageProducts} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Manage products</button>
+        </div>
+        <div style={{background:T.waterTealSubtle,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:12,color:T.sub,fontWeight:600}}>Today's sales</span>
+          <span style={{fontSize:14,fontWeight:800,color:T.waterTeal}}>{fmt(todaysSales.total)} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>({todaysSales.count} line{todaysSales.count===1?"":"s"})</span></span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
           {activeProducts.map(p=>(
@@ -7396,7 +7518,32 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
 // Payroll — gross-pay runs, no statutory tax withholding tables (jurisdiction-
 // specific, needs a real market decision — see roadmap). Posts a real Dr
 // Salary Expense / Cr Bank (and Cr deductions account, if used) per employee.
-function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePayrollRun}){
+function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePayrollRun,companyProfile={}}){
+  const printPayslip=(run,line)=>{
+    const w=window.open("","_blank");
+    w.document.write(`<!DOCTYPE html><html><head><title>Payslip — ${line.employeeName}</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
+      h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
+      .sub{font-size:12px;color:#666;margin-bottom:24px;}
+      table{width:100%;border-collapse:collapse;margin-top:14px;}
+      td{padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;}
+      .total-row td{font-weight:bold;border-top:2px solid #333;font-size:14px;}
+      @media print{.btn-bar{display:none;}}
+    </style></head><body>
+      <h1>${companyProfile.companyName||"Payslip"}</h1>
+      <div class="sub">Payslip — ${line.employeeName} — ${run.period}</div>
+      <table>
+        <tr><td>Pay period</td><td style="text-align:right">${run.period}</td></tr>
+        <tr><td>Payment date</td><td style="text-align:right">${run.runDate}</td></tr>
+        <tr><td>Gross pay</td><td style="text-align:right">${fmt(line.grossPay)}</td></tr>
+        <tr><td>Deductions</td><td style="text-align:right">${fmt(line.deductions)}</td></tr>
+        <tr class="total-row"><td>Net pay</td><td style="text-align:right">${fmt(line.netPay)}</td></tr>
+      </table>
+      <p style="font-size:10px;color:#999;margin-top:20px;">No statutory tax withholding is calculated automatically — gross pay only.</p>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+    </body></html>`);
+    w.document.close();
+  };
   const activeEmployees=employees.filter(e=>e.active);
   const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"||a.code==="1001");
   const salaryAccounts=accounts.filter(a=>a.code.startsWith("5")||a.code.startsWith("4"));
@@ -7408,6 +7555,8 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
   const[salaryAccount,setSalaryAccount]=useState(salaryAccounts[0]?salaryAccounts[0].code:"");
   const[deductionsAccount,setDeductionsAccount]=useState("");
   const[lineOverrides,setLineOverrides]=useState({}); // employeeId -> {gross,deductions}
+  const[expandedRuns,setExpandedRuns]=useState(new Set());
+  const toggleExpandRun=(id)=>setExpandedRuns(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
   const[running,setRunning]=useState(false);
   const[showRun,setShowRun]=useState(false);
 
@@ -7497,21 +7646,38 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
-          <td style={{padding:"11px 14px",fontWeight:700}}>Period</td><td style={{fontWeight:700}}>Date</td><td style={{textAlign:"right",fontWeight:700}}>Gross</td><td style={{textAlign:"right",fontWeight:700}}>Deductions</td><td style={{textAlign:"right",fontWeight:700}}>Net</td><td style={{fontWeight:700}}>Employees</td><td style={{padding:"11px 14px"}}></td>
+          <td style={{padding:"11px 14px"}}></td><td style={{fontWeight:700}}>Period</td><td style={{fontWeight:700}}>Date</td><td style={{textAlign:"right",fontWeight:700}}>Gross</td><td style={{textAlign:"right",fontWeight:700}}>Deductions</td><td style={{textAlign:"right",fontWeight:700}}>Net</td><td style={{fontWeight:700}}>Employees</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
-          {payrollRuns.map(r=>(
-            <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-              <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{r.period}</td>
+          {payrollRuns.map(r=>{
+            const isExpanded=expandedRuns.has(r.id);
+            return(
+            <React.Fragment key={r.id}>
+            <tr className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,cursor:"pointer"}} onClick={()=>toggleExpandRun(r.id)}>
+              <td style={{padding:"11px 14px"}}><i className={isExpanded?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:13,color:T.muted}}/></td>
+              <td style={{fontWeight:700,color:T.text}}>{r.period}</td>
               <td style={{color:T.text}}>{r.runDate}</td>
               <td style={{textAlign:"right",color:T.text}}>{fmt(r.totalGross)}</td>
               <td style={{textAlign:"right",color:T.text}}>{fmt(r.totalDeductions)}</td>
               <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.totalNet)}</td>
               <td style={{color:T.text}}>{r.lines.length}</td>
-              <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>window.confirm("Delete this payroll run record? This does NOT reverse its ledger entries — reverse those separately in Entries if needed.")&&deletePayrollRun(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
+              <td style={{textAlign:"right",padding:"11px 14px"}} onClick={e=>e.stopPropagation()}><button onClick={()=>window.confirm("Delete this payroll run record? This does NOT reverse its ledger entries — reverse those separately in Entries if needed.")&&deletePayrollRun(r.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
             </tr>
-          ))}
-          {!payrollRuns.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No payroll runs yet.</td></tr>}
+            {isExpanded&&r.lines.map(line=>(
+              <tr key={line.id} style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+                <td></td>
+                <td colSpan="2" style={{padding:"7px 14px",fontSize:12,color:T.text}}>{line.employeeName}</td>
+                <td style={{textAlign:"right",fontSize:12,color:T.text}}>{fmt(line.grossPay)}</td>
+                <td style={{textAlign:"right",fontSize:12,color:T.text}}>{fmt(line.deductions)}</td>
+                <td style={{textAlign:"right",fontSize:12,fontWeight:700,color:T.text}}>{fmt(line.netPay)}</td>
+                <td></td>
+                <td style={{textAlign:"right",padding:"7px 14px"}}><button onClick={()=>printPayslip(r,line)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Payslip</button></td>
+              </tr>
+            ))}
+            </React.Fragment>
+            );
+          })}
+          {!payrollRuns.length&&<tr><td colSpan="8" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No payroll runs yet.</td></tr>}
         </tbody>
       </table>
       </div>
@@ -12098,13 +12264,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Payroll"&&(
           <div style={{maxWidth:900}}>
-            <PayrollScreen employees={employees} payrollRuns={payrollRuns} accounts={accounts} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}/>
+            <PayrollScreen employees={employees} payrollRuns={payrollRuns} accounts={accounts} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun} companyProfile={companyProfile}/>
           </div>
         )}
 
         {tab==="POS"&&(
           <div style={{maxWidth:1000}}>
-            <POSScreen posProducts={posProducts} accounts={accounts} completeSale={completeSale} onManageProducts={()=>setTab("POSProducts")}/>
+            <POSScreen posProducts={posProducts} accounts={accounts} transactions={transactions} completeSale={completeSale} onManageProducts={()=>setTab("POSProducts")}/>
           </div>
         )}
 
