@@ -795,6 +795,7 @@ function AppShell({user}){
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
+      return{id:data.id,bilag:nb,description:form.description,amount:form.amount};
     }
   };
 
@@ -802,6 +803,99 @@ function AppShell({user}){
   // Uploading parses rows into individual lines against one account; "Post"
   // turns an unposted line into a real transaction against whichever account
   // the user picks, then marks the line reconciled.
+  // Parses a bank statement file and returns the detected rows WITHOUT
+  // saving anything — lets the UI show a preview before committing.
+  const parseBankStatementFile=async(file)=>{
+    const isCsv=/\.csv$/i.test(file.name)||file.type==="text/csv";
+    const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+    if(!json.length)return{error:"That file appears to be empty."};
+
+    const toDateStr=(d)=>{
+      if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
+      const s=String(d).trim();
+      const parsed=Date.parse(s);
+      return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
+    };
+    const toNum=(v)=>{
+      if(typeof v==="number")return v;
+      const cleaned=String(v).replace(/[, ]/g,"").replace(/^\((.*)\)$/,"-$1");
+      const n=parseFloat(cleaned);
+      return isNaN(n)?null:n;
+    };
+
+    let headerRow=null,dataStart=0;
+    const firstRowText=json[0].map(c=>String(c).toLowerCase().trim());
+    if(firstRowText.some(c=>["date","description","amount","balance","narrative","details","debit","credit"].includes(c))){
+      headerRow=firstRowText;dataStart=1;
+    }
+    const findCol=(names)=>headerRow?headerRow.findIndex(h=>names.includes(h)):-1;
+    let dateCol=headerRow?findCol(["date","transaction date","value date"]):0;
+    let descCol=headerRow?findCol(["description","narrative","details","particulars"]):1;
+    let amountCol=headerRow?findCol(["amount"]):2;
+    let debitCol=headerRow?findCol(["debit","withdrawal"]):-1;
+    let creditCol=headerRow?findCol(["credit","deposit"]):-1;
+    let balanceCol=headerRow?findCol(["balance","running balance","closing balance"]):-1;
+    if(dateCol<0)dateCol=0;
+    if(descCol<0)descCol=1;
+
+    const detectedColumns={
+      date:headerRow?(headerRow[dateCol]||`column ${dateCol+1}`):"column 1 (assumed)",
+      description:headerRow?(headerRow[descCol]||`column ${descCol+1}`):"column 2 (assumed)",
+      amount:amountCol>=0?(headerRow?headerRow[amountCol]:`column ${amountCol+1}`):null,
+      debit:debitCol>=0?headerRow[debitCol]:null,
+      credit:creditCol>=0?headerRow[creditCol]:null,
+      balance:balanceCol>=0?headerRow[balanceCol]:null,
+    };
+
+    let rows=json.slice(dataStart).map((r,i)=>{
+      const date=toDateStr(r[dateCol]);
+      const description=String(r[descCol]||"").trim();
+      let amount=null;
+      if(amountCol>=0)amount=toNum(r[amountCol]);
+      else if(debitCol>=0||creditCol>=0){
+        const dr=debitCol>=0?toNum(r[debitCol]):null;
+        const cr=creditCol>=0?toNum(r[creditCol]):null;
+        amount=(cr||0)-(dr||0);
+      }
+      return{rowNum:dataStart+i+1,date,description,amount,balance:balanceCol>=0?toNum(r[balanceCol]):null,raw:r};
+    });
+
+    const skippedNoDate=rows.filter(r=>!r.date).length;
+    rows=rows.filter(r=>r.date);
+
+    if(rows.length&&rows.every(r=>r.amount==null)&&rows.some(r=>r.balance!=null)){
+      rows=rows.map((r,i)=>i===0?{...r,amount:0}:{...r,amount:Math.round(((r.balance||0)-(rows[i-1].balance||0))*100)/100});
+      rows=rows.slice(1);
+    }
+
+    const skippedZeroOrBad=rows.filter(r=>r.amount==null||r.amount===0).length;
+    rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
+
+    if(!rows.length){
+      return{error:"Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.",detectedColumns,skippedNoDate,skippedZeroOrBad};
+    }
+    return{rows,detectedColumns,skippedNoDate,skippedZeroOrBad,totalRowsInFile:json.length-dataStart};
+  };
+
+  // Actually saves previously-parsed rows. Remembers the inserted IDs so the
+  // whole import can be undone as one action if it turns out to be wrong.
+  const commitBankStatementRows=async(accountCode,rows)=>{
+    if(!canEdit)return{error:"No permission to edit."};
+    const dbRows=rows.map(r=>({user_id:user.id,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+    const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
+    if(error)return{error:"Upload failed: "+error.message};
+    const mapped=(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}));
+    setBankStatementLines(p=>[...p,...mapped]);
+    return{insertedIds:mapped.map(r=>r.id),count:mapped.length};
+  };
+  const undoBankImport=async(ids)=>{
+    if(!canEdit||!ids||!ids.length)return;
+    await sb.from("bank_statement_lines").delete().in("id",ids);
+    setBankStatementLines(p=>p.filter(l=>!ids.includes(l.id)));
+  };
+
   const uploadBankStatement=async(accountCode,file)=>{
     if(!canEdit)return;
     try{
@@ -1422,7 +1516,7 @@ function AppShell({user}){
         uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry}
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
-        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
+        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
       />
@@ -3108,9 +3202,9 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
-  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false});
+  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
   const[origCode,setOrigCode]=useState("");
-  const[newAcc,setNewAcc]=useState({code:"",name:""});
+  const[newAcc,setNewAcc]=useState({code:"",name:"",notes:"",defaultVatPct:""});
   const[showNew,setShowNew]=useState(false);
   const[search,setSearch]=useState("");
   const filtered=list.filter(a=>a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase()));
@@ -3118,7 +3212,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   const hasTxns=(code)=>(transactions||[]).some(t=>t.debitCode===code||t.creditCode===code);
 
   const openEdit=(ri)=>{
-    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false});
+    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):""});
     setOrigCode(list[ri].code);
     setEditingIdx(ri);
   };
@@ -3126,7 +3220,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   const cancelEdit=()=>{
     setList(accounts.map(a=>({...a})));
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
     setOrigCode("");
   };
 
@@ -3138,12 +3232,12 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
     if(codeChanged&&list.some((a,i)=>i!==editingIdx&&a.code===newCode)){
       alert("Account code "+newCode+" already exists.");return;
     }
-    const updated=list.map((a,i)=>i===editingIdx?{...editForm,code:newCode,name:editForm.name.trim()}:a);
+    const updated=list.map((a,i)=>i===editingIdx?{...editForm,code:newCode,name:editForm.name.trim(),defaultVatPct:editForm.defaultVatPct===""?null:parseFloat(editForm.defaultVatPct)}:a);
     setList(updated);
     // Pass oldCode + newCode so transactions get migrated when code changes
     onSave(updated,codeChanged?origCode:null,codeChanged?newCode:null);
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
     setOrigCode("");
   };
 
@@ -3190,6 +3284,19 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                     </div>
                   </div>
                   {hasT&&<div style={{fontSize:10,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"6px 10px"}}>ℹ️ This account has transactions. If you change the code, all transactions will automatically move to the new code. Name changes are always safe.</div>}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Default VAT %</div>
+                      <select value={editForm.defaultVatPct} onChange={e=>setEditForm(f=>({...f,defaultVatPct:e.target.value}))} style={{...inp,fontSize:13}}>
+                        <option value="">No default — ask each time</option>
+                        <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Notes</div>
+                      <input value={editForm.notes} onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))} placeholder="Internal note (optional)" style={{...inp,fontSize:13}}/>
+                    </div>
+                  </div>
                   <div onClick={()=>setEditForm(f=>({...f,matchable:!f.matchable}))} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:editForm.matchable?"#F0FDF4":"#f9f9f9",border:`1.5px solid ${editForm.matchable?T.green:"#d3d1c7"}`,borderRadius:9,cursor:"pointer",userSelect:"none"}}>
                     <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${editForm.matchable?T.green:"#b0ada6"}`,background:editForm.matchable?T.green:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                       {editForm.matchable&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
@@ -5430,13 +5537,16 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 // Upload a CSV/Excel statement (Date, Description, Amount columns) against a
 // bank account; each unposted line can be "Posted" by choosing which other
 // account it offsets, which creates a real transaction and marks it matched.
-function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,toggleReconciled}){
+function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,toggleReconciled}){
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[selectedLineId,setSelectedLineId]=useState(null);
   const[offsetCode,setOffsetCode]=useState("");
   const[uploading,setUploading]=useState(false);
+  const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName}
+  const[importing,setImporting]=useState(false);
+  const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Left column: what's actually in the ledger for this account and month.
@@ -5461,8 +5571,29 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const handleUpload=async(file)=>{
     if(!selectedAccount){alert("Choose a bank account first.");return;}
     setUploading(true);
-    await uploadBankStatement(selectedAccount,file);
+    if(parseBankStatementFile){
+      const result=await parseBankStatementFile(file);
+      setPreview({...result,fileName:file.name});
+    } else {
+      // Fallback for older wiring — commits immediately, no preview.
+      await uploadBankStatement(selectedAccount,file);
+    }
     setUploading(false);
+  };
+  const confirmImport=async()=>{
+    if(!preview||!preview.rows||importing)return;
+    setImporting(true);
+    const result=await commitBankStatementRows(selectedAccount,preview.rows);
+    setImporting(false);
+    if(result.error){alert(result.error);return;}
+    setLastImport({ids:result.insertedIds,count:result.count,accountCode:selectedAccount});
+    setPreview(null);
+  };
+  const doUndoImport=async()=>{
+    if(!lastImport||!undoBankImport)return;
+    if(!window.confirm(`Remove the ${lastImport.count} statement line${lastImport.count===1?"":"s"} just imported?`))return;
+    await undoBankImport(lastImport.ids);
+    setLastImport(null);
   };
   const doPost=async()=>{
     if(!selectedLine||!offsetCode)return;
@@ -5472,12 +5603,62 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 
   return(
     <div>
+      {preview&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!importing&&setPreview(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:640,width:"100%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Preview import — {preview.fileName}</div>
+            {preview.error?(
+              <>
+                <div style={{background:T.redLight,color:T.red,borderRadius:10,padding:"12px 14px",fontSize:12,marginTop:12,lineHeight:1.5}}>{preview.error}</div>
+                {preview.detectedColumns&&(
+                  <div style={{fontSize:11,color:T.muted,marginTop:10}}>
+                    Detected: Date → <b>{preview.detectedColumns.date}</b>, Description → <b>{preview.detectedColumns.description}</b>
+                    {preview.detectedColumns.amount&&<>, Amount → <b>{preview.detectedColumns.amount}</b></>}
+                  </div>
+                )}
+                <button onClick={()=>setPreview(null)} style={{marginTop:16,width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+              </>
+            ):(
+              <>
+                <div style={{fontSize:11,color:T.muted,marginBottom:14}}>
+                  Detected columns — Date: <b>{preview.detectedColumns.date}</b> · Description: <b>{preview.detectedColumns.description}</b>{preview.detectedColumns.amount&&<> · Amount: <b>{preview.detectedColumns.amount}</b></>}{preview.detectedColumns.debit&&<> · Debit: <b>{preview.detectedColumns.debit}</b></>}{preview.detectedColumns.credit&&<> · Credit: <b>{preview.detectedColumns.credit}</b></>}
+                </div>
+                <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:8}}>{preview.rows.length} row{preview.rows.length===1?"":"s"} ready to import{(preview.skippedNoDate||preview.skippedZeroOrBad)?` (${(preview.skippedNoDate||0)+(preview.skippedZeroOrBad||0)} skipped — no date or zero amount)`:""}</div>
+                <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
+                  <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                    <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"7px 10px"}}>Date</td><td>Description</td><td style={{textAlign:"right",padding:"7px 10px"}}>Amount</td></tr></thead>
+                    <tbody>
+                      {preview.rows.slice(0,8).map((r,i)=>(
+                        <tr key={i} style={{borderTop:`1px solid ${T.border}`}}>
+                          <td style={{padding:"7px 10px",color:T.text}}>{r.date}</td>
+                          <td style={{color:T.text,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</td>
+                          <td style={{textAlign:"right",padding:"7px 10px",fontWeight:600,color:r.amount>=0?T.green:T.red}}>{sign(r.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {preview.rows.length>8&&<div style={{padding:"7px 10px",fontSize:11,color:T.muted,textAlign:"center",borderTop:`1px solid ${T.border}`}}>+{preview.rows.length-8} more row{preview.rows.length-8===1?"":"s"} not shown here</div>}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={confirmImport} disabled={importing} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":`Import ${preview.rows.length} row${preview.rows.length===1?"":"s"}`}</button>
+                  <button onClick={()=>setPreview(null)} disabled={importing} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
-        <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
-          {uploading?"Uploading…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
-          <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
-        </label>
+        <div style={{display:"flex",gap:8}}>
+          {lastImport&&lastImport.accountCode===selectedAccount&&(
+            <button onClick={doUndoImport} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo last import ({lastImport.count})</button>
+          )}
+          <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
+            {uploading?"Reading file…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
+            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
+          </label>
+        </div>
       </div>
       <p style={{fontSize:11,color:T.muted,marginBottom:12}}>Upload a CSV or Excel export — column order doesn't need to match exactly. Works with a Date + Amount column, separate Debit/Credit columns, or just a running Balance column. No live bank connection.</p>
       <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:8}}>
@@ -6094,9 +6275,15 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <div>
                     <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Cost account</div>
-                    <select value={expenseAccount} onChange={e=>setExpenseAccount(e.target.value)} style={{...inp}}>
+                    <select value={expenseAccount} onChange={e=>{
+                      const code=e.target.value;
+                      setExpenseAccount(code);
+                      const acc=accounts.find(a=>a.code===code);
+                      if(acc&&acc.defaultVatPct!=null)setVatPct(String(acc.defaultVatPct));
+                    }} style={{...inp}}>
                       {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                     </select>
+                    {(()=>{const acc=accounts.find(a=>a.code===expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:4}}>ℹ️ {acc.notes}</div>:null;})()}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div>
@@ -6312,9 +6499,14 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <div>
                     <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Cost account</div>
-                    <select value={form.expenseAccount} onChange={e=>setForm({expenseAccount:e.target.value})} style={{...inp}}>
+                    <select value={form.expenseAccount} onChange={e=>{
+                      const code=e.target.value;
+                      const acc=accounts.find(a=>a.code===code);
+                      setForm(acc&&acc.defaultVatPct!=null?{expenseAccount:code,vatPct:String(acc.defaultVatPct)}:{expenseAccount:code});
+                    }} style={{...inp}}>
                       {expenseAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                     </select>
+                    {(()=>{const acc=accounts.find(a=>a.code===form.expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:4}}>ℹ️ {acc.notes}</div>:null;})()}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div>
@@ -7544,8 +7736,10 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile}){
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[]}){
+  const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
+  const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -7600,6 +7794,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
       return;
     }
+    // Duplicate check — same date, amount, and description already recorded.
+    // A real mistake (double-clicking Save, re-entering a receipt already
+    // logged) shows up exactly this way; a legitimate repeat is rare enough
+    // that a confirm dialog is the right amount of friction, not a hard block.
+    const amountNum=parseFloat(form.amount);
+    const possibleDupe=transactions.find(t=>t.date===form.date&&Math.abs(t.amount-amountNum)<0.01&&t.description.trim().toLowerCase()===form.description.trim().toLowerCase());
+    if(possibleDupe&&!window.confirm(`This looks like a duplicate of ${fmtB(possibleDupe.bilag)} — same date, amount, and description. Save it anyway?`))return;
+    // Remember what was used this time, so the next New Entry starts pre-filled
+    // with the same accounts — most entries in a row tend to repeat a pattern.
+    try{localStorage.setItem("rr_last_debit_code",form.debitCode);localStorage.setItem("rr_last_credit_code",form.creditCode);}catch{}
     const amount=parseFloat(form.amount);
     const lines=form.lines||[];
     const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
@@ -11066,7 +11270,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -11084,6 +11288,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const addTransactionNotified=async(form)=>{
     const result=await addTransaction(form);
     pushToast(`Saved: ${form.description||"New entry"} — ${fmt(form.amount)}`);
+    if(result&&result.id)showUndoSnackbar({id:result.id,bilag:result.bilag,description:result.description||"New entry"});
     return result;
   };
   useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
@@ -11157,6 +11362,22 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   };
   const unreadToastCount=toasts.filter(t=>!t.read).length;
   const markToastsRead=()=>setToasts(prev=>prev.map(t=>({...t,read:true})));
+  // A brief, dismissable "Entry saved — Undo" snackbar, separate from the
+  // persistent notification panel — this one's for catching a mistake in
+  // the next few seconds, not a historical record.
+  const[justSaved,setJustSaved]=useState(null); // {id,bilag,description}
+  const justSavedTimerRef=React.useRef(null);
+  const showUndoSnackbar=(txn)=>{
+    if(justSavedTimerRef.current)clearTimeout(justSavedTimerRef.current);
+    setJustSaved(txn);
+    justSavedTimerRef.current=setTimeout(()=>setJustSaved(null),8000);
+  };
+  const undoJustSaved=async()=>{
+    if(!justSaved)return;
+    await deleteTxn(justSaved.id);
+    setJustSaved(null);
+    pushToast(`Undone: ${justSaved.description}`);
+  };
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
@@ -11639,7 +11860,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Transactions"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
               <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -11696,7 +11917,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} toggleReconciled={toggleReconciled}/></div>
+            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} toggleReconciled={toggleReconciled}/></div>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -11836,6 +12057,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
       {registrationQueue&&(
         <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
       )}
+      {justSaved&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:900,background:"#1F2937",color:"#fff",borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:14,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",fontSize:13}}>
+          <span>Saved {fmtB(justSaved.bilag)} — {justSaved.description}</span>
+          <button onClick={undoJustSaved} style={{background:"none",border:"none",color:T.accent,fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>Undo</button>
+          <button onClick={()=>setJustSaved(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>✕</button>
+        </div>
+      )}
     </div>
   );
 
@@ -11961,7 +12189,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
