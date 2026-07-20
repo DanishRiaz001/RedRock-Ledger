@@ -4882,10 +4882,34 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
   const[from,setFrom]=useState(initialFrom);
   const[to,setTo]=useState(initialTo);
   const todayStr=new Date().toISOString().slice(0,10);
+  const nowYear=new Date().getFullYear();
+
+  // Explicit Year + Month selectors — always visible, always usable, so
+  // there's never a state (like after "Full year") where the only way back
+  // to a specific month is manually retyping exact dates.
+  const fromYear=parseInt(from.slice(0,4))||nowYear;
+  const fromMonth=parseInt(from.slice(5,7))||1; // 1-12, or 0 means "whole year" below
+  const isWholeYear=from===`${fromYear}-01-01`&&to===`${fromYear}-12-31`;
+  const yearOptions=[];
+  for(let y=nowYear-6;y<=nowYear+1;y++)yearOptions.push(y);
+
+  const applyYear=(y)=>{
+    if(isWholeYear){setFrom(`${y}-01-01`);setTo(`${y}-12-31`);}
+    else{
+      const m=fromMonth;
+      setFrom(`${y}-${String(m).padStart(2,"0")}-01`);
+      setTo(new Date(y,m,0).toISOString().slice(0,10));
+    }
+  };
+  const applyMonth=(m)=>{
+    if(m===0){setFrom(`${fromYear}-01-01`);setTo(`${fromYear}-12-31`);return;}
+    setFrom(`${fromYear}-${String(m).padStart(2,"0")}-01`);
+    setTo(new Date(fromYear,m,0).toISOString().slice(0,10));
+  };
 
   const presets=[
     {label:"Today",apply:()=>{setFrom(todayStr);setTo(todayStr);}},
-    {label:"The whole current month",apply:()=>{
+    {label:"This month",apply:()=>{
       const d=new Date();const y=d.getFullYear(),m=d.getMonth();
       setFrom(`${y}-${String(m+1).padStart(2,"0")}-01`);
       setTo(new Date(y,m+1,0).toISOString().slice(0,10));
@@ -4896,22 +4920,40 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
       setTo(todayStr);
     }},
     {label:"Full year",apply:()=>{
-      const y=parseInt(from.slice(0,4))||new Date().getFullYear();
+      const y=parseInt(from.slice(0,4))||nowYear;
       setFrom(`${y}-01-01`);setTo(`${y}-12-31`);
     }},
   ];
+  const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:750,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:16}}>Choose period</div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Year</div>
+            <select value={fromYear} onChange={e=>applyYear(parseInt(e.target.value))} style={inp}>
+              {yearOptions.map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Month</div>
+            <select value={isWholeYear?0:fromMonth} onChange={e=>applyMonth(parseInt(e.target.value))} style={inp}>
+              <option value={0}>Whole year</option>
+              {MONTH_NAMES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From (exact date)</div>
             <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={inp}/>
           </div>
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To (exact date)</div>
             <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={inp}/>
           </div>
         </div>
@@ -5042,7 +5084,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         </div>
       </div>
 
-      <div style={{maxHeight:"65vh",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
+      <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
         <thead><tr style={{color:T.muted,fontSize:11,background:T.bg,position:"sticky",top:0,zIndex:2}}>
@@ -5160,7 +5202,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
       )}
 
-      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"14px 16px",marginBottom:14}}>
+      <div style={{background:T.bg,borderRadius:T.radius.lg,padding:"14px 16px",marginBottom:20}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 12px"}}>Trial balance</h1>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{position:"relative"}}>
@@ -5202,7 +5244,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       </div>
 
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,maxHeight:"65vh",overflowY:"auto"}}>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg,position:"sticky",top:0,zIndex:2,boxShadow:`0 1px 0 ${T.border}`}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Account</td>
@@ -6083,7 +6125,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
       {/* Fixed filters above, this part scrolls independently so long lists
           never push the period/search/entries-view controls off screen. */}
-      <div style={{maxHeight:"65vh",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:16,background:T.bg}}>
+      <div style={{maxHeight:"calc(100vh - 320px)",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:16,background:T.bg}}>
       {groups.map(({contact,txns,total})=>{
         const sel=selected[contact.id]||[];
         const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
