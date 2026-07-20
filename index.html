@@ -12294,16 +12294,102 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts"||!!screenExcelExport;
 
   if(isDesktop)return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
-      {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
-      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0}}>
-        <div style={{padding:"18px 18px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
+    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex",flexDirection:"column",height:"100vh"}}>
+      {/* Full-width top header — same height and color everywhere, sits above
+          both the sidebar and the content area (not just to the right of the
+          sidebar like before). The sidebar below it is visually distinct. */}
+      <div style={{height:60,flexShrink:0,background:"#fff",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:220-18}}>
           <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
           <div>
             <div style={{fontSize:12,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Danria</div>
             <div style={{fontSize:8,color:T.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Accountants</div>
           </div>
         </div>
+        <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:T.bg,borderRadius:20,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,border:`1px solid ${T.border}`}}>
+          <div style={{width:18,height:18,borderRadius:5,background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
+          <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
+          <span style={{fontSize:8,color:T.sub}}>▾</span>
+        </div>
+        {myClientAccess.length>0&&(
+          <div style={{position:"relative"}}>
+            <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
+              <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
+              <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"My books":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
+              <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
+            </div>
+            {clientSwitcherOpen&&(<>
+              <div onClick={()=>setClientSwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+              <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+                <div onClick={()=>{setViewingUserId(user.id);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===user.id?700:500,color:viewingUserId===user.id?T.accent:T.text,borderBottom:`1px solid ${T.border}`}}>My books</div>
+                {myClientAccess.map(c=>(
+                  <div key={c.id} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===c.clientUserId?700:500,color:viewingUserId===c.clientUserId?T.accent:T.text,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span>{c.clientEmail}</span>
+                    <span style={{fontSize:9,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel}</span>
+                  </div>
+                ))}
+              </div>
+            </>)}
+          </div>
+        )}
+        <div style={{flex:1}}/>
+        <div style={{position:"relative",width:260}}>
+          <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
+          <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
+        </div>
+        <button onClick={()=>setAssistantOpen(true)} style={{display:"flex",alignItems:"center",gap:6,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",flexShrink:0,background:"none",border:`1px solid ${T.border}`}}>
+          <i className="ti ti-sparkles" style={{fontSize:13,color:T.accent}}/>Assistant
+        </button>
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" style={{background:"none",border:"none",borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <i className="ti ti-download" style={{fontSize:15,color:T.sub}}/>
+          </button>
+          {downloadMenuOpen&&(<>
+            <div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+            <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+              <div onClick={exportCurrentToPdf} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:6}}/>Download as PDF</div>
+              <div onClick={excelAvailable?exportCurrentToExcel:undefined} style={{padding:"10px 14px",fontSize:12,cursor:excelAvailable?"pointer":"default",color:excelAvailable?T.text:T.muted,fontWeight:600,opacity:excelAvailable?1:0.5}}><i className="ti ti-file-type-xls" style={{fontSize:13,marginRight:6}}/>Download as Excel{!excelAvailable&&" (not on this screen)"}</div>
+            </div>
+          </>)}
+        </div>
+        <div style={{position:"relative"}}>
+          <div onClick={()=>{setToastPanelOpen(o=>!o);if(!toastPanelOpen)markToastsRead();}} title="Notifications" style={{position:"relative",borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
+            {unreadToastCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.accent,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{unreadToastCount}</span>}
+          </div>
+          {toastPanelOpen&&(<>
+            <div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+            <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:360,overflowY:"auto",boxShadow:"0 8px 24px rgba(20,40,40,0.12)"}}>
+              <div style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:T.text,textTransform:"uppercase",letterSpacing:0.4,borderBottom:`1px solid ${T.border}`}}>Notifications</div>
+              {toasts.length?toasts.map(t=>(
+                <div key={t.id} style={{padding:"10px 14px",fontSize:12,color:T.text,borderBottom:`1px solid ${T.border}`}}>
+                  <div>{t.message}</div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:2}}>{new Date(t.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+              )):(
+                <div style={{padding:"20px 14px",fontSize:12,color:T.muted,textAlign:"center"}}>Nothing yet — saved entries will show up here.</div>
+              )}
+            </div>
+          </>)}
+        </div>
+        <div style={{position:"relative"}}>
+          <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
+          {profileMenuOpen&&(<>
+            <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+            <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+              <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-user" style={{fontSize:13,marginRight:6}}/>Profile</div>
+              <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-settings" style={{fontSize:13,marginRight:6}}/>Settings</div>
+              <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}><i className="ti ti-logout" style={{fontSize:13,marginRight:6}}/>Sign out</div>
+            </div>
+          </>)}
+        </div>
+      </div>
+
+      {/* Below the header: sidebar (distinct background) + content, sharing
+          the remaining vertical space. */}
+      <div style={{display:"flex",flex:1,minHeight:0}}>
+      {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
+      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100%",overflowY:"auto"}}>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           {pinnedTabs.length>0&&(
             <>
@@ -12431,88 +12517,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         </div>
       </div>
 
-      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px"}}>
-        {/* Top bar — company pill left; Assistant, search, download, bell, profile right */}
-        <div className="rr-glass-card" style={{position:"sticky",top:0,zIndex:50,display:"flex",alignItems:"center",gap:8,marginBottom:18,borderRadius:T.radius.xl,padding:"10px 14px"}}>
-          <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:"#fff",borderRadius:20,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(20,184,166,0.10)"}}>
-            <div style={{width:18,height:18,borderRadius:5,background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
-            <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
-            <span style={{fontSize:8,color:T.sub}}>▾</span>
-          </div>
-          {myClientAccess.length>0&&(
-            <div style={{position:"relative"}}>
-              <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:"#fff",borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
-                <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
-                <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"My books":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
-                <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
-              </div>
-              {clientSwitcherOpen&&(<>
-                <div onClick={()=>setClientSwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-                <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
-                  <div onClick={()=>{setViewingUserId(user.id);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===user.id?700:500,color:viewingUserId===user.id?T.accent:T.text,borderBottom:`1px solid ${T.border}`}}>My books</div>
-                  {myClientAccess.map(c=>(
-                    <div key={c.id} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===c.clientUserId?700:500,color:viewingUserId===c.clientUserId?T.accent:T.text,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span>{c.clientEmail}</span>
-                      <span style={{fontSize:9,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel}</span>
-                    </div>
-                  ))}
-                </div>
-              </>)}
-            </div>
-          )}
-          <div style={{flex:1}}/>
-          <button onClick={()=>setAssistantOpen(true)} className="rr-glass-btn" style={{display:"flex",alignItems:"center",gap:6,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",flexShrink:0}}>
-            <i className="ti ti-sparkles" style={{fontSize:13,color:T.accent}}/>Assistant
-          </button>
-          <div style={{position:"relative",width:180}}>
-            <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-            <input ref={searchInputRef} placeholder="Search" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:30,fontSize:12,background:"#fff"}}/>
-          </div>
-          <div style={{position:"relative"}}>
-            <button onClick={()=>setDownloadMenuOpen(o=>!o)} title="Download" className="rr-glass-btn" style={{borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <i className="ti ti-download" style={{fontSize:15,color:T.sub}}/>
-            </button>
-            {downloadMenuOpen&&(<>
-              <div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
-                <div onClick={exportCurrentToPdf} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:6}}/>Download as PDF</div>
-                <div onClick={excelAvailable?exportCurrentToExcel:undefined} style={{padding:"10px 14px",fontSize:12,cursor:excelAvailable?"pointer":"default",color:excelAvailable?T.text:T.muted,fontWeight:600,opacity:excelAvailable?1:0.5}}><i className="ti ti-file-type-xls" style={{fontSize:13,marginRight:6}}/>Download as Excel{!excelAvailable&&" (not on this screen)"}</div>
-              </div>
-            </>)}
-          </div>
-          <div style={{position:"relative"}}>
-            <div onClick={()=>{setToastPanelOpen(o=>!o);if(!toastPanelOpen)markToastsRead();}} title="Notifications" className="rr-glass-btn" style={{position:"relative",borderRadius:T.radius.sm,width:30,height:30,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <i className="ti ti-bell" style={{fontSize:15,color:T.sub}}/>
-              {unreadToastCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.accent,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{unreadToastCount}</span>}
-            </div>
-            {toastPanelOpen&&(<>
-              <div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:360,overflowY:"auto",boxShadow:"0 8px 24px rgba(20,40,40,0.12)"}}>
-                <div style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:T.text,textTransform:"uppercase",letterSpacing:0.4,borderBottom:`1px solid ${T.border}`}}>Notifications</div>
-                {toasts.length?toasts.map(t=>(
-                  <div key={t.id} style={{padding:"10px 14px",fontSize:12,color:T.text,borderBottom:`1px solid ${T.border}`}}>
-                    <div>{t.message}</div>
-                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{new Date(t.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
-                  </div>
-                )):(
-                  <div style={{padding:"20px 14px",fontSize:12,color:T.muted,textAlign:"center"}}>Nothing yet — saved entries will show up here.</div>
-                )}
-              </div>
-            </>)}
-          </div>
-          <div style={{position:"relative"}}>
-            <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
-            {profileMenuOpen&&(<>
-              <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
-                <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-user" style={{fontSize:13,marginRight:6}}/>Profile</div>
-                <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-settings" style={{fontSize:13,marginRight:6}}/>Settings</div>
-                <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}><i className="ti ti-logout" style={{fontSize:13,marginRight:6}}/>Sign out</div>
-              </div>
-            </>)}
-          </div>
-        </div>
-
+      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px",overflowY:"auto",height:"100%"}}>
         {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
 
         {ledgerAcc?(
@@ -12818,6 +12823,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 
         </>)}
+      </div>
       </div>
 
       {registrationQueue&&(
