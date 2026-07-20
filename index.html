@@ -1039,13 +1039,23 @@ function AppShell({user}){
     const desc=`Payment · Invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
     const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
     if(error){alert("Payment posting failed: "+error.message);return;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)}]);
+    const newTxn={id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)};
+    setTransactionsState(p=>[...p,newTxn]);
     // Full payment → match against the original AR entry and mark paid.
-    if(invoice.txnId&&Math.abs(amount-invoice.total)<1){
+    // Partial payment → leave the AR entry open (still matchable later) but
+    // mark the invoice "partial" so it's visibly distinct from untouched invoices.
+    const priorPaid=transactions.filter(t=>t.invoiceNo===String(invoice.invoiceNo)&&t.creditCode==="1500"&&t.contactId===invoice.customerId).reduce((s,t)=>s+t.amount,0);
+    const totalPaidNow=priorPaid+amount;
+    if(invoice.txnId&&Math.abs(totalPaidNow-invoice.total)<1){
       await matchTransactions([invoice.txnId,data.id],Date.now().toString(),"1500");
       await updateInvoiceStatus(invoice.id,"paid");
+    } else if(totalPaidNow>0){
+      await updateInvoiceStatus(invoice.id,"partial");
     }
   };
+  // How much of an invoice has actually been paid so far, from real payment
+  // transactions (not just its current status label).
+  const getInvoicePaid=(invoice)=>transactions.filter(t=>t.invoiceNo===String(invoice.invoiceNo)&&t.creditCode==="1500"&&t.contactId===invoice.customerId).reduce((s,t)=>s+t.amount,0);
   // Credit note: a negative mirror of the invoice — reverses AR and the sale,
   // matches both AR entries, marks the original credited. The original is
   // never deleted; proper accounting keeps both documents.
@@ -5969,7 +5979,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
   const[search,setSearch]=useState("");
   const[editingId,setEditingId]=useState(null);
   const[showNew,setShowNew]=useState(false);
-  const[form,setForm]=useState({name:"",email:"",phone:"",address:"",accountNo:""});
+  const[form,setForm]=useState({name:"",email:"",phone:"",address:"",accountNo:"",paymentTermsDays:"30",creditLimit:""});
 
   const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())));
   const code=type==="customer"?"1500":"2400";
@@ -5981,15 +5991,16 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
     return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
   };
 
-  const startEdit=(c)=>{setEditingId(c.id);setForm({name:c.name||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.accountNo||""});setShowNew(false);};
-  const startNew=()=>{setEditingId(null);setForm({name:"",email:"",phone:"",address:"",accountNo:""});setShowNew(true);};
+  const startEdit=(c)=>{setEditingId(c.id);setForm({name:c.name||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.accountNo||"",paymentTermsDays:c.paymentTermsDays!=null?String(c.paymentTermsDays):"30",creditLimit:c.creditLimit!=null?String(c.creditLimit):""});setShowNew(false);};
+  const startNew=()=>{setEditingId(null);setForm({name:"",email:"",phone:"",address:"",accountNo:"",paymentTermsDays:"30",creditLimit:""});setShowNew(true);};
   const save=()=>{
     if(!form.name.trim())return;
+    const cleaned={...form,paymentTermsDays:parseInt(form.paymentTermsDays)||30,creditLimit:form.creditLimit===""?null:parseFloat(form.creditLimit)};
     if(editingId){
-      setContacts(p=>p.map(c=>c.id===editingId?{...c,...form}:c));
+      setContacts(p=>p.map(c=>c.id===editingId?{...c,...cleaned}:c));
       setEditingId(null);
     }else{
-      setContacts(p=>[...p,{id:nextId(),type,...form}]);
+      setContacts(p=>[...p,{id:nextId(),type,...cleaned}]);
       setShowNew(false);
     }
   };
@@ -6018,7 +6029,22 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,onOpenReskon
             <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
             <input placeholder="Account no. / IBAN (optional)" value={form.accountNo} onChange={e=>setForm(p=>({...p,accountNo:e.target.value}))} style={inp}/>
           </div>
-          <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={{...inp,marginBottom:10}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={inp}/>
+            <div>
+              <select value={form.paymentTermsDays} onChange={e=>setForm(p=>({...p,paymentTermsDays:e.target.value}))} style={inp}>
+                <option value="0">Due immediately</option>
+                <option value="7">Net 7</option>
+                <option value="15">Net 15</option>
+                <option value="30">Net 30</option>
+                <option value="45">Net 45</option>
+                <option value="60">Net 60</option>
+              </select>
+            </div>
+          </div>
+          {type==="customer"&&(
+            <input type="number" placeholder="Credit limit (optional — warns before invoicing past it)" value={form.creditLimit} onChange={e=>setForm(p=>({...p,creditLimit:e.target.value}))} style={{...inp,marginBottom:10}}/>
+          )}
           <div style={{display:"flex",gap:8}}>
             <button onClick={save} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
             <button onClick={cancel} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
@@ -6666,7 +6692,7 @@ function InvoicePrintView({invoice,contact,companyProfile,elementId}){
 // Invoice creation form — customer picker, sale account restricted to the
 // 3xxx series, a month-range period (one or more months), auto-generated
 // but editable description, and a live preview before posting.
-function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,createInvoice,onDone}){
+function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,createInvoice,transactions=[],onDone}){
   const customers=contacts.filter(c=>c.type==="customer");
   const saleAccounts=accounts.filter(a=>a.code.startsWith("3"));
   const today=new Date().toISOString().slice(0,10);
@@ -6685,6 +6711,13 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   const[saving,setSaving]=useState(false);
 
   const contact=customers.find(c=>c.id===customerId);
+  // Auto-suggest the due date from this customer's payment terms — still
+  // freely editable afterward, this just saves re-typing the common case.
+  useEffect(()=>{
+    const termDays=contact&&contact.paymentTermsDays!=null?contact.paymentTermsDays:30;
+    const d=new Date(date);d.setDate(d.getDate()+termDays);
+    setDueDate(d.toISOString().slice(0,10));
+  },[customerId,date]);
   const qty=monthsBetween(periodFrom,periodTo);
   const price=parseFloat(unitPrice)||0;
   const subtotal=qty*price;
@@ -6697,6 +6730,13 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
 
   const handleCreate=async()=>{
     if(!valid||saving)return;
+    // Credit limit check — outstanding AR balance plus this new invoice,
+    // compared against whatever limit's set on the customer (if any).
+    if(contact&&contact.creditLimit!=null){
+      const outstanding=transactions.filter(t=>t.contactId===customerId&&(t.debitCode==="1500"||t.creditCode==="1500")).reduce((s,t)=>s+(t.debitCode==="1500"?t.amount:-t.amount),0);
+      const projected=outstanding+total;
+      if(projected>contact.creditLimit&&!window.confirm(`${contact.name}'s outstanding balance is ${fmt(outstanding)}. This invoice would bring it to ${fmt(projected)}, over their ${fmt(contact.creditLimit)} credit limit. Create it anyway?`))return;
+    }
     setSaving(true);
     const form={
       customerId,saleAccount,date,dueDate,periodFrom,periodTo,
@@ -6783,7 +6823,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
 
 // Invoice overview — Tripletex-style aging donut (overdue >30 / 1-30 / not
 // yet due) plus outstanding total and the invoice list.
-function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,onNewInvoice}){
+function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,getInvoicePaid,onNewInvoice}){
   const getContactName=id=>{const c=contacts.find(x=>x.id===id);return c?c.name:"Unknown";};
   const today=new Date().toISOString().slice(0,10);
   const daysOverdue=(inv)=>inv.dueDate?Math.floor((new Date(today)-new Date(inv.dueDate))/86400000):0;
@@ -6827,6 +6867,29 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
     window.location.href=`mailto:${contact.email}?subject=${subject}&body=${body}`;
   };
 
+  // Bulk reminders — mailto: links genuinely can't be sent silently in the
+  // background (no backend mail service here), so this is honest about what
+  // it actually does: a focused worklist of every overdue invoice, one click
+  // to open each reminder draft, marking it done as you go through the list.
+  const[showReminders,setShowReminders]=useState(false);
+  const[remindersSent,setRemindersSent]=useState({});
+  const overdueInvoices=useMemo(()=>invoices.filter(inv=>inv.status!=="paid"&&inv.status!=="credited"&&inv.status!=="credit_note"&&daysOverdue(inv)>0),[invoices]);
+  const sendReminder=(inv)=>{
+    const contact=contacts.find(c=>c.id===inv.customerId);
+    if(!contact||!contact.email){alert("This customer has no email on file yet. Add one in Customers.");return;}
+    const days=daysOverdue(inv);
+    const subject=encodeURIComponent(`Reminder: Invoice #${inv.invoiceNo} is ${days} day${days===1?"":"s"} overdue`);
+    const body=encodeURIComponent(
+      `Hi ${contact.name},\n\n`+
+      `This is a friendly reminder that invoice #${inv.invoiceNo}, dated ${inv.date} and due ${inv.dueDate}, is now ${days} day${days===1?"":"s"} overdue.\n\n`+
+      `Amount due: ${fmt(inv.total)}\n\n`+
+      `If you've already sent payment, please disregard this note.\n\n`+
+      `Thank you,\n${companyProfile.companyName||""}`
+    );
+    window.location.href=`mailto:${contact.email}?subject=${subject}&body=${body}`;
+    setRemindersSent(p=>({...p,[inv.id]:true}));
+  };
+
   // Payment registration modal state
   const bankAccounts=accounts?accounts.filter(a=>getSK(a.code)==="1900"):[];
   const[payingInv,setPayingInv]=useState(null);
@@ -6834,7 +6897,10 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
   const[payDate,setPayDate]=useState(today);
   const[payAmount,setPayAmount]=useState("");
   const[payBusy,setPayBusy]=useState(false);
-  const openPayModal=(inv)=>{setPayingInv(inv);setPayBank(bankAccounts[0]?bankAccounts[0].code:"");setPayDate(today);setPayAmount(String(inv.total));};
+  const openPayModal=(inv)=>{
+    const alreadyPaid=getInvoicePaid?getInvoicePaid(inv):0;
+    setPayingInv(inv);setPayBank(bankAccounts[0]?bankAccounts[0].code:"");setPayDate(today);setPayAmount(String(Math.round((inv.total-alreadyPaid)*100)/100));
+  };
   const submitPayment=async()=>{
     if(!payingInv||!payBank||!parseFloat(payAmount)||payBusy)return;
     setPayBusy(true);
@@ -6904,8 +6970,38 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Invoice overview</h1>
-        <button onClick={onNewInvoice} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New invoice</button>
+        <div style={{display:"flex",gap:8}}>
+          {overdueInvoices.length>0&&<button onClick={()=>setShowReminders(true)} style={{background:"none",border:`1px solid ${T.red}`,color:T.red,borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-mail-exclamation" style={{fontSize:13,marginRight:5}}/>Send reminders ({overdueInvoices.length})</button>}
+          <button onClick={onNewInvoice} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New invoice</button>
+        </div>
       </div>
+
+      {showReminders&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowReminders(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:560,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text}}>Overdue invoices — {overdueInvoices.length}</div>
+              <button onClick={()=>setShowReminders(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Each "Send" opens a pre-filled reminder email in your mail app — click through the list, one send per customer. Nothing goes out silently in the background.</p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {overdueInvoices.map(inv=>{
+                const contact=contacts.find(c=>c.id===inv.customerId);
+                const sent=remindersSent[inv.id];
+                return(
+                  <div key={inv.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 14px"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text}}>#{inv.invoiceNo} — {contact?contact.name:"Unknown"}</div>
+                      <div style={{fontSize:11,color:T.red}}>{daysOverdue(inv)} days overdue · {fmt(inv.total)}{!contact||!contact.email?" · no email on file":""}</div>
+                    </div>
+                    <button onClick={()=>sendReminder(inv)} disabled={!contact||!contact.email} style={{background:sent?T.greenBg:T.accentLight,color:sent?T.green:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:contact&&contact.email?"pointer":"default",fontFamily:"inherit",opacity:contact&&contact.email?1:0.5}}>{sent?"✓ Sent":"Send"}</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:20,marginBottom:20,display:"flex",gap:24,alignItems:"center"}}>
         <ConicChart data={donutData.filter(d=>d.value>0)} size={120}/>
@@ -6932,17 +7028,24 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
             const cn=isCN(inv);
             const overdue=!cn&&inv.status!=="paid"&&inv.status!=="credited"&&daysOverdue(inv)>0;
             const canPay=!cn&&inv.status!=="paid"&&inv.status!=="credited";
+            const paidSoFar=cn||!getInvoicePaid?0:getInvoicePaid(inv);
+            const remaining=inv.total-paidSoFar;
             return(
               <tr key={inv.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:inv.status==="credited"?0.55:1}}>
                 <td style={{padding:"11px 14px",color:cn?T.red:T.accent,fontWeight:700}}>{cn?"CN":"#"}{inv.invoiceNo}</td>
                 <td style={{color:T.text}}>{getContactName(inv.customerId)}</td>
                 <td style={{color:T.text}}>{inv.date}</td>
                 <td style={{color:overdue?T.red:T.text,fontWeight:overdue?700:400}}>{inv.dueDate||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700,color:cn?T.red:T.text}}>{cn?"−":""}{fmt(Math.abs(inv.total))}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:cn?T.red:T.text}}>
+                  {cn?"−":""}{fmt(Math.abs(inv.total))}
+                  {paidSoFar>0&&inv.status!=="paid"&&<div style={{fontSize:10,color:T.green,fontWeight:600}}>Paid {fmt(paidSoFar)} · Remaining {fmt(remaining)}</div>}
+                </td>
                 <td>
                   {cn?<span style={{fontSize:11,color:T.red,fontWeight:700}}>Credit note</span>
                     :inv.status==="credited"?<span style={{fontSize:11,color:T.muted,fontWeight:700}}>Credited</span>
-                    :(
+                    :inv.status==="partial"?(
+                      <span title={`${fmt(paidSoFar)} of ${fmt(inv.total)} paid`} style={{fontSize:11,color:T.orange,fontWeight:700,background:T.orangeBg,padding:"3px 8px",borderRadius:6}}>Partial</span>
+                    ):(
                     <select value={inv.status} onChange={e=>updateInvoiceStatus(inv.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}}>
                       <option value="draft">Draft</option>
                       <option value="sent">Sent</option>
@@ -11959,7 +12062,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="InvoiceNew"&&(
           <div style={{maxWidth:1000}}>
-            <InvoiceFormScreen accounts={accounts} contacts={contacts} companyProfile={companyProfile} nextInvoiceNo={nextInvoiceNo} createInvoice={createInvoice} onDone={()=>setTab("InvoiceOverview")}/>
+            <InvoiceFormScreen accounts={accounts} contacts={contacts} companyProfile={companyProfile} nextInvoiceNo={nextInvoiceNo} createInvoice={createInvoice} transactions={transactions} onDone={()=>setTab("InvoiceOverview")}/>
           </div>
         )}
 
@@ -12019,7 +12122,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="InvoiceOverview"&&(
           <div style={{maxWidth:900}}>
-            <InvoiceOverviewScreen invoices={invoices} contacts={contacts} accounts={accounts} companyProfile={companyProfile} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} onNewInvoice={()=>setTab("InvoiceNew")}/>
+            <InvoiceOverviewScreen invoices={invoices} contacts={contacts} accounts={accounts} companyProfile={companyProfile} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} getInvoicePaid={getInvoicePaid} onNewInvoice={()=>setTab("InvoiceNew")}/>
           </div>
         )}
 
