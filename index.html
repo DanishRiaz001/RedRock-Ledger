@@ -2174,13 +2174,17 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
     fetchTxnAttachments(txn.id).then(list=>{if(alive){setAttList(list);setAttLoading(false);}});
     return()=>{alive=false;};
   },[txn.id]);
-  const handleAttach=async(file)=>{
-    if(!uploadInboxFile||!attachFilesToTxnEntry)return;
+  const handleAttach=async(files)=>{
+    if(!uploadInboxFile||!attachFilesToTxnEntry||!files.length)return;
     setAttUploading(true);
-    const newFile=await uploadInboxFile(file);
-    if(newFile){
-      await attachFilesToTxnEntry(txn.id,[newFile.id]);
-      setAttList(p=>[...p,newFile]);
+    const newFiles=[];
+    for(const file of files){
+      const newFile=await uploadInboxFile(file);
+      if(newFile)newFiles.push(newFile);
+    }
+    if(newFiles.length){
+      await attachFilesToTxnEntry(txn.id,newFiles.map(f=>f.id));
+      setAttList(p=>[...p,...newFiles]);
     }
     setAttUploading(false);
   };
@@ -2279,7 +2283,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
         <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
           <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:attUploading?"wait":"pointer",fontSize:12,color:T.blue,fontWeight:600,opacity:attUploading?0.6:1}}>
             📎 {attUploading?"Uploading…":attList.length?`Add another file (${attList.length} attached)`:"Attach file"}
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(e.target.files[0]);}}/>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleAttach(Array.from(e.target.files));e.target.value="";}}/>
           </label>
           {attList.length>0&&(
             <button onClick={()=>setAttOpen(o=>!o)} title={attOpen?"Hide attachments":"Show attachments"} style={{background:attOpen?T.blue:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:attOpen?"#fff":T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>📎</button>
@@ -4609,7 +4613,11 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
-function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={}}){
+function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={},auditLog=[]}){
+  const entriesToday=useMemo(()=>{
+    const today=new Date().toISOString().slice(0,10);
+    return auditLog.filter(a=>a.entityType==="transaction"&&a.action==="create"&&a.createdAt&&a.createdAt.slice(0,10)===today).length;
+  },[auditLog]);
   // Dashboard is intentionally all-time — no date filter here. If you need a
   // specific period, use Trial Balance or Reports, which each have their own.
   const today=new Date().toISOString().slice(0,10);
@@ -4678,7 +4686,12 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10,position:"relative"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,position:"relative"}}>
+        {entriesToday>0?(
+          <div onClick={()=>onNavigate&&onNavigate("Entries")} style={{fontSize:12,color:T.waterTeal,fontWeight:700,cursor:onNavigate?"pointer":"default",display:"flex",alignItems:"center",gap:5}}>
+            <i className="ti ti-circle-check" style={{fontSize:14}}/>{entriesToday} entr{entriesToday===1?"y":"ies"} recorded today
+          </div>
+        ):(<div/>)}
         <button onClick={()=>setCustomizing(o=>!o)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-layout-grid" style={{fontSize:13,marginRight:5}}/>Customize</button>
         {customizing&&(<>
           <div onClick={()=>setCustomizing(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
@@ -5145,6 +5158,26 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
 function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport}){
   const today=new Date().toISOString().slice(0,10);
+  // Excel-style resizable columns — drag the handle on the right edge of any
+  // header cell.
+  const[colWidths,setColWidths]=useState([320,150,150,150]);
+  const resizeDragRef=React.useRef(null);
+  const startColResize=(idx,e)=>{
+    e.preventDefault();e.stopPropagation();
+    resizeDragRef.current={idx,startX:e.clientX,startWidth:colWidths[idx]};
+    const onMove=(ev)=>{
+      if(!resizeDragRef.current)return;
+      const{idx,startX,startWidth}=resizeDragRef.current;
+      const next=Math.max(60,startWidth+(ev.clientX-startX));
+      setColWidths(prev=>prev.map((w,i)=>i===idx?next:w));
+    };
+    const onUp=()=>{resizeDragRef.current=null;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+    window.addEventListener("mousemove",onMove);
+    window.addEventListener("mouseup",onUp);
+  };
+  const ResizeHandle=({idx})=>(
+    <div onMouseDown={e=>startColResize(idx,e)} style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:3}}/>
+  );
   const[filterFrom,setFilterFrom]=useState(`${today.slice(0,4)}-01-01`);
   const[filterTo,setFilterTo]=useState(`${today.slice(0,4)}-12-31`);
   const[fromAcct,setFromAcct]=useState("");
@@ -5245,11 +5278,12 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
+        <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
         <thead><tr style={{color:T.sub,background:T.bg,position:"sticky",top:0,zIndex:2,boxShadow:`0 1px 0 ${T.border}`}}>
-          <td style={{padding:"11px 14px",fontWeight:700}}>Account</td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance</td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Difference</td>
+          <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
+          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Opening balance<ResizeHandle idx={1}/></td>
+          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Difference<ResizeHandle idx={2}/></td>
           <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
         </tr></thead>
         <tbody>
@@ -5502,6 +5536,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 // note shown in the UI: supplier vouchers/receipts don't capture purchase VAT
 // separately yet, so this is sales (output) VAT only, not a full net position.
 function VATReportScreen({invoices,contacts,transactions}){
+  const[showInfo,setShowInfo]=useState(false);
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const year=parseInt(viewMonth.slice(0,4));
@@ -5537,14 +5572,24 @@ function VATReportScreen({invoices,contacts,transactions}){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>VAT report</h1>
-        <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{position:"relative"}}>
+            <i className="ti ti-info-circle" onClick={()=>setShowInfo(s=>!s)} title="About this report" style={{fontSize:16,color:T.muted,cursor:"pointer"}}/>
+            {showInfo&&(<>
+              <div onClick={()=>setShowInfo(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+              <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",width:320,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14,fontSize:11,color:T.sub,lineHeight:1.5}}>
+                <div style={{marginBottom:10}}>Sales VAT comes from invoices; purchase VAT comes from supplier vouchers where VAT was entered. Vouchers created before VAT capture was added, or without a VAT % set, won't appear on the purchase side.</div>
+                <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
+                  <i className="ti ti-building-bank" style={{fontSize:14,flexShrink:0,marginTop:1}}/>
+                  <span>These are calculations only — direct e-filing to FBR (Pakistan) or Altinn (Norway) needs government API access, which is its own setup. Use the PDF export to file manually until then.</span>
+                </div>
+              </div>
+            </>)}
+          </div>
+          <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
+        </div>
       </div>
       <div id="vatreport-print-area">
-      <p style={{fontSize:11,color:T.muted,marginBottom:12}}>Sales VAT from invoices, purchase VAT from supplier vouchers where VAT was entered. Vouchers created before VAT capture was added, or without a VAT % set, won't appear on the purchase side.</p>
-      <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:8}}>
-        <i className="ti ti-building-bank" style={{fontSize:14}}/>
-        <span>These are calculations only — direct e-filing to FBR (Pakistan) or Altinn (Norway) needs government API access, which is its own setup. Use the PDF export above to file manually until then.</span>
-      </div>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -5758,6 +5803,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName}
   const[importing,setImporting]=useState(false);
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
+  const[showHistory,setShowHistory]=useState(false);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Left column: what's actually in the ledger for this account and month.
@@ -5862,6 +5908,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowHistory(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-history" style={{fontSize:13,marginRight:5}}/>History</button>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
             <button onClick={doUndoImport} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo last import ({lastImport.count})</button>
           )}
@@ -5871,6 +5918,43 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           </label>
         </div>
       </div>
+      {showHistory&&(()=>{
+        const monthsBack=[];
+        for(let i=0;i<12;i++){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);monthsBack.push(d.toISOString().slice(0,7));}
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowHistory(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:560,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{fontSize:15,fontWeight:800,color:T.text}}>Reconciliation history — {getName(selectedAccount)}</div>
+                <button onClick={()=>setShowHistory(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+              </div>
+              <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                <thead><tr style={{color:T.sub,background:T.bg}}><td style={{padding:"9px 12px"}}>Month</td><td style={{textAlign:"right"}}>Entries</td><td style={{textAlign:"right"}}>Reconciled</td><td style={{textAlign:"right",padding:"9px 12px"}}>Status</td></tr></thead>
+                <tbody>
+                  {monthsBack.map(m=>{
+                    const entries=transactions.filter(t=>(t.debitCode===selectedAccount||t.creditCode===selectedAccount)&&t.date.slice(0,7)===m);
+                    const recCount=entries.filter(t=>t.reconciled).length;
+                    const pct=entries.length?Math.round((recCount/entries.length)*100):null;
+                    const label=new Date(m+"-01").toLocaleString("default",{month:"short",year:"numeric"});
+                    return(
+                      <tr key={m} style={{borderBottom:`1px solid ${T.border}`}}>
+                        <td style={{padding:"9px 12px",color:T.text,fontWeight:600}}>{label}</td>
+                        <td style={{textAlign:"right",color:T.text}}>{entries.length}</td>
+                        <td style={{textAlign:"right",color:T.text}}>{recCount}</td>
+                        <td style={{textAlign:"right",padding:"9px 12px"}}>
+                          {entries.length===0?<span style={{fontSize:11,color:T.muted}}>No activity</span>
+                            :pct===100?<span style={{fontSize:11,fontWeight:700,color:T.green,background:T.greenBg,padding:"3px 9px",borderRadius:8}}>✓ Reconciled</span>
+                            :<span style={{fontSize:11,fontWeight:700,color:T.orange,background:T.orangeBg,padding:"3px 9px",borderRadius:8}}>{pct}% done</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
       <p style={{fontSize:11,color:T.muted,marginBottom:12}}>Upload a CSV or Excel export — column order doesn't need to match exactly. Works with a Date + Amount column, separate Debit/Credit columns, or just a running Balance column. No live bank connection.</p>
       <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:8}}>
         <i className="ti ti-plug-connected" style={{fontSize:14}}/>
@@ -6078,54 +6162,39 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
-          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
-        </div>
-      </div>
-
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:14}}>
-        <div style={{display:"flex",gap:14,alignItems:"flex-end",flexWrap:"wrap"}}>
-          <div>
-            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Period</div>
-            <div style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:7,padding:"4px 8px"}}>
-              <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
-              <span style={{fontSize:12,fontWeight:700,color:T.text,minWidth:78,textAlign:"center"}}>{periodLabel}</span>
-              <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
-            </div>
-          </div>
-          <div>
-            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>{type==="customer"?"Customer":"Supplier"}</div>
-            <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:150,padding:"6px 10px",fontSize:12}}>
-              <option value="">All {type==="customer"?"customers":"suppliers"}</option>
-              {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div style={{position:"relative",width:200}}>
-            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Search</div>
-            <i className="ti ti-search" style={{position:"absolute",left:9,top:27,color:T.muted,fontSize:12}}/>
-            <input placeholder="Search voucher, invoice, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:28,padding:"6px 10px 6px 28px",fontSize:12}}/>
-          </div>
-          <div>
-            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Entries View</div>
-            <div style={{display:"flex",gap:5}}>
-              {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
-                <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accentLight:"none",color:entriesView===id?T.accent:T.sub,border:`1px solid ${entriesView===id?T.accent:T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{label}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <p style={{fontSize:12,color:T.muted,margin:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} {totalEntryCount===1?"entry":"entries"}</p>
+        <h1 style={{fontSize:17,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+        </div>
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
+          <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
+          <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:66,textAlign:"center",whiteSpace:"nowrap"}}>{periodLabel}</span>
+          <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
+        </div>
+        <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}}>
+          <option value="">All {type==="customer"?"customers":"suppliers"}</option>
+          {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <div style={{position:"relative",flex:1,minWidth:100}}>
+          <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
+          <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
+        </div>
+        <div style={{display:"flex",gap:4,flexShrink:0}}>
+          {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accentLight:"none",color:entriesView===id?T.accent:T.sub,border:`1px solid ${entriesView===id?T.accent:T.border}`,borderRadius:6,padding:"4px 9px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{label}</button>
+          ))}
+        </div>
+        <span style={{fontSize:10,color:T.muted,whiteSpace:"nowrap",flexShrink:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} entries</span>
       </div>
 
       {/* Fixed filters above, this part scrolls independently so long lists
           never push the period/search/entries-view controls off screen. */}
-      <div style={{maxHeight:"calc(100vh - 320px)",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:16,background:T.bg}}>
+      <div style={{maxHeight:"calc(100vh - 320px)",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:0,background:T.bg}}>
       {groups.map(({contact,txns,total})=>{
         const sel=selected[contact.id]||[];
         const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
@@ -6158,6 +6227,21 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                 )}
               </div>
             </div>
+            {!isCollapsed&&(()=>{
+              // Scorecard — lifetime value (all-time invoiced/purchased total,
+              // not just what's currently filtered) and average days overdue
+              // across this contact's currently-open items.
+              const allTimeTxns=transactions.filter(t=>t.contactId===contact.id&&(t.debitCode===code||t.creditCode===code));
+              const lifetimeValue=allTimeTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
+              const openWithDue=txns.filter(t=>t.dueDate&&!(t.matchedWith&&t.matchedAccount===code));
+              const avgOverdue=openWithDue.length?Math.round(openWithDue.reduce((s,t)=>s+Math.max(0,Math.floor((new Date()-new Date(t.dueDate))/86400000)),0)/openWithDue.length):null;
+              return(
+              <div style={{display:"flex",gap:16,marginBottom:8,fontSize:11,color:T.muted}}>
+                <span>Lifetime value: <b style={{color:T.text}}>{fmt(lifetimeValue)}</b></span>
+                {avgOverdue!=null&&<span>Avg. days overdue (open items): <b style={{color:avgOverdue>0?T.red:T.text}}>{avgOverdue}</b></span>}
+              </div>
+              );
+            })()}
             {!isCollapsed&&(
             <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
             <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
@@ -10622,20 +10706,20 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
           </div>
         </div>
       )} right={(
-        <div style={{background:T.bg,borderRadius:12,padding:16,position:"sticky",top:16,minHeight:"calc(100vh - 140px)",display:"flex",flexDirection:"column"}}>
+        <div style={{background:T.bg,borderRadius:12,padding:16,position:"sticky",top:16}}>
           {previewFile?(
             <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                 <span style={{fontSize:12,color:T.sub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</span>
                 <button onClick={()=>renameFile(previewFile.id)} title="Rename" style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13}}>✏️</button>
               </div>
-              <div style={{background:"#fff",borderRadius:8,flex:1,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
+              <div style={{background:"#fff",borderRadius:8,height:420,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
                 <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
               </div>
               <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",marginTop:10,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
             </>
           ):(
-            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
+            <div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
           )}
         </div>
       )}/>
@@ -11285,10 +11369,55 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
       <div style={{maxWidth:1000}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Admin panel</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
-          {[["global","Global"],["users","Per user"],["analytics","Analytics"]].map(([id,label])=>(
+          {[["global","Global"],["users","Per user"],["analytics","Analytics"],["revenue","Revenue"]].map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?T.accent:"none",color:tab===id?"#fff":T.sub,border:`1px solid ${tab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
+
+        {tab==="revenue"&&(()=>{
+          const userPkgs=getUserPackages();
+          const activeUsers=profiles.filter(p=>p.is_active!==false&&!p.is_admin);
+          const byTier={};
+          PACKAGE_TIERS.forEach(t=>{byTier[t.id]={tier:t,count:0};});
+          let unassigned=0;
+          activeUsers.forEach(p=>{
+            const pkg=userPkgs[p.id];
+            if(pkg&&byTier[pkg])byTier[pkg].count++;
+            else unassigned++;
+          });
+          const parsePrice=(priceStr)=>parseFloat(priceStr.replace(/[^0-9.]/g,""))||0;
+          const totalMonthly=Object.values(byTier).reduce((s,b)=>s+b.count*parsePrice(b.tier.price),0);
+          return(
+            <div>
+              <div style={{background:T.waterTealSubtle,borderRadius:12,padding:"18px 24px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:14,fontWeight:700,color:T.text}}>Estimated monthly revenue — {activeUsers.length} active client{activeUsers.length===1?"":"s"}</span>
+                <span style={{fontSize:24,fontWeight:900,color:T.waterTeal}}>PKR {totalMonthly.toLocaleString()}</span>
+              </div>
+              <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                  <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"11px 14px",fontWeight:700}}>Package</td><td style={{fontWeight:700}}>Price</td><td style={{textAlign:"right",fontWeight:700}}>Clients</td><td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Subtotal</td></tr></thead>
+                  <tbody>
+                    {PACKAGE_TIERS.map(t=>(
+                      <tr key={t.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                        <td style={{padding:"11px 14px",fontWeight:700,color:t.color}}>{t.label}</td>
+                        <td style={{color:T.text}}>{t.price}</td>
+                        <td style={{textAlign:"right",color:T.text}}>{byTier[t.id].count}</td>
+                        <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>PKR {(byTier[t.id].count*parsePrice(t.price)).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{padding:"11px 14px",color:T.muted}}>No package assigned</td>
+                      <td/>
+                      <td style={{textAlign:"right",color:T.muted}}>{unassigned}</td>
+                      <td style={{padding:"11px 14px"}}/>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p style={{fontSize:11,color:T.muted,marginTop:12}}>Estimated from assigned package tiers — not connected to a real payment processor, so this reflects intended billing, not confirmed collected revenue.</p>
+            </div>
+          );
+        })()}
 
         {tab==="global"&&(
           <>
@@ -12390,7 +12519,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
-        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS}/>}
+        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog}/>}
 
         {tab==="Entries"&&(
           <div style={{maxWidth:1000}}>
