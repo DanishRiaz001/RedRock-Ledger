@@ -597,7 +597,21 @@ function AppShell({user}){
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
   const[profileLoading,setProfileLoading]=useState(true);
-  const viewingUserId=user.id;
+  // Which books are currently being viewed — defaults to your own. Switching
+  // to a client's requires a real client_access grant (enforced server-side
+  // by RLS too, this is just what drives which data gets fetched).
+  const[viewingUserId,setViewingUserId]=useState(user.id);
+  const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel}]
+  const currentAccessLevel=viewingUserId===user.id?"full":((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).accessLevel||"readonly");
+  useEffect(()=>{
+    sb.from("client_access").select("*").eq("employee_user_id",user.id).then(async({data,error})=>{
+      if(error||!data||!data.length){setMyClientAccess([]);return;}
+      const clientIds=data.map(r=>r.client_user_id);
+      const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
+      const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
+      setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level})));
+    });
+  },[user.id]);
   const[accounts,setAccountsState]=useState([]);
   const[contacts,setContactsState]=useState([]);
   const[transactions,setTransactionsState]=useState([]);
@@ -1510,6 +1524,30 @@ function AppShell({user}){
     if(userId===user.id)setProfile(p=>p?{...p,is_active:nextActive}:p);
   };
 
+  // Client access grants — admin-only (Danish assigns which employees can
+  // see which clients' books, and at what level). Fetched fresh each time
+  // the Admin Panel's user-detail view needs them, since these change rarely.
+  const fetchClientAccessFor=async(employeeUserId)=>{
+    const{data,error}=await sb.from("client_access").select("*").eq("employee_user_id",employeeUserId);
+    if(error)return[];
+    const clientIds=data.map(r=>r.client_user_id);
+    if(!clientIds.length)return[];
+    const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
+    const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
+    return data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):r.client_user_id,accessLevel:r.access_level}));
+  };
+  const grantClientAccess=async(employeeUserId,clientUserId,accessLevel)=>{
+    if(!isAdmin)return{error:"Only an admin can grant access."};
+    if(employeeUserId===clientUserId)return{error:"Can't grant a user access to their own books — that's already automatic."};
+    const{error}=await sb.from("client_access").upsert({employee_user_id:employeeUserId,client_user_id:clientUserId,access_level:accessLevel,granted_by:user.id},{onConflict:"client_user_id,employee_user_id"});
+    if(error)return{error:error.message};
+    return{ok:true};
+  };
+  const revokeClientAccess=async(grantId)=>{
+    if(!isAdmin)return;
+    await sb.from("client_access").delete().eq("id",grantId);
+  };
+
   if(profileLoading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif"}}>
       <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:20}}/>
@@ -1538,7 +1576,7 @@ function AppShell({user}){
     <div>
       <FinanceTracker
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
-        viewingUserId={viewingUserId} profile={profile} user={user}
+        viewingUserId={viewingUserId} setViewingUserId={setViewingUserId} myClientAccess={myClientAccess} currentAccessLevel={currentAccessLevel} profile={profile} user={user}
         accounts={accounts} setAccounts={setAccounts}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
@@ -1553,7 +1591,7 @@ function AppShell({user}){
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
-        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive}
+        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess}
       />
     </div>
   );
@@ -10873,9 +10911,31 @@ const PACKAGE_TIERS=[
 ];
 const USER_PACKAGE_KEY="rr_user_packages";
 const getUserPackages=()=>{try{return JSON.parse(localStorage.getItem(USER_PACKAGE_KEY)||"{}")}catch{return{};}};
-function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
+function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,isDesktop=false}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
+  const[clientGrants,setClientGrants]=useState([]);
+  const[grantClientId,setGrantClientId]=useState("");
+  const[grantLevel,setGrantLevel]=useState("full");
+  const[grantBusy,setGrantBusy]=useState(false);
+  useEffect(()=>{
+    if(!selUser||!fetchClientAccessFor){setClientGrants([]);return;}
+    fetchClientAccessFor(selUser.id).then(setClientGrants);
+  },[selUser]);
+  const addGrant=async()=>{
+    if(!grantClientId||!grantClientAccess)return;
+    setGrantBusy(true);
+    const result=await grantClientAccess(selUser.id,grantClientId,grantLevel);
+    setGrantBusy(false);
+    if(result.error){alert(result.error);return;}
+    setGrantClientId("");
+    fetchClientAccessFor(selUser.id).then(setClientGrants);
+  };
+  const removeGrant=async(grantId)=>{
+    if(!revokeClientAccess)return;
+    await revokeClientAccess(grantId);
+    setClientGrants(prev=>prev.filter(g=>g.id!==grantId));
+  };
   const[search,setSearch]=useState("");
   const[userStatusTab,setUserStatusTab]=useState("active");
   const[selectedUserIds,setSelectedUserIds]=useState([]);
@@ -10989,6 +11049,38 @@ function AdminPanel({onBack,profiles=[],onToggleActive,isDesktop=false}){
               })}
             </div>
           </div>
+          {fetchClientAccessFor&&(
+            <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20,marginTop:14}}>
+              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Client access</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Which clients' books can this user see, and at what level.</div>
+              {clientGrants.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                  {clientGrants.map(g=>(
+                    <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.bg,borderRadius:8,padding:"8px 12px"}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:T.text}}>{g.clientEmail}</div>
+                        <div style={{fontSize:10,color:T.muted,textTransform:"capitalize"}}>{g.accessLevel} access</div>
+                      </div>
+                      <button onClick={()=>removeGrant(g.id)} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Revoke</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8}}>
+                <select value={grantClientId} onChange={e=>setGrantClientId(e.target.value)} style={{...inp,fontSize:12,flex:1}}>
+                  <option value="">— Select a client —</option>
+                  {profiles.filter(pr=>pr.id!==selUser.id&&!clientGrants.some(g=>g.clientUserId===pr.id)).map(pr=><option key={pr.id} value={pr.id}>{pr.display_name||pr.email}</option>)}
+                </select>
+                <select value={grantLevel} onChange={e=>setGrantLevel(e.target.value)} style={{...inp,fontSize:12,width:120}}>
+                  <option value="full">Full</option>
+                  <option value="entries">Entries</option>
+                  <option value="reports">Reports</option>
+                  <option value="readonly">Read-only</option>
+                </select>
+                <button onClick={addGrant} disabled={!grantClientId||grantBusy} style={{background:grantClientId?T.accent:T.border,color:grantClientId?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 16px",fontWeight:700,fontSize:12,cursor:grantClientId?"pointer":"default",fontFamily:"inherit"}}>{grantBusy?"…":"Grant"}</button>
+              </div>
+            </div>
+          )}
         </div>
         <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Feature access</div>
@@ -11685,7 +11777,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,profile,user,onToggleActive}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -11771,6 +11863,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // system (not tied to bug reports, which live in Settings now).
   const[toasts,setToasts]=useState([]);
   const[toastPanelOpen,setToastPanelOpen]=useState(false);
+  const[clientSwitcherOpen,setClientSwitcherOpen]=useState(false);
   const pushToast=(message)=>{
     const id=Date.now()+Math.random();
     setToasts(prev=>[{id,message,at:new Date().toISOString(),read:false},...prev].slice(0,20));
@@ -11881,7 +11974,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
 
-  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive}/>):null;
+  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess}/>):null;
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
@@ -12109,6 +12202,27 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
             <span style={{fontSize:8,color:T.sub}}>▾</span>
           </div>
+          {myClientAccess.length>0&&(
+            <div style={{position:"relative"}}>
+              <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:"#fff",borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
+                <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
+                <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"My books":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
+                <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
+              </div>
+              {clientSwitcherOpen&&(<>
+                <div onClick={()=>setClientSwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+                <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+                  <div onClick={()=>{setViewingUserId(user.id);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===user.id?700:500,color:viewingUserId===user.id?T.accent:T.text,borderBottom:`1px solid ${T.border}`}}>My books</div>
+                  {myClientAccess.map(c=>(
+                    <div key={c.id} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===c.clientUserId?700:500,color:viewingUserId===c.clientUserId?T.accent:T.text,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span>{c.clientEmail}</span>
+                      <span style={{fontSize:9,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel}</span>
+                    </div>
+                  ))}
+                </div>
+              </>)}
+            </div>
+          )}
           <div style={{flex:1}}/>
           <button onClick={()=>setAssistantOpen(true)} className="rr-glass-btn" style={{display:"flex",alignItems:"center",gap:6,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",flexShrink:0}}>
             <i className="ti ti-sparkles" style={{fontSize:13,color:T.accent}}/>Assistant
@@ -12400,7 +12514,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
 
-        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} isDesktop={true}/>:null)}
+        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} isDesktop={true}/>:null)}
 
         {tab==="Employees"&&(
           <div style={{maxWidth:900}}>
