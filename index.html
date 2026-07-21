@@ -667,7 +667,7 @@ function AppShell({user}){
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
-        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false}));
+        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,inactive:!!a.inactive}));
         const existingCodes=new Set(existing.map(a=>a.code));
         // Add default accounts that don't exist yet (new standard accounts)
         const merged=[...existing];
@@ -742,7 +742,7 @@ function AppShell({user}){
     }
     // Upsert all current accounts
     for(const a of list){
-      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"});
+      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,inactive:a.inactive||false},{onConflict:"user_id,code"});
     }
   };
 
@@ -3329,6 +3329,202 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
     onSave(updated,code);
     if(editingIdx===ri)setEditingIdx(null);
   };
+
+  const[viewingCode,setViewingCode]=useState(null);
+  const[typeFilter,setTypeFilter]=useState("");
+  const[allowEditing,setAllowEditing]=useState(false);
+  const[showCustomOnly,setShowCustomOnly]=useState(false);
+  const[showActiveOnly,setShowActiveOnly]=useState(false);
+
+  if(isDesktop){
+    const viewingAccount=viewingCode?list.find(a=>a.code===viewingCode):null;
+    if(viewingAccount){
+      const ri=list.findIndex(a=>a.code===viewingCode);
+      const hasT=hasTxns(viewingAccount.code);
+      const sk=getSK(viewingAccount.code);
+      const seriesInfo=SERIES[sk];
+      const idx=filtered.findIndex(a=>a.code===viewingCode);
+      const goAdjacent=(dir)=>{const next=filtered[idx+dir];if(next)setViewingCode(next.code);};
+      return(
+        <div style={{maxWidth:800}}>
+          <div onClick={()=>setViewingCode(null)} style={{fontSize:11,color:T.accent,fontWeight:600,cursor:"pointer",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-chevron-left" style={{fontSize:12}}/>Account</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+            <h1 style={{fontSize:22,fontWeight:800,color:T.text,margin:0}}>{viewingAccount.code} {viewingAccount.name}</h1>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <button onClick={()=>goAdjacent(-1)} disabled={idx<=0} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:idx>0?"pointer":"default",color:idx>0?T.sub:T.muted,opacity:idx>0?1:0.4}}>‹</button>
+              <button onClick={()=>goAdjacent(1)} disabled={idx>=filtered.length-1} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:idx<filtered.length-1?"pointer":"default",color:idx<filtered.length-1?T.sub:T.muted,opacity:idx<filtered.length-1?1:0.4}}>›</button>
+              {!hasT&&<button onClick={()=>{deleteAcc(ri);setViewingCode(null);}} title="Delete account" style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:16}}>🗑</button>}
+            </div>
+          </div>
+
+          <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,padding:24}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:18,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>Account details</div>
+            {hasT&&<div style={{fontSize:11,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"8px 12px",marginBottom:16}}>ℹ️ This account has transactions. Changing the number moves all of them automatically — name changes are always safe.</div>}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"18px 32px"}}>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
+                <input value={editForm.code||viewingAccount.code} onChange={e=>setEditForm(f=>({...f,code:e.target.value}))} onFocus={()=>{if(!editForm.code)setEditForm({code:viewingAccount.code,name:viewingAccount.name,matchable:viewingAccount.matchable||false,notes:viewingAccount.notes||"",defaultVatPct:viewingAccount.defaultVatPct!=null?String(viewingAccount.defaultVatPct):"",inactive:viewingAccount.inactive||false});}} style={inp}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
+                <input value={editForm.name!==undefined?editForm.name:viewingAccount.name} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:e.target.value}))} style={inp}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                <input value={editForm.notes!==undefined?editForm.notes:(viewingAccount.notes||"")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,notes:e.target.value}))} placeholder="Internal note (optional)" style={inp}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Type</div>
+                <div style={{...inp,background:T.bg,color:T.sub,display:"flex",alignItems:"center",gap:6}}>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
+                <select value={editForm.defaultVatPct!==undefined?editForm.defaultVatPct:(viewingAccount.defaultVatPct!=null?String(viewingAccount.defaultVatPct):"")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,defaultVatPct:e.target.value}))} style={inp}>
+                  <option value="">No default — ask each time</option>
+                  <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
+                </select>
+              </div>
+              <div style={{gridColumn:"1/-1",display:"flex",gap:24,paddingTop:6}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                  <input type="checkbox" checked={editForm.matchable!==undefined?editForm.matchable:(viewingAccount.matchable||false)} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,matchable:e.target.checked}))}/>
+                  Open items in ledger (matchable in Reskontro)
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                  <input type="checkbox" checked={editForm.inactive!==undefined?editForm.inactive:(viewingAccount.inactive||false)} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,inactive:e.target.checked}))}/>
+                  Inactive
+                </label>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:24,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
+              <button onClick={()=>{
+                if(!editForm.code){setViewingCode(null);return;}
+                saveEdit();
+                setViewingCode(null);
+              }} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+              <button onClick={()=>{cancelEdit();setViewingCode(null);}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 24px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const tableFiltered=filtered
+      .filter(a=>!typeFilter||getSK(a.code)===typeFilter)
+      .filter(a=>!showCustomOnly||!DEFAULT_ACCOUNTS.some(d=>d.code===a.code))
+      .filter(a=>!showActiveOnly||!a.inactive);
+
+    return(
+      <div style={{maxWidth:1000}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Chart of accounts</h1>
+        <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",marginBottom:20}}>
+          <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}}/>
+          <div>
+            <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Type</div>
+            <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{...inp,width:170}}>
+              <option value="">(All)</option>
+              {Object.entries(SERIES).map(([k,s])=><option key={k} value={k}>{s.name}</option>)}
+            </select>
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
+            <input type="checkbox" checked={allowEditing} onChange={e=>setAllowEditing(e.target.checked)}/> Allow editing
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
+            <input type="checkbox" checked={showCustomOnly} onChange={e=>setShowCustomOnly(e.target.checked)}/> Show only custom accounts
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
+            <input type="checkbox" checked={showActiveOnly} onChange={e=>setShowActiveOnly(e.target.checked)}/> Show only active accounts
+          </label>
+        </div>
+
+        <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text}}>Chart of accounts</div>
+            <div style={{display:"flex",gap:18}}>
+              <span onClick={()=>{
+                const aoa=[["Code","Name","Type","Description","Default VAT","Matchable","Inactive"],...list.map(a=>[a.code,a.name,(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
+                const wb=XLSX.utils.book_new();
+                const ws=XLSX.utils.aoa_to_sheet(aoa);
+                XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
+                XLSX.writeFile(wb,"ChartOfAccounts.xlsx");
+              }} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>Export</span>
+              <label style={{fontSize:12,color:T.accent,fontWeight:600,cursor:acctImporting?"wait":"pointer"}}>
+                {acctImporting?"Importing…":"Import account information"}
+                <input type="file" accept=".csv,.xlsx,.xls" disabled={acctImporting} style={{display:"none"}} onChange={async e=>{
+                  const file=e.target.files[0];e.target.value="";
+                  if(!file)return;
+                  setAcctImporting(true);
+                  try{
+                    const isCsv=/\.csv$/i.test(file.name);
+                    const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+                    const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+                    const existingCodes=new Set(list.map(a=>a.code));
+                    const newAccts=[];let skipped=0;
+                    json.forEach(row=>{
+                      const code=String(row.Code||row.code||"").trim();
+                      const name=String(row.Name||row.name||"").trim();
+                      if(!code||!name||existingCodes.has(code)){skipped++;return;}
+                      existingCodes.add(code);
+                      newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
+                    });
+                    if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
+                    const updated=[...list,...newAccts];
+                    setList(updated);
+                    onSave(updated,null);
+                    alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
+                  }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+                  setAcctImporting(false);
+                }}/>
+              </label>
+              <span onClick={()=>{
+                const code=window.prompt("New account number:");
+                if(!code)return;
+                const name=window.prompt("Account name:");
+                if(!name)return;
+                if(list.some(a=>a.code===code.trim())){alert("Code already exists.");return;}
+                const updated=[...list,{code:code.trim(),name:name.trim(),matchable:false}];
+                setList(updated);
+                onSave(updated,null);
+              }} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
+            </div>
+          </div>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <thead><tr style={{background:T.bg,color:T.sub}}>
+              <td style={{padding:"10px 18px",fontWeight:700}}>Number</td>
+              <td style={{fontWeight:700}}>Name</td>
+              <td style={{fontWeight:700}}>Type</td>
+              <td style={{fontWeight:700}}>Description</td>
+              <td style={{textAlign:"center",fontWeight:700}}>Default VAT</td>
+              <td style={{textAlign:"center",fontWeight:700}}>Open items</td>
+              <td style={{textAlign:"center",fontWeight:700,padding:"10px 18px"}}>Inactive</td>
+            </tr></thead>
+            <tbody>
+              {Object.entries(SERIES).map(([key,s])=>{
+                const grp=tableFiltered.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
+                if(!grp.length)return null;
+                return(
+                  <React.Fragment key={key}>
+                    <tr style={{background:T.bg}}><td colSpan="7" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
+                    {grp.map(a=>(
+                      <tr key={a.code} className="rr-table-row" style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1}}>
+                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
+                        <td onClick={()=>setViewingCode(a.code)} style={{color:T.accent,fontWeight:600,cursor:"pointer"}}>{a.name}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
+                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.notes||"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
+                        <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
+                        <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+              {!tableFiltered.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   return(
     <div style={isDesktop?{maxWidth:800}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
