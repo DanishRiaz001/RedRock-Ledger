@@ -6309,8 +6309,9 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport}){
-  const[type,setType]=useState("supplier"); // "customer" | "supplier"
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType}){
+  const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
+  useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[search,setSearch]=useState("");
   const[contactFilter,setContactFilter]=useState("");
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
@@ -6418,17 +6419,22 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
     });
   },[groups,type,entriesView,viewMonth,registerExcelExport]);
 
+  // "Close entries" acts on whichever single contact currently has a
+  // selection — matching only makes sense within one contact's open items.
+  const activeSelContactId=Object.keys(selected).find(cid=>(selected[cid]||[]).length>0);
+  const selectedAny=!!activeSelContactId&&(selected[activeSelContactId]||[]).length>=2;
+  const selAnySum=activeSelContactId?(groups.find(g=>g.contact.id===activeSelContactId)||{txns:[]}).txns.filter(t=>(selected[activeSelContactId]||[]).includes(t.id)).reduce((s,t)=>s+mv(t),0):0;
+  const doMatchAny=()=>{if(activeSelContactId)doMatch(activeSelContactId);};
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <h1 style={{fontSize:17,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
         <div style={{display:"flex",gap:6}}>
           <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
           <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
         </div>
-      </div>
-
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
           <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
           <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:66,textAlign:"center",whiteSpace:"nowrap"}}>{periodLabel}</span>
@@ -6440,7 +6446,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         </select>
         <div style={{position:"relative",flex:1,minWidth:100}}>
           <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
-          <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
+          <input placeholder="Invoice number, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0}}>
           {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
@@ -6450,96 +6456,85 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <span style={{fontSize:10,color:T.muted,whiteSpace:"nowrap",flexShrink:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} entries</span>
       </div>
 
-      {/* Fixed filters above, this part scrolls independently so long lists
-          never push the period/search/entries-view controls off screen. */}
-      <div style={{maxHeight:"calc(100vh - 320px)",overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12,padding:0,background:T.bg}}>
-      {groups.map(({contact,txns,total})=>{
-        const sel=selected[contact.id]||[];
-        const selSum=txns.filter(t=>sel.includes(t.id)).reduce((s,t)=>s+mv(t),0);
-        // Trend — outstanding balance now vs. 3 months ago, using the contact's
-        // full history (not just what's currently filtered/shown).
-        const threeMonthsAgo=(()=>{const d=new Date();d.setMonth(d.getMonth()-3);return d.toISOString().slice(0,10);})();
-        const balanceThen=transactions.filter(t=>t.contactId===contact.id&&(t.debitCode===code||t.creditCode===code)&&t.date<threeMonthsAgo&&!(t.matchedWith&&t.matchedAccount===code)).reduce((s,t)=>s+mv(t),0);
-        const trendDelta=total-balanceThen;
-        // Auto-collapse individual contacts once the list gets long, or when
-        // a specific contact filter is picked, show it expanded regardless.
-        const defaultCollapsed=groups.length>4&&!contactFilter;
-        const isCollapsed=collapsedIds.has(contact.id)?!defaultCollapsed:defaultCollapsed;
-        return(
-          <div key={contact.id} style={{marginBottom:20}}>
-            <div onClick={()=>toggleCollapse(contact.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,cursor:"pointer"}}>
-              <p style={{fontSize:13,fontWeight:700,color:T.text,margin:0,display:"flex",alignItems:"center",gap:8}}>
-                <i className={isCollapsed?"ti ti-chevron-right":"ti ti-chevron-down"} style={{fontSize:13,color:T.muted}}/>
-                {contact.name} — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} entries
-                <span style={{fontWeight:800,color:total>=0?T.text:T.red}}>{sign(total)}</span>
-                {Math.abs(trendDelta)>=1&&(
-                  <span title={`Outstanding balance vs. 3 months ago (${fmt(balanceThen)})`} style={{fontSize:10,fontWeight:700,color:trendDelta>0?T.red:T.green,background:trendDelta>0?T.redLight:T.greenBg,padding:"2px 7px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}>
-                    <i className={trendDelta>0?"ti ti-trending-up":"ti ti-trending-down"} style={{fontSize:11}}/>{fmt(Math.abs(trendDelta))} vs 3mo ago
-                  </span>
-                )}
-              </p>
-              <div style={{display:"flex",gap:8,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>printStatement(contact,txns,total)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Statement</button>
-                {sel.length>=2&&(
-                  <button onClick={()=>doMatch(contact.id)} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.accent:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>{Math.abs(selSum)<1?"Match ✓":`Net ${fmt(selSum)}`}</button>
-                )}
-              </div>
-            </div>
-            {!isCollapsed&&(()=>{
-              // Scorecard — lifetime value (all-time invoiced/purchased total,
-              // not just what's currently filtered) and average days overdue
-              // across this contact's currently-open items.
-              const allTimeTxns=transactions.filter(t=>t.contactId===contact.id&&(t.debitCode===code||t.creditCode===code));
-              const lifetimeValue=allTimeTxns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
-              const openWithDue=txns.filter(t=>t.dueDate&&!(t.matchedWith&&t.matchedAccount===code));
-              const avgOverdue=openWithDue.length?Math.round(openWithDue.reduce((s,t)=>s+Math.max(0,Math.floor((new Date()-new Date(t.dueDate))/86400000)),0)/openWithDue.length):null;
-              return(
-              <div style={{display:"flex",gap:16,marginBottom:8,fontSize:11,color:T.muted}}>
-                <span>Lifetime value: <b style={{color:T.text}}>{fmt(lifetimeValue)}</b></span>
-                {avgOverdue!=null&&<span>Avg. days overdue (open items): <b style={{color:avgOverdue>0?T.red:T.text}}>{avgOverdue}</b></span>}
-              </div>
-              );
-            })()}
-            {!isCollapsed&&(
-            <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-              <thead><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
-                <td style={{padding:"9px 14px"}}></td><td style={{padding:"9px 0"}}>Bilag</td><td>Invoice no.</td><td>Date</td><td>Due date</td><td>Description</td><td style={{textAlign:"right",padding:"9px 14px"}}>Amount</td>
-              </tr></thead>
-              <tbody>
-                {txns.map((t,i)=>{
-                  const isMatchedHere=!!t.matchedWith&&t.matchedAccount===code;
-                  const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
-                  return(
-                    <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                      <td style={{padding:"9px 14px"}}>
-                        {isMatchedHere?(
-                          <button onClick={()=>window.confirm("Unmatch this entry?")&&unmatchTxns(t.matchedWith)} title="Matched — click to unmatch" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
-                        ):(
-                          <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
-                        )}
-                      </td>
-                      <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{padding:"9px 0",color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
-                      <td style={{color:T.sub}}>{t.invoiceNo||"—"}</td>
-                      <td style={{color:T.text}}>{t.date}</td>
-                      <td style={{color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
-                      <td style={{color:T.text}}>{t.description}</td>
-                      <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{sign(mv(t))}</td>
-                    </tr>
-                  );
-                })}
-                <tr style={{borderTop:`2px solid ${T.border}`,color:T.text,fontWeight:800,background:"#fff"}}>
-                  <td colSpan="6" style={{padding:"9px 14px"}}>Total</td>
-                  <td style={{textAlign:"right",padding:"9px 14px"}}>{sign(total)}</td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
+      {/* Sticky section — title/actions + column headers attached with zero
+          gap (same technique as Trial Balance), so rows scroll underneath
+          without a visible seam between the two. */}
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:0}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"12px 12px 0 0",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text}}>{type==="customer"?"Customer":"Supplier"} specification (reskontro) — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} items</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {selectedAny&&(
+              <span style={{fontSize:11,color:T.sub}}>Net: <b style={{color:Math.abs(selAnySum)<1?T.green:T.red}}>{sign(selAnySum)}</b></span>
+            )}
+            {selectedAny&&(
+              <button onClick={doMatchAny} disabled={Math.abs(selAnySum)>=1} style={{background:Math.abs(selAnySum)<1?T.accent:T.border,color:Math.abs(selAnySum)<1?"#fff":T.muted,border:"none",borderRadius:7,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:Math.abs(selAnySum)<1?"pointer":"default",fontFamily:"inherit"}}>Match ✓</button>
             )}
           </div>
-        );
-      })}
-      {!groups.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</div>}
+        </div>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none"}}>
+          <tbody><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
+            <td style={{padding:"9px 14px",width:36}}></td>
+            <td style={{width:90}}>Bilag</td>
+            <td style={{width:100}}>Invoice no.</td>
+            <td style={{width:100}}>Date</td>
+            <td style={{width:100}}>Due date</td>
+            <td>Description</td>
+            <td style={{textAlign:"right",padding:"9px 14px",width:130}}>Amount</td>
+          </tr></tbody>
+        </table>
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",marginTop:-1}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <tbody>
+            {groups.map(({contact,txns,total})=>{
+              const sel=selected[contact.id]||[];
+              return(
+                <React.Fragment key={contact.id}>
+                  <tr>
+                    <td colSpan="7" style={{padding:"12px 14px 6px",background:T.bg}}>
+                      <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                        {contact.name}
+                      </div>
+                    </td>
+                  </tr>
+                  {txns.map(t=>{
+                    const isMatchedHere=!!t.matchedWith&&t.matchedAccount===code;
+                    const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
+                    return(
+                      <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                        <td style={{padding:"9px 14px",width:36}}>
+                          {isMatchedHere?(
+                            <button onClick={()=>window.confirm("Unmatch this entry?")&&unmatchTxns(t.matchedWith)} title="Matched — click to unmatch" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
+                          ):(
+                            <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
+                          )}
+                        </td>
+                        <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{width:90,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
+                        <td style={{width:100,color:T.sub}}>{t.invoiceNo||"—"}</td>
+                        <td style={{width:100,color:T.text}}>{t.date}</td>
+                        <td style={{width:100,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
+                        <td style={{color:T.text}}>{t.description}</td>
+                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:130,color:T.text}}>{sign(mv(t))}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{borderBottom:`1px solid ${T.border}`}}>
+                    <td colSpan="6" style={{padding:"7px 14px",fontWeight:700,color:T.sub,fontSize:12}}>Sum</td>
+                    <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,color:T.text,fontSize:12}}>{sign(total)}</td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+            {!groups.length&&<tr><td colSpan="7" style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</td></tr>}
+            {groups.length>0&&(
+              <tr style={{borderTop:`2px solid ${T.border}`}}>
+                <td colSpan="6" style={{padding:"12px 14px",fontWeight:800,color:T.text}}>Total — Closing balance</td>
+                <td style={{textAlign:"right",padding:"12px 14px",fontWeight:800,color:T.text}}>{sign(groups.reduce((s,g)=>s+g.total,0))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -12327,6 +12322,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return()=>window.removeEventListener("keydown",handler);
   },[]);
   const[expandedCat,setExpandedCat]=useState(null);
+  const[expandedSubCat,setExpandedSubCat]=useState(null);
+  const[reskontroDefaultType,setReskontroDefaultType]=useState("customer");
   // Auto-expand whichever sidebar category contains the current screen, so
   // arriving via a pin/shortcut/direct link doesn't leave the sidebar looking
   // like nothing is selected. Users can still manually collapse afterward.
@@ -12699,14 +12696,17 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"QuoteOverview",label:"Quotes"},
             ]},
             {id:"accounting",label:"Accounting",icon:"ti-book",items:[
-              {tab:"GeneralLedger",label:"General ledger (Hovedbok)"},
-              {tab:"TrialBalance",label:"Trial balance (Saldobalanse)"},
-              {tab:"Resultat",label:"Income statement (Resultatrapport)"},
-              {tab:"BalanceSheet",label:"Balance sheet (Balanserapport)"},
-              {tab:"Reskontro",label:"Reskontro",featureKey:"reskontro"},
-              {tab:"Budget",label:"Budget (Budsjetter)",featureKey:"budget"},
-              {tab:"VATReport",label:"VAT report (Mva-melding)"},
-              {tab:"Accounts",label:"Chart of accounts (Kontoplan)"},
+              {tab:"GeneralLedger",label:"General ledger"},
+              {tab:"TrialBalance",label:"Trial balance"},
+              {tab:"Resultat",label:"Income statement"},
+              {tab:"BalanceSheet",label:"Balance sheet"},
+              {label:"Reskontro",featureKey:"reskontro",subItems:[
+                {tab:"Reskontro",label:"Customers",param:"customer"},
+                {tab:"Reskontro",label:"Suppliers",param:"supplier"},
+              ]},
+              {tab:"Budget",label:"Budget",featureKey:"budget"},
+              {tab:"VATReport",label:"VAT report"},
+              {tab:"Accounts",label:"Chart of accounts"},
               {tab:"Reports",label:"Analytics",featureKey:"reports"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
@@ -12725,7 +12725,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             const visibleItems=cat.items.filter(it=>!it.featureKey||feat[it.featureKey]);
             if(!visibleItems.length)return null;
             const isExpanded=expandedCat===cat.id;
-            const containsActive=visibleItems.some(it=>it.tab===tab);
+            const containsActive=visibleItems.some(it=>it.tab===tab||(it.subItems&&it.subItems.some(si=>si.tab===tab)));
             return(
               <div key={cat.id}>
                 <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
@@ -12738,6 +12738,30 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 {isExpanded&&(
                   <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
                     {visibleItems.map(it=>{
+                      if(it.subItems){
+                        const subActive=it.subItems.some(si=>si.tab===tab);
+                        const subOpen=expandedSubCat===it.label;
+                        return(
+                          <div key={it.label}>
+                            <div onClick={()=>setExpandedSubCat(e=>e===it.label?null:it.label)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontSize:11.5,color:subActive?T.accent:T.sub,fontWeight:subActive?700:400,flex:1}}>{it.label}</span>
+                              <i className="ti ti-chevron-down" style={{fontSize:10,color:T.muted,transform:subOpen?"rotate(180deg)":"none"}}/>
+                            </div>
+                            {subOpen&&(
+                              <div style={{marginLeft:14,paddingLeft:8,borderLeft:`1px solid ${T.border}`}}>
+                                {it.subItems.map(si=>{
+                                  const active=tab===si.tab&&reskontroDefaultType===si.param;
+                                  return(
+                                    <div key={si.label} onClick={()=>{if(si.param)setReskontroDefaultType(si.param);setTab(si.tab);}} className="rr-sidebar-item" style={{padding:"5px 10px",cursor:"pointer",borderRadius:7}}>
+                                      <span style={{fontSize:11,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{si.label}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
                       const active=tab===it.tab;
                       const isPinned=pinnedTabs.some(p=>p.tab===it.tab);
                       return(
@@ -12938,7 +12962,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
