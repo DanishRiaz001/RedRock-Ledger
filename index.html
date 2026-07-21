@@ -5092,69 +5092,60 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
   const[to,setTo]=useState(initialTo);
   const todayStr=new Date().toISOString().slice(0,10);
   const nowYear=new Date().getFullYear();
+  const[gridYear,setGridYear]=useState(parseInt(initialFrom.slice(0,4))||nowYear);
 
-  // Explicit Year + Month selectors — always visible, always usable, so
-  // there's never a state (like after "Full year") where the only way back
-  // to a specific month is manually retyping exact dates.
   const fromYear=parseInt(from.slice(0,4))||nowYear;
-  const fromMonth=parseInt(from.slice(5,7))||1; // 1-12, or 0 means "whole year" below
+  const fromMonth=parseInt(from.slice(5,7))||1;
   const isWholeYear=from===`${fromYear}-01-01`&&to===`${fromYear}-12-31`;
-  const yearOptions=[];
-  for(let y=nowYear-6;y<=nowYear+1;y++)yearOptions.push(y);
 
-  const applyYear=(y)=>{
-    if(isWholeYear){setFrom(`${y}-01-01`);setTo(`${y}-12-31`);}
-    else{
-      const m=fromMonth;
-      setFrom(`${y}-${String(m).padStart(2,"0")}-01`);
-      setTo(new Date(y,m,0).toISOString().slice(0,10));
-    }
+  // Clicking any month in the grid selects that whole month and applies +
+  // closes immediately — no separate "confirm" step needed for the common
+  // case. Clicking the backdrop (blank space) also applies whatever's
+  // currently selected, rather than silently discarding it.
+  const pickMonth=(y,m)=>{
+    const nf=`${y}-${String(m).padStart(2,"0")}-01`;
+    const nt=new Date(y,m,0).toISOString().slice(0,10);
+    onApply(nf,nt);
+    onClose();
   };
-  const applyMonth=(m)=>{
-    if(m===0){setFrom(`${fromYear}-01-01`);setTo(`${fromYear}-12-31`);return;}
-    setFrom(`${fromYear}-${String(m).padStart(2,"0")}-01`);
-    setTo(new Date(fromYear,m,0).toISOString().slice(0,10));
-  };
+  const applyAndClose=()=>{onApply(from,to);onClose();};
 
   const presets=[
-    {label:"Today",apply:()=>{setFrom(todayStr);setTo(todayStr);}},
+    {label:"Today",apply:()=>{onApply(todayStr,todayStr);onClose();}},
     {label:"This month",apply:()=>{
       const d=new Date();const y=d.getFullYear(),m=d.getMonth();
-      setFrom(`${y}-${String(m+1).padStart(2,"0")}-01`);
-      setTo(new Date(y,m+1,0).toISOString().slice(0,10));
+      onApply(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));
+      onClose();
     }},
     {label:"So far this year",apply:()=>{
       const d=new Date();
-      setFrom(`${d.getFullYear()}-01-01`);
-      setTo(todayStr);
+      onApply(`${d.getFullYear()}-01-01`,todayStr);
+      onClose();
     }},
-    {label:"Full year",apply:()=>{
-      const y=parseInt(from.slice(0,4))||nowYear;
-      setFrom(`${y}-01-01`);setTo(`${y}-12-31`);
-    }},
+    {label:"Full year",apply:()=>{onApply(`${gridYear}-01-01`,`${gridYear}-12-31`);onClose();}},
   ];
   const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:750,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:750,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={applyAndClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:16}}>Choose period</div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Year</div>
-            <select value={fromYear} onChange={e=>applyYear(parseInt(e.target.value))} style={inp}>
-              {yearOptions.map(y=><option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Month</div>
-            <select value={isWholeYear?0:fromMonth} onChange={e=>applyMonth(parseInt(e.target.value))} style={inp}>
-              <option value={0}>Whole year</option>
-              {MONTH_NAMES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
-            </select>
-          </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:12}}>
+          <button onClick={()=>setGridYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:14}}>‹</button>
+          <span style={{fontSize:14,fontWeight:800,color:T.text,minWidth:60,textAlign:"center"}}>{gridYear}</span>
+          <button onClick={()=>setGridYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:14}}>›</button>
         </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
+          {MONTH_NAMES.map((mName,i)=>{
+            const m=i+1;
+            const isSelected=!isWholeYear&&fromYear===gridYear&&fromMonth===m;
+            return(
+              <button key={mName} onClick={()=>pickMonth(gridYear,m)} style={{background:isSelected?T.accent:T.bg,color:isSelected?"#fff":T.text,border:"none",borderRadius:8,padding:"10px 4px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{mName}</button>
+            );
+          })}
+        </div>
+        <button onClick={()=>{onApply(`${gridYear}-01-01`,`${gridYear}-12-31`);onClose();}} style={{width:"100%",background:isWholeYear&&fromYear===gridYear?T.accent:T.bg,color:isWholeYear&&fromYear===gridYear?"#fff":T.text,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:16}}>Whole year {gridYear}</button>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
           <div>
@@ -5172,7 +5163,7 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
           ))}
         </div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{onApply(from,to);onClose();}} disabled={to<from} style={{flex:1,background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
+          <button onClick={applyAndClose} disabled={to<from} style={{flex:1,background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
           <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
         </div>
       </div>
@@ -6051,6 +6042,158 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 // Upload a CSV/Excel statement (Date, Description, Amount columns) against a
 // bank account; each unposted line can be "Posted" by choosing which other
 // account it offsets, which creates a real transaction and marks it matched.
+// Bank Dashboard — booked balances per account, outstanding/overdue payment
+// summary (from unpaid invoices and bills), and a transaction history view
+// with a money-in/money-out breakdown. All computed from real data already
+// in the app, not a separate feed.
+function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedger}){
+  const[dayRange,setDayRange]=useState(90);
+  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
+  const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+
+  const outstandingPayments=useMemo(()=>invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&i.status!=="credit_note").reduce((s,i)=>s+i.total,0),[invoices]);
+  const today=new Date().toISOString().slice(0,10);
+  const overduePayments=useMemo(()=>invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&i.status!=="credit_note"&&i.dueDate&&i.dueDate<today).reduce((s,i)=>s+i.total,0),[invoices]);
+
+  const cutoff=useMemo(()=>{const d=new Date();d.setDate(d.getDate()-dayRange);return d.toISOString().slice(0,10);},[dayRange]);
+  const recentTxns=useMemo(()=>transactions.filter(t=>t.date>=cutoff&&bankAccounts.some(a=>a.code===t.debitCode||a.code===t.creditCode)).sort((a,b)=>b.date.localeCompare(a.date)),[transactions,cutoff,bankAccounts]);
+
+  const moneyIn=useMemo(()=>{
+    const m={};
+    recentTxns.forEach(t=>{
+      const isIn=bankAccounts.some(a=>a.code===t.debitCode);
+      if(!isIn)return;
+      const label=t.description||"Other";
+      m[label]=(m[label]||0)+t.amount;
+    });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  },[recentTxns,bankAccounts]);
+  const moneyOut=useMemo(()=>{
+    const m={};
+    recentTxns.forEach(t=>{
+      const isOut=bankAccounts.some(a=>a.code===t.creditCode);
+      if(!isOut)return;
+      const label=t.description||"Other";
+      m[label]=(m[label]||0)+t.amount;
+    });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  },[recentTxns,bankAccounts]);
+  const totalIn=moneyIn.reduce((s,[,v])=>s+v,0);
+  const totalOut=moneyOut.reduce((s,[,v])=>s+v,0);
+  const grandTotal=totalIn+totalOut||1;
+  const inPct=Math.round((totalIn/grandTotal)*100);
+
+  const topN=(list,n)=>{
+    const top=list.slice(0,n);
+    const restSum=list.slice(n).reduce((s,[,v])=>s+v,0);
+    if(list.length>n)top.push(["Other",restSum]);
+    return top;
+  };
+  const topIn=topN(moneyIn,2);
+  const topOut=topN(moneyOut,2);
+  const maxIn=Math.max(...topIn.map(([,v])=>v),1);
+  const maxOut=Math.max(...topOut.map(([,v])=>v),1);
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Dashboard</h1>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            {bankAccounts.map(a=>(
+              <div key={a.code} onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",cursor:"pointer",flex:"1 1 160px"}}>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
+                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))}</div>
+              </div>
+            ))}
+            {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No bank accounts set up yet.</div>}
+          </div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Summary</div>
+          <div style={{display:"flex",gap:10}}>
+            <div style={{background:T.bg,borderRadius:10,padding:"12px 16px",flex:1}}>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4}}>Outstanding payments</div>
+              <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(outstandingPayments)}</div>
+            </div>
+            <div style={{background:T.redLight,borderRadius:10,padding:"12px 16px",flex:1}}>
+              <div style={{fontSize:11,color:T.red,marginBottom:4}}>Overdue payments</div>
+              <div style={{fontSize:16,fontWeight:800,color:T.red}}>{fmt(overduePayments)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text}}>Transaction history</div>
+          <div style={{display:"flex",gap:6}}>
+            {[90,30,14].map(d=>(
+              <button key={d} onClick={()=>setDayRange(d)} style={{background:dayRange===d?T.accentLight:"none",color:dayRange===d?T.accent:T.sub,border:`1px solid ${dayRange===d?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{d} days</button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1.2fr 1.2fr",gap:16,marginBottom:20}}>
+          <div style={{background:T.bg,borderRadius:10,padding:16,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:10,alignSelf:"flex-start"}}>Transaction overview</div>
+            <svg width="120" height="120" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="45" fill="none" stroke={T.redLight} strokeWidth="16"/>
+              <circle cx="60" cy="60" r="45" fill="none" stroke={T.waterTeal} strokeWidth="16" strokeDasharray={`${inPct*2.83} 283`} transform="rotate(-90 60 60)"/>
+            </svg>
+            <div style={{display:"flex",gap:14,marginTop:8,fontSize:10}}>
+              <span style={{color:T.waterTeal,fontWeight:700}}>In {fmt(totalIn)}</span>
+              <span style={{color:T.red,fontWeight:700}}>Out {fmt(totalOut)}</span>
+            </div>
+          </div>
+          <div style={{background:T.bg,borderRadius:10,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:12,display:"flex",alignItems:"center",gap:5}}><i className="ti ti-arrow-down" style={{color:T.waterTeal}}/>Money in</div>
+            {topIn.map(([label,amt])=>(
+              <div key={label} style={{marginBottom:10}}>
+                <div style={{fontSize:11,color:T.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmt(amt)} — {label}</div>
+                <div style={{background:"#E5E7EB",borderRadius:5,height:6}}><div style={{width:`${(amt/maxIn)*100}%`,height:"100%",background:T.waterTeal,borderRadius:5}}/></div>
+              </div>
+            ))}
+            {!topIn.length&&<div style={{fontSize:11,color:T.muted}}>No inflows in this period.</div>}
+          </div>
+          <div style={{background:T.bg,borderRadius:10,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:12,display:"flex",alignItems:"center",gap:5}}><i className="ti ti-arrow-up" style={{color:T.red}}/>Money out</div>
+            {topOut.map(([label,amt])=>(
+              <div key={label} style={{marginBottom:10}}>
+                <div style={{fontSize:11,color:T.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmt(amt)} — {label}</div>
+                <div style={{background:"#E5E7EB",borderRadius:5,height:6}}><div style={{width:`${(amt/maxOut)*100}%`,height:"100%",background:T.red,borderRadius:5}}/></div>
+              </div>
+            ))}
+            {!topOut.length&&<div style={{fontSize:11,color:T.muted}}>No outflows in this period.</div>}
+          </div>
+        </div>
+
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+            <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"9px 14px",fontWeight:700}}>Description</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Bank account</td><td style={{textAlign:"right",fontWeight:700,padding:"9px 14px"}}>Amount</td></tr></thead>
+            <tbody>
+              {recentTxns.slice(0,25).map(t=>{
+                const isIn=bankAccounts.some(a=>a.code===t.debitCode);
+                const bankAcct=bankAccounts.find(a=>a.code===t.debitCode||a.code===t.creditCode);
+                return(
+                  <tr key={t.id} className="rr-table-row" style={{borderBottom:`1px solid ${T.border}`}}>
+                    <td style={{padding:"9px 14px",color:T.text,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                    <td style={{color:T.sub}}>{t.date}</td>
+                    <td style={{color:T.sub,fontSize:12}}>{bankAcct?`${bankAcct.code} ${bankAcct.name}`:"—"}</td>
+                    <td style={{textAlign:"right",padding:"9px 14px",fontWeight:700,color:isIn?T.waterTeal:T.red}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
+                  </tr>
+                );
+              })}
+              {!recentTxns.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No bank activity in this period.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,toggleReconciled}){
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
@@ -12330,7 +12473,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const TAB_TO_CATEGORY={
     NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
-    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",Cheques:"accounting",
+    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",
+    Bank:"bank",BankDashboard:"bank",Cheques:"bank",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",
     CompanyInfo:"company",Employees:"company",Payroll:"company",Settings:"company",
     POS:"pos",POSProducts:"pos",
@@ -12665,12 +12809,36 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
-          {feat.bank&&(
-            <div onClick={()=>setTab("Bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Bank"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Bank"?T.accentLight:"transparent"}}>
-              <div style={{width:24,height:24,borderRadius:8,background:tab==="Bank"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:tab==="Bank"?"#fff":T.sub}}/></div>
-              <span style={{fontSize:12,fontWeight:tab==="Bank"?700:400,color:tab==="Bank"?T.accent:T.sub}}>Bank</span>
-            </div>
-          )}
+          {feat.bank&&(()=>{
+            const bankItems=[
+              {tab:"BankDashboard",label:"Dashboard"},
+              {tab:"Bank",label:"Bank reconciliation"},
+              {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
+            ].filter(it=>!it.featureKey||feat[it.featureKey]);
+            const bankExpanded=expandedCat==="bank";
+            const bankActive=bankItems.some(it=>it.tab===tab);
+            return(
+              <div>
+                <div onClick={()=>setExpandedCat(e=>e==="bank"?null:"bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:bankActive&&!bankExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:bankActive&&!bankExpanded?T.accentLight:"transparent"}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:bankActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:bankActive?"#fff":T.sub}}/></div>
+                  <span style={{fontSize:12,fontWeight:bankActive?700:400,color:bankActive?T.accent:T.sub,flex:1}}>Bank</span>
+                  <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:bankExpanded?"rotate(180deg)":"none"}}/>
+                </div>
+                {bankExpanded&&(
+                  <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
+                    {bankItems.map(it=>{
+                      const active=tab===it.tab;
+                      return(
+                        <div key={it.tab} onClick={()=>setTab(it.tab)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div onClick={()=>setTab("Contacts")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Contacts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Contacts"?T.accentLight:"transparent"}}>
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
@@ -12709,7 +12877,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Accounts",label:"Chart of accounts"},
               {tab:"Reports",label:"Analytics",featureKey:"reports"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
-              {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
@@ -12964,6 +13131,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           feat.reskontro
             ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
+        )}
+
+        {tab==="BankDashboard"&&(
+          feat.bank
+            ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
+            :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {tab==="Bank"&&(
