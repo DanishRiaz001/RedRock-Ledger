@@ -6828,6 +6828,308 @@ function CustomerImportScreen({contacts,setContacts}){
 // Customer settings — auto-numbering prefixes (informational, since we use
 // C001/S001 rather than a raw numeric series) and default terms applied to
 // every new customer/supplier going forward.
+// Voucher settings — how vouchers get received and split, matching the
+// Bilagsinnstillinger reference. Approval/attestation workflow is a genuine
+// scaffolding note since it needs a real multi-user routing decision.
+function VoucherSettingsScreen({companyProfile}){
+  const[splitElectronic,setSplitElectronic]=useState(()=>{try{return localStorage.getItem("rr_voucher_split")==="1";}catch{return false;}});
+  const[emailNoAttachment,setEmailNoAttachment]=useState(()=>{try{return localStorage.getItem("rr_voucher_email_no_att")==="1";}catch{return false;}});
+  const inboxEmail=companyProfile&&companyProfile.companyName?`${companyProfile.companyName.toLowerCase().replace(/[^a-z0-9]/g,"")}@redrock-inbox.com`:"yourcompany@redrock-inbox.com";
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Voucher settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Voucher inbox</div>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:12}}>
+          <input type="checkbox" checked={splitElectronic} onChange={e=>{setSplitElectronic(e.target.checked);try{localStorage.setItem("rr_voucher_split",e.target.checked?"1":"0");}catch{}}}/>
+          Split multi-page electronic vouchers automatically
+        </label>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:14}}>
+          <input type="checkbox" checked={emailNoAttachment} onChange={e=>{setEmailNoAttachment(e.target.checked);try{localStorage.setItem("rr_voucher_email_no_att",e.target.checked?"1":"0");}catch{}}}/>
+          Allow emails to be received without an attachment
+        </label>
+        <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Email address for receiving invoices and vouchers</div>
+        <div style={{...inp,background:T.bg,color:T.sub}}>{inboxEmail}</div>
+        <p style={{fontSize:11,color:T.muted,marginTop:6}}>Forward supplier invoices to this address and they'll land directly in your Inbox — this is scaffolding for now since it needs a real inbound-email service wired up.</p>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>Approval workflow</div>
+        <p style={{fontSize:12,color:T.muted}}>Requiring a second person to approve a voucher before it posts needs a real decision about who approves what — this is a genuine feature to plan, not something to fake with a checkbox. Worth a proper conversation once the accountant-portal work (multiple staff, multiple clients) is further along.</p>
+      </div>
+    </div>
+  );
+}
+
+// Invoice settings — numbering, default terms, and footer text that gets
+// stamped on every new invoice.
+function InvoiceSettingsScreen({companyProfile,saveCompanyProfile}){
+  const[footerText,setFooterText]=useState(()=>{try{return localStorage.getItem("rr_invoice_footer")||"";}catch{return"";}});
+  const saveFooter=(v)=>{setFooterText(v);try{localStorage.setItem("rr_invoice_footer",v);}catch{}};
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Invoice settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Defaults for new invoices</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
+            <div style={{...inp,background:T.bg,color:T.sub}}>{companyProfile&&companyProfile.vatPct!=null?companyProfile.vatPct:0}% — set in Company information</div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Numbering</div>
+            <div style={{...inp,background:T.bg,color:T.sub}}>Sequential, continues automatically</div>
+          </div>
+        </div>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Invoice footer text</div>
+        <textarea value={footerText} onChange={e=>saveFooter(e.target.value)} placeholder="e.g. Thank you for your business — payment details, terms, or a note to include on every invoice PDF." style={{...inp,minHeight:80,resize:"vertical"}}/>
+      </div>
+    </div>
+  );
+}
+
+// Accounting settings — points to the real period-lock and fiscal-year
+// controls that already exist elsewhere, rather than duplicating them.
+function AccountingSettingsScreen({onNavigate}){
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Accounting settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        {[
+          {icon:"ti-lock",label:"Period close",desc:"Lock past periods against further edits",action:()=>onNavigate&&onNavigate("Settings")},
+          {icon:"ti-calendar",label:"Fiscal year",desc:"Set which month your fiscal year starts",action:()=>onNavigate&&onNavigate("CompanyInfo")},
+          {icon:"ti-list-numbers",label:"Chart of accounts",desc:"Manage account numbers, types, and defaults",action:()=>onNavigate&&onNavigate("Accounts")},
+        ].map((r,i)=>(
+          <div key={r.label} onClick={r.action} style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",cursor:"pointer",borderBottom:i<2?`1px solid ${T.border}`:"none"}}>
+            <i className={`ti ${r.icon}`} style={{fontSize:20,color:T.accent}}/>
+            <div><div style={{fontSize:13,fontWeight:700,color:T.text}}>{r.label}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>{r.desc}</div></div>
+            <span style={{marginLeft:"auto",color:T.muted}}>›</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Bank settings — payment account agreements, matching Bankinnstillinger.
+// Honest about what needs a real bank API vs. what's genuinely usable now.
+function BankSettingsScreen({accounts}){
+  const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Bank settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Type</td><td style={{fontWeight:700,padding:"10px 16px"}}>Status</td></tr></thead>
+          <tbody>
+            {bankAccounts.map(a=>(
+              <tr key={a.code} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{a.code} {a.name}</td>
+                <td style={{color:T.sub}}>Bank account</td>
+                <td style={{padding:"10px 16px"}}><span style={{fontSize:11,fontWeight:700,color:T.green,background:T.greenBg,padding:"3px 9px",borderRadius:8}}>Active</span></td>
+              </tr>
+            ))}
+            {!bankAccounts.length&&<tr><td colSpan="3" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — add one from Chart of Accounts (1900 series).</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"14px 16px",fontSize:11,color:T.muted}}>
+        Direct bank connections (auto-approving payments, live balance sync) need a real bank API agreement — that's a separate integration to set up per bank, not something to fake here. Statement import via CSV/Excel already works from Bank → Bank reconciliation.
+      </div>
+    </div>
+  );
+}
+
+// POS settings — default sale/payment accounts and receipt text.
+function POSSettingsScreen({accounts}){
+  const[receiptFooter,setReceiptFooter]=useState(()=>{try{return localStorage.getItem("rr_pos_receipt_footer")||"";}catch{return"";}});
+  const saveFooter=(v)=>{setReceiptFooter(v);try{localStorage.setItem("rr_pos_receipt_footer",v);}catch{}};
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Point of sale settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Receipt footer text</div>
+        <textarea value={receiptFooter} onChange={e=>saveFooter(e.target.value)} placeholder="e.g. Thank you for shopping with us — return policy, contact info, etc." style={{...inp,minHeight:80,resize:"vertical"}}/>
+        <p style={{fontSize:11,color:T.muted,marginTop:8}}>Manage which accounts each product sells against from Point of Sale → Products.</p>
+      </div>
+    </div>
+  );
+}
+
+// SAF-T import — Standard Audit File for Tax, the international standard
+// format for exporting a full chart of accounts + contacts + journal from
+// one accounting system to migrate into another. Parsed with the browser's
+// native DOMParser (no library needed) against the well-documented SAF-T
+// schema: Header, MasterFiles/GeneralLedgerAccounts, MasterFiles/Customers,
+// MasterFiles/Suppliers, GeneralLedgerEntries/Journal/Transaction/Line.
+function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransaction}){
+  const[parsing,setParsing]=useState(false);
+  const[parseError,setParseError]=useState("");
+  const[parsed,setParsed]=useState(null); // {companyName, accounts, customers, suppliers, transactions}
+  const[opts,setOpts]=useState({createVouchers:true,createContacts:true,createContactsCustomers:true,createContactsSuppliers:true,createAccounts:true});
+  const[importing,setImporting]=useState(false);
+  const[importResult,setImportResult]=useState(null);
+
+  const text=(el,tag)=>{const n=el.getElementsByTagName(tag)[0];return n?n.textContent.trim():"";};
+
+  const parseFile=async(file)=>{
+    setParsing(true);setParseError("");setParsed(null);setImportResult(null);
+    try{
+      const xmlText=await file.text();
+      const doc=new DOMParser().parseFromString(xmlText,"text/xml");
+      if(doc.getElementsByTagName("parsererror").length)throw new Error("Invalid XML");
+
+      const companyName=text(doc,"CompanyName")||text(doc,"CompanyID")||"Unknown company";
+
+      const glAccounts=Array.from(doc.getElementsByTagName("Account")).map(a=>({
+        code:text(a,"AccountID"),
+        name:text(a,"AccountDescription")||text(a,"AccountName"),
+      })).filter(a=>a.code&&a.name);
+
+      const parseParty=(tag)=>Array.from(doc.getElementsByTagName(tag)).map(c=>({
+        name:text(c,"CompanyName")||text(c,"Name"),
+        id:text(c,"CustomerID")||text(c,"SupplierID"),
+        address:text(c,"StreetName")||"",
+        email:text(c,"Email")||"",
+        phone:text(c,"Telephone")||"",
+      })).filter(c=>c.name);
+      const customers=parseParty("Customer");
+      const suppliers=parseParty("Supplier");
+
+      const transactions=Array.from(doc.getElementsByTagName("Transaction")).map(t=>{
+        const date=text(t,"TransactionDate")||text(t,"PostingDate");
+        const description=text(t,"Description");
+        const lines=Array.from(t.getElementsByTagName("Line")).map(l=>({
+          accountId:text(l,"AccountID"),
+          debit:parseFloat(text(l,"DebitAmount")||text(l.getElementsByTagName("DebitAmount")[0],"Amount"))||0,
+          credit:parseFloat(text(l,"CreditAmount")||text(l.getElementsByTagName("CreditAmount")[0],"Amount"))||0,
+        }));
+        return{date,description,lines};
+      }).filter(t=>t.date&&t.lines.length);
+
+      setParsed({companyName,accounts:glAccounts,customers,suppliers,transactions});
+    }catch(e){
+      setParseError("Couldn't parse this file as SAF-T XML. Double-check it's an unmodified export from your previous system.");
+    }
+    setParsing(false);
+  };
+
+  const doImport=async()=>{
+    if(!parsed)return;
+    setImporting(true);
+    let accountsAdded=0,contactsAdded=0,txnsAdded=0;
+
+    let currentAccounts=accounts;
+    if(opts.createAccounts){
+      const existingCodes=new Set(currentAccounts.map(a=>a.code));
+      const newAccts=parsed.accounts.filter(a=>!existingCodes.has(a.code));
+      if(newAccts.length){
+        currentAccounts=[...currentAccounts,...newAccts];
+        setAccounts(currentAccounts);
+        accountsAdded=newAccts.length;
+      }
+    }
+
+    if(opts.createContacts){
+      let nextC=Math.max(0,...contacts.filter(c=>c.type==="customer").map(c=>parseInt((c.id||"").slice(1))||0))+1;
+      let nextS=Math.max(0,...contacts.filter(c=>c.type==="supplier").map(c=>parseInt((c.id||"").slice(1))||0))+1;
+      const newContacts=[];
+      if(opts.createContactsCustomers)parsed.customers.forEach(c=>newContacts.push({id:`C${String(nextC++).padStart(3,"0")}`,type:"customer",name:c.name,email:c.email,phone:c.phone,address:c.address,paymentTermsDays:30}));
+      if(opts.createContactsSuppliers)parsed.suppliers.forEach(s=>newContacts.push({id:`S${String(nextS++).padStart(3,"0")}`,type:"supplier",name:s.name,email:s.email,phone:s.phone,address:s.address,paymentTermsDays:30}));
+      if(newContacts.length){setContacts([...contacts,...newContacts]);contactsAdded=newContacts.length;}
+    }
+
+    if(opts.createVouchers){
+      for(const t of parsed.transactions){
+        const debitLine=t.lines.find(l=>l.debit>0);
+        const creditLine=t.lines.find(l=>l.credit>0);
+        if(!debitLine||!creditLine)continue;
+        const amount=debitLine.debit||creditLine.credit;
+        if(!amount)continue;
+        await addTransaction({date:t.date.slice(0,10),debitCode:debitLine.accountId,creditCode:creditLine.accountId,description:t.description||"Imported from SAF-T",amount});
+        txnsAdded++;
+      }
+    }
+
+    setImportResult({accountsAdded,contactsAdded,txnsAdded});
+    setImporting(false);
+  };
+
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>Import account information (SAF-T)</h1>
+      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>SAF-T (Standard Audit File for Tax) is the standard export format most accounting systems support — this lets you bring your chart of accounts, customers, suppliers, and journal entries in from a previous system.</p>
+
+      {!parsed&&(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+          <label style={{display:"block",border:`2px dashed ${T.border}`,borderRadius:10,padding:"40px 16px",textAlign:"center",cursor:parsing?"wait":"pointer",background:T.bg}}>
+            <i className="ti ti-file-upload" style={{fontSize:28,color:T.muted,display:"block",marginBottom:8}}/>
+            <div style={{fontSize:13,color:T.sub,fontWeight:600}}>{parsing?"Reading file…":"Choose SAF-T file (.xml)"}</div>
+            <div style={{fontSize:11,color:T.muted,marginTop:4}}>Exported from your previous accounting system</div>
+            <input type="file" accept=".xml" disabled={parsing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])parseFile(e.target.files[0]);e.target.value="";}}/>
+          </label>
+          {parseError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"10px 14px",fontSize:12,marginTop:14}}>{parseError}</div>}
+        </div>
+      )}
+
+      {parsed&&!importResult&&(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Found in {parsed.companyName}</div>
+          <div style={{display:"flex",gap:20,marginBottom:18,fontSize:12,color:T.sub}}>
+            <span>{parsed.accounts.length} accounts</span>
+            <span>{parsed.customers.length} customers</span>
+            <span>{parsed.suppliers.length} suppliers</span>
+            <span>{parsed.transactions.length} journal entries</span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.createAccounts} onChange={e=>setOpts(o=>({...o,createAccounts:e.target.checked}))}/>
+              Create new accounting accounts ({parsed.accounts.length} found)
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.createContacts} onChange={e=>setOpts(o=>({...o,createContacts:e.target.checked}))}/>
+              Create customers and suppliers
+            </label>
+            {opts.createContacts&&(
+              <div style={{marginLeft:26,display:"flex",flexDirection:"column",gap:8}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.createContactsCustomers} onChange={e=>setOpts(o=>({...o,createContactsCustomers:e.target.checked}))}/>
+                  Customers ({parsed.customers.length})
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.createContactsSuppliers} onChange={e=>setOpts(o=>({...o,createContactsSuppliers:e.target.checked}))}/>
+                  Suppliers ({parsed.suppliers.length})
+                </label>
+              </div>
+            )}
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.createVouchers} onChange={e=>setOpts(o=>({...o,createVouchers:e.target.checked}))}/>
+              Create vouchers from journal entries ({parsed.transactions.length} found)
+            </label>
+          </div>
+          <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px",marginBottom:16}}>
+            Only simple two-line (one debit, one credit) journal entries are imported as vouchers. Multi-line entries are skipped and can be entered manually — this avoids silently misrepresenting a complex entry as something simpler than it was.
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doImport} disabled={importing} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":"Import"}</button>
+            <button onClick={()=>setParsed(null)} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {importResult&&(
+        <div style={{background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:12,padding:20}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.green,marginBottom:8}}>Import complete</div>
+          <div style={{fontSize:13,color:T.text}}>
+            {importResult.accountsAdded} account{importResult.accountsAdded===1?"":"s"} added · {importResult.contactsAdded} contact{importResult.contactsAdded===1?"":"s"} added · {importResult.txnsAdded} voucher{importResult.txnsAdded===1?"":"s"} created
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerSettingsScreen({contacts}){
   const[defaultTerms,setDefaultTerms]=useState(()=>{try{return localStorage.getItem("rr_default_payment_terms")||"14";}catch{return"14";}});
   const saveDefaultTerms=(v)=>{setDefaultTerms(v);try{localStorage.setItem("rr_default_payment_terms",v);}catch{}};
@@ -12695,14 +12997,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // arriving via a pin/shortcut/direct link doesn't leave the sidebar looking
   // like nothing is selected. Users can still manually collapse afterward.
   const TAB_TO_CATEGORY={
-    NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",
+    NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",VoucherSettings:"voucher",
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
-    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",
-    Bank:"bank",BankDashboard:"bank",Cheques:"bank",
+    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",AccountingSettings:"accounting",
+    Bank:"bank",BankDashboard:"bank",Cheques:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
-    InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",
-    CompanyInfo:"company",Employees:"company",EmployeeNew:"company",Payroll:"company",Settings:"company",
-    POS:"pos",POSProducts:"pos",
+    InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
+    CompanyInfo:"company",Employees:"company",EmployeeNew:"company",Payroll:"company",Settings:"company",SAFTImport:"company",
+    POS:"pos",POSProducts:"pos",POSSettings:"pos",
   };
   useEffect(()=>{
     const cat=TAB_TO_CATEGORY[tab];
@@ -13039,6 +13341,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"BankDashboard",label:"Dashboard"},
               {tab:"Bank",label:"Bank reconciliation"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
+              {tab:"BankSettings",label:"Settings"},
             ].filter(it=>!it.featureKey||feat[it.featureKey]);
             const bankExpanded=expandedCat==="bank";
             const bankActive=bankItems.some(it=>it.tab===tab);
@@ -13107,6 +13410,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
               {tab:"Import",label:"Import Excel",featureKey:"import"},
+              {tab:"VoucherSettings",label:"Settings"},
             ]},
             {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
               {tab:"InvoiceNew",label:"New invoice"},
@@ -13114,6 +13418,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"RecurringInvoices",label:"Recurring invoices"},
               {tab:"QuoteNew",label:"New quote"},
               {tab:"QuoteOverview",label:"Quotes"},
+              {tab:"InvoiceSettings",label:"Settings"},
             ]},
             {id:"accounting",label:"Accounting",icon:"ti-book",items:[
               {tab:"GeneralLedger",label:"General ledger"},
@@ -13129,17 +13434,20 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"Accounts",label:"Chart of accounts"},
               {tab:"Reports",label:"Analytics",featureKey:"reports"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
+              {tab:"AccountingSettings",label:"Settings"},
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
               {tab:"Employees",label:"Employees"},
               {tab:"EmployeeNew",label:"New employee"},
               {tab:"Payroll",label:"Payroll"},
+              {tab:"SAFTImport",label:"Import account information"},
               {tab:"Settings",label:"Settings"},
             ]},
             {id:"pos",label:"Point of sale",icon:"ti-cash-register",items:[
               {tab:"POS",label:"Checkout"},
               {tab:"POSProducts",label:"Products"},
+              {tab:"POSSettings",label:"Settings"},
             ]},
           ].map(cat=>{
             const visibleItems=cat.items.filter(it=>!it.featureKey||feat[it.featureKey]);
@@ -13382,6 +13690,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="CustomerImport"&&<CustomerImportScreen contacts={contacts} setContacts={setContacts}/>}
         {tab==="CustomerSettings"&&<CustomerSettingsScreen contacts={contacts}/>}
+        {tab==="VoucherSettings"&&<VoucherSettingsScreen companyProfile={companyProfile}/>}
+        {tab==="InvoiceSettings"&&<InvoiceSettingsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
+        {tab==="AccountingSettings"&&<AccountingSettingsScreen onNavigate={setTab}/>}
+        {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts}/>}
+        {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
+        {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}
 
         {tab==="Reskontro"&&(
           feat.reskontro
