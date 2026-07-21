@@ -291,12 +291,13 @@ function SignedFileViewer({storagePath,type,name,style}){
   const[extracting,setExtracting]=useState(false);
   const[zoom,setZoom]=useState(1);
   const[pan,setPan]=useState({x:0,y:0});
+  const[rotation,setRotation]=useState(0);
   const dragRef=React.useRef(null);
   useEffect(()=>{
     let alive=true;
     setLoading(true);
     setExtractedText("");
-    setZoom(1);setPan({x:0,y:0});
+    setZoom(1);setPan({x:0,y:0});setRotation(0);
     getSignedUrl(storagePath).then(u=>{if(alive){setUrl(u);setLoading(false);}});
     return()=>{alive=false;};
   },[storagePath]);
@@ -339,18 +340,49 @@ function SignedFileViewer({storagePath,type,name,style}){
     window.addEventListener("mousemove",onMove);
     window.addEventListener("mouseup",onUp);
   };
+  // Scroll wheel zoom — zooms toward wherever the cursor is, not just the
+  // center, so it feels like a real image viewer rather than a fixed-point zoom.
+  const onWheel=(e)=>{
+    e.preventDefault();
+    const delta=e.deltaY>0?-0.15:0.15;
+    setZoom(z=>Math.max(1,Math.min(4,z+delta)));
+  };
+  const downloadFile=async()=>{
+    if(!url)return;
+    const a=document.createElement("a");
+    a.href=url;a.download=name||"attachment";a.target="_blank";
+    document.body.appendChild(a);a.click();a.remove();
+  };
+  const printFile=()=>{
+    if(!url)return;
+    const w=window.open(url,"_blank");
+    if(w)w.onload=()=>{try{w.print();}catch(e){}};
+  };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
-  if(!isImage)return<iframe src={url} style={{border:"none",background:"#fff",...style}} title={name||"attachment"}/>;
+  if(!isImage)return(
+    <div style={{position:"relative",...style,padding:0}}>
+      <iframe src={url} style={{border:"none",background:"#fff",width:"100%",height:"100%"}} title={name||"attachment"}/>
+      <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
+        <button onClick={printFile} title="Print" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-printer" style={{fontSize:14}}/></button>
+        <button onClick={downloadFile} title="Download" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-download" style={{fontSize:14}}/></button>
+      </div>
+    </div>
+  );
   return(
     <div>
-      <div style={{position:"relative",overflow:"hidden",borderRadius:8,background:"#fafafa",...style,padding:0}}>
+      <div onWheel={onWheel} style={{position:"relative",overflow:"hidden",borderRadius:8,background:"#fafafa",...style,padding:0}}>
         <div onMouseDown={startDrag} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",cursor:zoom>1?"grab":"default",overflow:"hidden"}}>
-          <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
+          <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
+        </div>
+        <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
+          <button onClick={()=>setRotation(r=>r-90)} title="Rotate left" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-rotate-2" style={{fontSize:14}}/></button>
+          <button onClick={printFile} title="Print" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-printer" style={{fontSize:14}}/></button>
+          <button onClick={downloadFile} title="Download" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-download" style={{fontSize:14}}/></button>
         </div>
         <div style={{position:"absolute",bottom:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
           <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>−</button>
-          <button onClick={()=>{setZoom(1);setPan({x:0,y:0});}} title="Reset zoom" style={{fontSize:11,border:"none",background:"none",cursor:"pointer",color:"#374151",padding:"0 6px",fontWeight:600}}>{Math.round(zoom*100)}%</button>
+          <button onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll to zoom too)" style={{fontSize:11,border:"none",background:"none",cursor:"pointer",color:"#374151",padding:"0 6px",fontWeight:600}}>{Math.round(zoom*100)}%</button>
           <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>+</button>
         </div>
       </div>
@@ -692,7 +724,7 @@ function AppShell({user}){
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
-      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path})));
+      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
       setInvoices((invR.data||[]).map(r=>({id:r.id,invoiceNo:r.invoice_no,customerId:r.customer_id,date:r.date,dueDate:r.due_date,periodFrom:r.period_from,periodTo:r.period_to,saleAccount:r.sale_account,lines:r.lines||[],vatPct:parseFloat(r.vat_pct)||0,subtotal:parseFloat(r.subtotal),vatAmount:parseFloat(r.vat_amount),total:parseFloat(r.total),status:r.status,txnId:r.txn_id})));
@@ -1465,13 +1497,25 @@ function AppShell({user}){
   };
   const deleteInboxFileEntry=async(id)=>{
     if(!canEdit)return;
+    const{error}=await sb.from("inbox_files").update({deleted_at:new Date().toISOString()}).eq("user_id",user.id).eq("id",id);
+    if(error){console.error("Inbox file delete error:",error);return;}
+    setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:new Date().toISOString()}:f));
+    fetchAttachedTxnIds().then(setAttachedTxnIds); // a txn's only attachment may have just been removed
+  };
+  const restoreInboxFileEntry=async(id)=>{
+    if(!canEdit)return;
+    const{error}=await sb.from("inbox_files").update({deleted_at:null}).eq("user_id",user.id).eq("id",id);
+    if(error){console.error("Inbox file restore error:",error);return;}
+    setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:null}:f));
+  };
+  const permanentlyDeleteInboxFileEntry=async(id)=>{
+    if(!canEdit)return;
     const file=inboxFiles.find(f=>f.id===id);
     if(!file)return;
     await deleteFileFromStorage(file.storagePath);
     const{error}=await sb.from("inbox_files").delete().eq("user_id",user.id).eq("id",id);
-    if(error){console.error("Inbox file delete error:",error);return;}
+    if(error){console.error("Inbox file permanent-delete error:",error);return;}
     setInboxFilesState(p=>p.filter(f=>f.id!==id));
-    fetchAttachedTxnIds().then(setAttachedTxnIds); // a txn's only attachment may have just been removed
   };
   const renameInboxFileEntry=async(id,newName)=>{
     if(!canEdit)return;
@@ -1586,7 +1630,7 @@ function AppShell({user}){
         budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
         saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
         inboxFiles={inboxFiles} attachedTxnIds={attachedTxnIds}
-        uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry}
+        uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry} restoreInboxFileEntry={restoreInboxFileEntry} permanentlyDeleteInboxFileEntry={permanentlyDeleteInboxFileEntry}
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
@@ -11132,15 +11176,23 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge,isDesktop,onStartRegistration}){
+function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMerge,isDesktop,onStartRegistration}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[selected,setSelected]=useState([]);
   const[busy,setBusy]=useState(false);
   const[previewFile,setPreviewFile]=useState(null);
+  const[viewMode,setViewMode]=useState("active"); // "active" | "deleted"
+  const[filterOpen,setFilterOpen]=useState(false);
+  const[typeFilter,setTypeFilter]=useState(""); // "" | "image" | "pdf"
 
   const addFile=async(file)=>{setBusy(true);await onUpload(file);setBusy(false);};
   const deleteFile=async(id)=>{setBusy(true);await onDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
+  const restoreFile=async(id)=>{setBusy(true);await onRestore(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
+  const permanentDeleteFile=async(id)=>{
+    if(!window.confirm("Permanently delete this file? This can't be undone."))return;
+    setBusy(true);await onPermanentDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);
+  };
   const renameFile=async(id)=>{
     const f=files.find(x=>x.id===id);
     if(!f)return;
@@ -11156,7 +11208,12 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
   };
   const[viewing,setViewing]=useState(null);
   const[inlinePreview,setInlinePreview]=useState(null);
-  const filtered=files.filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered=files
+    .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
+    .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")));
+  const activeCount=files.filter(f=>!f.deletedAt).length;
+  const deletedCount=files.filter(f=>!!f.deletedAt).length;
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
 
   // Merge selected image files into a single combined image and save it straight
@@ -11200,12 +11257,31 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
           </div>
           <p style={{fontSize:12,color:T.muted,marginBottom:14}}>Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly.</p>
 
+          <div style={{display:"flex",gap:6,marginBottom:14}}>
+            <button onClick={()=>{setViewMode("active");setSelected([]);}} style={{background:viewMode==="active"?T.accent:"none",color:viewMode==="active"?"#fff":T.sub,border:`1px solid ${viewMode==="active"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Inbox ({activeCount})</button>
+            <button onClick={()=>{setViewMode("deleted");setSelected([]);}} style={{background:viewMode==="deleted"?T.accent:"none",color:viewMode==="deleted"?"#fff":T.sub,border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Deleted ({deletedCount})</button>
+          </div>
+
           <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
             <div style={{position:"relative",flex:1}}>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
               <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
             </div>
-            {selected.length>0&&(
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"9px 14px",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:12,fontWeight:600}}>
+                <i className="ti ti-filter" style={{fontSize:13}}/>Filter{typeFilter&&` (1)`}
+              </button>
+              {filterOpen&&(<>
+                <div onClick={()=>setFilterOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+                <div style={{position:"absolute",right:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,minWidth:180,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6,padding:"0 4px"}}>File type</div>
+                  {[["","All files"],["image","Images only"],["pdf","Documents only"]].map(([id,label])=>(
+                    <div key={id} onClick={()=>{setTypeFilter(id);setFilterOpen(false);}} style={{padding:"8px 10px",fontSize:12,cursor:"pointer",borderRadius:7,background:typeFilter===id?T.accentLight:"transparent",color:typeFilter===id?T.accent:T.text,fontWeight:typeFilter===id?700:400}}>{label}</div>
+                  ))}
+                </div>
+              </>)}
+            </div>
+            {selected.length>0&&viewMode==="active"&&(
               <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
                 <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
                 <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
@@ -11213,10 +11289,16 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
                 <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
               </div>
             )}
+            {selected.length>0&&viewMode==="deleted"&&(
+              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
+                <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
+              </div>
+            )}
           </div>
 
           <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-            {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No files yet.</div>}
+            {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>{viewMode==="deleted"?"No deleted files.":"No files yet."}</div>}
             {filtered.map((f,i)=>{
               const isFocused=previewFile&&previewFile.id===f.id;
               return(
@@ -11226,7 +11308,10 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
                     <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
-                  <Menu3 items={[
+                  <Menu3 items={viewMode==="deleted"?[
+                    {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
+                    {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
+                  ]:[
                     {label:"Rename",action:()=>renameFile(f.id)},
                     {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
                     {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
@@ -11247,7 +11332,11 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRename,onMerge
               <div style={{background:"#fff",borderRadius:8,height:420,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
                 <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
               </div>
-              <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",marginTop:10,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
+              {viewMode==="deleted"?(
+                <button onClick={()=>restoreFile(previewFile.id)} style={{width:"100%",marginTop:10,background:T.greenBg,color:T.green,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Restore</button>
+              ):(
+                <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",marginTop:10,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
+              )}
             </>
           ):(
             <div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
@@ -12540,7 +12629,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -13314,7 +13403,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Files"&&(
           <div style={{maxWidth:1000}}>
-            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
+            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRestore={restoreInboxFileEntry} onPermanentDelete={permanentlyDeleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
           </div>
         )}
 
