@@ -6685,11 +6685,145 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
 // Top-level Customers register — Tripletex-style contact master data screen,
 // separate from Reskontro (which is about open items, not contact records).
-function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro}){
+// Import — landing page (Customer vs Supplier) then a dedicated detail
+// screen per type, matching the two-step Tripletex pattern rather than
+// burying import inside the main contacts list.
+function CustomerImportScreen({contacts,setContacts}){
+  const[importType,setImportType]=useState(null); // null | "customer" | "supplier"
+  const[importing,setImporting]=useState(false);
+  const[importError,setImportError]=useState("");
+  const[importResult,setImportResult]=useState(null);
+  const[howTab,setHowTab]=useState("read");
+
+  const doImport=async(file,type)=>{
+    setImportError("");setImportResult(null);setImporting(true);
+    try{
+      const isCsv=/\.csv$/i.test(file.name);
+      const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+      const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const existingNums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
+      let next=(existingNums.length?Math.max(...existingNums):0)+1;
+      const prefix=type==="customer"?"C":"S";
+      const newContacts=[];let skipped=0;
+      json.forEach(row=>{
+        const name=String(row.Name||row.name||row.Navn||"").trim();
+        if(!name){skipped++;return;}
+        newContacts.push({
+          id:`${prefix}${String(next++).padStart(3,"0")}`,type,name,
+          email:String(row.Email||row.email||row["E-post"]||"").trim(),
+          phone:String(row.Phone||row.phone||row.Telefon||"").trim(),
+          address:String(row.Address||row.address||row.Adresse||"").trim(),
+          paymentTermsDays:30,
+        });
+      });
+      if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}.`);setImporting(false);return;}
+      setContacts(p=>[...p,...newContacts]);
+      setImportResult({count:newContacts.length,skipped});
+    }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+    setImporting(false);
+  };
+
+  if(!importType){
+    return(
+      <div style={{maxWidth:1000}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Import</h1>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          {[["customer","Customer","Import your customers here.","ti-user"],["supplier","Supplier","Import your suppliers here.","ti-file-invoice"]].map(([id,label,desc,icon])=>(
+            <div key={id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:24,display:"flex",gap:18,alignItems:"center"}}>
+              <div style={{width:56,height:56,borderRadius:"50%",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <i className={`ti ${icon}`} style={{fontSize:26,color:T.accent}}/>
+              </div>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>{label}</div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:10}}>{desc}</div>
+                <button onClick={()=>{setImportType(id);setImportResult(null);setImportError("");}} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to import →</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <div onClick={()=>setImportType(null)} style={{fontSize:11,color:T.accent,fontWeight:600,cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-chevron-left" style={{fontSize:12}}/>Import</div>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Import — {importType==="customer"?"Customer":"Supplier"}</h1>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:14}}>Choose import file</div>
+          <label style={{display:"block",border:`2px dashed ${T.border}`,borderRadius:10,padding:"36px 16px",textAlign:"center",cursor:importing?"wait":"pointer",background:T.bg}}>
+            <i className="ti ti-cloud-upload" style={{fontSize:26,color:T.muted,display:"block",marginBottom:8}}/>
+            <div style={{fontSize:12,color:T.sub}}>{importing?"Importing…":"Allowed formats are text/csv, .xls and .xlsx."}</div>
+            <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])doImport(e.target.files[0],importType);e.target.value="";}}/>
+          </label>
+          {importError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"10px 14px",fontSize:12,marginTop:14}}>{importError}</div>}
+          {importResult&&<div style={{background:T.greenBg,color:T.green,borderRadius:8,padding:"10px 14px",fontSize:12,marginTop:14}}>Imported {importResult.count} {importType}{importResult.count===1?"":"s"}{importResult.skipped?` (${importResult.skipped} skipped — missing a name)`:""}.</div>}
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:14}}>How does import work?</div>
+          <div style={{display:"flex",gap:6,marginBottom:14}}>
+            <button onClick={()=>setHowTab("read")} style={{background:howTab==="read"?T.accent:"none",color:howTab==="read"?"#fff":T.sub,border:`1px solid ${howTab==="read"?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Read how it's done</button>
+          </div>
+          <p style={{fontSize:12,color:T.sub,marginBottom:14}}>Choose the file to import. You don't need to prepare the file in advance — matching columns like Name, Email, Phone, and Address will be picked up automatically.</p>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {[["1","Content","Column headers like Name/Email/Phone/Address are matched automatically."],["2","Validation","Rows missing a name are skipped and reported after import."],["3","Result","See exactly how many were imported and how many were skipped."]].map(([n,t,d])=>(
+              <div key={n} style={{display:"flex",gap:10}}>
+                <div style={{fontSize:18,fontWeight:800,color:n==="3"?T.green:n==="2"?T.orange:T.accent,width:20,flexShrink:0}}>{n}</div>
+                <div><div style={{fontSize:12,fontWeight:700,color:T.text}}>{t}</div><div style={{fontSize:11,color:T.muted}}>{d}</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Customer settings — auto-numbering prefixes (informational, since we use
+// C001/S001 rather than a raw numeric series) and default terms applied to
+// every new customer/supplier going forward.
+function CustomerSettingsScreen({contacts}){
+  const[defaultTerms,setDefaultTerms]=useState(()=>{try{return localStorage.getItem("rr_default_payment_terms")||"14";}catch{return"14";}});
+  const saveDefaultTerms=(v)=>{setDefaultTerms(v);try{localStorage.setItem("rr_default_payment_terms",v);}catch{}};
+  const customerCount=contacts.filter(c=>c.type==="customer").length;
+  const supplierCount=contacts.filter(c=>c.type==="supplier").length;
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Customer settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Settings for new customers/suppliers</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer numbering</div>
+            <div style={{...inp,background:T.bg,color:T.sub}}>C001, C002, … (next: C{String(customerCount+1).padStart(3,"0")})</div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier numbering</div>
+            <div style={{...inp,background:T.bg,color:T.sub}}>S001, S002, … (next: S{String(supplierCount+1).padStart(3,"0")})</div>
+          </div>
+        </div>
+        <p style={{fontSize:11,color:T.muted,marginTop:8}}>Numbering is automatic and can't be changed — it's how the app tells customers and suppliers apart internally.</p>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Default payment terms</div>
+        <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date is</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <input type="number" value={defaultTerms} onChange={e=>saveDefaultTerms(e.target.value)} style={{...inp,width:80}}/>
+          <span style={{fontSize:13,color:T.sub}}>days after the invoice date, for any new customer that doesn't have their own terms set.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro,autoOpenNew}){
   const[type,setType]=useState("customer");
   const[search,setSearch]=useState("");
   const[editingId,setEditingId]=useState(null);
   const[showNew,setShowNew]=useState(false);
+  useEffect(()=>{if(autoOpenNew)setShowNew(true);},[autoOpenNew]);
   const[form,setForm]=useState({name:"",email:"",phone:"",address:"",accountNo:"",paymentTermsDays:"30",creditLimit:""});
 
   const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())));
@@ -7998,8 +8132,9 @@ function RecurringInvoicesScreen({recurringInvoices,contacts,accounts,createRecu
 
 // Employees — master data only. See roadmap for why payroll processing
 // (tax tables, statutory filing) isn't part of this.
-function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee}){
+function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee,autoOpenNew}){
   const[showNew,setShowNew]=useState(false);
+  useEffect(()=>{if(autoOpenNew)setShowNew(true);},[autoOpenNew]);
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",role:"",email:"",phone:"",startDate:"",salary:"",notes:""});
   const[showInactive,setShowInactive]=useState(false);
@@ -12475,8 +12610,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
     Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",
     Bank:"bank",BankDashboard:"bank",Cheques:"bank",
+    Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",
-    CompanyInfo:"company",Employees:"company",Payroll:"company",Settings:"company",
+    CompanyInfo:"company",Employees:"company",EmployeeNew:"company",Payroll:"company",Settings:"company",
     POS:"pos",POSProducts:"pos",
   };
   useEffect(()=>{
@@ -12839,10 +12975,37 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </div>
             );
           })()}
-          <div onClick={()=>setTab("Contacts")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Contacts"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Contacts"?T.accentLight:"transparent"}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Contacts"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:tab==="Contacts"?"#fff":T.sub}}/></div>
-            <span style={{fontSize:12,fontWeight:tab==="Contacts"?700:400,color:tab==="Contacts"?T.accent:T.sub}}>Customers</span>
-          </div>
+          {(()=>{
+            const custItems=[
+              {tab:"Contacts",label:"Customers/Suppliers"},
+              {tab:"ContactNew",label:"New customer/supplier"},
+              {tab:"CustomerImport",label:"Import"},
+              {tab:"CustomerSettings",label:"Settings"},
+            ];
+            const custExpanded=expandedCat==="customers";
+            const custActive=custItems.some(it=>it.tab===tab);
+            return(
+              <div>
+                <div onClick={()=>setExpandedCat(e=>e==="customers"?null:"customers")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:custActive&&!custExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:custActive&&!custExpanded?T.accentLight:"transparent"}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
+                  <span style={{fontSize:12,fontWeight:custActive?700:400,color:custActive?T.accent:T.sub,flex:1}}>Customers</span>
+                  <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:custExpanded?"rotate(180deg)":"none"}}/>
+                </div>
+                {custExpanded&&(
+                  <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
+                    {custItems.map(it=>{
+                      const active=tab===it.tab;
+                      return(
+                        <div key={it.tab} onClick={()=>setTab(it.tab)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Inbox</span>
@@ -12881,8 +13044,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
               {tab:"Employees",label:"Employees"},
+              {tab:"EmployeeNew",label:"New employee"},
               {tab:"Payroll",label:"Payroll"},
-              {tab:"Settings",label:"Company settings"},
+              {tab:"Settings",label:"Settings"},
             ]},
             {id:"pos",label:"Point of sale",icon:"ti-cash-register",items:[
               {tab:"POS",label:"Checkout"},
@@ -13121,11 +13285,14 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Contacts"&&(
+        {(tab==="Contacts"||tab==="ContactNew")&&(
           <div style={{maxWidth:900}}>
-            <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} mergeContacts={mergeContacts} onOpenReskontro={(type)=>setTab("Reskontro")}/>
+            <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} mergeContacts={mergeContacts} onOpenReskontro={(type)=>setTab("Reskontro")} autoOpenNew={tab==="ContactNew"}/>
           </div>
         )}
+
+        {tab==="CustomerImport"&&<CustomerImportScreen contacts={contacts} setContacts={setContacts}/>}
+        {tab==="CustomerSettings"&&<CustomerSettingsScreen contacts={contacts}/>}
 
         {tab==="Reskontro"&&(
           feat.reskontro
@@ -13211,9 +13378,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} isDesktop={true}/>:null)}
 
-        {tab==="Employees"&&(
+        {(tab==="Employees"||tab==="EmployeeNew")&&(
           <div style={{maxWidth:900}}>
-            <EmployeesScreen employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee}/>
+            <EmployeesScreen employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} autoOpenNew={tab==="EmployeeNew"}/>
           </div>
         )}
 
