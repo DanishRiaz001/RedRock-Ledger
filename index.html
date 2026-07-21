@@ -5247,6 +5247,40 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
     <div onMouseDown={e=>startColResize(idx,e)} style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:3}}/>
   );
 
+  const printLedgerPdf=()=>{
+    const rows=shownRows.map(r=>{
+      const isClosed=!!(r.matchedWith&&r.matchedAccount===currentCode);
+      return`<tr><td>${r.date}</td><td>${isClosed?"Yes":"No"}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right">${sign(r.movement)}</td></tr>`;
+    }).join("");
+    const w=window.open("","_blank");
+    w.document.write(`<!DOCTYPE html><html><head><title>${currentAccount.code} ${currentAccount.name}</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
+      h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
+      .sub{font-size:12px;color:#666;margin-bottom:18px;}
+      .summary{display:flex;gap:32px;background:#F5F9FA;border-radius:8px;padding:12px 16px;margin-bottom:18px;}
+      .summary div{font-size:11px;color:#666;}
+      .summary b{display:block;font-size:14px;color:#111;margin-top:2px;}
+      table{width:100%;border-collapse:collapse;}
+      th{background:#F5F9FA;color:#374151;padding:8px 10px;text-align:left;font-size:11px;border-bottom:2px solid #ddd;}
+      td{padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;}
+      @media print{.btn-bar{display:none;}}
+    </style></head><body>
+      <h1>${currentAccount.code} ${currentAccount.name}</h1>
+      <div class="sub">General ledger — ${filterFrom} to ${filterTo}</div>
+      <div class="summary">
+        <div>Opening balance<b>${fmt(openingBal)}</b></div>
+        <div>Movement this period<b>${sign(periodMovement)}</b></div>
+        <div>Closing balance<b>${fmt(closingBal)}</b></div>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Closed</th><th>Voucher</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+    </body></html>`);
+    w.document.close();
+  };
+
   return(
     <div>
       {periodPickerOpen&&(
@@ -5260,26 +5294,27 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
           <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:2}}>General ledger</div>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{currentCode} — {(accounts.find(a=>a.code===currentCode)||{}).name||""}</h1>
         </div>
-        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={printLedgerPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+        </div>
       </div>
 
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:14}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <AccountSwitcherDropdown accounts={accounts} value={currentCode} onChange={switchAccount}/>
           <div style={{position:"relative",width:170}}>
             <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
             <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:30,height:32,fontSize:12}}/>
           </div>
-          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+          <button onClick={()=>setPeriodPickerOpen(true)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",height:32,boxSizing:"border-box",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
             <i className="ti ti-calendar" style={{fontSize:12,color:T.sub}}/>
             <span style={{fontSize:12,fontWeight:700,color:T.text}}>{periodLabel}</span>
           </button>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",marginRight:2}}>Closed:</div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setEntriesMode("all")} style={{background:entriesMode==="all"?T.accent:"none",color:entriesMode==="all"?"#fff":T.sub,border:`1px solid ${entriesMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All entries</button>
-            <button onClick={()=>setEntriesMode("open")} style={{background:entriesMode==="open"?T.accent:"none",color:entriesMode==="open"?"#fff":T.sub,border:`1px solid ${entriesMode==="open"?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Open entries</button>
+          <div style={{display:"flex",gap:0,border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",height:32,boxSizing:"border-box"}}>
+            {[["all","All"],["open","Open"],["closed","Closed"]].map(([id,label],i)=>(
+              <button key={id} onClick={()=>setEntriesMode(id)} style={{background:entriesMode===id?T.accent:"#fff",color:entriesMode===id?"#fff":T.sub,border:"none",borderLeft:i>0?`1px solid ${T.border}`:"none",padding:"0 14px",height:"100%",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+            ))}
           </div>
           {/* Match controls live right here in the filter row — never a
               separate row that pushes the table down when you select rows. */}
@@ -5487,17 +5522,27 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <i className="ti ti-settings" style={{fontSize:16}}/>
           </button>
         </div>
+        {/* Shadow header — same colgroup widths as the real table below, but
+            rendered right here so it's physically attached to the filter bar
+            with zero gap, instead of being a second sticky element guessing
+            a pixel offset to line up underneath. */}
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed",marginTop:8,background:"#fff",borderRadius:"12px 12px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+          <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+          <tbody><tr style={{color:T.sub,background:T.bg}}>
+            <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
+            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Opening balance<ResizeHandle idx={1}/></td>
+            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Difference<ResizeHandle idx={2}/></td>
+            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
+          </tr></tbody>
+        </table>
       </div>
 
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
+      <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
-        <thead><tr style={{color:T.sub,background:T.bg,position:"sticky",top:70,zIndex:15,boxShadow:`0 1px 0 ${T.border}`}}>
-          <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Opening balance<ResizeHandle idx={1}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Difference<ResizeHandle idx={2}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
+        <thead><tr style={{display:"none"}}>
+          <td/><td/><td/><td/>
         </tr></thead>
         <tbody>
           {rows.map(r=>(
