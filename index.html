@@ -355,8 +355,14 @@ function SignedFileViewer({storagePath,type,name,style}){
   };
   const printFile=()=>{
     if(!url)return;
-    const w=window.open(url,"_blank");
-    if(w)w.onload=()=>{try{w.print();}catch(e){}};
+    const iframe=document.createElement("iframe");
+    iframe.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:none;";
+    iframe.src=url;
+    document.body.appendChild(iframe);
+    iframe.onload=()=>{
+      try{iframe.contentWindow.print();}catch(e){}
+      setTimeout(()=>{if(iframe.parentNode)iframe.parentNode.removeChild(iframe);},1000);
+    };
   };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
@@ -375,12 +381,12 @@ function SignedFileViewer({storagePath,type,name,style}){
         <div onMouseDown={startDrag} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",cursor:zoom>1?"grab":"default",overflow:"hidden"}}>
           <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
         </div>
-        <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
+        <div style={{position:"absolute",top:8,right:8,zIndex:5,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
           <button onClick={()=>setRotation(r=>r-90)} title="Rotate left" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-rotate-2" style={{fontSize:14}}/></button>
           <button onClick={printFile} title="Print" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-printer" style={{fontSize:14}}/></button>
           <button onClick={downloadFile} title="Download" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-download" style={{fontSize:14}}/></button>
         </div>
-        <div style={{position:"absolute",bottom:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
+        <div style={{position:"absolute",bottom:8,right:8,zIndex:5,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
           <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>−</button>
           <button onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll to zoom too)" style={{fontSize:11,border:"none",background:"none",cursor:"pointer",color:"#374151",padding:"0 6px",fontWeight:600}}>{Math.round(zoom*100)}%</button>
           <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>+</button>
@@ -699,7 +705,7 @@ function AppShell({user}){
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
-        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,inactive:!!a.inactive}));
+        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,inactive:!!a.inactive,currency:a.currency||"PKR"}));
         const existingCodes=new Set(existing.map(a=>a.code));
         // Add default accounts that don't exist yet (new standard accounts)
         const merged=[...existing];
@@ -774,7 +780,7 @@ function AppShell({user}){
     }
     // Upsert all current accounts
     for(const a of list){
-      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,inactive:a.inactive||false},{onConflict:"user_id,code"});
+      await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:"user_id,code"});
     }
   };
 
@@ -1592,6 +1598,31 @@ function AppShell({user}){
     await sb.from("client_access").delete().eq("id",grantId);
   };
 
+  // Client self-service access requests — any user can ask Redrock for
+  // access without needing an admin to initiate it from scratch.
+  const requestRedrockAccess=async(note)=>{
+    const{error}=await sb.from("access_requests").insert({client_user_id:user.id,note:note||""});
+    if(error)return{error:error.message};
+    return{ok:true};
+  };
+  const fetchAccessRequests=async()=>{
+    if(!isAdmin)return[];
+    const{data,error}=await sb.from("access_requests").select("*").eq("status","pending").order("created_at",{ascending:false});
+    if(error||!data)return[];
+    const clientIds=data.map(r=>r.client_user_id);
+    const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
+    const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
+    return data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):r.client_user_id,note:r.note,createdAt:r.created_at}));
+  };
+  const dismissAccessRequest=async(id)=>{
+    if(!isAdmin)return;
+    await sb.from("access_requests").update({status:"dismissed",resolved_at:new Date().toISOString(),resolved_by:user.id}).eq("id",id);
+  };
+  const resolveAccessRequestAsGranted=async(id)=>{
+    if(!isAdmin)return;
+    await sb.from("access_requests").update({status:"granted",resolved_at:new Date().toISOString(),resolved_by:user.id}).eq("id",id);
+  };
+
   if(profileLoading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif"}}>
       <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:20}}/>
@@ -1635,7 +1666,7 @@ function AppShell({user}){
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
-        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess}
+        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
       />
     </div>
   );
@@ -3428,6 +3459,14 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                   <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
                 </select>
               </div>
+              {sk==="1900"&&(
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+                  <select value={editForm.currency!==undefined?editForm.currency:(viewingAccount.currency||"PKR")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,currency:e.target.value}))} style={inp}>
+                    <option value="PKR">PKR</option><option value="NOK">NOK</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="AED">AED</option>
+                  </select>
+                </div>
+              )}
               <div style={{gridColumn:"1/-1",display:"flex",gap:24,paddingTop:6}}>
                 <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
                   <input type="checkbox" checked={editForm.matchable!==undefined?editForm.matchable:(viewingAccount.matchable||false)} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,matchable:e.target.checked}))}/>
@@ -5514,7 +5553,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -6124,6 +6163,38 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
   },[recentTxns,bankAccounts]);
   const totalIn=moneyIn.reduce((s,[,v])=>s+v,0);
   const totalOut=moneyOut.reduce((s,[,v])=>s+v,0);
+
+  // Fee analysis — flags likely bank fees by description keyword, since we
+  // don't get a structured "fee" flag from a real bank feed. Purely additive:
+  // never hides these from the normal transaction list, just totals them up.
+  const FEE_KEYWORDS=["fee","charge","gebyr","avgift","service charge","maintenance","commission","surcharge"];
+  const feeTxns=useMemo(()=>recentTxns.filter(t=>{
+    const d=(t.description||"").toLowerCase();
+    const isOut=bankAccounts.some(a=>a.code===t.creditCode);
+    return isOut&&FEE_KEYWORDS.some(k=>d.includes(k));
+  }),[recentTxns,bankAccounts]);
+  const totalFees=feeTxns.reduce((s,t)=>s+t.amount,0);
+
+  // Cash-flow forecast — projects the combined bank balance forward using
+  // open customer receivables (money expected in, by due date) and open
+  // supplier payables (money expected out, by due date). Simple and honest:
+  // it's a projection from what's already open, not a prediction model.
+  const forecastDays=useMemo(()=>{
+    const currentBalance=bankAccounts.reduce((s,a)=>s+getBal(a.code),0);
+    const openAR=transactions.filter(t=>t.contactId&&t.debitCode==="1500"&&t.dueDate&&!(t.matchedWith&&t.matchedAccount==="1500"));
+    const openAP=transactions.filter(t=>t.contactId&&t.creditCode==="2400"&&t.dueDate&&!(t.matchedWith&&t.matchedAccount==="2400"));
+    const days=[];
+    let running=currentBalance;
+    for(let i=0;i<=30;i+=5){
+      const d=new Date();d.setDate(d.getDate()+i);
+      const dStr=d.toISOString().slice(0,10);
+      const inByThen=openAR.filter(t=>t.dueDate<=dStr).reduce((s,t)=>s+t.amount,0);
+      const outByThen=openAP.filter(t=>t.dueDate<=dStr).reduce((s,t)=>s+t.amount,0);
+      days.push({label:i===0?"Today":`+${i}d`,balance:currentBalance+inByThen-outByThen});
+    }
+    return days;
+  },[bankAccounts,transactions]);
+
   const grandTotal=totalIn+totalOut||1;
   const inPct=Math.round((totalIn/grandTotal)*100);
 
@@ -6149,7 +6220,7 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
             {bankAccounts.map(a=>(
               <div key={a.code} onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",cursor:"pointer",flex:"1 1 160px"}}>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
-                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))}</div>
+                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
               </div>
             ))}
             {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No bank accounts set up yet.</div>}
@@ -6167,6 +6238,38 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
               <div style={{fontSize:16,fontWeight:800,color:T.red}}>{fmt(overduePayments)}</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr",gap:16,marginBottom:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Cash-flow forecast</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Projected from open invoices and bills — not a prediction, just what's already due.</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:8,height:90}}>
+            {forecastDays.map((d,i)=>{
+              const maxAbs=Math.max(...forecastDays.map(x=>Math.abs(x.balance)),1);
+              const h=Math.max((Math.abs(d.balance)/maxAbs)*70,4);
+              return(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{fontSize:9,fontWeight:700,color:d.balance>=0?T.waterTeal:T.red,whiteSpace:"nowrap"}}>{fmt(d.balance)}</div>
+                  <div style={{width:"100%",background:d.balance>=0?T.waterTeal:T.red,borderRadius:"4px 4px 0 0",height:h}}/>
+                  <div style={{fontSize:9,color:T.muted}}>{d.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Fee analysis</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Last {dayRange} days, matched by description keyword.</div>
+          <div style={{fontSize:22,fontWeight:900,color:T.red,marginBottom:10}}>{fmt(totalFees)}</div>
+          {feeTxns.slice(0,4).map(t=>(
+            <div key={t.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{t.description}</span>
+              <span style={{fontWeight:700,color:T.red}}>{fmt(t.amount)}</span>
+            </div>
+          ))}
+          {!feeTxns.length&&<div style={{fontSize:11,color:T.muted}}>No fee-like transactions found in this period.</div>}
         </div>
       </div>
 
@@ -6646,7 +6749,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       {/* Sticky section — title/actions + column headers attached with zero
           gap (same technique as Trial Balance), so rows scroll underneath
           without a visible seam between the two. */}
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:0}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:0,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"12px 12px 0 0",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text}}>{type==="customer"?"Customer":"Supplier"} specification (reskontro) — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} items</div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -6921,16 +7024,17 @@ function BankSettingsScreen({accounts}){
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Bank settings</h1>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Type</td><td style={{fontWeight:700,padding:"10px 16px"}}>Status</td></tr></thead>
+          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Type</td><td style={{fontWeight:700}}>Currency</td><td style={{fontWeight:700,padding:"10px 16px"}}>Status</td></tr></thead>
           <tbody>
             {bankAccounts.map(a=>(
               <tr key={a.code} style={{borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{a.code} {a.name}</td>
                 <td style={{color:T.sub}}>Bank account</td>
+                <td style={{color:T.sub}}>{a.currency||"PKR"}</td>
                 <td style={{padding:"10px 16px"}}><span style={{fontSize:11,fontWeight:700,color:T.green,background:T.greenBg,padding:"3px 9px",borderRadius:8}}>Active</span></td>
               </tr>
             ))}
-            {!bankAccounts.length&&<tr><td colSpan="3" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — add one from Chart of Accounts (1900 series).</td></tr>}
+            {!bankAccounts.length&&<tr><td colSpan="4" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — add one from Chart of Accounts (1900 series).</td></tr>}
           </tbody>
         </table>
       </div>
@@ -7364,9 +7468,19 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
 // Company information — full details screen, matching Tripletex's Company
 // information layout: identity/address on the left, contact/business details
 // on the right. Separate from the smaller invoice-header card in Settings.
-function CompanyInfoScreen({companyProfile,saveCompanyProfile}){
+function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAccess,isViewingOwnBooks=true}){
   const[form,setForm]=useState(companyProfile);
   const[saved,setSaved]=useState(false);
+  const[requestNote,setRequestNote]=useState("");
+  const[requestSent,setRequestSent]=useState(false);
+  const[requesting,setRequesting]=useState(false);
+  const sendAccessRequest=async()=>{
+    setRequesting(true);
+    const result=await requestRedrockAccess(requestNote);
+    setRequesting(false);
+    if(result.error){alert(result.error);return;}
+    setRequestSent(true);
+  };
   const save=()=>{saveCompanyProfile(form);setSaved(true);setTimeout(()=>setSaved(false),1800);};
   const set=(k)=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
@@ -7485,6 +7599,21 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile}){
 
         <button onClick={save} style={{marginTop:20,background:saved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{saved?"✓ Saved":"Save"}</button>
       </div>
+
+      {isViewingOwnBooks&&requestRedrockAccess&&(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginTop:16}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:6}}>Give your accountant access</div>
+          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>If Redrock Danria manages your books, request access here — they'll see the request and can assign the right person on their team to your account.</p>
+          {requestSent?(
+            <div style={{background:T.greenBg,color:T.green,borderRadius:8,padding:"10px 14px",fontSize:12,fontWeight:600}}>✓ Request sent — Redrock will follow up once access is set up.</div>
+          ):(
+            <>
+              <textarea value={requestNote} onChange={e=>setRequestNote(e.target.value)} placeholder="Optional note (e.g. which accountant you spoke with)" style={{...inp,minHeight:60,resize:"vertical",marginBottom:10}}/>
+              <button onClick={sendAccessRequest} disabled={requesting} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:requesting?"wait":"pointer",fontFamily:"inherit"}}>{requesting?"Sending…":"Request access"}</button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -7743,16 +7872,21 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
       :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
     await addTransaction(txnForm);
     setPosting(false);
-    setPostedIds(p=>[...p,currentFileId]);
-    if(idx<queue.length-1)goto(idx+1);
-    else onDone();
+    // Remove it from the queue entirely — once it's posted there's nothing
+    // left to do with it here, so it shouldn't still show up when paging
+    // back and forth.
+    const postedFileId=currentFileId;
+    const newQueue=queue.filter(id=>id!==postedFileId);
+    if(!newQueue.length){onDone();return;}
+    setQueue(newQueue);
+    setIdx(i=>Math.min(i,newQueue.length-1));
   };
 
   if(!currentFile)return null;
   const navBtn={background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"};
 
   return(
-    <div style={{position:"fixed",inset:0,background:"#fff",zIndex:900,display:"flex",flexDirection:"column"}}>
+    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",minHeight:"calc(100vh - 140px)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"16px 24px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <div>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>Register voucher</h1>
@@ -7885,9 +8019,11 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
           </button>
         </div>
 
-        <div style={{flex:"1 1 320px",minWidth:280,borderLeft:`1px solid ${T.border}`,padding:16,overflowY:"visible",background:T.bg}}>
+        <div style={{flex:"1 1 320px",minWidth:280,borderLeft:`1px solid ${T.border}`,padding:16,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:12,color:T.sub,fontWeight:600,marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentFile.name}</div>
-          <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",minHeight:400,borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
+          <div style={{flex:1,minHeight:420}}>
+            <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",height:"100%",borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
+          </div>
         </div>
       </div>
     </div>
@@ -10107,6 +10243,219 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 }
 
 // ─── Reports Screen ──────────────────────────────────────────────────────────
+// Reports hub — the landing page for the whole Reports area, categorized
+// like the Tripletex reference, linking to every report screen that exists.
+function ReportsHubScreen({onNavigate}){
+  const categories=[
+    {label:"Customer",icon:"ti-users",items:[
+      {label:"Sales per customer",tab:"SalesPerCustomer"},
+      {label:"Balance lists",tab:"BalanceLists"},
+    ]},
+    {label:"Accounting",icon:"ti-book",items:[
+      {label:"Trial balance",tab:"TrialBalance"},
+      {label:"General ledger",tab:"GeneralLedger"},
+      {label:"Balance sheet",tab:"BalanceSheet"},
+      {label:"Chart of accounts",tab:"Accounts"},
+    ]},
+    {label:"Reskontro",icon:"ti-list-details",items:[
+      {label:"Customer ledger",tab:"Reskontro"},
+      {label:"Aged receivables/payables",tab:"AgedReskontro"},
+    ]},
+    {label:"Result reports",icon:"ti-chart-line",items:[
+      {label:"Income statement",tab:"Resultat"},
+      {label:"Analytics",tab:"Reports"},
+    ]},
+    {label:"Tax",icon:"ti-receipt-tax",items:[
+      {label:"VAT report",tab:"VATReport"},
+    ]},
+  ];
+  return(
+    <div style={{maxWidth:1000}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 20px"}}>Reports</h1>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {categories.map(cat=>(
+          <div key={cat.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <i className={`ti ${cat.icon}`} style={{fontSize:16,color:T.accent}}/>
+              <span style={{fontSize:14,fontWeight:800,color:T.text}}>{cat.label}</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+              {cat.items.map(it=>(
+                <div key={it.tab} onClick={()=>onNavigate(it.tab)} style={{padding:"7px 0",fontSize:13,color:T.accent,cursor:"pointer",fontWeight:500}}>{it.label}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Sales per customer — revenue attributed to each customer via contactId,
+// for the chosen period, with a running month stepper.
+function SalesPerCustomerScreen({transactions,contacts}){
+  const today=new Date();
+  const[viewMonth,setViewMonth]=useState({y:today.getFullYear(),m:today.getMonth()});
+  const stepMonth=(dir)=>setViewMonth(v=>{const d=new Date(v.y,v.m+dir,1);return{y:d.getFullYear(),m:d.getMonth()};});
+  const periodLabel=new Date(viewMonth.y,viewMonth.m,1).toLocaleString("default",{month:"long",year:"numeric"});
+  const from=`${viewMonth.y}-${String(viewMonth.m+1).padStart(2,"0")}-01`;
+  const to=new Date(viewMonth.y,viewMonth.m+1,0).toISOString().slice(0,10);
+
+  const rows=useMemo(()=>{
+    const customers=contacts.filter(c=>c.type==="customer");
+    return customers.map(c=>{
+      const txns=transactions.filter(t=>t.contactId===c.id&&t.date>=from&&t.date<=to&&getSK(t.creditCode)==="3000");
+      const total=txns.reduce((s,t)=>s+t.amount,0);
+      return{contact:c,count:txns.length,total};
+    }).filter(r=>r.count>0).sort((a,b)=>b.total-a.total);
+  },[transactions,contacts,from,to]);
+  const grandTotal=rows.reduce((s,r)=>s+r.total,0);
+
+  return(
+    <div style={{maxWidth:900}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Sales per customer</h1>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
+          <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:120,textAlign:"center"}}>{periodLabel}</span>
+          <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
+        </div>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Customer</td><td style={{textAlign:"right",fontWeight:700}}>Invoices</td><td style={{textAlign:"right",fontWeight:700,padding:"10px 16px"}}>Sales</td></tr></thead>
+          <tbody>
+            {rows.map(r=>(
+              <tr key={r.contact.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{r.contact.name}</td>
+                <td style={{textAlign:"right",color:T.sub}}>{r.count}</td>
+                <td style={{textAlign:"right",padding:"10px 16px",fontWeight:700,color:T.text}}>{fmt(r.total)}</td>
+              </tr>
+            ))}
+            {!rows.length&&<tr><td colSpan="3" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No sales recorded for this period.</td></tr>}
+            {rows.length>0&&(
+              <tr style={{borderTop:`2px solid ${T.border}`}}>
+                <td style={{padding:"12px 16px",fontWeight:800,color:T.text}}>Total</td>
+                <td/>
+                <td style={{textAlign:"right",padding:"12px 16px",fontWeight:800,color:T.text}}>{fmt(grandTotal)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Aged Reskontro — the classic "how overdue is everything" report, split
+// into buckets, as its own report rather than buried in the live ledger.
+function AgedReskontroScreen({contacts,transactions}){
+  const[type,setType]=useState("customer");
+  const today=new Date().toISOString().slice(0,10);
+  const daysBetween=(d1,d2)=>Math.floor((new Date(d1)-new Date(d2))/86400000);
+  const BUCKETS=[["Not yet due",null,0],["1-30 days",1,30],["31-60 days",31,60],["61-90 days",61,90],["90+ days",91,Infinity]];
+
+  const rows=useMemo(()=>{
+    const code=type==="customer"?"1500":"2400";
+    const relevant=contacts.filter(c=>c.type===type);
+    return relevant.map(c=>{
+      const openTxns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code));
+      const buckets=BUCKETS.map(()=>0);
+      openTxns.forEach(t=>{
+        const mv=t.debitCode===code?t.amount:-t.amount;
+        if(!t.dueDate){buckets[0]+=mv;return;}
+        const overdue=daysBetween(today,t.dueDate);
+        if(overdue<=0)buckets[0]+=mv;
+        else{
+          const idx=BUCKETS.findIndex(([,lo,hi])=>lo!=null&&overdue>=lo&&overdue<=hi);
+          buckets[idx===-1?BUCKETS.length-1:idx]+=mv;
+        }
+      });
+      const total=buckets.reduce((s,b)=>s+b,0);
+      return{contact:c,buckets,total};
+    }).filter(r=>Math.abs(r.total)>=1).sort((a,b)=>b.total-a.total);
+  },[contacts,transactions,type]);
+
+  const columnTotals=BUCKETS.map((_,i)=>rows.reduce((s,r)=>s+r.buckets[i],0));
+  const grandTotal=rows.reduce((s,r)=>s+r.total,0);
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Aged {type==="customer"?"receivables":"payables"}</h1>
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+        <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+          <thead><tr style={{background:T.bg,color:T.sub}}>
+            <td style={{padding:"10px 14px",fontWeight:700}}>{type==="customer"?"Customer":"Supplier"}</td>
+            {BUCKETS.map(([label])=><td key={label} style={{textAlign:"right",fontWeight:700}}>{label}</td>)}
+            <td style={{textAlign:"right",fontWeight:700,padding:"10px 14px"}}>Total</td>
+          </tr></thead>
+          <tbody>
+            {rows.map(r=>(
+              <tr key={r.contact.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 14px",color:T.text,fontWeight:600}}>{r.contact.name}</td>
+                {r.buckets.map((b,i)=><td key={i} style={{textAlign:"right",color:i>=2&&Math.abs(b)>=1?T.red:T.sub}}>{Math.abs(b)>=1?fmt(b):"—"}</td>)}
+                <td style={{textAlign:"right",padding:"9px 14px",fontWeight:700,color:T.text}}>{fmt(r.total)}</td>
+              </tr>
+            ))}
+            {!rows.length&&<tr><td colSpan={BUCKETS.length+2} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No open items.</td></tr>}
+            {rows.length>0&&(
+              <tr style={{borderTop:`2px solid ${T.border}`}}>
+                <td style={{padding:"12px 14px",fontWeight:800,color:T.text}}>Total</td>
+                {columnTotals.map((c,i)=><td key={i} style={{textAlign:"right",fontWeight:800,color:T.text}}>{fmt(c)}</td>)}
+                <td style={{textAlign:"right",padding:"12px 14px",fontWeight:800,color:T.text}}>{fmt(grandTotal)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Balance lists (Saldolister) — quick standalone list of every customer,
+// supplier, or employee with a nonzero balance/status.
+function BalanceListsScreen({contacts,transactions,employees=[]}){
+  const[type,setType]=useState("customer");
+  const rows=useMemo(()=>{
+    if(type==="employee")return employees.map(e=>({name:e.name,detail:e.role||"",balance:null}));
+    const code=type==="customer"?"1500":"2400";
+    return contacts.filter(c=>c.type===type).map(c=>{
+      const bal=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code)).reduce((s,t)=>s+(t.debitCode===code?t.amount:-t.amount),0);
+      return{name:c.name,detail:c.email||c.phone||"",balance:bal};
+    }).filter(r=>Math.abs(r.balance)>=1).sort((a,b)=>b.balance-a.balance);
+  },[contacts,transactions,employees,type]);
+
+  return(
+    <div style={{maxWidth:800}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Balance lists</h1>
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {[["customer","Customers"],["supplier","Suppliers"],["employee","Employees"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setType(id)} style={{background:type===id?T.accent:"none",color:type===id?"#fff":T.sub,border:`1px solid ${type===id?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        ))}
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Name</td><td style={{fontWeight:700}}>{type==="employee"?"Role":"Contact"}</td>{type!=="employee"&&<td style={{textAlign:"right",fontWeight:700,padding:"10px 16px"}}>Balance</td>}</tr></thead>
+          <tbody>
+            {rows.map((r,i)=>(
+              <tr key={i} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{r.name}</td>
+                <td style={{color:T.sub,fontSize:12}}>{r.detail||"—"}</td>
+                {type!=="employee"&&<td style={{textAlign:"right",padding:"10px 16px",fontWeight:700,color:r.balance>=0?T.text:T.red}}>{fmt(r.balance)}</td>}
+              </tr>
+            ))}
+            {!rows.length&&<tr><td colSpan="3" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>Nothing to show.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[],isDesktop=false}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
@@ -11495,14 +11844,18 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
     if(!window.confirm("Permanently delete this file? This can't be undone."))return;
     setBusy(true);await onPermanentDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);
   };
+  const[editingFileId,setEditingFileId]=useState(null);
+  const[editingFileName,setEditingFileName]=useState("");
+  const startInlineRename=(f)=>{setEditingFileId(f.id);setEditingFileName(f.name);};
+  const commitInlineRename=async()=>{
+    const trimmed=editingFileName.trim();
+    if(trimmed&&editingFileId)await onRename(editingFileId,trimmed);
+    setEditingFileId(null);
+  };
   const renameFile=async(id)=>{
     const f=files.find(x=>x.id===id);
     if(!f)return;
-    const val=window.prompt("Rename file:",f.name);
-    if(val===null)return;
-    const trimmed=val.trim();
-    if(!trimmed)return;
-    await onRename(id,trimmed);
+    startInlineRename(f);
   };
   const registerEntry=(fileId)=>{
     try{if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");}catch{}
@@ -11606,8 +11959,20 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               return(
                 <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
                   <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
-                  <div onDoubleClick={e=>{e.stopPropagation();renameFile(f.id);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
-                    <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                  <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
+                    {editingFileId===f.id?(
+                      <input
+                        autoFocus
+                        value={editingFileName}
+                        onClick={e=>e.stopPropagation()}
+                        onChange={e=>setEditingFileName(e.target.value)}
+                        onBlur={commitInlineRename}
+                        onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingFileId(null);}}
+                        style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
+                      />
+                    ):(
+                      <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                    )}
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
                   <Menu3 items={viewMode==="deleted"?[
@@ -11631,7 +11996,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                 <span style={{fontSize:12,color:T.sub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</span>
                 <button onClick={()=>renameFile(previewFile.id)} title="Rename" style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13}}>✏️</button>
               </div>
-              <div style={{background:"#fff",borderRadius:8,height:420,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
+              <div style={{background:"#fff",borderRadius:8,height:"calc(100vh - 220px)",minHeight:420,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
                 <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
               </div>
               {viewMode==="deleted"?(
@@ -12020,7 +12385,7 @@ const PACKAGE_TIERS=[
 ];
 const USER_PACKAGE_KEY="rr_user_packages";
 const getUserPackages=()=>{try{return JSON.parse(localStorage.getItem(USER_PACKAGE_KEY)||"{}")}catch{return{};}};
-function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,isDesktop=false}){
+function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,isDesktop=false}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[clientGrants,setClientGrants]=useState([]);
@@ -12931,7 +13296,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -12990,6 +13355,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     window.addEventListener("keydown",handler);
     return()=>window.removeEventListener("keydown",handler);
   },[]);
+  // Access-level gating for the multi-tenant client-access feature. RLS
+  // already enforces this server-side — this just makes the UI honest about
+  // it, instead of letting someone click something they'll get blocked on.
+  const canWriteEntries=currentAccessLevel==="full"||currentAccessLevel==="entries";
+  const canWriteFull=currentAccessLevel==="full";
   const[expandedCat,setExpandedCat]=useState(null);
   const[expandedSubCat,setExpandedSubCat]=useState(null);
   const[reskontroDefaultType,setReskontroDefaultType]=useState("customer");
@@ -13000,6 +13370,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",VoucherSettings:"voucher",
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
     Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",AccountingSettings:"accounting",
+    ReportsHub:"accounting",AgedReskontro:"accounting",SalesPerCustomer:"accounting",BalanceLists:"accounting",
     Bank:"bank",BankDashboard:"bank",Cheques:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
@@ -13137,7 +13508,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
 
-  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess}/>):null;
+  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
@@ -13370,8 +13741,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           {(()=>{
             const custItems=[
               {tab:"Contacts",label:"Customers/Suppliers"},
-              {tab:"ContactNew",label:"New customer/supplier"},
-              {tab:"CustomerImport",label:"Import"},
+              {tab:"ContactNew",label:"New customer/supplier",requiresWrite:true},
+              {tab:"CustomerImport",label:"Import",requiresWrite:true},
               {tab:"CustomerSettings",label:"Settings"},
             ];
             const custExpanded=expandedCat==="customers";
@@ -13387,9 +13758,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                   <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
                     {custItems.map(it=>{
                       const active=tab===it.tab;
+                      const locked=it.requiresWrite&&!canWriteEntries;
                       return(
-                        <div key={it.tab} onClick={()=>setTab(it.tab)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
-                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
+                        <div key={it.tab} onClick={()=>!locked&&setTab(it.tab)} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
+                          {locked&&<i className="ti ti-lock" style={{fontSize:11,color:T.muted}}/>}
                         </div>
                       );
                     })}
@@ -13405,22 +13778,23 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
-              {tab:"NewVoucher",label:"New voucher"},
-              {tab:"Transactions",label:"New entry"},
+              {tab:"NewVoucher",label:"New voucher",requiresWrite:true},
+              {tab:"Transactions",label:"New entry",requiresWrite:true},
               {tab:"Entries",label:"Voucher overview"},
-              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping"},
-              {tab:"Import",label:"Import Excel",featureKey:"import"},
+              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
+              {tab:"Import",label:"Import Excel",featureKey:"import",requiresWrite:true},
               {tab:"VoucherSettings",label:"Settings"},
             ]},
             {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
-              {tab:"InvoiceNew",label:"New invoice"},
+              {tab:"InvoiceNew",label:"New invoice",requiresWrite:true},
               {tab:"InvoiceOverview",label:"Invoice overview"},
               {tab:"RecurringInvoices",label:"Recurring invoices"},
-              {tab:"QuoteNew",label:"New quote"},
+              {tab:"QuoteNew",label:"New quote",requiresWrite:true},
               {tab:"QuoteOverview",label:"Quotes"},
               {tab:"InvoiceSettings",label:"Settings"},
             ]},
             {id:"accounting",label:"Accounting",icon:"ti-book",items:[
+              {tab:"ReportsHub",label:"Reports"},
               {tab:"GeneralLedger",label:"General ledger"},
               {tab:"TrialBalance",label:"Trial balance"},
               {tab:"Resultat",label:"Income statement"},
@@ -13429,6 +13803,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 {tab:"Reskontro",label:"Customers",param:"customer"},
                 {tab:"Reskontro",label:"Suppliers",param:"supplier"},
               ]},
+              {tab:"AgedReskontro",label:"Aged receivables/payables",featureKey:"reskontro"},
+              {tab:"SalesPerCustomer",label:"Sales per customer"},
+              {tab:"BalanceLists",label:"Balance lists"},
               {tab:"Budget",label:"Budget",featureKey:"budget"},
               {tab:"VATReport",label:"VAT report"},
               {tab:"Accounts",label:"Chart of accounts"},
@@ -13439,9 +13816,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
               {tab:"Employees",label:"Employees"},
-              {tab:"EmployeeNew",label:"New employee"},
+              {tab:"EmployeeNew",label:"New employee",requiresWrite:true},
               {tab:"Payroll",label:"Payroll"},
-              {tab:"SAFTImport",label:"Import account information"},
+              {tab:"SAFTImport",label:"Import account information",requiresWrite:true},
               {tab:"Settings",label:"Settings"},
             ]},
             {id:"pos",label:"Point of sale",icon:"ti-cash-register",items:[
@@ -13492,10 +13869,15 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                       }
                       const active=tab===it.tab;
                       const isPinned=pinnedTabs.some(p=>p.tab===it.tab);
+                      const locked=it.requiresWrite&&!canWriteEntries;
                       return(
-                        <div key={it.tab} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6}}>
-                          <span onClick={()=>setTab(it.tab)} style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
-                          <i onClick={()=>togglePin(it.tab,it.label)} title={isPinned?"Remove from Favorites":"Add to Favorites"} className={isPinned?"ti ti-star-filled":"ti ti-star rr-sidebar-pin"} style={{fontSize:12,color:isPinned?"#FBBF24":T.muted,cursor:"pointer",flexShrink:0}}/>
+                        <div key={it.tab} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
+                          <span onClick={()=>!locked&&setTab(it.tab)} title={locked?"You don't have entry access for these books":undefined} style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
+                          {locked?(
+                            <i className="ti ti-lock" style={{fontSize:11,color:T.muted,flexShrink:0}}/>
+                          ):(
+                            <i onClick={()=>togglePin(it.tab,it.label)} title={isPinned?"Remove from Favorites":"Add to Favorites"} className={isPinned?"ti ti-star-filled":"ti ti-star rr-sidebar-pin"} style={{fontSize:12,color:isPinned?"#FBBF24":T.muted,cursor:"pointer",flexShrink:0}}/>
+                          )}
                         </div>
                       );
                     })}
@@ -13527,6 +13909,15 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
       <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px",overflowY:"auto",height:"100%"}}>
         {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
+
+        {currentAccessLevel!=="full"&&(
+          <div style={{background:currentAccessLevel==="readonly"?"#FFF8EC":T.accentLight,border:`1px solid ${currentAccessLevel==="readonly"?"#F5C563":T.accent}`,borderRadius:10,padding:"10px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text}}>
+            <i className="ti ti-lock" style={{fontSize:14,color:currentAccessLevel==="readonly"?"#B45309":T.accent}}/>
+            {currentAccessLevel==="readonly"&&"You have read-only access to these books — nothing here can be edited."}
+            {currentAccessLevel==="reports"&&"You have reports-only access — you can view reports and ledgers, but can't add or edit entries."}
+            {currentAccessLevel==="entries"&&"You have entries access — you can add and edit entries, but can't change settings or delete records."}
+          </div>
+        )}
 
         {ledgerAcc?(
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
@@ -13696,6 +14087,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts}/>}
         {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
         {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}
+        {tab==="ReportsHub"&&<ReportsHubScreen onNavigate={setTab}/>}
+        {tab==="SalesPerCustomer"&&<SalesPerCustomerScreen transactions={transactions} contacts={contacts}/>}
+        {tab==="AgedReskontro"&&(feat.reskontro?<AgedReskontroScreen contacts={contacts} transactions={transactions}/>:<DisabledScreen title="Aged Reskontro" onBack={()=>setTab("Dashboard")}/>)}
+        {tab==="BalanceLists"&&<BalanceListsScreen contacts={contacts} transactions={transactions} employees={employees}/>}
 
         {tab==="Reskontro"&&(
           feat.reskontro
@@ -13777,9 +14172,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="BugLog"&&(isAdmin?<BugLogScreen onBack={()=>setTab("Settings")} isDesktop={true}/>:null)}
 
-        {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
+        {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} requestRedrockAccess={requestRedrockAccess} isViewingOwnBooks={viewingUserId===user.id}/>}
 
-        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} isDesktop={true}/>:null)}
+        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} isDesktop={true}/>:null)}
 
         {(tab==="Employees"||tab==="EmployeeNew")&&(
           <div style={{maxWidth:900}}>
