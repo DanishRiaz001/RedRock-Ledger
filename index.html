@@ -366,39 +366,44 @@ function SignedFileViewer({storagePath,type,name,style}){
   };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
+
+  const toolbarBtn={width:28,height:28,border:"none",background:"none",cursor:"pointer",color:"#D1D5DB",borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center"};
+  const Toolbar=()=>(
+    <div style={{display:"flex",alignItems:"center",gap:2,background:"#1F2937",padding:"6px 10px",borderRadius:"8px 8px 0 0",flexShrink:0}}>
+      {isImage&&(<>
+        <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={toolbarBtn}><i className="ti ti-zoom-out" style={{fontSize:15}}/></button>
+        <span onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll to zoom too)" style={{fontSize:11,color:"#D1D5DB",padding:"0 6px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{Math.round(zoom*100)}%</span>
+        <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={toolbarBtn}><i className="ti ti-zoom-in" style={{fontSize:15}}/></button>
+        <div style={{width:1,height:16,background:"#374151",margin:"0 4px"}}/>
+        <button onClick={()=>setRotation(r=>r-90)} title="Rotate" style={toolbarBtn}><i className="ti ti-rotate-2" style={{fontSize:15}}/></button>
+      </>)}
+      <div style={{flex:1,fontSize:11,color:"#9CA3AF",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{name}</div>
+      <button onClick={printFile} title="Print" style={toolbarBtn}><i className="ti ti-printer" style={{fontSize:15}}/></button>
+      <button onClick={downloadFile} title="Download" style={toolbarBtn}><i className="ti ti-download" style={{fontSize:15}}/></button>
+    </div>
+  );
+
   if(!isImage)return(
-    <div style={{position:"relative",...style,padding:0}}>
-      <iframe src={url} style={{border:"none",background:"#fff",width:"100%",height:"100%"}} title={name||"attachment"}/>
-      <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
-        <button onClick={printFile} title="Print" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-printer" style={{fontSize:14}}/></button>
-        <button onClick={downloadFile} title="Download" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-download" style={{fontSize:14}}/></button>
-      </div>
+    <div style={{...style,padding:0,display:"flex",flexDirection:"column"}}>
+      <Toolbar/>
+      <iframe src={url} style={{border:"none",background:"#fff",width:"100%",flex:1}} title={name||"attachment"}/>
     </div>
   );
   return(
-    <div>
-      <div onWheel={onWheel} style={{position:"relative",overflow:"hidden",borderRadius:8,background:"#fafafa",...style,padding:0}}>
+    <div style={{...style,padding:0,display:"flex",flexDirection:"column"}}>
+      <Toolbar/>
+      <div onWheel={onWheel} style={{position:"relative",overflow:"hidden",background:"#fafafa",flex:1}}>
         <div onMouseDown={startDrag} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",cursor:zoom>1?"grab":"default",overflow:"hidden"}}>
           <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
         </div>
-        <div style={{position:"absolute",top:8,right:8,zIndex:5,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
-          <button onClick={()=>setRotation(r=>r-90)} title="Rotate left" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-rotate-2" style={{fontSize:14}}/></button>
-          <button onClick={printFile} title="Print" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-printer" style={{fontSize:14}}/></button>
-          <button onClick={downloadFile} title="Download" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",color:"#374151",borderRadius:5}}><i className="ti ti-download" style={{fontSize:14}}/></button>
-        </div>
-        <div style={{position:"absolute",bottom:8,right:8,zIndex:5,display:"flex",gap:4,background:"rgba(255,255,255,0.92)",borderRadius:8,padding:4,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}>
-          <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>−</button>
-          <button onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll to zoom too)" style={{fontSize:11,border:"none",background:"none",cursor:"pointer",color:"#374151",padding:"0 6px",fontWeight:600}}>{Math.round(zoom*100)}%</button>
-          <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={{width:26,height:26,border:"none",background:"none",cursor:"pointer",fontSize:14,color:"#374151",borderRadius:5}}>+</button>
-        </div>
       </div>
       {extractedText?(
-        <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10}}>
+        <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10,flexShrink:0}}>
           <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Extracted text — select to copy</div>
           <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
         </div>
       ):(
-        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#FF5A1F",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
+        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#FF5A1F",cursor:extracting?"wait":"pointer",fontFamily:"inherit",flexShrink:0}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
       )}
     </div>
   );
@@ -1873,6 +1878,20 @@ const fetchTxnAttachments=async(txnId)=>{
   if(error){console.error("Fetch txn attachments error:",error);return[];}
   return(data||[]).filter(r=>r.inbox_files).map(r=>({id:r.inbox_files.id,name:r.inbox_files.name,type:r.inbox_files.type,storagePath:r.inbox_files.storage_path}));
 };
+// Comments on a ledger entry — a simple discussion thread, separate from the
+// (immutable, system-generated) change log. Anyone can add one; nobody can
+// edit or delete someone else's, keeping it an honest record of who said what.
+const fetchEntryComments=async(txnId)=>{
+  const{data,error}=await sb.from("entry_comments").select("*").eq("transaction_id",txnId).order("created_at",{ascending:true});
+  if(error){console.error("Fetch comments error:",error);return[];}
+  return(data||[]).map(r=>({id:r.id,authorId:r.author_id,body:r.body,createdAt:r.created_at}));
+};
+const addEntryComment=async(txnId,body,booksUserId)=>{
+  if(!body||!body.trim())return null;
+  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||CURRENT_USER_ID,transaction_id:txnId,author_id:CURRENT_USER_ID,body:body.trim()}).select().single();
+  if(error){console.error("Add comment error:",error);return null;}
+  return{id:data.id,authorId:data.author_id,body:data.body,createdAt:data.created_at};
+};
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 const appendGroupLine=(groupRef,line)=>{
   const map=getGroupLinesMap();
@@ -2242,9 +2261,46 @@ function ChangeLogModal({entries,profiles,currentUserId,onClose}){
   );
 }
 
-function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId}){
+function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting,profiles,currentUserId,onClose}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:480,width:"100%",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexShrink:0}}>
+          <div style={{fontSize:15,fontWeight:800,color:T.text}}>Comments</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",marginBottom:14}}>
+          {loading&&<div style={{textAlign:"center",color:T.muted,padding:"20px 0",fontSize:13}}>Loading…</div>}
+          {!loading&&!comments.length&&<div style={{textAlign:"center",color:T.muted,padding:"20px 0",fontSize:13}}>No comments yet — add the first one below.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {comments.map(c=>{
+              const who=resolveUserName(c.authorId,profiles,currentUserId);
+              const when=new Date(c.createdAt);
+              return(
+                <div key={c.id} style={{border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <span style={{fontSize:12,fontWeight:700,color:T.text}}>{who}</span>
+                    <span style={{fontSize:10,color:T.muted}}>{when.toLocaleDateString()} · {when.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                  </div>
+                  <div style={{fontSize:13,color:T.text,whiteSpace:"pre-wrap"}}>{c.body}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,flexShrink:0}}>
+          <input value={newComment} onChange={e=>setNewComment(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!posting)onPost();}} placeholder="Add a comment…" style={{...inp,flex:1}}/>
+          <button onClick={onPost} disabled={!newComment.trim()||posting} style={{background:newComment.trim()?T.accent:T.border,color:newComment.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 18px",fontWeight:700,fontSize:13,cursor:newComment.trim()?"pointer":"default",fontFamily:"inherit"}}>{posting?"…":"Post"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId}){
   const[showEdit,setShowEdit]=useState(false);
   const[showChangeLog,setShowChangeLog]=useState(false);
+  const[showComments,setShowComments]=useState(false);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isReversed=!!txn.reversedBy;
@@ -2264,6 +2320,39 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
     fetchTxnAttachments(txn.id).then(list=>{if(alive){setAttList(list);setAttLoading(false);}});
     return()=>{alive=false;};
   },[txn.id]);
+  // Comments — a simple discussion thread, separate from the change log.
+  const[comments,setComments]=useState([]);
+  const[commentsLoading,setCommentsLoading]=useState(true);
+  const[newComment,setNewComment]=useState("");
+  const[postingComment,setPostingComment]=useState(false);
+  useEffect(()=>{
+    let alive=true;
+    if(!fetchEntryComments){setCommentsLoading(false);return;}
+    fetchEntryComments(txn.id).then(list=>{if(alive){setComments(list);setCommentsLoading(false);}});
+    return()=>{alive=false;};
+  },[txn.id]);
+  const postComment=async()=>{
+    if(!newComment.trim()||!addEntryComment)return;
+    setPostingComment(true);
+    const added=await addEntryComment(txn.id,newComment);
+    if(added)setComments(p=>[...p,added]);
+    setNewComment("");
+    setPostingComment(false);
+  };
+
+  // Attach from Inbox — pick an existing file already in the Inbox instead
+  // of only being able to upload a brand-new one.
+  const[showInboxPicker,setShowInboxPicker]=useState(false);
+  const[dragOver,setDragOver]=useState(false);
+  const attachExistingFile=async(fileId)=>{
+    if(!attachFilesToTxnEntry)return;
+    await attachFilesToTxnEntry(txn.id,[fileId]);
+    const file=inboxFiles.find(f=>f.id===fileId);
+    if(file)setAttList(p=>[...p,file]);
+    setShowInboxPicker(false);
+  };
+  const availableInboxFiles=inboxFiles.filter(f=>!f.deletedAt&&!attList.some(a=>a.id===f.id));
+
   const handleAttach=async(files)=>{
     if(!uploadInboxFile||!attachFilesToTxnEntry||!files.length)return;
     setAttUploading(true);
@@ -2309,6 +2398,15 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
           <div style={{display:"flex",gap:8}}>
             {showChangeLog&&(
               <ChangeLogModal entries={entryLog} profiles={profiles} currentUserId={currentUserId} onClose={()=>setShowChangeLog(false)}/>
+            )}
+            {showComments&&(
+              <CommentsModal comments={comments} loading={commentsLoading} newComment={newComment} setNewComment={setNewComment} onPost={postComment} posting={postingComment} profiles={profiles} currentUserId={currentUserId} onClose={()=>setShowComments(false)}/>
+            )}
+            {addEntryComment&&(
+              <button onClick={()=>setShowComments(true)} title="Comments" style={{position:"relative",background:T.border,border:"none",borderRadius:10,color:T.sub,width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <i className="ti ti-message-circle" style={{fontSize:15}}/>
+                {comments.length>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:9,fontWeight:800,background:T.accent,color:"#fff",borderRadius:8,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{comments.length}</span>}
+              </button>
             )}
             <Menu3 items={[
               ...(!isReversal&&!isReversed&&!txn.matchedWith?[
@@ -2369,16 +2467,44 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
             </div>
           );
         })()}
-        {/* Attachment row */}
-        <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
+        {/* Attachment row — upload new, or pick an existing Inbox file; the
+            whole row also accepts a drag-and-drop file drop. */}
+        <div
+          onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+          onDragLeave={()=>setDragOver(false)}
+          onDrop={e=>{e.preventDefault();setDragOver(false);const files=Array.from(e.dataTransfer.files||[]);if(files.length)handleAttach(files);}}
+          style={{display:"flex",gap:8,alignItems:"center",marginTop:10,border:dragOver?`2px dashed ${T.blue}`:"2px dashed transparent",borderRadius:12,padding:dragOver?4:0,background:dragOver?T.blueBg:"transparent"}}
+        >
           <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:attUploading?"wait":"pointer",fontSize:12,color:T.blue,fontWeight:600,opacity:attUploading?0.6:1}}>
-            📎 {attUploading?"Uploading…":attList.length?`Add another file (${attList.length} attached)`:"Attach file"}
+            📎 {attUploading?"Uploading…":dragOver?"Drop to attach":attList.length?`Add another file (${attList.length} attached)`:"Attach file, or drag one here"}
             <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleAttach(Array.from(e.target.files));e.target.value="";}}/>
           </label>
+          {inboxFiles.length>0&&(
+            <button onClick={()=>setShowInboxPicker(true)} title="Attach from Inbox" style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-inbox" style={{fontSize:16}}/></button>
+          )}
           {attList.length>0&&(
             <button onClick={()=>setAttOpen(o=>!o)} title={attOpen?"Hide attachments":"Show attachments"} style={{background:attOpen?T.blue:T.blueBg,border:`1px solid ${T.blue}`,borderRadius:10,color:attOpen?"#fff":T.blue,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>📎</button>
           )}
         </div>
+        {showInboxPicker&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:850,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInboxPicker(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:420,width:"100%",maxHeight:"70vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontSize:14,fontWeight:800,color:T.text}}>Attach from Inbox</div>
+                <button onClick={()=>setShowInboxPicker(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {!availableInboxFiles.length&&<div style={{textAlign:"center",color:T.muted,padding:"20px 0",fontSize:12}}>No other files available in the Inbox.</div>}
+                {availableInboxFiles.map(f=>(
+                  <div key={f.id} onClick={()=>attachExistingFile(f.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:8,cursor:"pointer",fontSize:12,color:T.text}} className="rr-table-row">
+                    <span style={{fontSize:15}}>{(f.type&&f.type.startsWith("image"))?"🖼️":"📄"}</span>
+                    <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         {attLoading&&<div style={{fontSize:11,color:T.muted,marginTop:6}}>Loading attachments…</div>}
         {attOpen&&attList.map((f,i)=>(
           <div key={f.id||i} onClick={()=>setAttViewer(f)} style={{display:"flex",alignItems:"center",gap:8,marginTop:6,padding:"7px 10px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer"}}>
@@ -2394,7 +2520,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate}){
+function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -2405,7 +2531,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
   return(
     <>
       {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts}
-        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
         onEdit={u=>{onEdit(u);setDetail(false);}}
         onDelete={id=>{onDelete(id);setDetail(false);}}
@@ -2524,7 +2650,7 @@ const PERIOD_CLOSE_KEY="rr_period_close";
 const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
 const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
@@ -2634,7 +2760,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
-        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
         onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
         onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
@@ -2834,7 +2960,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog,profiles,currentUserId}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -2957,7 +3083,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
-          fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+          fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
           auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
@@ -5273,7 +5399,7 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
 // account switcher (jump between accounts without closing), All/Open entries
 // toggle, a period picker, and the grouped opening/entries/changes/closing
 // table with a "closed" (matched) indicator per line.
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,auditLog=[],profiles=[],currentUserId,onClose}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[filterFrom,setFilterFrom]=useState(initFrom);
   const[filterTo,setFilterTo]=useState(initTo);
@@ -5376,7 +5502,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
@@ -5721,7 +5847,9 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
 
   const exportPdf=()=>{
     const el=document.getElementById("resultat-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    const periodEl=el&&el.querySelector(".print-only-period");
+    if(periodEl)periodEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
   return(
@@ -5730,32 +5858,48 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Income statement</h1>
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
-      <div id="resultat-print-area">
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
-          <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
-          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
-          <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
-        </div>
-        <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
-      </div>
-      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}></td><td style={{textAlign:"right"}}>{periodLabel}</td><td style={{textAlign:"right"}}>Previous period</td>
-        </tr></thead>
-        <tbody>
-          <tr><td colSpan="3" style={{padding:"8px 0 4px",fontSize:11,fontWeight:800,color:T.green,textTransform:"uppercase"}}>Income</td></tr>
-          <GroupRows groups={incomeGroups}/>
-          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 0",fontWeight:800}}>Total income</td><td style={{textAlign:"right",fontWeight:800}}>{fmt(totalIncome)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(totalIncomePrev)}</td></tr>
 
-          <tr><td colSpan="3" style={{padding:"14px 0 4px",fontSize:11,fontWeight:800,color:"#D97706",textTransform:"uppercase"}}>Expenses</td></tr>
+      {/* Sticky filter+header block — attached with zero gap (same technique
+          as Trial Balance/Reskontro): pulled up past main-content-area's own
+          padding via negative margin, with matching padding added back so
+          nothing visually shifts. Without this, position:sticky respects the
+          container's padding as a gap it can never close, and content bleeds
+          through that gap while scrolling. */}
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
+        <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
+            <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
+            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
+            <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
+          </div>
+          <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+        </div>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0"}}>
+          <tbody><tr style={{color:T.muted,fontSize:11}}>
+            <td style={{padding:"8px 10px"}}></td><td style={{textAlign:"right",padding:"8px 10px"}}>{periodLabel}</td><td style={{textAlign:"right",padding:"8px 10px"}}>Previous period</td>
+          </tr></tbody>
+        </table>
+      </div>
+
+      <div id="resultat-print-area">
+      {/* This line only shows up in the PDF/print export (hidden on screen
+          since the sticky bar above already shows it) — so the period is
+          never lost once the report is viewed or filed on its own. */}
+      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}{fullYear?"":` (${from} to ${to})`}</div>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+        <tbody style={{padding:"0 10px"}}>
+          <tr><td colSpan="3" style={{padding:"8px 10px 4px",fontSize:11,fontWeight:800,color:T.green,textTransform:"uppercase"}}>Income</td></tr>
+          <GroupRows groups={incomeGroups}/>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 10px"}}>Total income</td><td style={{textAlign:"right",fontWeight:800,padding:"8px 10px"}}>{fmt(totalIncome)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"8px 10px"}}>{fmt(totalIncomePrev)}</td></tr>
+
+          <tr><td colSpan="3" style={{padding:"14px 10px 4px",fontSize:11,fontWeight:800,color:"#D97706",textTransform:"uppercase"}}>Expenses</td></tr>
           <GroupRows groups={expenseGroups}/>
-          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 0",fontWeight:800}}>Total expenses</td><td style={{textAlign:"right",fontWeight:800}}>{fmt(totalExpense)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(totalExpensePrev)}</td></tr>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 10px",fontWeight:800}}>Total expenses</td><td style={{textAlign:"right",fontWeight:800,padding:"8px 10px"}}>{fmt(totalExpense)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"8px 10px"}}>{fmt(totalExpensePrev)}</td></tr>
 
           <tr style={{borderTop:`2px solid ${T.text}`}}>
-            <td style={{padding:"10px 0",fontWeight:900,fontSize:14}}>Net profit / loss</td>
-            <td style={{textAlign:"right",fontWeight:900,fontSize:14,color:net>=0?T.green:T.red}}>{fmt(net)}</td>
-            <td style={{textAlign:"right",fontWeight:700,fontSize:12,color:T.muted}}>{fmt(netPrev)}</td>
+            <td style={{padding:"10px 10px",fontWeight:900,fontSize:14}}>Net profit / loss</td>
+            <td style={{textAlign:"right",fontWeight:900,fontSize:14,color:net>=0?T.green:T.red,padding:"10px 10px"}}>{fmt(net)}</td>
+            <td style={{textAlign:"right",fontWeight:700,fontSize:12,color:T.muted,padding:"10px 10px"}}>{fmt(netPrev)}</td>
           </tr>
         </tbody>
       </table>
@@ -5820,7 +5964,9 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 
   const exportPdf=()=>{
     const el=document.getElementById("balancesheet-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`BalanceSheet_${asOf}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    const periodEl=el&&el.querySelector(".print-only-period");
+    if(periodEl)periodEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`BalanceSheet_${asOf}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
   return(
@@ -5840,6 +5986,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
         {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
       </div>
       <div id="balancesheet-print-area">
+      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
@@ -13500,7 +13647,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab("Transactions");}} onSkip={dismissOnboarding}/>
   );
 
-  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -13520,7 +13667,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
@@ -13529,7 +13676,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -13937,7 +14084,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {registrationQueue?(
           <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
         ):ledgerAcc?(
-          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog}/>}
@@ -14023,7 +14170,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             })()}
             {entriesDetailTxn&&(
               <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}
-                fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
+                fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
                 onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
                 onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
                 onReverse={tx=>{reverseTransaction(tx);setEntriesDetailTxn(null);}}
@@ -14388,7 +14535,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
           </div>
         )}
 
