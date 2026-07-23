@@ -6762,6 +6762,12 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
 function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType}){
+  // Tracks which contact's rows are currently scrolled under the sticky bar,
+  // so the sticky title can show a name instead of staying generic — without
+  // this, scrolling deep into one contact's transactions loses all context
+  // of whose rows you're actually looking at.
+  const[visibleContactName,setVisibleContactName]=useState(null);
+  const dividerRefs=React.useRef({});
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[search,setSearch]=useState("");
@@ -6808,6 +6814,26 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       })
       .filter(g=>g.txns.length>0);
   },[relevantContacts,contactFilter,transactions,code,entriesView,search,minAmount,maxAmount]);
+
+  // Sticky bar height is roughly 90px (title row + column-header row) — a
+  // divider that's scrolled to at or above that point means its contact's
+  // rows are the ones currently under the sticky bar.
+  useEffect(()=>{
+    const scroller=document.getElementById("main-content-area");
+    if(!scroller)return;
+    const onScroll=()=>{
+      let current=null;
+      for(const g of groups){
+        const el=dividerRefs.current[g.contact.id];
+        if(!el)continue;
+        if(el.getBoundingClientRect().top<=98)current=g.contact.name;
+      }
+      setVisibleContactName(current);
+    };
+    scroller.addEventListener("scroll",onScroll);
+    onScroll();
+    return()=>scroller.removeEventListener("scroll",onScroll);
+  },[groups]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -6913,7 +6939,10 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           without a visible seam between the two. */}
       <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:0,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"12px 12px 0 0",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text}}>{type==="customer"?"Customer":"Supplier"} specification (reskontro) — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} items</div>
+          <div style={{fontSize:14,fontWeight:800,color:T.text}}>
+            {type==="customer"?"Customer":"Supplier"} specification (reskontro) — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} items
+            {visibleContactName&&<span style={{color:T.accent}}> · {visibleContactName}</span>}
+          </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {selectedAny&&(
               <span style={{fontSize:11,color:T.sub}}>Net: <b style={{color:Math.abs(selAnySum)<1?T.green:T.red}}>{sign(selAnySum)}</b></span>
@@ -6943,7 +6972,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               const sel=selected[contact.id]||[];
               return(
                 <React.Fragment key={contact.id}>
-                  <tr>
+                  <tr ref={el=>{dividerRefs.current[contact.id]=el;}}>
                     <td colSpan="7" style={{padding:"12px 14px 6px",background:T.bg}}>
                       <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                         {contact.name}
