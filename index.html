@@ -5694,7 +5694,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -5865,7 +5865,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
           nothing visually shifts. Without this, position:sticky respects the
           container's padding as a gap it can never close, and content bleeds
           through that gap while scrolling. */}
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -6762,12 +6762,6 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
 function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType}){
-  // Tracks which contact's rows are currently scrolled under the sticky bar,
-  // so the sticky title can show a name instead of staying generic — without
-  // this, scrolling deep into one contact's transactions loses all context
-  // of whose rows you're actually looking at.
-  const[visibleContactName,setVisibleContactName]=useState(null);
-  const dividerRefs=React.useRef({});
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[search,setSearch]=useState("");
@@ -6814,26 +6808,6 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       })
       .filter(g=>g.txns.length>0);
   },[relevantContacts,contactFilter,transactions,code,entriesView,search,minAmount,maxAmount]);
-
-  // Sticky bar height is roughly 90px (title row + column-header row) — a
-  // divider that's scrolled to at or above that point means its contact's
-  // rows are the ones currently under the sticky bar.
-  useEffect(()=>{
-    const scroller=document.getElementById("main-content-area");
-    if(!scroller)return;
-    const onScroll=()=>{
-      let current=null;
-      for(const g of groups){
-        const el=dividerRefs.current[g.contact.id];
-        if(!el)continue;
-        if(el.getBoundingClientRect().top<=98)current=g.contact.name;
-      }
-      setVisibleContactName(current);
-    };
-    scroller.addEventListener("scroll",onScroll);
-    onScroll();
-    return()=>scroller.removeEventListener("scroll",onScroll);
-  },[groups]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -6904,44 +6878,53 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const selAnySum=activeSelContactId?(groups.find(g=>g.contact.id===activeSelContactId)||{txns:[]}).txns.filter(t=>(selected[activeSelContactId]||[]).includes(t.id)).reduce((s,t)=>s+mv(t),0):0;
   const doMatchAny=()=>{if(activeSelContactId)doMatch(activeSelContactId);};
 
+  const[fixedBarHeight,setFixedBarHeight]=useState(160);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{
+    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
+  });
+
   return(
     <div>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
 
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
-          <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+      {/* Fixed to the viewport (not sticky) — anchored to the sidebar's right
+          edge and the global header's bottom edge directly, so there is no
+          scrolling-container math involved at all and nothing for the
+          browser to recompute or lag behind on scroll. The content below
+          gets paddingTop equal to this bar's actual measured height, so nothing
+          is hidden underneath it and nothing shifts when that height changes. */}
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
+        <div style={{maxWidth:1000}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
+            <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
+            <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
+            <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:66,textAlign:"center",whiteSpace:"nowrap"}}>{periodLabel}</span>
+            <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
+          </div>
+          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}}>
+            <option value="">All {type==="customer"?"customers":"suppliers"}</option>
+            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <div style={{position:"relative",flex:1,minWidth:100}}>
+            <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
+            <input placeholder="Invoice number, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
+          </div>
+          <div style={{display:"flex",gap:4,flexShrink:0}}>
+            {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
+              <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accentLight:"none",color:entriesView===id?T.accent:T.sub,border:`1px solid ${entriesView===id?T.accent:T.border}`,borderRadius:6,padding:"4px 9px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{label}</button>
+            ))}
+          </div>
+          <span style={{fontSize:10,color:T.muted,whiteSpace:"nowrap",flexShrink:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} entries</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
-          <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
-          <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:66,textAlign:"center",whiteSpace:"nowrap"}}>{periodLabel}</span>
-          <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
-        </div>
-        <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}}>
-          <option value="">All {type==="customer"?"customers":"suppliers"}</option>
-          {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <div style={{position:"relative",flex:1,minWidth:100}}>
-          <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
-          <input placeholder="Invoice number, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
-        </div>
-        <div style={{display:"flex",gap:4,flexShrink:0}}>
-          {[["open","Open"],["closed","Closed"],["all","All"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accentLight:"none",color:entriesView===id?T.accent:T.sub,border:`1px solid ${entriesView===id?T.accent:T.border}`,borderRadius:6,padding:"4px 9px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{label}</button>
-          ))}
-        </div>
-        <span style={{fontSize:10,color:T.muted,whiteSpace:"nowrap",flexShrink:0}}>{groups.length} {groups.length===1?"contact":"contacts"} · {totalEntryCount} entries</span>
-      </div>
 
-      {/* Sticky section — title/actions + column headers attached with zero
-          gap (same technique as Trial Balance), so rows scroll underneath
-          without a visible seam between the two. */}
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:0,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:"12px 12px 0 0",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text}}>
             {type==="customer"?"Customer":"Supplier"} specification (reskontro) — {entriesView==="all"?"all":entriesView==="closed"?"closed":"open"} items
-            {visibleContactName&&<span style={{color:T.accent}}> · {visibleContactName}</span>}
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {selectedAny&&(
@@ -6963,7 +6946,9 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             <td style={{textAlign:"right",padding:"9px 14px",width:130}}>Amount</td>
           </tr></tbody>
         </table>
+        </div>
       </div>
+      <div style={{height:fixedBarHeight}}/>
 
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",marginTop:-1}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
@@ -6972,7 +6957,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               const sel=selected[contact.id]||[];
               return(
                 <React.Fragment key={contact.id}>
-                  <tr ref={el=>{dividerRefs.current[contact.id]=el;}}>
+                  <tr>
                     <td colSpan="7" style={{padding:"12px 14px 6px",background:T.bg}}>
                       <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                         {contact.name}
