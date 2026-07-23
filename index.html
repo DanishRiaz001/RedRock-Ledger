@@ -2217,6 +2217,45 @@ function resolveUserName(userId,profiles,currentUserId){
   return"Team member";
 }
 const FIELD_LABELS={date:"Date",debitCode:"Debit account",creditCode:"Credit account",description:"Description",amount:"Amount",status:"Status",reversedBy:"Reversed by"};
+// Shows who matched a group of entries and when (pulled from the audit log,
+// which already records this), with a real Unmatch action — replacing a bare
+// browser confirm() dialog that gave no context about the match itself.
+function MatchDetailModal({groupId,auditLog=[],profiles=[],currentUserId,onUnmatch,onClose}){
+  const matchEntry=auditLog.find(a=>a.entityType==="match_group"&&a.action==="match"&&a.newValues&&a.newValues.groupId===groupId);
+  const who=matchEntry?resolveUserName(matchEntry.changedBy,profiles,currentUserId):"Unknown";
+  const when=matchEntry?new Date(matchEntry.createdAt):null;
+  const[unmatching,setUnmatching]=useState(false);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:T.greenBg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <i className="ti ti-check" style={{fontSize:18,color:T.green}}/>
+          </div>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:T.text}}>Matched</div>
+            <div style={{fontSize:11,color:T.muted}}>These entries are closed against each other</div>
+          </div>
+        </div>
+        <div style={{background:T.bg,borderRadius:10,padding:"12px 16px",marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+            <span style={{color:T.muted}}>Matched by</span>
+            <span style={{fontWeight:700,color:T.text}}>{who}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+            <span style={{color:T.muted}}>Date</span>
+            <span style={{fontWeight:700,color:T.text}}>{when?`${when.toLocaleDateString()} · ${when.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`:"Unknown"}</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={async()=>{setUnmatching(true);await onUnmatch(groupId);setUnmatching(false);onClose();}} disabled={unmatching} style={{flex:1,background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:unmatching?"wait":"pointer",fontFamily:"inherit"}}>{unmatching?"Unmatching…":"Unmatch"}</button>
+          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChangeLogModal({entries,profiles,currentUserId,onClose}){
   const sorted=[...entries].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return(
@@ -5401,6 +5440,7 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
 // table with a "closed" (matched) indicator per line.
 function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose}){
   const[currentCode,setCurrentCode]=useState(account.code);
+  const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[filterFrom,setFilterFrom]=useState(initFrom);
   const[filterTo,setFilterTo]=useState(initTo);
   const[search,setSearch]=useState("");
@@ -5572,7 +5612,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                 </td>
                 <td>
                   {isMatchedHere?(
-                    <span onClick={()=>window.confirm("Unmatch this entry?")&&onUnmatchTxns(r.matchedWith)} style={{color:T.accent,fontWeight:700,cursor:"pointer",fontSize:12}}>Closed</span>
+                    <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} style={{color:T.accent,fontWeight:700,cursor:"pointer",fontSize:12}}>Closed</span>
                   ):null}
                 </td>
                 <td onClick={()=>setDetailTxn(r)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(r.bilag)}</td>
@@ -5598,6 +5638,9 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       <div style={{marginTop:16,padding:"10px 14px",background:T.bg,borderRadius:8,display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:700}}>
         <span>Changes in period — total amount</span><span>{sign(periodMovement)}</span>
       </div>
+      {matchDetailGroupId&&(
+        <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={onUnmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
+      )}
     </div>
   );
 }
@@ -6761,9 +6804,10 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
+  const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[search,setSearch]=useState("");
   const[contactFilter,setContactFilter]=useState("");
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
@@ -6950,6 +6994,10 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       </div>
       <div style={{height:fixedBarHeight}}/>
 
+      <div id="reskontro-print-area">
+      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>
+        {type==="customer"?"Customer":"Supplier"} ledger — {periodLabel}{contactFilter?` — ${(relevantContacts.find(c=>c.id===contactFilter)||{}).name||""}`:""} — {entriesView==="all"?"all items":entriesView==="closed"?"closed items":"open items"}
+      </div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",marginTop:-1}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
           <tbody>
@@ -6971,7 +7019,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                       <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
                         <td style={{padding:"9px 14px",width:36}}>
                           {isMatchedHere?(
-                            <button onClick={()=>window.confirm("Unmatch this entry?")&&unmatchTxns(t.matchedWith)} title="Matched — click to unmatch" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
+                            <button onClick={()=>setMatchDetailGroupId(t.matchedWith)} title="Matched — click for details" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
                           ):(
                             <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
                           )}
@@ -7002,6 +7050,10 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           </tbody>
         </table>
       </div>
+      </div>
+      {matchDetailGroupId&&(
+        <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
+      )}
     </div>
   );
 }
@@ -13760,8 +13812,16 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     setDownloadMenuOpen(false);
   };
   const exportCurrentToPdf=()=>{
-    const el=document.getElementById("main-content-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    // Prefer a screen's own dedicated print area (built specifically to
+    // exclude filters/buttons/whatever else is on screen) over screenshotting
+    // the whole content area — the generic fallback is only for tabs that
+    // don't have one of these yet.
+    const TAB_PRINT_AREA={TrialBalance:"trialbalance-print-area",Resultat:"resultat-print-area",BalanceSheet:"balancesheet-print-area",VATReport:"vatreport-print-area",GeneralLedger:"generalledger-print-area",Reskontro:"reskontro-print-area"};
+    const targetedId=TAB_PRINT_AREA[tab];
+    const el=(targetedId&&document.getElementById(targetedId))||document.getElementById("main-content-area");
+    const periodEl=el&&el.querySelector(".print-only-period");
+    if(periodEl)periodEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
     setDownloadMenuOpen(false);
   };
   const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts"||!!screenExcelExport;
@@ -14272,7 +14332,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
