@@ -5647,6 +5647,9 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
 function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport}){
   const today=new Date().toISOString().slice(0,10);
+  const[fixedBarHeight,setFixedBarHeight]=useState(160);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell.
   const[colWidths,setColWidths]=useState([320,150,150,150]);
@@ -5737,7 +5740,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -5794,6 +5797,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           </tr></tbody>
         </table>
       </div>
+      <div style={{height:fixedBarHeight}}/>
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
@@ -5831,6 +5835,9 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 // Income statement (Resultat) — grouped by account series, with a
 // same-length previous-period comparison column and drill-down to ledger.
 function ResultatScreen({accounts,transactions,onOpenLedger}){
+  const[fixedBarHeight,setFixedBarHeight]=useState(140);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const year=parseInt(viewMonth.slice(0,4));
@@ -5902,13 +5909,12 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
 
-      {/* Sticky filter+header block — attached with zero gap (same technique
-          as Trial Balance/Reskontro): pulled up past main-content-area's own
-          padding via negative margin, with matching padding added back so
-          nothing visually shifts. Without this, position:sticky respects the
-          container's padding as a gap it can never close, and content bleeds
-          through that gap while scrolling. */}
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
+      {/* Fixed to the viewport, anchored right below the global header and
+          right of the sidebar — not position:sticky, which depends on the
+          scrolling container's own math and can lag behind fast scrolling.
+          A fixed element is pinned to the viewport directly and always
+          GPU-composited by the browser. */}
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -5923,6 +5929,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
           </tr></tbody>
         </table>
       </div>
+      <div style={{height:fixedBarHeight}}/>
 
       <div id="resultat-print-area">
       {/* This line only shows up in the PDF/print export (hidden on screen
@@ -5954,6 +5961,9 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
 // Balance sheet — Assets vs Equity+Liabilities at a chosen date, grouped by
 // series, with drill-down and a visible balancing check.
 function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
+  const[fixedBarHeight,setFixedBarHeight]=useState(110);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
   const[compareOn,setCompareOn]=useState(false);
   const[compareDate,setCompareDate]=useState(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10);});
@@ -6014,6 +6024,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 
   return(
     <div>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -6022,12 +6033,14 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
           <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
         </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
           <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)}/>Compare to another date
         </label>
         {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
       </div>
+      </div>
+      <div style={{height:fixedBarHeight}}/>
       <div id="balancesheet-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
@@ -6073,6 +6086,9 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 // note shown in the UI: supplier vouchers/receipts don't capture purchase VAT
 // separately yet, so this is sales (output) VAT only, not a full net position.
 function VATReportScreen({invoices,contacts,transactions}){
+  const[fixedBarHeight,setFixedBarHeight]=useState(140);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[showInfo,setShowInfo]=useState(false);
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
@@ -6102,11 +6118,14 @@ function VATReportScreen({invoices,contacts,transactions}){
   const netVatPosition=totalVat-totalPurchaseVat;
   const exportPdf=()=>{
     const el=document.getElementById("vatreport-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    const periodEl=el&&el.querySelector(".print-only-period");
+    if(periodEl)periodEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
   return(
     <div>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>VAT report</h1>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -6126,15 +6145,18 @@ function VATReportScreen({invoices,contacts,transactions}){
           <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
         </div>
       </div>
-      <div id="vatreport-print-area">
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
           <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
       </div>
+      </div>
+      <div style={{height:fixedBarHeight}}/>
+      <div id="vatreport-print-area">
+      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}</div>
 
       <div style={{background:netVatPosition>=0?T.redLight:T.greenBg,border:`1px solid ${netVatPosition>=0?T.red:T.green}`,borderRadius:12,padding:18,marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
@@ -6231,6 +6253,9 @@ function VATReportScreen({invoices,contacts,transactions}){
 // Combined general ledger (hovedbok) — every active account's own mini-ledger
 // (opening / entries / closing) stacked on one filterable, exportable page.
 function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
+  const[fixedBarHeight,setFixedBarHeight]=useState(140);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[search,setSearch]=useState("");
@@ -6271,11 +6296,14 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 
   const exportPdf=()=>{
     const el=document.getElementById("generalledger-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`GeneralLedger_${from}_${to}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+    const periodEl=el&&el.querySelector(".print-only-period");
+    if(periodEl)periodEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`GeneralLedger_${from}_${to}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
   return(
     <div>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
         <div style={{display:"flex",gap:8}}>
@@ -6283,16 +6311,19 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
           <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
         </div>
       </div>
-      <div id="generalledger-print-area">
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
           <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
-        <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
+        <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220,background:"#fff"}}/>
       </div>
+      </div>
+      <div style={{height:fixedBarHeight}}/>
+      <div id="generalledger-print-area">
+      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}</div>
 
       {accountLedgers.map(({account,opening,rows,closing})=>(
         <div key={account.code} style={{marginBottom:22,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
