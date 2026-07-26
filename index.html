@@ -3953,6 +3953,15 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const[tempPeriodClose,setTempPeriodClose]=useState(null);
   const savePeriodClose=(d)=>{saveCompanyProfile({...companyProfile,periodCloseDate:d});};
 
+  // Setup-checklist dismissal state — also must be before any early returns.
+  // (This was previously declared far below, after several `if(screen===...)
+  // return(...)` branches. Since those branches return before reaching this
+  // hook, React saw a different number of hooks called depending on which
+  // settings screen was open, which crashed the whole app with "Rendered
+  // fewer hooks than expected" whenever you opened Account Plan, Currency,
+  // Period Close, or Backup from the Settings menu.)
+  const[checklistDismissed,setChecklistDismissed]=useState(()=>{try{return localStorage.getItem("rr_checklist_dismissed")==="1";}catch{return false;}});
+
   const nextId=type=>{
     const prefix=type==="customer"?"C":"S";
     const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
@@ -4390,7 +4399,6 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     {done:transactions.length>0,label:"First entry recorded",action:()=>onNavigate&&onNavigate("Transactions")},
   ];
   const setupDone=setupSteps.filter(s=>s.done).length;
-  const[checklistDismissed,setChecklistDismissed]=useState(()=>{try{return localStorage.getItem("rr_checklist_dismissed")==="1";}catch{return false;}});
   const dismissChecklist=()=>{setChecklistDismissed(true);try{localStorage.setItem("rr_checklist_dismissed","1");}catch{}};
 
   return(
