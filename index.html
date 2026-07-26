@@ -3531,21 +3531,33 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
-function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}){
+function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
-  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
+  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
   const[origCode,setOrigCode]=useState("");
   const[newAcc,setNewAcc]=useState({code:"",name:"",notes:"",defaultVatPct:""});
   const[showNew,setShowNew]=useState(false);
   const[acctImporting,setAcctImporting]=useState(false);
   const[search,setSearch]=useState("");
+
+  // Keep the local list in sync with the accounts prop. Without this, if the
+  // screen is opened before accounts finish loading (e.g. right after login),
+  // it captures an empty list once and never updates — appearing permanently
+  // empty even after accounts arrive. Skip the resync while a row is actively
+  // being edited so we don't clobber unsaved changes.
+  useEffect(()=>{
+    if(editingIdx===null){
+      setList(accounts.map(a=>({...a})));
+    }
+  },[accounts]);
+
   const filtered=list.filter(a=>a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase()));
 
   const hasTxns=(code)=>(transactions||[]).some(t=>t.debitCode===code||t.creditCode===code);
 
   const openEdit=(ri)=>{
-    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):""});
+    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):"",customCategory:list[ri].customCategory||"",currency:list[ri].currency||"",inactive:list[ri].inactive||false});
     setOrigCode(list[ri].code);
     setEditingIdx(ri);
   };
@@ -3553,7 +3565,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   const cancelEdit=()=>{
     setList(accounts.map(a=>({...a})));
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
     setOrigCode("");
   };
 
@@ -3565,12 +3577,29 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
     if(codeChanged&&list.some((a,i)=>i!==editingIdx&&a.code===newCode)){
       alert("Account code "+newCode+" already exists.");return;
     }
-    const updated=list.map((a,i)=>i===editingIdx?{...editForm,code:newCode,name:editForm.name.trim(),defaultVatPct:editForm.defaultVatPct===""?null:parseFloat(editForm.defaultVatPct)}:a);
+    const updated=list.map((a,i)=>i===editingIdx?{...editForm,code:newCode,name:editForm.name.trim(),customCategory:(editForm.customCategory||"").trim(),defaultVatPct:editForm.defaultVatPct===""?null:parseFloat(editForm.defaultVatPct)}:a);
     setList(updated);
     // Pass oldCode + newCode so transactions get migrated when code changes
     onSave(updated,codeChanged?origCode:null,codeChanged?newCode:null);
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:""});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
+    setOrigCode("");
+  };
+
+  // Opens the account detail popup — populates editForm from the account so
+  // both viewing and editing share one code path (this also fixes the old
+  // desktop panel, which showed fields but never actually set editingIdx,
+  // so Save silently did nothing).
+  const openAccount=(code)=>{
+    const ri=list.findIndex(a=>a.code===code);
+    if(ri===-1)return;
+    openEdit(ri);
+    setViewingCode(code);
+  };
+  const closeAccount=()=>{
+    setViewingCode(null);
+    setEditingIdx(null);
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
     setOrigCode("");
   };
 
@@ -3592,84 +3621,6 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
   const[showActiveOnly,setShowActiveOnly]=useState(false);
 
   if(isDesktop){
-    const viewingAccount=viewingCode?list.find(a=>a.code===viewingCode):null;
-    if(viewingAccount){
-      const ri=list.findIndex(a=>a.code===viewingCode);
-      const hasT=hasTxns(viewingAccount.code);
-      const sk=getSK(viewingAccount.code);
-      const seriesInfo=SERIES[sk];
-      const idx=filtered.findIndex(a=>a.code===viewingCode);
-      const goAdjacent=(dir)=>{const next=filtered[idx+dir];if(next)setViewingCode(next.code);};
-      return(
-        <div style={{maxWidth:800}}>
-          <div onClick={()=>setViewingCode(null)} style={{fontSize:11,color:T.accent,fontWeight:600,cursor:"pointer",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-chevron-left" style={{fontSize:12}}/>Account</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-            <h1 style={{fontSize:22,fontWeight:800,color:T.text,margin:0}}>{viewingAccount.code} {viewingAccount.name}</h1>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <button onClick={()=>goAdjacent(-1)} disabled={idx<=0} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:idx>0?"pointer":"default",color:idx>0?T.sub:T.muted,opacity:idx>0?1:0.4}}>‹</button>
-              <button onClick={()=>goAdjacent(1)} disabled={idx>=filtered.length-1} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:30,height:30,cursor:idx<filtered.length-1?"pointer":"default",color:idx<filtered.length-1?T.sub:T.muted,opacity:idx<filtered.length-1?1:0.4}}>›</button>
-              {!hasT&&<button onClick={()=>{deleteAcc(ri);setViewingCode(null);}} title="Delete account" style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:16}}>🗑</button>}
-            </div>
-          </div>
-
-          <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,padding:24}}>
-            <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:18,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>Account details</div>
-            {hasT&&<div style={{fontSize:11,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"8px 12px",marginBottom:16}}>ℹ️ This account has transactions. Changing the number moves all of them automatically — name changes are always safe.</div>}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"18px 32px"}}>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
-                <input value={editForm.code||viewingAccount.code} onChange={e=>setEditForm(f=>({...f,code:e.target.value}))} onFocus={()=>{if(!editForm.code)setEditForm({code:viewingAccount.code,name:viewingAccount.name,matchable:viewingAccount.matchable||false,notes:viewingAccount.notes||"",defaultVatPct:viewingAccount.defaultVatPct!=null?String(viewingAccount.defaultVatPct):"",inactive:viewingAccount.inactive||false});}} style={inp}/>
-              </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
-                <input value={editForm.name!==undefined?editForm.name:viewingAccount.name} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:e.target.value}))} style={inp}/>
-              </div>
-              <div style={{gridColumn:"1/-1"}}>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-                <input value={editForm.notes!==undefined?editForm.notes:(viewingAccount.notes||"")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,notes:e.target.value}))} placeholder="Internal note (optional)" style={inp}/>
-              </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Type</div>
-                <div style={{...inp,background:T.bg,color:T.sub,display:"flex",alignItems:"center",gap:6}}>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</div>
-              </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
-                <select value={editForm.defaultVatPct!==undefined?editForm.defaultVatPct:(viewingAccount.defaultVatPct!=null?String(viewingAccount.defaultVatPct):"")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,defaultVatPct:e.target.value}))} style={inp}>
-                  <option value="">No default — ask each time</option>
-                  <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
-                </select>
-              </div>
-              {sk==="1900"&&(
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-                  <select value={editForm.currency!==undefined?editForm.currency:(viewingAccount.currency||"PKR")} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,currency:e.target.value}))} style={inp}>
-                    <option value="PKR">PKR</option><option value="NOK">NOK</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="AED">AED</option>
-                  </select>
-                </div>
-              )}
-              <div style={{gridColumn:"1/-1",display:"flex",gap:24,paddingTop:6}}>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
-                  <input type="checkbox" checked={editForm.matchable!==undefined?editForm.matchable:(viewingAccount.matchable||false)} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,matchable:e.target.checked}))}/>
-                  Open items in ledger (matchable in Reskontro)
-                </label>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
-                  <input type="checkbox" checked={editForm.inactive!==undefined?editForm.inactive:(viewingAccount.inactive||false)} onChange={e=>setEditForm(f=>({...f,code:f.code||viewingAccount.code,name:f.name!==undefined?f.name:viewingAccount.name,inactive:e.target.checked}))}/>
-                  Inactive
-                </label>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:24,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
-              <button onClick={()=>{
-                if(!editForm.code){setViewingCode(null);return;}
-                saveEdit();
-                setViewingCode(null);
-              }} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
-              <button onClick={()=>{cancelEdit();setViewingCode(null);}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 24px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      );
-    }
 
     const tableFiltered=filtered
       .filter(a=>!typeFilter||getSK(a.code)===typeFilter)
@@ -3704,7 +3655,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
             <div style={{fontSize:15,fontWeight:800,color:T.text}}>Chart of accounts</div>
             <div style={{display:"flex",gap:18}}>
               <span onClick={()=>{
-                const aoa=[["Code","Name","Type","Description","Default VAT","Matchable","Inactive"],...list.map(a=>[a.code,a.name,(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
+                const aoa=[["Code","Name","Type","Internal Category","Description","Default VAT","Matchable","Inactive"],...list.map(a=>[a.code,a.name,(SERIES[getSK(a.code)]||{}).name||"",a.customCategory||"",a.notes||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
                 const wb=XLSX.utils.book_new();
                 const ws=XLSX.utils.aoa_to_sheet(aoa);
                 XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
@@ -3768,9 +3719,9 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
                   <React.Fragment key={key}>
                     <tr style={{background:T.bg}}><td colSpan="7" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
                     {grp.map(a=>(
-                      <tr key={a.code} className="rr-table-row" style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1}}>
+                      <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
                         <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
-                        <td onClick={()=>setViewingCode(a.code)} style={{color:T.accent,fontWeight:600,cursor:"pointer"}}>{a.name}</td>
+                        <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
                         <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
                         <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.notes||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
@@ -3785,6 +3736,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
             </tbody>
           </table>
         </div>
+        {viewingCode&&<AccountModal key={viewingCode} account={list.find(a=>a.code===viewingCode)} filtered={filtered} editForm={editForm} setEditForm={setEditForm} saveEdit={saveEdit} onClose={closeAccount} onGoAdjacent={dir=>{const idx=filtered.findIndex(a=>a.code===viewingCode);const next=filtered[idx+dir];if(next)openAccount(next.code);}} hasTxns={hasTxns} deleteAcc={(code)=>{const ri=list.findIndex(a=>a.code===code);deleteAcc(ri);closeAccount();}} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>}
       </div>
     );
   }
@@ -3843,64 +3795,131 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false}
           if(!grp.length)return null;
           return(<div key={key} style={{marginBottom:16}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>{s.icon}</span><span style={{fontSize:12,fontWeight:800,color:s.color,textTransform:"uppercase"}}>{s.name}</span></div>
-            {grp.map(a=>{const ri=list.findIndex(x=>x.code===a.code);const isE=editingIdx===ri;const hasT=hasTxns(a.code);return(
-              <div key={a.code} style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6}}>
-                {isE?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Edit Account</div>
-                  <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8}}>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Code</div>
-                      <input value={editForm.code} onChange={e=>setEditForm(f=>({...f,code:e.target.value}))} style={{...inp,fontSize:13}}/>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Name</div>
-                      <input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={{...inp,fontSize:13}}/>
-                    </div>
-                  </div>
-                  {hasT&&<div style={{fontSize:10,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"6px 10px"}}>ℹ️ This account has transactions. If you change the code, all transactions will automatically move to the new code. Name changes are always safe.</div>}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Default VAT %</div>
-                      <select value={editForm.defaultVatPct} onChange={e=>setEditForm(f=>({...f,defaultVatPct:e.target.value}))} style={{...inp,fontSize:13}}>
-                        <option value="">No default — ask each time</option>
-                        <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
-                      </select>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Notes</div>
-                      <input value={editForm.notes} onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))} placeholder="Internal note (optional)" style={{...inp,fontSize:13}}/>
-                    </div>
-                  </div>
-                  <div onClick={()=>setEditForm(f=>({...f,matchable:!f.matchable}))} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:editForm.matchable?"#F0FDF4":"#f9f9f9",border:`1.5px solid ${editForm.matchable?T.green:"#d3d1c7"}`,borderRadius:9,cursor:"pointer",userSelect:"none"}}>
-                    <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${editForm.matchable?T.green:"#b0ada6"}`,background:editForm.matchable?T.green:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      {editForm.matchable&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
-                    </div>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:700,color:editForm.matchable?T.green:T.text}}>Match</div>
-                      <div style={{fontSize:10,color:T.muted}}>{editForm.matchable?"Bilags on this account can be matched in Reskontro":"Enable to allow matching bilags in Reskontro"}</div>
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <SaveFlashButton onClick={saveEdit} style={{flex:2,padding:"8px"}} label="✓ Save"/>
-                    <button style={{...btnGhost,flex:1,padding:"8px"}} onClick={cancelEdit}>Cancel</button>
-                    {!hasT&&<button style={{...btnSm,background:"#FEF2F2",color:T.red,border:`1px solid ${T.red}33`,flex:1,padding:"8px"}} onClick={()=>deleteAcc(ri)}>🗑 Delete</button>}
-                  </div>
-                </div>):(
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                      <span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800,flexShrink:0}}>{a.code}</span>
-                      <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
-                      {a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
-                      {hasT&&<span style={{fontSize:9,background:"#FEF3C7",color:T.orange,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>Has Txns</span>}
-                    </div>
-                    <button style={{...btnSm,flexShrink:0,marginLeft:8}} onClick={()=>openEdit(ri)}>✏️ Edit</button>
-                  </div>
-                )}
+            {grp.map(a=>{const hasT=hasTxns(a.code);return(
+              <div key={a.code} onClick={()=>openAccount(a.code)} className="rr-table-row" style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                  <span style={{background:s.bg,color:s.color,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800,flexShrink:0}}>{a.code}</span>
+                  <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                  {a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
+                  {hasT&&<span style={{fontSize:9,background:"#FEF3C7",color:T.orange,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>Has Txns</span>}
+                </div>
+                <i className="ti ti-chevron-right" style={{fontSize:16,color:T.muted,flexShrink:0,marginLeft:8}}/>
               </div>
             );})}
           </div>);
         })}
         <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>← Back</button></div>
+      </div>
+      {viewingCode&&<AccountModal key={viewingCode} account={list.find(a=>a.code===viewingCode)} filtered={filtered} editForm={editForm} setEditForm={setEditForm} saveEdit={saveEdit} onClose={closeAccount} onGoAdjacent={dir=>{const idx=filtered.findIndex(a=>a.code===viewingCode);const next=filtered[idx+dir];if(next)openAccount(next.code);}} hasTxns={hasTxns} deleteAcc={(code)=>{const ri=list.findIndex(a=>a.code===code);deleteAcc(ri);closeAccount();}} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>}
+    </div>
+  );
+}
+
+// Shared account detail popup — used by both the mobile card list and the
+// desktop table in AccountPlanScreen. Opens centered over whatever screen is
+// behind it. Shows the account's statutory NS4102 category (which report it
+// falls under — Income statement/Resultat or Balance sheet — computed
+// automatically from the account code) plus a free-text internal category the
+// user sets themselves, and lets them view/edit that account's annual budget
+// inline without leaving the popup.
+function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,onGoAdjacent,hasTxns,deleteAcc,budgets=[],saveBudget,onNavigate}){
+  const year=new Date().getFullYear();
+  const budgetRow=(budgets||[]).find(b=>b.year===year&&b.month===-1&&b.code===(account&&account.code));
+  const[budgetAmt,setBudgetAmt]=useState(budgetRow?String(budgetRow.amount):"");
+  if(!account)return null;
+  const hasT=hasTxns(account.code);
+  const sk=getSK(account.code);
+  const seriesInfo=SERIES[sk];
+  const isBalance=sk&&parseInt(sk)<3000;
+  const reportLabel=seriesInfo?(isBalance?"Balance sheet":"Income statement (Resultat)"):"Uncategorized";
+  const idx=filtered.findIndex(a=>a.code===account.code);
+  const val=(field,fallback)=>editForm[field]!==undefined?editForm[field]:fallback;
+  const set=(field)=>e=>setEditForm(f=>({...f,[field]:e.target.type==="checkbox"?e.target.checked:e.target.value}));
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
+        <div style={{position:"sticky",top:0,background:"#fff",zIndex:1,padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Account</div>
+            <div style={{fontSize:17,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{account.code} {account.name}</div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+            <button onClick={()=>onGoAdjacent(-1)} disabled={idx<=0} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:idx>0?"pointer":"default",color:idx>0?T.sub:T.muted,opacity:idx>0?1:0.4}}>‹</button>
+            <button onClick={()=>onGoAdjacent(1)} disabled={idx>=filtered.length-1} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:idx<filtered.length-1?"pointer":"default",color:idx<filtered.length-1?T.sub:T.muted,opacity:idx<filtered.length-1?1:0.4}}>›</button>
+            <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
+          </div>
+        </div>
+
+        <div style={{padding:20}}>
+          {hasT&&<div style={{fontSize:11,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"8px 12px",marginBottom:14}}>ℹ️ This account has transactions. Changing the number moves all of them automatically — name changes are always safe.</div>}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px 14px",marginBottom:16}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account number *</div>
+              <input value={val("code",account.code)} onChange={set("code")} style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
+              <input value={val("name",account.name)} onChange={set("name")} style={inp}/>
+            </div>
+            <div style={{gridColumn:"1/-1"}}>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+              <input value={val("notes",account.notes||"")} onChange={set("notes")} placeholder="Internal note (optional)" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Category (NS 4102, from resultat & balance report)</div>
+              <div style={{...inp,background:T.bg,color:T.sub,display:"flex",flexDirection:"column",gap:1,lineHeight:1.3}}>
+                <span>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</span>
+                <span style={{fontSize:10,color:T.muted}}>{reportLabel}</span>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Internal category</div>
+              <input value={val("customCategory",account.customCategory||"")} onChange={set("customCategory")} placeholder="e.g. Marketing, Travel" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
+              <select value={val("defaultVatPct",account.defaultVatPct!=null?String(account.defaultVatPct):"")} onChange={set("defaultVatPct")} style={inp}>
+                <option value="">No default — ask each time</option>
+                <option value="0">0%</option><option value="5">5%</option><option value="17">17%</option><option value="18">18%</option><option value="25">25%</option>
+              </select>
+            </div>
+            {sk==="1900"&&(
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+                <select value={val("currency",account.currency||"PKR")} onChange={set("currency")} style={inp}>
+                  <option value="PKR">PKR</option><option value="NOK">NOK</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="AED">AED</option>
+                </select>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1",display:"flex",gap:20,paddingTop:4}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                <input type="checkbox" checked={val("matchable",account.matchable||false)} onChange={set("matchable")}/>
+                Open items (matchable in Reskontro)
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                <input type="checkbox" checked={val("inactive",account.inactive||false)} onChange={set("inactive")}/>
+                Inactive
+              </label>
+            </div>
+          </div>
+
+          <div style={{background:T.bg,borderRadius:12,padding:14,marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>📊 Budget — {year} (full year)</div>
+            <div style={{display:"flex",gap:8}}>
+              <input type="number" inputMode="decimal" value={budgetAmt} onChange={e=>setBudgetAmt(e.target.value)} placeholder="Annual budget amount" style={{...inp,flex:1}}/>
+              <SaveFlashButton style={{width:"auto",padding:"10px 16px"}} label="Save" onClick={()=>{if(saveBudget)saveBudget(year,-1,account.code,parseFloat(budgetAmt)||0);}}/>
+            </div>
+            {onNavigate&&<div onClick={()=>onNavigate("Budget")} style={{fontSize:11,color:T.accent,fontWeight:600,cursor:"pointer",marginTop:8}}>Open full Budget screen for month-by-month view →</div>}
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <SaveFlashButton style={{flex:2}} label="✓ Save account" onClick={()=>{saveEdit();onClose();}}/>
+            <button style={{...btnGhost,flex:1}} onClick={onClose}>Cancel</button>
+            {!hasT&&<button style={{...btnSm,background:"#FEF2F2",color:T.red,border:`1px solid ${T.red}33`,flex:1}} onClick={()=>deleteAcc(account.code)}>🗑 Delete</button>}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -4258,7 +4277,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
@@ -5647,9 +5666,6 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
 function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport}){
   const today=new Date().toISOString().slice(0,10);
-  const[fixedBarHeight,setFixedBarHeight]=useState(160);
-  const fixedBarRef=React.useRef(null);
-  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell.
   const[colWidths,setColWidths]=useState([320,150,150,150]);
@@ -5740,7 +5756,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -5797,7 +5813,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           </tr></tbody>
         </table>
       </div>
-      <div style={{height:fixedBarHeight}}/>
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
@@ -5835,9 +5850,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 // Income statement (Resultat) — grouped by account series, with a
 // same-length previous-period comparison column and drill-down to ledger.
 function ResultatScreen({accounts,transactions,onOpenLedger}){
-  const[fixedBarHeight,setFixedBarHeight]=useState(140);
-  const fixedBarRef=React.useRef(null);
-  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const year=parseInt(viewMonth.slice(0,4));
@@ -5909,12 +5921,13 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
 
-      {/* Fixed to the viewport, anchored right below the global header and
-          right of the sidebar — not position:sticky, which depends on the
-          scrolling container's own math and can lag behind fast scrolling.
-          A fixed element is pinned to the viewport directly and always
-          GPU-composited by the browser. */}
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
+      {/* Sticky filter+header block — attached with zero gap (same technique
+          as Trial Balance/Reskontro): pulled up past main-content-area's own
+          padding via negative margin, with matching padding added back so
+          nothing visually shifts. Without this, position:sticky respects the
+          container's padding as a gap it can never close, and content bleeds
+          through that gap while scrolling. */}
+      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -5929,7 +5942,6 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
           </tr></tbody>
         </table>
       </div>
-      <div style={{height:fixedBarHeight}}/>
 
       <div id="resultat-print-area">
       {/* This line only shows up in the PDF/print export (hidden on screen
@@ -5961,9 +5973,6 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
 // Balance sheet — Assets vs Equity+Liabilities at a chosen date, grouped by
 // series, with drill-down and a visible balancing check.
 function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
-  const[fixedBarHeight,setFixedBarHeight]=useState(110);
-  const fixedBarRef=React.useRef(null);
-  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
   const[compareOn,setCompareOn]=useState(false);
   const[compareDate,setCompareDate]=useState(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10);});
@@ -6024,7 +6033,6 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 
   return(
     <div>
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -6033,14 +6041,12 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
           <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
         </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
           <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)}/>Compare to another date
         </label>
         {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
       </div>
-      </div>
-      <div style={{height:fixedBarHeight}}/>
       <div id="balancesheet-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
@@ -6086,9 +6092,6 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
 // note shown in the UI: supplier vouchers/receipts don't capture purchase VAT
 // separately yet, so this is sales (output) VAT only, not a full net position.
 function VATReportScreen({invoices,contacts,transactions}){
-  const[fixedBarHeight,setFixedBarHeight]=useState(140);
-  const fixedBarRef=React.useRef(null);
-  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[showInfo,setShowInfo]=useState(false);
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
@@ -6118,14 +6121,11 @@ function VATReportScreen({invoices,contacts,transactions}){
   const netVatPosition=totalVat-totalPurchaseVat;
   const exportPdf=()=>{
     const el=document.getElementById("vatreport-print-area");
-    const periodEl=el&&el.querySelector(".print-only-period");
-    if(periodEl)periodEl.style.display="block";
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
   };
 
   return(
     <div>
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>VAT report</h1>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -6145,18 +6145,15 @@ function VATReportScreen({invoices,contacts,transactions}){
           <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
         </div>
       </div>
-      <div style={{display:"flex",gap:10,alignItems:"center"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
+      <div id="vatreport-print-area">
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
           <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
       </div>
-      </div>
-      <div style={{height:fixedBarHeight}}/>
-      <div id="vatreport-print-area">
-      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}</div>
 
       <div style={{background:netVatPosition>=0?T.redLight:T.greenBg,border:`1px solid ${netVatPosition>=0?T.red:T.green}`,borderRadius:12,padding:18,marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
@@ -6253,9 +6250,6 @@ function VATReportScreen({invoices,contacts,transactions}){
 // Combined general ledger (hovedbok) — every active account's own mini-ledger
 // (opening / entries / closing) stacked on one filterable, exportable page.
 function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
-  const[fixedBarHeight,setFixedBarHeight]=useState(140);
-  const fixedBarRef=React.useRef(null);
-  useEffect(()=>{if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);});
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[search,setSearch]=useState("");
@@ -6296,14 +6290,11 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 
   const exportPdf=()=>{
     const el=document.getElementById("generalledger-print-area");
-    const periodEl=el&&el.querySelector(".print-only-period");
-    if(periodEl)periodEl.style.display="block";
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`GeneralLedger_${from}_${to}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`GeneralLedger_${from}_${to}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
   };
 
   return(
     <div>
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>General ledger</h1>
         <div style={{display:"flex",gap:8}}>
@@ -6311,19 +6302,16 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
           <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
         </div>
       </div>
-      <div style={{display:"flex",gap:10,alignItems:"center"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
+      <div id="generalledger-print-area">
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
           <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
-        <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220,background:"#fff"}}/>
+        <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
-      </div>
-      <div style={{height:fixedBarHeight}}/>
-      <div id="generalledger-print-area">
-      <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}</div>
 
       {accountLedgers.map(({account,opening,rows,closing})=>(
         <div key={account.code} style={{marginBottom:22,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
