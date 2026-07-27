@@ -3002,7 +3002,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   return(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div style={{fontSize:14,fontWeight:800,color:T.text}}>💰 Money sources — whose money is in the bank</div>
+        <div style={{fontSize:14,fontWeight:800,color:T.text}}>💰 Whose</div>
         <button style={{...btnSm}} onClick={()=>{if(showAdd){resetForm();}setShowAdd(s=>!s);}}>{showAdd?"Cancel":"+ Add source"}</button>
       </div>
 
@@ -3109,7 +3109,6 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
   return(
     <div>
-      <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction}/>
       {viewing&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:500,display:"flex",flexDirection:"column"}}>
           <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(0,0,0,0.5)"}}>
@@ -6591,23 +6590,19 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
     return days;
   },[bankAccounts,transactions]);
 
-  const grandTotal=totalIn+totalOut||1;
-  const inPct=Math.round((totalIn/grandTotal)*100);
-
-  const topN=(list,n)=>{
-    const top=list.slice(0,n);
-    const restSum=list.slice(n).reduce((s,[,v])=>s+v,0);
-    if(list.length>n)top.push(["Other",restSum]);
-    return top;
-  };
-  const topIn=topN(moneyIn,2);
-  const topOut=topN(moneyOut,2);
-  const maxIn=Math.max(...topIn.map(([,v])=>v),1);
-  const maxOut=Math.max(...topOut.map(([,v])=>v),1);
-
   return(
     <div style={{maxWidth:1000}}>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Dashboard</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Whose</h1>
+          <div style={{fontSize:12,color:T.muted}}>Track which money source each bank movement belongs to.</div>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {[90,30,14].map(d=>(
+            <button key={d} onClick={()=>setDayRange(d)} style={{background:dayRange===d?T.accentLight:"none",color:dayRange===d?T.accent:T.sub,border:`1px solid ${dayRange===d?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{d} days</button>
+          ))}
+        </div>
+      </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
@@ -6669,72 +6664,16 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
         </div>
       </div>
 
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text}}>Transaction history</div>
-          <div style={{display:"flex",gap:6}}>
-            {[90,30,14].map(d=>(
-              <button key={d} onClick={()=>setDayRange(d)} style={{background:dayRange===d?T.accentLight:"none",color:dayRange===d?T.accent:T.sub,border:`1px solid ${dayRange===d?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{d} days</button>
-            ))}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:800,color:T.text}}>Whose</div>
+            <div style={{fontSize:11,color:T.muted,marginTop:3}}>Tag bank movements to a source so the balance stays understandable.</div>
           </div>
+          <div style={{fontSize:11,color:T.sub}}>{moneySources.length} source{moneySources.length===1?"":"s"}</div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1.2fr 1.2fr",gap:16,marginBottom:20}}>
-          <div style={{background:T.bg,borderRadius:10,padding:16,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:10,alignSelf:"flex-start"}}>Transaction overview</div>
-            <svg width="120" height="120" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="45" fill="none" stroke={T.redLight} strokeWidth="16"/>
-              <circle cx="60" cy="60" r="45" fill="none" stroke={T.waterTeal} strokeWidth="16" strokeDasharray={`${inPct*2.83} 283`} transform="rotate(-90 60 60)"/>
-            </svg>
-            <div style={{display:"flex",gap:14,marginTop:8,fontSize:10}}>
-              <span style={{color:T.waterTeal,fontWeight:700}}>In {fmt(totalIn)}</span>
-              <span style={{color:T.red,fontWeight:700}}>Out {fmt(totalOut)}</span>
-            </div>
-          </div>
-          <div style={{background:T.bg,borderRadius:10,padding:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:12,display:"flex",alignItems:"center",gap:5}}><i className="ti ti-arrow-down" style={{color:T.waterTeal}}/>Money in</div>
-            {topIn.map(([label,amt])=>(
-              <div key={label} style={{marginBottom:10}}>
-                <div style={{fontSize:11,color:T.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmt(amt)} — {label}</div>
-                <div style={{background:"#E5E7EB",borderRadius:5,height:6}}><div style={{width:`${(amt/maxIn)*100}%`,height:"100%",background:T.waterTeal,borderRadius:5}}/></div>
-              </div>
-            ))}
-            {!topIn.length&&<div style={{fontSize:11,color:T.muted}}>No inflows in this period.</div>}
-          </div>
-          <div style={{background:T.bg,borderRadius:10,padding:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:12,display:"flex",alignItems:"center",gap:5}}><i className="ti ti-arrow-up" style={{color:T.red}}/>Money out</div>
-            {topOut.map(([label,amt])=>(
-              <div key={label} style={{marginBottom:10}}>
-                <div style={{fontSize:11,color:T.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmt(amt)} — {label}</div>
-                <div style={{background:"#E5E7EB",borderRadius:5,height:6}}><div style={{width:`${(amt/maxOut)*100}%`,height:"100%",background:T.red,borderRadius:5}}/></div>
-              </div>
-            ))}
-            {!topOut.length&&<div style={{fontSize:11,color:T.muted}}>No outflows in this period.</div>}
-          </div>
-        </div>
-
-        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"9px 14px",fontWeight:700}}>Description</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Bank account</td><td style={{textAlign:"right",fontWeight:700,padding:"9px 14px"}}>Amount</td></tr></thead>
-            <tbody>
-              {recentTxns.slice(0,25).map(t=>{
-                const isIn=bankAccounts.some(a=>a.code===t.debitCode);
-                const bankAcct=bankAccounts.find(a=>a.code===t.debitCode||a.code===t.creditCode);
-                return(
-                  <tr key={t.id} className="rr-table-row" style={{borderBottom:`1px solid ${T.border}`}}>
-                    <td style={{padding:"9px 14px",color:T.text,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                    <td style={{color:T.sub}}>{t.date}</td>
-                    <td style={{color:T.sub,fontSize:12}}>{bankAcct?`${bankAcct.code} ${bankAcct.name}`:"—"}</td>
-                    <td style={{textAlign:"right",padding:"9px 14px",fontWeight:700,color:isIn?T.waterTeal:T.red}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
-                  </tr>
-                );
-              })}
-              {!recentTxns.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No bank activity in this period.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction}/>
       </div>
-
-      <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction}/>
     </div>
   );
 }
@@ -9805,10 +9744,10 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[]}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -9879,7 +9818,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     // Multi-line entries share one groupRef so opening any line shows the whole entry
     const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
     // Save primary entry
-    onSave({...form,amount,lines:undefined,groupRef});
+    onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null});
     // Save each extra line as its own entry, linked via groupRef
     extraLines.forEach(l=>{
       onSave({
@@ -9891,6 +9830,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         contactId:form.contactId||null,
         sfFundId:form.sfFundId||null,
         groupRef,
+        moneySourceId:form.moneySourceId||null,
       });
     });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
@@ -10224,6 +10164,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         )}
 
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
+        {moneySources&&moneySources.length>0&&(
+          <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
+            <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+              <option value="">— Select source (optional) —</option>
+              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        )}
         <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={save}>{entrySaved?"✓ Saved!":"Save Entry"}</button>
       </div>
       )}
@@ -13755,7 +13704,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"New voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"New voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -13792,7 +13741,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
     Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",AccountingSettings:"accounting",
     ReportsHub:"accounting",AgedReskontro:"accounting",SalesPerCustomer:"accounting",BalanceLists:"accounting",
-    Bank:"bank",BankDashboard:"bank",Cheques:"bank",BankSettings:"bank",
+    Bank:"bank",BankDashboard:"bank",BankWhose:"bank",Cheques:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
     CompanyInfo:"company",Employees:"company",EmployeeNew:"company",Payroll:"company",Settings:"company",SAFTImport:"company",
@@ -14138,7 +14087,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
           {feat.bank&&(()=>{
             const bankItems=[
-              {tab:"BankDashboard",label:"Dashboard"},
+              {tab:"BankWhose",label:"Whose"},
               {tab:"Bank",label:"Bank reconciliation"},
               {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
               {tab:"BankSettings",label:"Settings"},
@@ -14461,7 +14410,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Transactions"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={moneySources} tagTransaction={tagTransaction} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
               <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -14529,7 +14478,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
-        {tab==="BankDashboard"&&(
+        {(tab==="BankDashboard"||tab==="BankWhose")&&(
           feat.bank
             ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} moneySources={moneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
