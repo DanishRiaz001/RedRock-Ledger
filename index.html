@@ -11593,6 +11593,14 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
   const[cardMenu,setCardMenu]=useState(null);
   const[showAddBudget,setShowAddBudget]=useState(false);
 
+  // Budget rollover — on/off switch for the whole feature (per browser). When off,
+  // every month's effective budget is just its own amount — no unspent-surplus
+  // carry-forward, regardless of any per-account surplus setting saved earlier.
+  const[rolloverEnabled,setRolloverEnabledState]=useState(()=>{try{return localStorage.getItem("rr_budget_rollover_enabled")!=="0";}catch{return true;}});
+  const setRolloverEnabled=(v)=>{setRolloverEnabledState(v);try{localStorage.setItem("rr_budget_rollover_enabled",v?"1":"0");}catch{}};
+  const[settingsMenuOpen,setSettingsMenuOpen]=useState(false);
+  const[moveConfirm,setMoveConfirm]=useState(false);
+
   const now=new Date();
   const years=[2023,2024,2025,2026,2027,2028];
   const BMNTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -11638,6 +11646,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
       if(cache[key]!==undefined)return cache[key];
       const row=getRow(y,m,code);
       const own=row?row.amount||0:0;
+      if(!rolloverEnabled){cache[key]=own;return own;}
       let py=m-1,pyy=y;if(py<0){py=11;pyy=y-1;}
       const hasEarlierData=budgets.some(b=>b.code===code&&b.month>=0&&(b.year<pyy||(b.year===pyy&&b.month<=py)));
       if(!hasEarlierData){cache[key]=own;return own;}
@@ -11651,7 +11660,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
       return eff;
     };
     return (y,m,code)=>calc(y,m,code);
-  },[budgets,transactions]);
+  },[budgets,transactions,rolloverEnabled]);
 
   const getEffective=(code)=>bSelMonth===-1?(baseBudgetMap[code]||0):effectiveBudget(bSelYear,bSelMonth,code);
   const getRollover=(code)=>bSelMonth===-1?0:Math.max(0,getEffective(code)-(baseBudgetMap[code]||0));
@@ -11670,6 +11679,26 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
   // Current month income for % calculation
   const curIncome=useMemo(()=>periodTxns.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[periodTxns]);
 
+  // Move-previous-month-budget: copies every budgeted amount (and its surplus
+  // setting) from the month right before the one currently selected into the
+  // selected month, replacing whatever is set there for those accounts.
+  const prevMonth=bSelMonth===-1?null:(bSelMonth===0?11:bSelMonth-1);
+  const prevMonthYear=bSelMonth===0?bSelYear-1:bSelYear;
+  const prevMonthLabel=bSelMonth===-1?"":BMNTH[prevMonth];
+  const curMonthLabel=bSelMonth===-1?"":BMNTH[bSelMonth];
+  const prevMonthBudgetRows=useMemo(()=>{
+    if(bSelMonth===-1)return[];
+    return budgets.filter(b=>b.year===prevMonthYear&&b.month===prevMonth&&b.amount>0);
+  },[budgets,bSelMonth,prevMonth,prevMonthYear]);
+  const moveBudgetForward=()=>{
+    if(bSelMonth===-1||!prevMonthBudgetRows.length)return;
+    prevMonthBudgetRows.forEach(row=>{
+      saveBudget(bSelYear,bSelMonth,row.code,row.amount);
+      saveBudgetSurplusSetting(bSelYear,bSelMonth,row.code,row.surplusAction||"rollover",row.surplusFundId||null);
+    });
+    setMoveConfirm(false);
+  };
+
   const confirmEdit=()=>{
     if(!editModal)return;
     saveBudget(bSelYear,bSelMonth,editModal.code,parseFloat(editVal)||0);
@@ -11679,7 +11708,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
   const openEdit=(a)=>{
     const row=getRow(bSelYear,bSelMonth,a.code);
     setEditVal(String(baseBudgetMap[a.code]||""));
-    setSurplusAction(row?.surplusAction||"rollover");
+    setSurplusAction(row?.surplusAction||(rolloverEnabled?"rollover":"sinking_fund"));
     setSurplusFundId(row?.surplusFundId||(sinkingFunds[0]?sinkingFunds[0].id:""));
     setEditModal({code:a.code,name:a.name});
     setCardMenu(null);
@@ -11726,7 +11755,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
 
   return(
     <div style={isDesktop?{maxWidth:1000}:{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      {cardMenu&&<div onClick={()=>setCardMenu(null)} style={{position:"fixed",inset:0,zIndex:90}}/>}
+      {(cardMenu||settingsMenuOpen)&&<div onClick={()=>{setCardMenu(null);setSettingsMenuOpen(false);}} style={{position:"fixed",inset:0,zIndex:90}}/>}
 
       {/* Edit modal */}
       {editModal&&(
@@ -11735,11 +11764,11 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{editModal.code} · {editModal.name}</div>
             <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Budget for {bSelMonth===-1?String(bSelYear):["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][bSelMonth]+" "+bSelYear} (PKR)</div>
             <input type="number" placeholder="e.g. 50000" value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus style={{...inp,marginBottom:12}}/>
-            {bSelMonth!==-1&&(
+            {bSelMonth!==-1&&(rolloverEnabled||sinkingFunds.length>0)&&(
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:11,color:"#888780",fontWeight:600,marginBottom:6}}>On surplus, if under budget</div>
                 <div style={{display:"flex",gap:6,marginBottom:8}}>
-                  <button onClick={()=>setSurplusAction("rollover")} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${surplusAction==="rollover"?T.accent:"#d3d1c7"}`,background:surplusAction==="rollover"?T.accentLight:"#fff",color:surplusAction==="rollover"?T.accent:"#5f5e5a",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>↻ Roll over</button>
+                  {rolloverEnabled&&<button onClick={()=>setSurplusAction("rollover")} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${surplusAction==="rollover"?T.accent:"#d3d1c7"}`,background:surplusAction==="rollover"?T.accentLight:"#fff",color:surplusAction==="rollover"?T.accent:"#5f5e5a",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>↻ Roll over</button>}
                   <button onClick={()=>setSurplusAction("sinking_fund")} disabled={!sinkingFunds.length} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${surplusAction==="sinking_fund"?T.accent:"#d3d1c7"}`,background:surplusAction==="sinking_fund"?T.accentLight:"#fff",color:surplusAction==="sinking_fund"?T.accent:"#5f5e5a",fontWeight:700,fontSize:11,cursor:sinkingFunds.length?"pointer":"not-allowed",fontFamily:"inherit",opacity:sinkingFunds.length?1:0.5}}>💰 Send to savings</button>
                 </div>
                 {surplusAction==="sinking_fund"&&(
@@ -11754,6 +11783,20 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
             <div style={{display:"flex",gap:8}}>
               <SaveFlashButton onClick={confirmEdit} style={{flex:2}} label="Save Budget"/>
               <button onClick={()=>setEditModal(null)} style={{...btnGhost,flex:1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move-previous-month-budget confirmation */}
+      {moveConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#fff",borderRadius:18,padding:24,width:"100%",maxWidth:340}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:8}}>Move {prevMonthLabel} budget to {curMonthLabel}?</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:16}}>This copies {prevMonthBudgetRows.length} budgeted {prevMonthBudgetRows.length===1?"account":"accounts"} from {prevMonthLabel} {prevMonthYear} into {curMonthLabel} {bSelYear}, replacing any budget already set there for those accounts.</div>
+            <div style={{display:"flex",gap:8}}>
+              <SaveFlashButton onClick={moveBudgetForward} style={{flex:2}} label="Move Budget"/>
+              <button onClick={()=>setMoveConfirm(false)} style={{...btnGhost,flex:1}}>Cancel</button>
             </div>
           </div>
         </div>
@@ -11780,12 +11823,39 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
         <div style={{background:"#1A1A2E",borderRadius:20,padding:"20px 16px 16px",marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>Budget Overview</div>
-            {/* Year + All Year */}
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {/* Year + All Year + settings */}
+            <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}>
               <select value={bSelYear} onChange={e=>{setBSelYear(parseInt(e.target.value));setBSelMonth(now.getMonth());}} style={{fontSize:9,fontWeight:700,color:"#fff",background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
                 {years.map(y=><option key={y} value={y} style={{background:"#1A1A2E"}}>{y}</option>)}
               </select>
               <button onClick={()=>setBSelMonth(-1)} style={{fontSize:9,fontWeight:700,color:bSelMonth===-1?"#fff":"rgba(255,255,255,0.5)",background:bSelMonth===-1?"rgba(255,255,255,0.2)":"transparent",border:"none",borderRadius:6,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit"}}>All</button>
+              <button onClick={()=>setSettingsMenuOpen(p=>!p)} title="Budget settings" style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:settingsMenuOpen?"rgba(255,255,255,0.24)":"rgba(255,255,255,0.12)",border:"none",borderRadius:6,color:"#fff",cursor:"pointer"}}>
+                <i className="ti ti-settings" style={{fontSize:13}}/>
+              </button>
+              {settingsMenuOpen&&(
+                <div style={{position:"absolute",top:28,right:0,background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:12,zIndex:120,minWidth:230,boxShadow:"0 8px 24px rgba(0,0,0,0.18)",padding:12,textAlign:"left"}}>
+                  <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10}}>Budget settings</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:600,color:T.text}}>Budget rollover</div>
+                      <div style={{fontSize:9,color:"#888780",marginTop:1}}>Carry unspent budget into next month</div>
+                    </div>
+                    <div onClick={()=>setRolloverEnabled(!rolloverEnabled)} style={{width:38,height:21,borderRadius:11,background:rolloverEnabled?T.accent:"#D1D5DB",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                      <div style={{position:"absolute",top:2,left:rolloverEnabled?19:2,width:17,height:17,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                    </div>
+                  </div>
+                  <div style={{height:1,background:"#eee",margin:"4px 0 10px"}}/>
+                  <button
+                    disabled={bSelMonth===-1||!prevMonthBudgetRows.length}
+                    onClick={()=>{setSettingsMenuOpen(false);setMoveConfirm(true);}}
+                    style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"4px 0",fontSize:11,fontWeight:700,color:(bSelMonth===-1||!prevMonthBudgetRows.length)?"#b5b3aa":T.accent,cursor:(bSelMonth===-1||!prevMonthBudgetRows.length)?"not-allowed":"pointer",fontFamily:"inherit"}}
+                  >
+                    ⇥ Move {bSelMonth===-1?"previous month":prevMonthLabel} budget to {bSelMonth===-1?"current month":curMonthLabel}
+                  </button>
+                  {bSelMonth===-1&&<div style={{fontSize:9,color:"#888780",marginTop:4}}>Select a specific month first.</div>}
+                  {bSelMonth!==-1&&!prevMonthBudgetRows.length&&<div style={{fontSize:9,color:"#888780",marginTop:4}}>No budget set for {prevMonthLabel} {prevMonthYear} yet.</div>}
+                </div>
+              )}
             </div>
           </div>
           {/* Month pills */}
