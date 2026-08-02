@@ -907,19 +907,6 @@ function AppShell({user}){
     const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
     if(!json.length)return{error:"That file appears to be empty."};
 
-    const toDateStr=(d)=>{
-      if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
-      const s=String(d).trim();
-      const parsed=Date.parse(s);
-      return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
-    };
-    const toNum=(v)=>{
-      if(typeof v==="number")return v;
-      const cleaned=String(v).replace(/[, ]/g,"").replace(/^\((.*)\)$/,"-$1");
-      const n=parseFloat(cleaned);
-      return isNaN(n)?null:n;
-    };
-
     let headerRow=null,dataStart=0;
     const firstRowText=json[0].map(c=>String(c).toLowerCase().trim());
     if(firstRowText.some(c=>["date","description","amount","balance","narrative","details","debit","credit"].includes(c))){
@@ -935,6 +922,14 @@ function AppShell({user}){
     if(dateCol<0)dateCol=0;
     if(descCol<0)descCol=1;
 
+    // Raw column headers (real ones if a header row was found, otherwise
+    // "Column N" placeholders) plus the untouched data rows — both handed
+    // back so the UI can offer a manual remap without re-reading the file.
+    const rawRows=json.slice(dataStart);
+    const colCount=Math.max(...json.slice(0,20).map(r=>r.length),1);
+    const columnHeaders=Array.from({length:colCount},(_,i)=>headerRow&&headerRow[i]?json[0][i]:`Column ${i+1}`);
+    const guessedCols={dateCol,descCol,amountCol,debitCol,creditCol,balanceCol};
+
     const detectedColumns={
       date:headerRow?(headerRow[dateCol]||`column ${dateCol+1}`):"column 1 (assumed)",
       description:headerRow?(headerRow[descCol]||`column ${descCol+1}`):"column 2 (assumed)",
@@ -944,34 +939,12 @@ function AppShell({user}){
       balance:balanceCol>=0?headerRow[balanceCol]:null,
     };
 
-    let rows=json.slice(dataStart).map((r,i)=>{
-      const date=toDateStr(r[dateCol]);
-      const description=String(r[descCol]||"").trim();
-      let amount=null;
-      if(amountCol>=0)amount=toNum(r[amountCol]);
-      else if(debitCol>=0||creditCol>=0){
-        const dr=debitCol>=0?toNum(r[debitCol]):null;
-        const cr=creditCol>=0?toNum(r[creditCol]):null;
-        amount=(cr||0)-(dr||0);
-      }
-      return{rowNum:dataStart+i+1,date,description,amount,balance:balanceCol>=0?toNum(r[balanceCol]):null,raw:r};
-    });
-
-    const skippedNoDate=rows.filter(r=>!r.date).length;
-    rows=rows.filter(r=>r.date);
-
-    if(rows.length&&rows.every(r=>r.amount==null)&&rows.some(r=>r.balance!=null)){
-      rows=rows.map((r,i)=>i===0?{...r,amount:0}:{...r,amount:Math.round(((r.balance||0)-(rows[i-1].balance||0))*100)/100});
-      rows=rows.slice(1);
-    }
-
-    const skippedZeroOrBad=rows.filter(r=>r.amount==null||r.amount===0).length;
-    rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
+    const{rows,skippedNoDate,skippedZeroOrBad}=buildRows(guessedCols);
 
     if(!rows.length){
-      return{error:"Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.",detectedColumns,skippedNoDate,skippedZeroOrBad};
+      return{error:"Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.",detectedColumns,skippedNoDate,skippedZeroOrBad,columnHeaders,rawRows,guessedCols};
     }
-    return{rows,detectedColumns,skippedNoDate,skippedZeroOrBad,totalRowsInFile:json.length-dataStart};
+    return{rows,detectedColumns,skippedNoDate,skippedZeroOrBad,totalRowsInFile:json.length-dataStart,columnHeaders,rawRows,guessedCols};
   };
 
   // Actually saves previously-parsed rows. Remembers the inserted IDs so the
@@ -1079,6 +1052,33 @@ function AppShell({user}){
     if(!canEdit)return;
     await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",user.id);
     setBankStatementLines(p=>p.filter(l=>l.id!==id));
+  };
+  // Match links an EXISTING ledger transaction to an uploaded statement line —
+  // used when the entry was already keyed in by hand before the statement
+  // arrived, so it must not create a second transaction. Reuses the same
+  // posted/posted_txn_id fields the "Post" flow uses, so a matched line
+  // disappears from the unposted list exactly the same way.
+  const matchBankStatementLine=async(line,txnId)=>{
+    if(!canEdit)return;
+    const{error}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:txnId}).eq("id",line.id);
+    if(error){alert("Match failed: "+error.message);return;}
+    setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:true,postedTxnId:txnId}:l));
+    setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:true}:t));
+    await sb.from("transactions").update({reconciled:true}).eq("id",txnId);
+  };
+  // Reverses either a match or a "Post" — unlinks the statement line so it
+  // reappears in the working reconciliation view. Doesn't touch or delete the
+  // ledger transaction itself (if one was created via Post, it stays put).
+  const unmatchBankStatementLine=async(line)=>{
+    if(!canEdit)return;
+    const txnId=line.postedTxnId;
+    const{error}=await sb.from("bank_statement_lines").update({posted:false,posted_txn_id:null}).eq("id",line.id);
+    if(error){alert("Unmatch failed: "+error.message);return;}
+    setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:false,postedTxnId:null}:l));
+    if(txnId){
+      setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:false}:t));
+      await sb.from("transactions").update({reconciled:false}).eq("id",txnId);
+    }
   };
   const toggleReconciled=async(txnId,value)=>{
     setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:value}:t));
@@ -1713,7 +1713,7 @@ function AppShell({user}){
         uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry} restoreInboxFileEntry={restoreInboxFileEntry} permanentlyDeleteInboxFileEntry={permanentlyDeleteInboxFileEntry}
         renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
-        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine}
+        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
       />
@@ -1884,6 +1884,48 @@ const isIncomeSK=(code)=>INCOME_SK.has(getSK(code));
 const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
+
+// Shared bank-statement helpers — used both by the initial auto-detect parse
+// and by the manual column-remap UI in Bank Reconciliation, so both agree on
+// exactly how a cell becomes a date/number.
+const bankToDateStr=(d)=>{
+  if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
+  const s=String(d).trim();
+  const parsed=Date.parse(s);
+  return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
+};
+const bankToNum=(v)=>{
+  if(typeof v==="number")return v;
+  const cleaned=String(v).replace(/[, ]/g,"").replace(/^\((.*)\)$/,"-$1");
+  const n=parseFloat(cleaned);
+  return isNaN(n)?null:n;
+};
+// Turns raw sheet rows + a column mapping into the {date,description,amount,balance}
+// rows the import preview/commit expects. cols uses -1 for "not selected".
+const buildBankRows=(rawRows,cols,dataStart=0)=>{
+  const{dateCol,descCol,amountCol,debitCol,creditCol,balanceCol}=cols;
+  let out=rawRows.map((r,i)=>{
+    const date=bankToDateStr(r[dateCol]);
+    const description=String(r[descCol]||"").trim();
+    let amount=null;
+    if(amountCol>=0)amount=bankToNum(r[amountCol]);
+    else if(debitCol>=0||creditCol>=0){
+      const dr=debitCol>=0?bankToNum(r[debitCol]):null;
+      const cr=creditCol>=0?bankToNum(r[creditCol]):null;
+      amount=(cr||0)-(dr||0);
+    }
+    return{rowNum:dataStart+i+1,date,description,amount,balance:balanceCol>=0?bankToNum(r[balanceCol]):null,raw:r};
+  });
+  const skippedNoDate=out.filter(r=>!r.date).length;
+  out=out.filter(r=>r.date);
+  if(out.length&&out.every(r=>r.amount==null)&&out.some(r=>r.balance!=null)){
+    out=out.map((r,i)=>i===0?{...r,amount:0}:{...r,amount:Math.round(((r.balance||0)-(out[i-1].balance||0))*100)/100});
+    out=out.slice(1);
+  }
+  const skippedZeroOrBad=out.filter(r=>r.amount==null||r.amount===0).length;
+  out=out.filter(r=>r.amount!=null&&r.amount!==0);
+  return{rows:out,skippedNoDate,skippedZeroOrBad};
+};
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
 const fetchInboxFiles=async()=>{
   const{data,error}=await sb.from("inbox_files").select("*").eq("user_id",CURRENT_USER_ID).order("created_at",{ascending:false});
@@ -2717,6 +2759,20 @@ const isFeatureOn=(featureId,userId)=>{
 const PERIOD_CLOSE_KEY="rr_period_close";
 const getPeriodClose=()=>localStorage.getItem(PERIOD_CLOSE_KEY)||null;
 const isDateClosed=(date)=>{const pc=getPeriodClose();return pc&&date<=pc;};
+
+// Bank reconciliation approval — per bank account + month, stored locally
+// (same pattern as the period-close date above). Once approved, that
+// account/month is locked: no new posting or matching against it until
+// reopened.
+const BANK_RECON_APPROVED_KEY="rr_bank_recon_approved";
+const getBankReconApprovals=()=>{try{return JSON.parse(localStorage.getItem(BANK_RECON_APPROVED_KEY)||"{}");}catch{return{};}};
+const isBankReconApproved=(accountCode,month)=>!!getBankReconApprovals()[`${accountCode}|${month}`];
+const setBankReconApproved=(accountCode,month,value)=>{
+  const all=getBankReconApprovals();
+  const key=`${accountCode}|${month}`;
+  if(value)all[key]=true;else delete all[key];
+  try{localStorage.setItem(BANK_RECON_APPROVED_KEY,JSON.stringify(all));}catch{}
+};
 
 function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId}){
   const today=new Date().toISOString().split("T")[0];
@@ -5835,7 +5891,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   );
 }
 
-function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport}){
+function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport,isDesktop=false}){
   const today=new Date().toISOString().slice(0,10);
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell.
@@ -5874,10 +5930,18 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     // Steps by one month if currently viewing a single month or full year;
     // for an arbitrary custom range, stepping isn't well-defined, so this
     // just nudges both dates forward/back by a month as a reasonable default.
+    if(isFullYear){
+      // Full-year view always starts on Jan 1st — stepping that by a month
+      // with setMonth() only crosses a year boundary going backward (Jan minus
+      // 1 month rolls into December of the prior year), never forward (Jan
+      // plus 1 month is still Feb of the same year). Step the year directly.
+      const y=parseInt(filterFrom.slice(0,4),10)+dir;
+      setFilterFrom(`${y}-01-01`);setFilterTo(`${y}-12-31`);
+      return;
+    }
     const d=new Date(filterFrom);d.setMonth(d.getMonth()+dir);
     const y=d.getFullYear(),m=d.getMonth();
-    if(isFullYear){setFilterFrom(`${y}-01-01`);setFilterTo(`${y}-12-31`);}
-    else{setFilterFrom(`${y}-${String(m+1).padStart(2,"0")}-01`);setFilterTo(new Date(y,m+1,0).toISOString().slice(0,10));}
+    setFilterFrom(`${y}-${String(m+1).padStart(2,"0")}-01`);setFilterTo(new Date(y,m+1,0).toISOString().slice(0,10));
   };
 
   const categoryKeys=useMemo(()=>Object.keys(SERIES).filter(k=>accounts.some(a=>getSK(a.code)===k)),[accounts]);
@@ -5915,6 +5979,100 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       XLSX.writeFile(wb,`TrialBalance_${filterFrom}_${filterTo}.xlsx`);
     });
   },[rows,filterFrom,filterTo,registerExcelExport]);
+
+  if(!isDesktop){
+    return(
+      <div style={{paddingBottom:24}}>
+        {periodPickerOpen&&(
+          <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+        )}
+        {editingAccount&&onSaveAccounts&&(
+          <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
+        )}
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 10px"}}>Trial balance</h1>
+
+        <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-16,paddingTop:16,marginLeft:-16,paddingLeft:16,marginRight:-16,paddingRight:16}}>
+          {/* Big, thumb-friendly period stepper — the whole point of the mobile
+              fix is that ‹ and › need to be easy to hit and never get cut off
+              by the filter row wrapping underneath them. */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8}}>
+            <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:T.sub,width:44,height:40}}>‹</button>
+            <span onClick={()=>setPeriodPickerOpen(true)} style={{fontSize:14,fontWeight:700,color:T.text,cursor:"pointer",flex:1,textAlign:"center"}}>{periodLabel}</span>
+            <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:T.sub,width:44,height:40}}>›</button>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setFiltersOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:5,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+                <i className="ti ti-filter" style={{fontSize:13,color:T.sub}}/>
+                {activeCategories&&<span style={{fontSize:10,background:T.accentLight,color:T.accent,borderRadius:10,padding:"1px 5px",fontWeight:700}}>{activeCategories.size}</span>}
+              </button>
+              {filtersOpen&&(<>
+                <div onClick={()=>setFiltersOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+                <div style={{position:"absolute",left:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",padding:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:800,color:T.text}}>Account categories</div>
+                    <button onClick={()=>setActiveCategories(null)} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Show all</button>
+                  </div>
+                  {categoryKeys.map(k=>{
+                    const isOn=!activeCategories||activeCategories.has(k);
+                    return(
+                      <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,padding:"6px 0",cursor:"pointer"}}>
+                        <input type="checkbox" checked={isOn} onChange={()=>toggleCategory(k)}/>
+                        <span>{SERIES[k].icon} {SERIES[k].name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </>)}
+            </div>
+            <div style={{position:"relative",flex:1}}>
+              <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}/>
+              <input placeholder="Search…" value={reportSearch} onChange={e=>setReportSearch(e.target.value)} style={{...inp,paddingLeft:28,background:"#fff",width:"100%"}}/>
+            </div>
+            <button onClick={()=>{setFromAcct("");setToAcct("");setReportSearch("");setActiveCategories(null);}} title="Reset all filters" style={{background:"none",border:`1px solid ${T.border}`,cursor:"pointer",color:T.sub,width:38,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <i className="ti ti-settings" style={{fontSize:15}}/>
+            </button>
+          </div>
+          {(fromAcct||toAcct)&&(
+            <div style={{display:"flex",gap:6,marginTop:6}}>
+              <input placeholder="Fra konto" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
+              <input placeholder="Til konto" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
+            </div>
+          )}
+          {!(fromAcct||toAcct)&&(
+            <button onClick={()=>setFromAcct(" ")} style={{background:"none",border:"none",color:T.accent,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"6px 2px 0"}}>+ Account range</button>
+          )}
+          {/* Column header for the IB / Change / UB layout below — only the
+              current period's three numbers, nothing else, per the mobile spec. */}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,marginTop:8,padding:"0 2px"}}>
+            <div style={{fontSize:9,fontWeight:800,color:T.muted,letterSpacing:0.3}}>ACCOUNT</div>
+            <div style={{fontSize:9,fontWeight:800,color:T.muted,textAlign:"right",letterSpacing:0.3}}>IB</div>
+            <div style={{fontSize:9,fontWeight:800,color:T.muted,textAlign:"right",letterSpacing:0.3}}>CHANGE</div>
+            <div style={{fontSize:9,fontWeight:800,color:T.muted,textAlign:"right",letterSpacing:0.3}}>UB</div>
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+          {rows.map(r=>(
+            <div key={r.code} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,alignItems:"center",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 8px"}}>
+              <div onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:11,fontWeight:700,color:onSaveAccounts?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:onSaveAccounts?"pointer":"default"}}>{r.code} {r.name}</div>
+              <div style={{fontSize:11,textAlign:"right",color:T.text}}>{fmt(r.opening)}</div>
+              <div
+                onClick={()=>{
+                  if(!r.diff||!onOpenLedger)return;
+                  const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
+                  onOpenLedger(acct,filterFrom,filterTo);
+                }}
+                style={{fontSize:11,textAlign:"right",color:r.diff?T.accent:T.muted,fontWeight:r.diff?700:400,cursor:r.diff?"pointer":"default"}}
+              >{r.diff?fmt(r.diff):"—"}</div>
+              <div style={{fontSize:11,fontWeight:800,textAlign:"right",color:T.text}}>{fmt(r.closing)}</div>
+            </div>
+          ))}
+          {!rows.length&&<div style={{padding:"24px 0",textAlign:"center",color:T.muted,fontSize:12}}>No account activity matches these filters.</div>}
+        </div>
+      </div>
+    );
+  }
 
   return(
     <div>
@@ -6678,17 +6836,20 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
   );
 }
 
-function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,toggleReconciled}){
+function BankReconciliationScreen({accounts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled}){
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[selectedLineId,setSelectedLineId]=useState(null);
+  const[selectedTxnId,setSelectedTxnId]=useState(null); // left-side selection, for matching to a right-side line
   const[offsetCode,setOffsetCode]=useState("");
   const[uploading,setUploading]=useState(false);
   const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName}
   const[importing,setImporting]=useState(false);
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
   const[showHistory,setShowHistory]=useState(false);
+  const[showMatched,setShowMatched]=useState(false);
+  const[reconApprovedTick,setReconApprovedTick]=useState(0); // bump to force a re-read of localStorage approval state
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Left column: what's actually in the ledger for this account and month.
@@ -6699,16 +6860,39 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
     const asOf=monthEnd.toISOString().slice(0,10);
     return transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===selectedAccount)return s+t.amount;if(t.creditCode===selectedAccount)return s-t.amount;return s;},0);
   },[transactions,selectedAccount,month]);
-  const reconciledCount=ledgerEntries.filter(t=>t.reconciled).length;
 
   // Right column: the uploaded statement lines still needing to be posted.
   const linesForAccount=useMemo(()=>bankStatementLines.filter(l=>l.accountCode===selectedAccount&&l.date.slice(0,7)===month),[bankStatementLines,selectedAccount,month]);
   const unmatchedLines=linesForAccount.filter(l=>!l.posted).sort((a,b)=>a.date.localeCompare(b.date));
-  const postedLines=linesForAccount.filter(l=>l.posted);
+  const matchedLines=linesForAccount.filter(l=>l.posted&&l.postedTxnId).sort((a,b)=>a.date.localeCompare(b.date));
   const selectedLine=unmatchedLines.find(l=>l.id===selectedLineId)||null;
   const statementBalance=linesForAccount.reduce((s,l)=>s+l.amount,0);
 
+  // A ledger entry that's been matched (or posted-from-statement) shouldn't
+  // clutter the working "Entered in ledger" list any more than its matched
+  // counterpart clutters "From bank statement" — both move to the Matched view.
+  const matchedTxnIds=useMemo(()=>new Set(matchedLines.map(l=>l.postedTxnId)),[matchedLines]);
+  const workingLedgerEntries=ledgerEntries.filter(t=>!matchedTxnIds.has(t.id));
+  const matchedLedgerEntries=ledgerEntries.filter(t=>matchedTxnIds.has(t.id));
+  const reconciledCount=workingLedgerEntries.filter(t=>t.reconciled).length;
+
   const offsetOptions=accounts.filter(a=>a.code!==selectedAccount);
+
+  // Reconciliation approval — everything on both sides paired off is the
+  // condition for being allowed to approve; once approved, the period is
+  // locked for this account until reopened.
+  const isApproved=isBankReconApproved(selectedAccount,month)&&reconApprovedTick>=0;
+  const canApprove=!isApproved&&unmatchedLines.length===0&&workingLedgerEntries.length===0&&(matchedLines.length>0||ledgerEntries.length>0);
+  const doApprove=()=>{
+    if(!canApprove)return;
+    setBankReconApproved(selectedAccount,month,true);
+    setReconApprovedTick(t=>t+1);
+  };
+  const doReopen=()=>{
+    if(!window.confirm("Reopen this period? You'll be able to post and match again for this account/month."))return;
+    setBankReconApproved(selectedAccount,month,false);
+    setReconApprovedTick(t=>t+1);
+  };
 
   const handleUpload=async(file)=>{
     if(!selectedAccount){alert("Choose a bank account first.");return;}
@@ -6738,10 +6922,20 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
     setLastImport(null);
   };
   const doPost=async()=>{
-    if(!selectedLine||!offsetCode)return;
+    if(isApproved||!selectedLine||!offsetCode)return;
     await postBankStatementLine(selectedLine,offsetCode);
     setSelectedLineId(null);setOffsetCode("");
   };
+  const doMatch=async()=>{
+    if(isApproved||!selectedLine||!selectedTxnId)return;
+    await matchBankStatementLine(selectedLine,selectedTxnId);
+    setSelectedLineId(null);setSelectedTxnId(null);setOffsetCode("");
+  };
+  const doUnmatch=async(line)=>{
+    if(isApproved){alert("Reopen this period first to unmatch anything in it.");return;}
+    await unmatchBankStatementLine(line);
+  };
+  const selectedTxn=workingLedgerEntries.find(t=>t.id===selectedTxnId)||null;
 
   return(
     <div>
@@ -6794,15 +6988,54 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setShowHistory(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-history" style={{fontSize:13,marginRight:5}}/>History</button>
+          <button onClick={()=>setShowMatched(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-checks" style={{fontSize:13,marginRight:5}}/>Matched ({matchedLines.length})</button>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
             <button onClick={doUndoImport} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo last import ({lastImport.count})</button>
           )}
-          <label style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:uploading?"wait":"pointer",fontFamily:"inherit",opacity:uploading?0.6:1}}>
+          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1}}>
             {uploading?"Reading file…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
-            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
+            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
           </label>
         </div>
       </div>
+      {isApproved?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+          <div style={{fontSize:12,color:T.green,fontWeight:700}}><i className="ti ti-lock" style={{fontSize:13,marginRight:6}}/>Reconciliation approved for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — this account is locked for that month.</div>
+          <button onClick={doReopen} style={{background:"none",border:`1px solid ${T.green}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:T.green,cursor:"pointer",fontFamily:"inherit"}}>Reopen</button>
+        </div>
+      ):canApprove?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+          <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Everything's matched or posted for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — ready to approve.</div>
+          <button onClick={doApprove} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Approve reconciliation</button>
+        </div>
+      ):null}
+      {showMatched&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowMatched(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:640,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text}}>Matched &amp; closed — {getName(selectedAccount)}, {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
+              <button onClick={()=>setShowMatched(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+              <thead><tr style={{color:T.muted,fontSize:10}}><td style={{padding:"6px 0"}}>Date</td><td>Statement description</td><td style={{textAlign:"right"}}>Amount</td><td></td></tr></thead>
+              <tbody>
+                {matchedLines.map(l=>{
+                  const txn=transactions.find(t=>t.id===l.postedTxnId);
+                  return(
+                    <tr key={l.id} style={{borderTop:`1px solid ${T.border}`}}>
+                      <td style={{padding:"7px 0",color:T.sub}}>{l.date}</td>
+                      <td style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={txn?`Ledger: ${txn.description}`:undefined}>{l.description}</td>
+                      <td style={{textAlign:"right",fontWeight:600}}>{fmt(l.amount)}</td>
+                      <td style={{textAlign:"right"}}><button onClick={()=>doUnmatch(l)} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button></td>
+                    </tr>
+                  );
+                })}
+                {!matchedLines.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>Nothing matched yet this month.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {showHistory&&(()=>{
         const monthsBack=[];
         for(let i=0;i<12;i++){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);monthsBack.push(d.toISOString().slice(0,7));}
@@ -6847,36 +7080,47 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
       </div>
 
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
-        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);}} style={{...inp,width:220}}>
+        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);setSelectedTxnId(null);}} style={{...inp,width:220}}>
           {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
           {!bankAccounts.length&&<option value="">No bank accounts yet</option>}
         </select>
-        <input type="month" value={month} onChange={e=>{setMonth(e.target.value);setSelectedLineId(null);}} style={{...inp,width:150}}/>
+        <input type="month" value={month} onChange={e=>{setMonth(e.target.value);setSelectedLineId(null);setSelectedTxnId(null);}} style={{...inp,width:150}}/>
       </div>
+
+      {selectedLine&&selectedTxn&&(
+        <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:12,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Match ledger entry {fmt(mv(selectedTxn))} ↔ statement line {fmt(selectedLine.amount)} — no new transaction is created, and balances don't change.</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doMatch} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Match</button>
+            <button onClick={()=>{setSelectedLineId(null);setSelectedTxnId(null);}} style={{background:"none",border:`1px solid ${T.accent}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
+          </div>
+        </div>
+      )}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         {/* Left: Entered in ledger */}
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text}}>Entered in ledger</div>
-            <div style={{fontSize:11,color:T.muted}}>{reconciledCount}/{ledgerEntries.length} reconciled</div>
+            <div style={{fontSize:11,color:T.muted}}>{reconciledCount}/{workingLedgerEntries.length} reconciled</div>
           </div>
-          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:12}}>{fmt(enteredBalance)}</div>
+          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>{fmt(enteredBalance)}</div>
+          <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Click a row to select it, then pick its match on the right.</div>
           <div style={{maxHeight:420,overflowY:"auto"}}>
             <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:10}}>
                 <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
               </tr></thead>
               <tbody>
-                {ledgerEntries.map(t=>(
-                  <tr key={t.id} style={{borderTop:`1px solid ${T.border}`,background:t.reconciled?T.greenBg:"transparent"}}>
-                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={!!t.reconciled} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
+                {workingLedgerEntries.map(t=>(
+                  <tr key={t.id} onClick={()=>!isApproved&&setSelectedTxnId(id=>id===t.id?null:t.id)} style={{borderTop:`1px solid ${T.border}`,background:selectedTxnId===t.id?T.accentLight:(t.reconciled?T.greenBg:"transparent"),cursor:isApproved?"default":"pointer"}}>
+                    <td style={{padding:"7px 0"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!t.reconciled} disabled={isApproved} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
                     <td style={{color:T.sub}}>{t.date}</td>
                     <td style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                     <td style={{textAlign:"right",fontWeight:600}}>{sign(mv(t))}</td>
                   </tr>
                 ))}
-                {!ledgerEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No ledger entries this month.</td></tr>}
+                {!workingLedgerEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{ledgerEntries.length?"Everything here is matched — see the Matched tab.":"No ledger entries this month."}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -6886,13 +7130,13 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text}}>From bank statement</div>
-            <div style={{fontSize:11,color:T.muted}}>{postedLines.length} posted</div>
+            <div style={{fontSize:11,color:T.muted}}>{matchedLines.length} matched</div>
           </div>
           <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:12}}>{fmt(statementBalance)}</div>
 
-          {selectedLine&&(
+          {selectedLine&&!selectedTxn&&(
             <div style={{background:T.accentLight,borderRadius:10,padding:12,marginBottom:12}}>
-              <div style={{fontSize:11,color:T.accent,fontWeight:700,marginBottom:8}}>Post {fmt(selectedLine.amount)} against:</div>
+              <div style={{fontSize:11,color:T.accent,fontWeight:700,marginBottom:8}}>Post {fmt(selectedLine.amount)} against (or select a ledger entry on the left to match instead):</div>
               <div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:160,overflowY:"auto",marginBottom:8}}>
                 {offsetOptions.map(a=>(
                   <div key={a.code} onClick={()=>setOffsetCode(a.code)} style={{display:"flex",justifyContent:"space-between",padding:"6px 8px",borderRadius:6,cursor:"pointer",background:offsetCode===a.code?"#fff":"transparent"}}>
@@ -6913,11 +7157,11 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
               <tbody>
                 {unmatchedLines.map(l=>(
                   <tr key={l.id} style={{borderTop:`1px solid ${T.border}`,background:selectedLineId===l.id?T.accentLight:"transparent"}}>
-                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineId===l.id} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");}}/></td>
+                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineId===l.id} disabled={isApproved} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");}}/></td>
                     <td style={{color:T.sub}}>{l.date}</td>
                     <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.description}</td>
                     <td style={{textAlign:"right",fontWeight:600}}>{fmt(l.amount)}</td>
-                    <td style={{textAlign:"right"}}><button onClick={()=>deleteBankStatementLine(l.id)} title="Delete line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:11}}>✕</button></td>
+                    <td style={{textAlign:"right"}}><button onClick={()=>deleteBankStatementLine(l.id)} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}>✕</button></td>
                   </tr>
                 ))}
                 {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
@@ -13736,7 +13980,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -14556,7 +14800,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} toggleReconciled={toggleReconciled}/></div>
+            ?<div style={{maxWidth:900}}><BankReconciliationScreen accounts={accounts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} toggleReconciled={toggleReconciled}/></div>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -14592,7 +14836,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="TrialBalance"&&(
           <div style={{maxWidth:1000}}>
-            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)}/>
+            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} isDesktop={isDesktop}/>
           </div>
         )}
 
