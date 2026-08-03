@@ -2239,8 +2239,8 @@ function ContactSearch({contacts,value,onChange}){
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
-  const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||""});
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction}){
+  const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
 
@@ -2260,10 +2260,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose}){
             <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
           </div>
           <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
+          {moneySources&&moneySources.length>0&&(
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
+              <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
+              <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+                <option value="">— Select source (optional) —</option>
+                {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{display:"flex",gap:6,marginTop:4}}>
             <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>{
               if(!valid)return;
               if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
+              if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
               onSave({...form,amount:parseFloat(form.amount)});
             }}>💾 Save</button>
             {confirmDel?(
@@ -2411,7 +2421,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId}){
+function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction}){
   const[showEdit,setShowEdit]=useState(false);
   const[showChangeLog,setShowChangeLog]=useState(false);
   const[showComments,setShowComments]=useState(false);
@@ -2484,7 +2494,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
 
   if(showEdit)return(
     <EditModal
-      txn={txn} accounts={accounts} contacts={contacts}
+      txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
       onSave={u=>{onEdit(u);setShowEdit(false);}}
       onDelete={id=>{onDelete(id);setShowEdit(false);onClose();}}
       onClose={()=>setShowEdit(false)}
@@ -2634,7 +2644,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate}){
+function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate,moneySources,tagTransaction}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -2646,7 +2656,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
     <>
       {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
-        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
+        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         onEdit={u=>{onEdit(u);setDetail(false);}}
         onDelete={id=>{onDelete(id);setDetail(false);}}
         onReverse={tx=>{onReverse(tx);setDetail(false);}}
@@ -2778,7 +2788,7 @@ const setBankReconApproved=(accountCode,month,value)=>{
   try{localStorage.setItem(BANK_RECON_APPROVED_KEY,JSON.stringify(all));}catch{}
 };
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
@@ -2889,7 +2899,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
-        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
+        auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
         onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
         onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}}
@@ -3222,7 +3232,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -3346,7 +3356,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
           fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
-          auditLog={auditLog} profiles={profiles} currentUserId={currentUserId}
+          auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
           onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
@@ -5688,7 +5698,7 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
 // account switcher (jump between accounts without closing), All/Open entries
 // toggle, a period picker, and the grouped opening/entries/changes/closing
 // table with a "closed" (matched) indicator per line.
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,tagTransaction}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[filterFrom,setFilterFrom]=useState(initFrom);
@@ -5792,7 +5802,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
@@ -14186,7 +14196,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab("Transactions");}} onSkip={dismissOnboarding}/>
   );
 
-  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
@@ -14206,7 +14216,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
   }
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
@@ -14215,7 +14225,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -14631,7 +14641,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {registrationQueue?(
           <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
         ):ledgerAcc?(
-          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onClose={()=>setLedgerAcc(null)}/>
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog}/>}
@@ -14716,7 +14726,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </>);
             })()}
             {entriesDetailTxn&&(
-              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}
+              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}
                 fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
                 onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
                 onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
@@ -15082,7 +15092,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction} moneySources={moneySources} tagTransaction={tagTransaction}/>)}
           </div>
         )}
 
