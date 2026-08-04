@@ -6088,6 +6088,12 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     );
   }
 
+  const[fixedBarHeight,setFixedBarHeight]=useState(160);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{
+    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
+  });
+
   return(
     <div>
       {periodPickerOpen&&(
@@ -6099,7 +6105,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:12,marginBottom:4,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -6156,6 +6162,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           </tr></tbody>
         </table>
       </div>
+      <div style={{height:fixedBarHeight}}/>
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
@@ -6192,7 +6199,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
 // Income statement (Resultat) — grouped by account series, with a
 // same-length previous-period comparison column and drill-down to ledger.
-function ResultatScreen({accounts,transactions,onOpenLedger}){
+function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const year=parseInt(viewMonth.slice(0,4));
@@ -6257,6 +6264,12 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
+  const[fixedBarHeight,setFixedBarHeight]=useState(140);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{
+    if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
+  });
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -6264,13 +6277,11 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
 
-      {/* Sticky filter+header block — attached with zero gap (same technique
-          as Trial Balance/Reskontro): pulled up past main-content-area's own
-          padding via negative margin, with matching padding added back so
-          nothing visually shifts. Without this, position:sticky respects the
-          container's padding as a gap it can never close, and content bleeds
-          through that gap while scrolling. */}
-      <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-32,paddingLeft:32,marginRight:-32,paddingRight:32,willChange:"transform",transform:"translateZ(0)"}}>
+      {/* Desktop: fixed to the viewport (not sticky) — same technique as
+          Reskontro, anchored directly under the sidebar/global header instead
+          of relying on position:sticky math against the content container's
+          own padding. Mobile keeps the simpler sticky-top-0 behavior. */}
+      <div ref={fixedBarRef} style={isDesktop?{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}:{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -6285,6 +6296,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
           </tr></tbody>
         </table>
       </div>
+      {isDesktop&&<div style={{height:fixedBarHeight}}/>}
 
       <div id="resultat-print-area">
       {/* This line only shows up in the PDF/print export (hidden on screen
@@ -6315,7 +6327,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger}){
 
 // Balance sheet — Assets vs Equity+Liabilities at a chosen date, grouped by
 // series, with drill-down and a visible balancing check.
-function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
+function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
   const[compareOn,setCompareOn]=useState(false);
   const[compareDate,setCompareDate]=useState(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10);});
@@ -6374,28 +6386,38 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`BalanceSheet_${asOf}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
+  const[fixedBarHeight,setFixedBarHeight]=useState(120);
+  const fixedBarRef=React.useRef(null);
+  useEffect(()=>{
+    if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
+  });
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
+      <div ref={fixedBarRef} style={isDesktop?{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}:{}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:10}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:11,color:T.muted}}>As of</span>
+            <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={{...inp,width:150}}/>
+            <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
+          </div>
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:11,color:T.muted}}>As of</span>
-          <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={{...inp,width:150}}/>
-          <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
+            <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)}/>Compare to another date
+          </label>
+          {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
         </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
-          <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)}/>Compare to another date
-        </label>
-        {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
-      </div>
+      {isDesktop&&<div style={{height:fixedBarHeight,marginBottom:8}}/>}
+      {!isDesktop&&<div style={{height:8}}/>}
       <div id="balancesheet-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
-          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={assetGroups}/>
@@ -6409,7 +6431,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger}){
         </div>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Equity and liabilities</div>
-          <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={eqLiabGroups}/>
@@ -6854,10 +6876,11 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
-  const[selectedLineId,setSelectedLineId]=useState(null);
+  const[selectedLineIds,setSelectedLineIds]=useState(()=>new Set()); // right side, multi-select
+  const[selectedTxnIds,setSelectedTxnIds]=useState(()=>new Set()); // left side, multi-select
+  const[dismissedSuggestions,setDismissedSuggestions]=useState(()=>new Set()); // line ids where the auto-suggested match was dismissed
   const[postMenu,setPostMenu]=useState(null); // {lineId, x, y} — right-click "Select account" context menu
   const[postPickerLineId,setPostPickerLineId]=useState(null); // which line's account picker is open
-  const[selectedTxnId,setSelectedTxnId]=useState(null); // left-side selection, for matching to a right-side line
   const[offsetCode,setOffsetCode]=useState("");
   const[uploading,setUploading]=useState(false);
   const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName}
@@ -6881,7 +6904,11 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const linesForAccount=useMemo(()=>bankStatementLines.filter(l=>l.accountCode===selectedAccount&&l.date.slice(0,7)===month),[bankStatementLines,selectedAccount,month]);
   const unmatchedLines=linesForAccount.filter(l=>!l.posted).sort((a,b)=>a.date.localeCompare(b.date));
   const matchedLines=linesForAccount.filter(l=>l.posted&&l.postedTxnId).sort((a,b)=>a.date.localeCompare(b.date));
-  const selectedLine=unmatchedLines.find(l=>l.id===selectedLineId)||null;
+  const selectedLines=unmatchedLines.filter(l=>selectedLineIds.has(l.id));
+  // The account-picker (Post flow) only ever applies to a single line with
+  // nothing selected on the left — matching multiple lines to one transaction,
+  // or one line to multiple transactions, is handled by Match instead.
+  const selectedLine=(selectedLines.length===1&&!selectedTxnIds.size)?selectedLines[0]:null;
   const statementBalance=linesForAccount.reduce((s,l)=>s+l.amount,0);
 
   // A ledger entry that's been matched (or posted-from-statement) shouldn't
@@ -6891,8 +6918,37 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const workingLedgerEntries=ledgerEntries.filter(t=>!matchedTxnIds.has(t.id));
   const matchedLedgerEntries=ledgerEntries.filter(t=>matchedTxnIds.has(t.id));
   const reconciledCount=workingLedgerEntries.filter(t=>t.reconciled).length;
+  const selectedTxnsArr=workingLedgerEntries.filter(t=>selectedTxnIds.has(t.id));
+  const selectedTxn=(selectedTxnsArr.length===1&&!selectedLineIds.size)?selectedTxnsArr[0]:null;
 
   const offsetOptions=accounts.filter(a=>a.code!==selectedAccount);
+
+  // Selecting several on both sides at once can't be resolved to a single
+  // link (bank_statement_lines only points at one transaction each) — so
+  // Match is only enabled once at least one side is narrowed to exactly one.
+  const canMatch=selectedLines.length>0&&selectedTxnsArr.length>0&&(selectedLines.length===1||selectedTxnsArr.length===1);
+  const matchBlockedByBothMulti=selectedLines.length>1&&selectedTxnsArr.length>1;
+  const selLinesTotal=selectedLines.reduce((s,l)=>s+l.amount,0);
+  const selTxnsTotal=selectedTxnsArr.reduce((s,t)=>s+mv(t),0);
+
+  // Auto-suggested match — same amount as an unreconciled ledger entry,
+  // preferring a description that looks like the same counterparty. Never
+  // shown while the person is in the middle of a manual multi-select, and
+  // never for a line they've already dismissed a suggestion on.
+  const suggestionFor=(line)=>{
+    if(dismissedSuggestions.has(line.id)||selectedLineIds.size||selectedTxnIds.size)return null;
+    const norm=s=>(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const ld=norm(line.description);
+    const candidates=workingLedgerEntries.filter(t=>!t.reconciled&&Math.abs(mv(t)-line.amount)<0.01);
+    if(!candidates.length)return null;
+    candidates.sort((a,b)=>{
+      const am=norm(a.description).includes(ld)||ld.includes(norm(a.description));
+      const bm=norm(b.description).includes(ld)||ld.includes(norm(b.description));
+      if(am&&!bm)return -1;if(bm&&!am)return 1;
+      return Math.abs(new Date(a.date)-new Date(line.date))-Math.abs(new Date(b.date)-new Date(line.date));
+    });
+    return candidates[0];
+  };
 
   // Reconciliation approval — everything on both sides paired off is the
   // condition for being allowed to approve; once approved, the period is
@@ -6937,21 +6993,47 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
     await undoBankImport(lastImport.ids);
     setLastImport(null);
   };
+  const clearSelection=()=>{setSelectedLineIds(new Set());setSelectedTxnIds(new Set());setPostPickerLineId(null);setOffsetCode("");};
+  const toggleLineSel=(id)=>{
+    if(isApproved)return;
+    setSelectedLineIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  };
+  const toggleTxnSel=(id)=>{
+    if(isApproved)return;
+    setSelectedTxnIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  };
   const doPost=async()=>{
     if(isApproved||!selectedLine||!offsetCode)return;
     await postBankStatementLine(selectedLine,offsetCode);
-    setSelectedLineId(null);setOffsetCode("");setPostPickerLineId(null);
+    clearSelection();
   };
   const doMatch=async()=>{
-    if(isApproved||!selectedLine||!selectedTxnId)return;
-    await matchBankStatementLine(selectedLine,selectedTxnId);
-    setSelectedLineId(null);setSelectedTxnId(null);setOffsetCode("");
+    if(isApproved||!canMatch)return;
+    if(selectedTxnsArr.length===1){
+      // One or more lines, all against the single selected transaction.
+      const txnId=selectedTxnsArr[0].id;
+      for(const l of selectedLines)await matchBankStatementLine(l,txnId);
+    } else {
+      // One line against several transactions — the line can only carry one
+      // FK, so it links to the first; the rest are marked reconciled so
+      // they're clearly flagged as settled even though they stay visible.
+      const[primary,...rest]=selectedTxnsArr;
+      await matchBankStatementLine(selectedLines[0],primary.id);
+      for(const t of rest)await toggleReconciled(t.id,true);
+    }
+    clearSelection();
   };
   const doUnmatch=async(line)=>{
     if(isApproved){alert("Reopen this period first to unmatch anything in it.");return;}
     await unmatchBankStatementLine(line);
   };
-  const selectedTxn=workingLedgerEntries.find(t=>t.id===selectedTxnId)||null;
+  const confirmSuggestion=async(line,txn)=>{
+    if(isApproved)return;
+    await matchBankStatementLine(line,txn.id);
+  };
+  const dismissSuggestion=(lineId)=>{
+    setDismissedSuggestions(p=>{const n=new Set(p);n.add(lineId);return n;});
+  };
 
   return(
     <div>
@@ -7096,19 +7178,29 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
       </div>
 
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
-        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);setSelectedLineId(null);setSelectedTxnId(null);}} style={{...inp,width:220}}>
+        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);clearSelection();}} style={{...inp,width:220}}>
           {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
           {!bankAccounts.length&&<option value="">No bank accounts yet</option>}
         </select>
-        <input type="month" value={month} onChange={e=>{setMonth(e.target.value);setSelectedLineId(null);setSelectedTxnId(null);}} style={{...inp,width:150}}/>
+        <input type="month" value={month} onChange={e=>{setMonth(e.target.value);clearSelection();}} style={{...inp,width:150}}/>
       </div>
 
-      {selectedLine&&selectedTxn&&(
-        <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:12,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Match ledger entry {fmt(mv(selectedTxn))} ↔ statement line {fmt(selectedLine.amount)} — no new transaction is created, and balances don't change.</div>
+      {(selectedLines.length>0||selectedTxnsArr.length>0)&&(
+        <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:12,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          {matchBlockedByBothMulti?(
+            <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Narrow one side to a single entry — a match can be several lines to one ledger entry, or one line to several entries, but not many on both sides at once.</div>
+          ):canMatch?(
+            <div style={{fontSize:12,color:T.accent,fontWeight:700}}>
+              Match {selectedTxnsArr.length} ledger {selectedTxnsArr.length===1?"entry":"entries"} ({fmtBal(selTxnsTotal)}) ↔ {selectedLines.length} statement {selectedLines.length===1?"line":"lines"} ({fmtBal(selLinesTotal)})
+              {Math.abs(Math.abs(selLinesTotal)-Math.abs(selTxnsTotal))>0.01&&<span style={{color:T.red}}> — amounts don't line up</span>}
+              {" "}— no new transaction is created, and balances don't change.
+            </div>
+          ):(
+            <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Select at least one entry on each side to match them.</div>
+          )}
           <div style={{display:"flex",gap:8}}>
-            <button onClick={doMatch} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Match</button>
-            <button onClick={()=>{setSelectedLineId(null);setSelectedTxnId(null);}} style={{background:"none",border:`1px solid ${T.accent}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
+            {canMatch&&<button onClick={doMatch} disabled={isApproved} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Match</button>}
+            <button onClick={clearSelection} style={{background:"none",border:`1px solid ${T.accent}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
           </div>
         </div>
       )}
@@ -7121,7 +7213,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
             <div style={{fontSize:11,color:T.muted}}>{reconciledCount}/{workingLedgerEntries.length} reconciled</div>
           </div>
           <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>{fmt(enteredBalance)}</div>
-          <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Click a row to select it, then pick its match on the right.</div>
+          <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Click any entry to select it — pick as many as you need, then match against the right.</div>
           <div style={{maxHeight:420,overflowY:"auto"}}>
             <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:10}}>
@@ -7129,8 +7221,8 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
               </tr></thead>
               <tbody>
                 {workingLedgerEntries.map(t=>(
-                  <tr key={t.id} onClick={()=>!isApproved&&setSelectedTxnId(id=>id===t.id?null:t.id)} style={{borderTop:`1px solid ${T.border}`,background:selectedTxnId===t.id?T.accentLight:(t.reconciled?T.greenBg:"transparent"),cursor:isApproved?"default":"pointer"}}>
-                    <td style={{padding:"7px 0"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!t.reconciled} disabled={isApproved} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
+                  <tr key={t.id} onClick={()=>toggleTxnSel(t.id)} style={{borderTop:`1px solid ${T.border}`,background:selectedTxnIds.has(t.id)?T.accentLight:(t.reconciled?T.greenBg:"transparent"),cursor:isApproved?"default":"pointer"}}>
+                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={!!t.reconciled} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
                     <td style={{color:T.sub}}>{t.date}</td>
                     <td style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                     <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(mv(t))}</td>
@@ -7150,7 +7242,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           </div>
           <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:12}}>{fmt(statementBalance)}</div>
 
-          {postPickerLineId===(selectedLine&&selectedLine.id)&&selectedLine&&!selectedTxn&&(
+          {postPickerLineId===(selectedLine&&selectedLine.id)&&selectedLine&&(
             <div style={{background:"#fff",borderRadius:10,padding:14,marginBottom:12,border:`1px solid ${T.border}`,boxShadow:"0 2px 10px rgba(20,40,40,0.06)"}}>
               <div style={{fontSize:11,color:T.text,fontWeight:700,marginBottom:10}}>Post {fmtBal(selectedLine.amount)} against</div>
               <select value={offsetCode} onChange={e=>setOffsetCode(e.target.value)} style={{...inp,width:"100%",marginBottom:10,background:"#fff"}}>
@@ -7163,8 +7255,8 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
               </div>
             </div>
           )}
-          {selectedLine&&!selectedTxn&&postPickerLineId!==selectedLine.id&&(
-            <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Right-click the selected line to post it, or select a ledger entry on the left to match instead.</div>
+          {selectedLine&&postPickerLineId!==selectedLine.id&&(
+            <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Right-click the selected line to post it, or select ledger entries on the left to match instead.</div>
           )}
 
           {postMenu&&(
@@ -7176,21 +7268,37 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
             </>
           )}
 
-          <div style={{maxHeight:(postPickerLineId&&selectedLine&&postPickerLineId===selectedLine.id&&!selectedTxn)?260:420,overflowY:"auto"}}>
+          <div style={{maxHeight:(postPickerLineId&&selectedLine&&postPickerLineId===selectedLine.id)?260:420,overflowY:"auto"}}>
             <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:10}}>
                 <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td>
               </tr></thead>
               <tbody>
-                {unmatchedLines.map(l=>(
-                  <tr key={l.id} onContextMenu={e=>{e.preventDefault();if(isApproved)return;setSelectedLineId(l.id);setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}} style={{borderTop:`1px solid ${T.border}`,background:selectedLineId===l.id?T.accentLight:"transparent"}}>
-                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineId===l.id} disabled={isApproved} onChange={()=>{setSelectedLineId(id=>id===l.id?null:l.id);setOffsetCode("");setPostPickerLineId(null);}}/></td>
-                    <td style={{color:T.sub}}>{l.date}</td>
-                    <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.description}</td>
-                    <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(l.amount)}</td>
-                    <td style={{textAlign:"right"}}><button onClick={()=>deleteBankStatementLine(l.id)} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}>✕</button></td>
-                  </tr>
-                ))}
+                {unmatchedLines.map(l=>{
+                  const suggestion=suggestionFor(l);
+                  return(
+                    <React.Fragment key={l.id}>
+                      <tr onClick={()=>toggleLineSel(l.id)} onContextMenu={e=>{e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}} style={{borderTop:`1px solid ${T.border}`,background:selectedLineIds.has(l.id)?T.accentLight:"transparent",cursor:isApproved?"default":"pointer"}}>
+                        <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineIds.has(l.id)} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/></td>
+                        <td style={{color:T.sub}}>{l.date}</td>
+                        <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.description}</td>
+                        <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(l.amount)}</td>
+                        <td style={{textAlign:"right"}}><button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}>✕</button></td>
+                      </tr>
+                      {suggestion&&(
+                        <tr style={{background:T.greenBg}}>
+                          <td></td>
+                          <td colSpan="4" style={{padding:"5px 6px 5px 0",fontSize:10,color:T.green}}>
+                            ≈ Matches <b>{suggestion.date} · {suggestion.description}</b> ({fmtBal(mv(suggestion))}) —{" "}
+                            <button onClick={()=>confirmSuggestion(l,suggestion)} style={{background:"none",border:"none",color:T.green,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,textDecoration:"underline"}}>Confirm</button>
+                            {" · "}
+                            <button onClick={()=>dismissSuggestion(l.id)} style={{background:"none",border:"none",color:T.muted,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,textDecoration:"underline"}}>Dismiss</button>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
                 {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
               </tbody>
             </table>
@@ -7341,7 +7449,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           browser to recompute or lag behind on scroll. The content below
           gets paddingTop equal to this bar's actual measured height, so nothing
           is hidden underneath it and nothing shifts when that height changes. */}
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 12px"}}>
+      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
         <div style={{maxWidth:1000}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
           <div style={{display:"flex",gap:6}}>
@@ -7409,7 +7517,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               return(
                 <React.Fragment key={contact.id}>
                   <tr>
-                    <td colSpan="7" style={{padding:"12px 14px 6px",background:T.bg}}>
+                    <td colSpan="7" style={{padding:"7px 14px 4px",background:T.bg}}>
                       <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                         {contact.name}
                       </div>
@@ -10038,11 +10146,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
-  const[invRegisterPayment,setInvRegisterPayment]=useState(false);
-  const[invPaymentBank,setInvPaymentBank]=useState("");
-  const[invPaymentAmount,setInvPaymentAmount]=useState("");
-  const[invPaymentDate,setInvPaymentDate]=useState(new Date().toISOString().split("T")[0]);
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment(false);setInvPaymentBank("");setInvPaymentAmount("");};
+  const[invRegisterPayment,setInvRegisterPayment]=useState(""); // "" = no payment (AP/AR open item), else account code (Cash or a bank) to settle against
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -10159,7 +10264,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     }
     const contactCode=invIsCustomer?"1500":"2400";
     const allLines=[{accountCode:invAccountCode,amount:invAmount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
-    const hasPayment=invRegisterPayment&&invPaymentBank&&parseFloat(invPaymentAmount)>0;
+    const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
+    const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
     allLines.forEach((l,idx)=>{
       const amt=parseFloat(l.amount);
@@ -10188,14 +10294,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
       });
     });
     if(hasPayment){
-      // Payment leg: purchase → Supplier debited / Bank credited. Sale → Bank debited / Customer credited.
-      const debitCode=invIsCustomer?invPaymentBank:contactCode;
-      const creditCode=invIsCustomer?contactCode:invPaymentBank;
+      // Payment leg, settling the full invoice total on the same date —
+      // purchase → Supplier debited / Bank or Cash credited.
+      // sale → Bank or Cash debited / Customer credited.
+      const debitCode=invIsCustomer?invRegisterPayment:contactCode;
+      const creditCode=invIsCustomer?contactCode:invRegisterPayment;
       onSave({
-        date:invPaymentDate,
+        date:form.date,
         debitCode,creditCode,
         description:`Payment${invoiceNo?" · "+invoiceNo:""}`,
-        amount:parseFloat(invPaymentAmount),
+        amount:Math.abs(invTotal),
         contactId:invContactId,
         groupRef,
       });
@@ -10469,37 +10577,39 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
               )}
             </div>
 
-            {/* Invoice No + Amount */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {/* Invoice No + Due date — compact, no Amount here (amount now lives with the account line below) */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={inpSm}/>
+                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
               </div>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={inpSm}/>
-              </div>
-              <div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount {invAmount&&parseFloat(invAmount)<0?"(kreditnote)":""}</div>
-                <input placeholder="Amount (negative = credit note)" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={inpSm}/>
+                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
               </div>
             </div>
 
-            {/* Account + Description */}
-            <div>
-              <div style={{fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-              <AccDrop value={invAccountCode} onChange={setInvAccountCode} accounts={filteredAccounts}/>
-              <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,marginTop:6,fontSize:12,padding:"7px 10px"}}/>
+            {/* Account (70%) + Amount (30%) — same row, no separate date/description per line */}
+            <div style={{display:"flex",gap:8}}>
+              <div style={{flex:7}}>
+                <div style={{fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                <AccDrop value={invAccountCode} onChange={setInvAccountCode} accounts={filteredAccounts}/>
+              </div>
+              <div style={{flex:3}}>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount{invAmount&&parseFloat(invAmount)<0?" (cr.note)":""}</div>
+                <input placeholder="0" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+              </div>
             </div>
+            <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
 
-            {/* Additional lines — amount + account only, no description/attachment per line — sits right under the account */}
+            {/* Additional lines — account (70%) + amount (30%) only, no date/description per line */}
             {invExtraLines.map((l,li)=>(
               <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
-                <div style={{flex:1}}>
+                <div style={{flex:7}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Account</div>
                   <AccDrop value={l.accountCode} onChange={v=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,accountCode:v}:x))} accounts={filteredAccounts}/>
                 </div>
-                <div style={{width:100}}>
+                <div style={{flex:3}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>
                   <input type="number" placeholder="0" value={l.amount} onChange={e=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,amount:e.target.value}:x))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
                 </div>
@@ -10507,6 +10617,30 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
               </div>
             ))}
             <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:""}])} style={{...btnGhost,padding:"7px",fontSize:11,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+
+            {/* Running Debit / Credit / Difference — debit is what's entered across the
+                cost-account line(s) above; credit is the same total, since that's exactly
+                what's now payable to the supplier. Shown here purely as a running-total
+                confirmation before posting. */}
+            {(()=>{
+              const invTotal=[invAmount,...invExtraLines.map(l=>l.amount)].reduce((s,a)=>s+(parseFloat(a)||0),0);
+              return(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
+                  <div>
+                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit ({invIsCustomer?"AR":"AP"})</div>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div>
+                    <div style={{fontSize:12,fontWeight:700,color:T.green}}>{fmt(0)}</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Attachment — small, compact, toggle via icon, supports multiple files */}
             <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"7px 10px"}}>
@@ -10544,32 +10678,19 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
               </div>
             </div>
 
-            {/* Payment — optional, toggle reveals bank/amount/date fields */}
-            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
-              <div onClick={()=>setInvRegisterPayment(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.text}}>Register Payment</div>
-                <div style={{width:36,height:20,borderRadius:12,background:invRegisterPayment?T.accent:T.border,position:"relative",transition:"background 0.15s",flexShrink:0}}>
-                  <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:2,left:invRegisterPayment?18:2,transition:"left 0.15s",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}}/>
-                </div>
-              </div>
+            {/* Payment — a single clean dropdown. Nothing selected → posts as a
+                plain open item to Accounts Payable/Receivable. Pick Cash or a
+                bank → settles the full amount immediately against that account,
+                same date as the invoice. */}
+            <div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
+              <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
+                <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
+                {accounts.filter(a=>a.code==="1001").map(a=><option key={a.code} value={a.code}>💵 {a.name}</option>)}
+                {bankAccounts.map(a=><option key={a.code} value={a.code}>🏦 {a.code} {a.name}</option>)}
+              </select>
               {invRegisterPayment&&(
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
-                  <div>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Bank Account</div>
-                    <AccDrop value={invPaymentBank} onChange={setInvPaymentBank} accounts={bankAccounts}/>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
-                      <input type="number" placeholder="0" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
-                      <input type="date" value={invPaymentDate} onChange={e=>setInvPaymentDate(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
-                    </div>
-                  </div>
-                  <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: Bank debited, Customer credited.":"Records a payment: Supplier debited, Bank credited."}</div>
-                </div>
+                <div style={{fontSize:10,color:T.muted,marginTop:5}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."} Same date as the invoice, full amount.</div>
               )}
             </div>
 
@@ -10898,7 +11019,7 @@ function ReportsHubScreen({onNavigate}){
       {label:"Balance sheet",tab:"BalanceSheet"},
       {label:"Chart of accounts",tab:"Accounts"},
     ]},
-    {label:"Reskontro",icon:"ti-list-details",items:[
+    {label:"Customer/Supplier Ledger",icon:"ti-list-details",items:[
       {label:"Customer ledger",tab:"Reskontro"},
       {label:"Aged receivables/payables",tab:"AgedReskontro"},
     ]},
@@ -11195,7 +11316,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       rows.push([a.code,a.name,bal]);
     });
     const ws=XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb,ws,"Balanse");
+    XLSX.utils.book_append_sheet(wb,ws,"Balance Sheet");
     XLSX.writeFile(wb,`Balance Sheet_${rTo}.xlsx`);
   };
 
@@ -13075,10 +13196,10 @@ function ManualBugForm({onLog}){
 // ─── Admin Panel ─────────────────────────────────────────────────────────────
 const ADMIN_FEATURES=[
   {id:"bank",label:"Bank Module",icon:"🏧",desc:"Bank accounts & statements"},
-  {id:"reskontro",label:"Reskontro",icon:"👥",desc:"AR/AP contact tracking"},
+  {id:"reskontro",label:"Customer/Supplier Ledger",icon:"👥",desc:"AR/AP contact tracking"},
   {id:"budget",label:"Budget",icon:"📐",desc:"Monthly budget vs actual"},
   {id:"sinkingFunds",label:"Sinking Funds",icon:"🎯",desc:"Savings goals tracker"},
-  {id:"reports",label:"Reports",icon:"📊",desc:"P&L, Balanse, Ledger export"},
+  {id:"reports",label:"Reports",icon:"📊",desc:"P&L, Balance Sheet, Ledger export"},
   {id:"import",label:"Import Excel",icon:"📥",desc:"Import transactions from Excel"},
   {id:"cheque",label:"Cheque Tracker",icon:"🧾",desc:"Issued & received cheques"},
   {id:"tags",label:"Transaction Tags",icon:"🏷️",desc:"Tag entries for filtering"},
@@ -13991,7 +14112,7 @@ const SIDEBAR=[
   {id:"Accounts",icon:"📒",label:"Ledger",group:"main"},
   {id:"Entries",icon:"☰",label:"All Entries",group:"main"},
   {id:"Bank",icon:"🏧",label:"Bank",group:"main"},
-  {id:"Reskontro",icon:"👥",label:"Reskontro",group:"main"},
+  {id:"Reskontro",icon:"👥",label:"Customer/Supplier Ledger",group:"main"},
   {id:"SinkingFunds",icon:"🎯",label:"Sinking Funds",group:"tools"},
   {id:"Budget",icon:"📐",label:"Budget",group:"tools"},
   {id:"Cheques",icon:"🧾",label:"Cheque Tracker",group:"tools"},
@@ -14139,6 +14260,11 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[entriesShowCount,setEntriesShowCount]=useState(50);
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
   const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
+  const[entriesFixedBarHeight,setEntriesFixedBarHeight]=useState(90);
+  const entriesFixedBarRef=React.useRef(null);
+  useEffect(()=>{
+    if(entriesFixedBarRef.current)setEntriesFixedBarHeight(entriesFixedBarRef.current.offsetHeight);
+  });
   useEffect(()=>{
     const onResize=()=>setIsDesktop(window.innerWidth>=1024);
     window.addEventListener("resize",onResize);
@@ -14518,7 +14644,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"TrialBalance",label:"Trial balance"},
               {tab:"Resultat",label:"Income statement"},
               {tab:"BalanceSheet",label:"Balance sheet"},
-              {label:"Reskontro",featureKey:"reskontro",subItems:[
+              {label:"Customer/Supplier Ledger",featureKey:"reskontro",subItems:[
                 {tab:"Reskontro",label:"Customers",param:"customer"},
                 {tab:"Reskontro",label:"Suppliers",param:"supplier"},
               ]},
@@ -14668,7 +14794,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                 {key:"amount",label:"Amount",always:true},
               ].filter(h=>h.always||h.show);
               return(<>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
+                <div style={{maxWidth:1000}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                   <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{sorted.length} entries</div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <div style={{position:"relative"}}>
@@ -14691,27 +14819,36 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
                     </div>
                   </div>
                 </div>
-                <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-                  <thead><tr style={{color:T.muted,fontSize:11}}>
+                {/* Shadow header — physically attached to the filter row with
+                    zero gap (same technique as Trial Balance/Reskontro), so
+                    sorting stays clickable right here while it's the part
+                    that stays fixed on scroll. */}
+                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+                  <tbody><tr style={{color:T.muted,fontSize:11}}>
                     {headers.map(h=>(
-                      <td key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"6px 8px 6px 0",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
+                      <td key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"8px 8px 8px 14px",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
                         {h.label}{sortKey===h.key&&h.key&&<span style={{marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>}
                       </td>
                     ))}
-                  </tr></thead>
+                  </tr></tbody>
+                </table>
+                </div>
+                </div>
+                <div style={{height:entriesFixedBarHeight}}/>
+                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",marginTop:-1}}>
                   <tbody>
                     {sorted.slice(0,entriesShowCount).map(t=>{
                       const isRev=!!t.reversalOf;
                       const isMatched=!!t.matchedWith;
                       return(
                         <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
-                          <td style={{padding:"8px 8px 8px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}</td>
+                          <td style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}</td>
                           {cols.date&&<td style={{color:T.sub}}>{t.date}</td>}
                           {cols.accounts&&<td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>}
                           {cols.accounts&&<td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>}
                           <td style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                           {cols.invoiceRef&&<td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>}
-                          <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
+                          <td style={{textAlign:"right",fontWeight:700,padding:"8px 14px 8px 8px"}}>{fmt(t.amount)}</td>
                         </tr>
                       );
                     })}
@@ -14851,13 +14988,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Resultat"&&(
           <div style={{maxWidth:1000}}>
-            <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
+            <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop}/>
           </div>
         )}
 
         {tab==="BalanceSheet"&&(
           <div style={{maxWidth:1000}}>
-            <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
+            <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop}/>
           </div>
         )}
 
