@@ -2788,6 +2788,21 @@ const setBankReconApproved=(accountCode,month,value)=>{
   try{localStorage.setItem(BANK_RECON_APPROVED_KEY,JSON.stringify(all));}catch{}
 };
 
+// Budget "move previous month forward" guard — records which month-to-month
+// transitions have already been copied, so re-opening the menu (or clicking
+// twice) can't silently re-apply the same move and overwrite anything the
+// person has since edited by hand. Cleared automatically once the person
+// explicitly asks to move again.
+const BUDGET_MOVED_KEY="rr_budget_moves_done";
+const getBudgetMoves=()=>{try{return JSON.parse(localStorage.getItem(BUDGET_MOVED_KEY)||"{}");}catch{return{};}};
+const hasBudgetMoved=(fromY,fromM,toY,toM)=>!!getBudgetMoves()[`${fromY}-${fromM}->${toY}-${toM}`];
+const markBudgetMoved=(fromY,fromM,toY,toM,value=true)=>{
+  const all=getBudgetMoves();
+  const key=`${fromY}-${fromM}->${toY}-${toM}`;
+  if(value)all[key]=true;else delete all[key];
+  try{localStorage.setItem(BUDGET_MOVED_KEY,JSON.stringify(all));}catch{}
+};
+
 function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
@@ -6932,11 +6947,11 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const selTxnsTotal=selectedTxnsArr.reduce((s,t)=>s+mv(t),0);
 
   // Auto-suggested match — same amount as an unreconciled ledger entry,
-  // preferring a description that looks like the same counterparty. Never
-  // shown while the person is in the middle of a manual multi-select, and
-  // never for a line they've already dismissed a suggestion on.
-  const suggestionFor=(line)=>{
-    if(dismissedSuggestions.has(line.id)||selectedLineIds.size||selectedTxnIds.size)return null;
+  // preferring a description that looks like the same counterparty. Only
+  // ever surfaces one pair at a time (the first candidate found); once it's
+  // confirmed or cancelled, the next candidate (if any) takes its place.
+  // Never shown while the person is in the middle of a manual multi-select.
+  const findCandidateFor=(line)=>{
     const norm=s=>(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
     const ld=norm(line.description);
     const candidates=workingLedgerEntries.filter(t=>!t.reconciled&&Math.abs(mv(t)-line.amount)<0.01);
@@ -6949,6 +6964,18 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
     });
     return candidates[0];
   };
+  const topSuggestion=useMemo(()=>{
+    if(selectedLineIds.size||selectedTxnIds.size)return null;
+    for(const line of unmatchedLines){
+      if(dismissedSuggestions.has(line.id))continue;
+      const txn=findCandidateFor(line);
+      if(txn)return{line,txn};
+    }
+    return null;
+  },[unmatchedLines,workingLedgerEntries,dismissedSuggestions,selectedLineIds,selectedTxnIds]);
+  // Both lists render with the suggested pair pinned to the first row.
+  const rightRows=topSuggestion?[topSuggestion.line,...unmatchedLines.filter(l=>l.id!==topSuggestion.line.id)]:unmatchedLines;
+  const leftRows=topSuggestion?[topSuggestion.txn,...workingLedgerEntries.filter(t=>t.id!==topSuggestion.txn.id)]:workingLedgerEntries;
 
   // Reconciliation approval — everything on both sides paired off is the
   // condition for being allowed to approve; once approved, the period is
@@ -7220,14 +7247,17 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
                 <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
               </tr></thead>
               <tbody>
-                {workingLedgerEntries.map(t=>(
-                  <tr key={t.id} onClick={()=>toggleTxnSel(t.id)} style={{borderTop:`1px solid ${T.border}`,background:selectedTxnIds.has(t.id)?T.accentLight:(t.reconciled?T.greenBg:"transparent"),cursor:isApproved?"default":"pointer"}}>
-                    <td style={{padding:"7px 0"}}><input type="checkbox" checked={!!t.reconciled} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
-                    <td style={{color:T.sub}}>{t.date}</td>
-                    <td style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                    <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(mv(t))}</td>
-                  </tr>
-                ))}
+                {leftRows.map(t=>{
+                  const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
+                  return(
+                    <tr key={t.id} onClick={()=>toggleTxnSel(t.id)} style={{borderTop:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selectedTxnIds.has(t.id)?T.accentLight:(t.reconciled?T.greenBg:"transparent")),cursor:isApproved?"default":"pointer"}}>
+                      <td style={{padding:"7px 0"}}><input type="checkbox" checked={!!t.reconciled} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleReconciled(t.id,!t.reconciled)}/></td>
+                      <td style={{color:T.sub}}>{t.date}</td>
+                      <td style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isSuggested?T.orange:undefined,fontWeight:isSuggested?700:400}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</td>
+                      <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(mv(t))}</td>
+                    </tr>
+                  );
+                })}
                 {!workingLedgerEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{ledgerEntries.length?"Everything here is matched — see the Matched tab.":"No ledger entries this month."}</td></tr>}
               </tbody>
             </table>
@@ -7274,29 +7304,25 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
                 <td style={{padding:"4px 0"}}></td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td>
               </tr></thead>
               <tbody>
-                {unmatchedLines.map(l=>{
-                  const suggestion=suggestionFor(l);
+                {rightRows.map(l=>{
+                  const isSuggested=topSuggestion&&topSuggestion.line.id===l.id;
                   return(
-                    <React.Fragment key={l.id}>
-                      <tr onClick={()=>toggleLineSel(l.id)} onContextMenu={e=>{e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}} style={{borderTop:`1px solid ${T.border}`,background:selectedLineIds.has(l.id)?T.accentLight:"transparent",cursor:isApproved?"default":"pointer"}}>
-                        <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineIds.has(l.id)} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/></td>
-                        <td style={{color:T.sub}}>{l.date}</td>
-                        <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.description}</td>
-                        <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(l.amount)}</td>
-                        <td style={{textAlign:"right"}}><button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}>✕</button></td>
-                      </tr>
-                      {suggestion&&(
-                        <tr style={{background:T.greenBg}}>
-                          <td></td>
-                          <td colSpan="4" style={{padding:"5px 6px 5px 0",fontSize:10,color:T.green}}>
-                            ≈ Matches <b>{suggestion.date} · {suggestion.description}</b> ({fmtBal(mv(suggestion))}) —{" "}
-                            <button onClick={()=>confirmSuggestion(l,suggestion)} style={{background:"none",border:"none",color:T.green,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,textDecoration:"underline"}}>Confirm</button>
-                            {" · "}
-                            <button onClick={()=>dismissSuggestion(l.id)} style={{background:"none",border:"none",color:T.muted,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,textDecoration:"underline"}}>Dismiss</button>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr key={l.id} onClick={()=>toggleLineSel(l.id)} onContextMenu={e=>{e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}} style={{borderTop:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selectedLineIds.has(l.id)?T.accentLight:"transparent"),cursor:isApproved?"default":"pointer"}}>
+                      <td style={{padding:"7px 0"}}><input type="checkbox" checked={selectedLineIds.has(l.id)} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/></td>
+                      <td style={{color:T.sub}}>{l.date}</td>
+                      <td style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isSuggested?T.orange:undefined,fontWeight:isSuggested?700:400}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</td>
+                      <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(l.amount)}</td>
+                      <td style={{textAlign:"right"}}>
+                        {isSuggested?(
+                          <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                            <button onClick={e=>{e.stopPropagation();confirmSuggestion(l,topSuggestion.txn);}} style={{background:T.orange,border:"none",borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Confirm</button>
+                            <button onClick={e=>{e.stopPropagation();dismissSuggestion(l.id);}} style={{background:"none",border:`1px solid ${T.orange}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                          </div>
+                        ):(
+                          <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}>✕</button>
+                        )}
+                      </td>
+                    </tr>
                   );
                 })}
                 {!unmatchedLines.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No unposted lines. Upload a statement to get started.</td></tr>}
@@ -12088,8 +12114,10 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
       saveBudget(bSelYear,bSelMonth,row.code,row.amount);
       saveBudgetSurplusSetting(bSelYear,bSelMonth,row.code,row.surplusAction||"rollover",row.surplusFundId||null);
     });
+    markBudgetMoved(prevMonthYear,prevMonth,bSelYear,bSelMonth);
     setMoveConfirm(false);
   };
+  const alreadyMovedThisTransition=bSelMonth===-1?false:hasBudgetMoved(prevMonthYear,prevMonth,bSelYear,bSelMonth);
 
   const confirmEdit=()=>{
     if(!editModal)return;
@@ -12238,14 +12266,20 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
                   </div>
                   <div style={{height:1,background:"#eee",margin:"4px 0 10px"}}/>
                   <button
-                    disabled={bSelMonth===-1||!prevMonthBudgetRows.length}
+                    disabled={bSelMonth===-1||!prevMonthBudgetRows.length||alreadyMovedThisTransition}
                     onClick={()=>{setSettingsMenuOpen(false);setMoveConfirm(true);}}
-                    style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"4px 0",fontSize:11,fontWeight:700,color:(bSelMonth===-1||!prevMonthBudgetRows.length)?"#b5b3aa":T.accent,cursor:(bSelMonth===-1||!prevMonthBudgetRows.length)?"not-allowed":"pointer",fontFamily:"inherit"}}
+                    style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"4px 0",fontSize:11,fontWeight:700,color:(bSelMonth===-1||!prevMonthBudgetRows.length||alreadyMovedThisTransition)?"#b5b3aa":T.accent,cursor:(bSelMonth===-1||!prevMonthBudgetRows.length||alreadyMovedThisTransition)?"not-allowed":"pointer",fontFamily:"inherit"}}
                   >
                     ⇥ Move {bSelMonth===-1?"previous month":prevMonthLabel} budget to {bSelMonth===-1?"current month":curMonthLabel}
                   </button>
                   {bSelMonth===-1&&<div style={{fontSize:9,color:"#888780",marginTop:4}}>Select a specific month first.</div>}
                   {bSelMonth!==-1&&!prevMonthBudgetRows.length&&<div style={{fontSize:9,color:"#888780",marginTop:4}}>No budget set for {prevMonthLabel} {prevMonthYear} yet.</div>}
+                  {bSelMonth!==-1&&prevMonthBudgetRows.length>0&&alreadyMovedThisTransition&&(
+                    <div style={{fontSize:9,color:"#888780",marginTop:4}}>
+                      ✓ Already moved for {curMonthLabel} {bSelYear} — won't re-copy and overwrite any edits since.{" "}
+                      <button onClick={()=>markBudgetMoved(prevMonthYear,prevMonth,bSelYear,bSelMonth,false)} style={{background:"none",border:"none",color:T.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,textDecoration:"underline",fontSize:9}}>Allow moving again</button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
