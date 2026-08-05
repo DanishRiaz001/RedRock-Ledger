@@ -4644,7 +4644,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     {done:!!companyProfile.companyName,label:"Company name set",action:()=>{}},
     {done:accounts.some(a=>a.matchable),label:"At least one account customized",action:()=>setScreen("plan")},
     {done:invoices.length>0,label:"First invoice created",action:()=>onNavigate&&onNavigate("InvoiceNew")},
-    {done:transactions.length>0,label:"First entry recorded",action:()=>onNavigate&&onNavigate("Transactions")},
+    {done:transactions.length>0,label:"First entry recorded",action:()=>onNavigate&&onNavigate(isDesktop?"NewVoucher":"Transactions")},
   ];
   const setupDone=setupSteps.filter(s=>s.done).length;
   const dismissChecklist=()=>{setChecklistDismissed(true);try{localStorage.setItem("rr_checklist_dismissed","1");}catch{}};
@@ -6929,10 +6929,15 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   // A ledger entry that's been matched (or posted-from-statement) shouldn't
   // clutter the working "Entered in ledger" list any more than its matched
   // counterpart clutters "From bank statement" — both move to the Matched view.
+  // NOTE: when a match involves more than one ledger entry against a single
+  // statement line, only ONE of those entries can carry the actual database
+  // link (a statement line only points at one transaction) — the rest are
+  // flagged reconciled instead. Both cases need to leave the working list
+  // together, so "matched" here means either kind of settled, not just the
+  // directly-linked one.
   const matchedTxnIds=useMemo(()=>new Set(matchedLines.map(l=>l.postedTxnId)),[matchedLines]);
-  const workingLedgerEntries=ledgerEntries.filter(t=>!matchedTxnIds.has(t.id));
-  const matchedLedgerEntries=ledgerEntries.filter(t=>matchedTxnIds.has(t.id));
-  const reconciledCount=workingLedgerEntries.filter(t=>t.reconciled).length;
+  const workingLedgerEntries=ledgerEntries.filter(t=>!matchedTxnIds.has(t.id)&&!t.reconciled);
+  const matchedLedgerEntries=ledgerEntries.filter(t=>matchedTxnIds.has(t.id)||t.reconciled);
   const selectedTxnsArr=workingLedgerEntries.filter(t=>selectedTxnIds.has(t.id));
   const selectedTxn=(selectedTxnsArr.length===1&&!selectedLineIds.size)?selectedTxnsArr[0]:null;
 
@@ -7113,7 +7118,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setShowHistory(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-history" style={{fontSize:13,marginRight:5}}/>History</button>
-          <button onClick={()=>setShowMatched(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-checks" style={{fontSize:13,marginRight:5}}/>Matched ({matchedLines.length})</button>
+          <button onClick={()=>setShowMatched(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-checks" style={{fontSize:13,marginRight:5}}/>Matched ({matchedLines.length+matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length})</button>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
             <button onClick={doUndoImport} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo last import ({lastImport.count})</button>
           )}
@@ -7155,9 +7160,31 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
                     </tr>
                   );
                 })}
-                {!matchedLines.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>Nothing matched yet this month.</td></tr>}
+                {!matchedLines.length&&!matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>Nothing matched yet this month.</td></tr>}
               </tbody>
             </table>
+            {/* Ledger entries reconciled as part of a many-entries-to-one-line
+                match (or by hand via the checkbox) — these don't carry a
+                direct statement-line link, so they're listed separately with
+                their own way back to the working list. */}
+            {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
+              <>
+                <div style={{fontSize:11,fontWeight:800,color:T.text,margin:"18px 0 8px"}}>Reconciled ledger entries (no direct statement line)</div>
+                <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                  <thead><tr style={{color:T.muted,fontSize:10}}><td style={{padding:"6px 0"}}>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td></tr></thead>
+                  <tbody>
+                    {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).map(t=>(
+                      <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
+                        <td style={{padding:"7px 0",color:T.sub}}>{t.date}</td>
+                        <td style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                        <td style={{textAlign:"right",fontWeight:600}}>{fmtBal(mv(t))}</td>
+                        <td style={{textAlign:"right"}}><button onClick={()=>toggleReconciled(t.id,false)} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -7237,7 +7264,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text}}>Entered in ledger</div>
-            <div style={{fontSize:11,color:T.muted}}>{reconciledCount}/{workingLedgerEntries.length} reconciled</div>
+            <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
           </div>
           <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>{fmt(enteredBalance)}</div>
           <div style={{fontSize:10,color:T.muted,marginBottom:12}}>Click any entry to select it — pick as many as you need, then match against the right.</div>
@@ -7341,7 +7368,7 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
@@ -7467,7 +7494,15 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   return(
     <div>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
+        {onNavigate&&(
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>onNavigate("Contacts")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit existing</button>
+            <button onClick={()=>onNavigate("ContactNew")} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>+ New {type==="customer"?"customer":"supplier"}</button>
+          </div>
+        )}
+      </div>
 
       {/* Fixed to the viewport (not sticky) — anchored to the sidebar's right
           edge and the global header's bottom edge directly, so there is no
@@ -8877,7 +8912,7 @@ function InvoicePrintView({invoice,contact,companyProfile,elementId}){
 // Invoice creation form — customer picker, sale account restricted to the
 // 3xxx series, a month-range period (one or more months), auto-generated
 // but editable description, and a live preview before posting.
-function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,createInvoice,transactions=[],onDone}){
+function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,createInvoice,transactions=[],onDone,posProducts=[],onManageProducts}){
   const customers=contacts.filter(c=>c.type==="customer");
   const saleAccounts=accounts.filter(a=>a.code.startsWith("3"));
   const today=new Date().toISOString().slice(0,10);
@@ -8885,6 +8920,8 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
 
   const[customerId,setCustomerId]=useState(customers[0]?customers[0].id:"");
   const[saleAccount,setSaleAccount]=useState(saleAccounts[0]?saleAccounts[0].code:"");
+  const[productId,setProductId]=useState("");
+  const productsForAccount=posProducts.filter(p=>p.active&&p.saleAccount===saleAccount);
   const[periodFrom,setPeriodFrom]=useState(curMonth);
   const[periodTo,setPeriodTo]=useState(curMonth);
   const[unitPrice,setUnitPrice]=useState("");
@@ -8905,6 +8942,18 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
     const d=new Date(date);d.setDate(d.getDate()+termDays);
     setDueDate(d.toISOString().slice(0,10));
   },[customerId,date]);
+  // Picking a product pre-fills its defined rate — still freely editable
+  // afterward for a one-off override. Changing the sale account clears the
+  // product choice, since a product only makes sense against the account
+  // it's actually set up to sell against.
+  useEffect(()=>{
+    if(productId&&!productsForAccount.some(p=>p.id===productId))setProductId("");
+  },[saleAccount]);
+  useEffect(()=>{
+    if(!productId)return;
+    const p=posProducts.find(x=>x.id===productId);
+    if(p)setUnitPrice(String(p.price));
+  },[productId]);
   const qty=monthsBetween(periodFrom,periodTo);
   const price=parseFloat(unitPrice)||0;
   const rawSubtotal=qty*price;
@@ -8960,6 +9009,17 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
               {saleAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
             </select>
           </div>
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+              <div style={{fontSize:11,color:T.sub,fontWeight:600}}>Product</div>
+              {onManageProducts&&<button onClick={onManageProducts} style={{background:"none",border:"none",color:T.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Add / edit products</button>}
+            </div>
+            <select value={productId} onChange={e=>setProductId(e.target.value)} style={{...inp}}>
+              <option value="">No product — set price manually</option>
+              {productsForAccount.map(p=><option key={p.id} value={p.id}>{p.name} — {fmt(p.price)}</option>)}
+            </select>
+            {saleAccount&&!productsForAccount.length&&<div style={{fontSize:11,color:T.muted,marginTop:4}}>No products set up for this account yet.</div>}
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From month</div>
@@ -8973,6 +9033,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Monthly rate</div>
             <input type="number" placeholder="0" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)} style={{...inp}}/>
+            {productId&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>Filled from the product's price — edit freely if this invoice needs a different rate.</div>}
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
@@ -9570,12 +9631,20 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
   const saleAccounts=accounts.filter(a=>a.code.startsWith("3"));
   const[showNew,setShowNew]=useState(false);
   const[form,setForm]=useState({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:""});
+  const[editingId,setEditingId]=useState(null);
+  const[editForm,setEditForm]=useState({name:"",price:"",saleAccount:""});
 
   const save=()=>{
     if(!form.name.trim()||!parseFloat(form.price)||!form.saleAccount)return;
     createPosProduct({name:form.name,price:parseFloat(form.price),saleAccount:form.saleAccount});
     setForm({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:""});
     setShowNew(false);
+  };
+  const startEdit=p=>{setEditingId(p.id);setEditForm({name:p.name,price:String(p.price),saleAccount:p.saleAccount});};
+  const saveEdit=()=>{
+    if(!editForm.name.trim()||!parseFloat(editForm.price)||!editForm.saleAccount)return;
+    updatePosProduct(editingId,{name:editForm.name,price:parseFloat(editForm.price),saleAccount:editForm.saleAccount});
+    setEditingId(null);
   };
 
   return(
@@ -9605,15 +9674,36 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
           <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{textAlign:"right",fontWeight:700}}>Price</td><td style={{fontWeight:700}}>Sale account</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
-          {posProducts.map(p=>(
-            <tr key={p.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:p.active?1:0.5}}>
-              <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{p.name}</td>
-              <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{fmt(p.price)}</td>
-              <td style={{color:T.text}}>{p.saleAccount}</td>
-              <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
-              <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>window.confirm(`Delete ${p.name}?`)&&deletePosProduct(p.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
-            </tr>
-          ))}
+          {posProducts.map(p=>{
+            if(editingId===p.id)return(
+              <tr key={p.id} style={{background:T.accentLight,borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"7px 14px"}}><input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={{...inp,fontSize:12,padding:"6px 8px"}}/></td>
+                <td style={{padding:"7px 8px"}}><input type="number" value={editForm.price} onChange={e=>setEditForm(f=>({...f,price:e.target.value}))} style={{...inp,fontSize:12,padding:"6px 8px",textAlign:"right"}}/></td>
+                <td style={{padding:"7px 8px"}}>
+                  <select value={editForm.saleAccount} onChange={e=>setEditForm(f=>({...f,saleAccount:e.target.value}))} style={{...inp,fontSize:12,padding:"6px 8px"}}>
+                    {saleAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </select>
+                </td>
+                <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
+                <td style={{textAlign:"right",padding:"7px 14px",whiteSpace:"nowrap"}}>
+                  <button onClick={saveEdit} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginRight:4}}>Save</button>
+                  <button onClick={()=>setEditingId(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                </td>
+              </tr>
+            );
+            return(
+              <tr key={p.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:p.active?1:0.5}}>
+                <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{p.name}</td>
+                <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{fmt(p.price)}</td>
+                <td style={{color:T.text}}>{p.saleAccount}</td>
+                <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
+                <td style={{textAlign:"right",padding:"11px 14px",whiteSpace:"nowrap"}}>
+                  <button onClick={()=>startEdit(p)} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:700,marginRight:8,fontFamily:"inherit"}}>Edit</button>
+                  <button onClick={()=>window.confirm(`Delete ${p.name}?`)&&deletePosProduct(p.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
+                </td>
+              </tr>
+            );
+          })}
           {!posProducts.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No products yet.</td></tr>}
         </tbody>
       </table>
@@ -10342,124 +10432,82 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
 
   return(
     <Card>
-      {/* Bilag + Date + Reskontro checkbox — all on one row */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+      {/* Bilag + Date — Entry type is its own row of buttons below, since it's
+          the first real decision (what kind of entry this is), not something
+          to bury in a dropdown. */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
         <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px",flexShrink:0}}>
           <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
           <div style={{fontSize:15,fontWeight:900,color:T.accent}}>{fmtB(nextBilag)}</div>
         </div>
-        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,width:130,flexShrink:0}}/>
-        {/* Entry mode dropdown — Receipt / Supplier / Customer */}
-        <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...inpSm,flex:1}}>
-          <option value="receipt">Receipt</option>
-          <option value="supplier">Supplier</option>
-          <option value="customer">Customer</option>
-        </select>
+        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,width:150,flexShrink:0}}/>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
+          <button key={val} onClick={()=>setEntryMode(val)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`1.5px solid ${entryMode===val?T.accent:T.border}`,background:entryMode===val?T.accentLight:"#fff",color:entryMode===val?T.accent:T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        ))}
       </div>
 
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={inpSm}/>
+        {/* First row — Date (30%) + Description (70%) */}
         <div style={{display:"flex",gap:8}}>
-          <input placeholder="Invoice no. (optional)" value={form.invoiceNo||""} onChange={e=>setForm(p=>({...p,invoiceNo:e.target.value}))} style={{...inpSm,flex:1}}/>
-          <input type="date" title="Due date (optional)" value={form.dueDate||""} onChange={e=>setForm(p=>({...p,dueDate:e.target.value}))} style={{...inpSm,flex:1}}/>
+          <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{...inpSm,flex:"0 0 30%",minWidth:0}}/>
+          <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inpSm,flex:"0 0 70%",minWidth:0}}/>
         </div>
+
+        {/* Debit (40%) / Credit (40%) / Amount (20%) — one row per line, no
+            per-line date or description, since those belong to the entry as
+            a whole, entered once above. */}
         <div>
-          <input
-            placeholder="Amount or expression (e.g. 500+200 or 3*150)"
-            value={form.amount}
-            onChange={e=>handleAmountChange(e.target.value)}
-            style={inpSm}
-          />
+          {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
+            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",marginBottom:6}}>
+              <div style={{flex:"0 0 40%",minWidth:0}}>
+                {li===0&&<div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Debit</div>}
+                <AccDrop value={line.debitCode||""} onChange={v=>{
+                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                  lines[li]={...lines[li],debitCode:v};
+                  setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
+                }} accounts={accounts}/>
+              </div>
+              <div style={{flex:"0 0 40%",minWidth:0}}>
+                {li===0&&<div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>}
+                <AccDrop value={line.creditCode||""} onChange={v=>{
+                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                  lines[li]={...lines[li],creditCode:v};
+                  setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
+                }} accounts={accounts}/>
+              </div>
+              <div style={{flex:"0 0 20%",minWidth:0}}>
+                {li===0&&<div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>}
+                {li===0?(
+                  <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                ):(
+                  <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
+                    const lines=[...(form.lines||[])];
+                    lines[li]={...lines[li],amount:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                )}
+              </div>
+              {li>0&&(
+                <button onClick={()=>{
+                  const lines=[...(form.lines||[])];
+                  lines.splice(li,1);
+                  setForm(p=>({...p,lines}));
+                }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:26,height:34,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
+              )}
+            </div>
+          ))}
           {calcResult&&(
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
               <span style={{fontSize:11,color:T.muted}}>= {fmt(calcResult)}</span>
               <button onClick={()=>{setForm(p=>({...p,amount:String(calcResult)}));setCalcResult(null);}} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>Use this</button>
             </div>
           )}
-        </div>
-
-        {/* Multi-line entry — first line: no remove button. Extra lines: − remove, description, amount */}
-        <div>
-          {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
-            <div key={li} style={{background:T.bg,borderRadius:10,padding:"8px 10px",marginBottom:6,border:`1px solid ${T.border}`}}>
-              {/* Debit / Credit row + remove button for extra lines */}
-              <div style={{display:"flex",alignItems:"flex-end",gap:5}}>
-                <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-                  <div>
-                    <div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>{reskontroMode?"Debit / Contact":"Debit"}</div>
-                    {reskontroMode
-                      ?<AccDropReskontro
-                          value={line.debitCode||""}
-                          onChange={v=>{
-                            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                            lines[li]={...lines[li],debitCode:v};
-                            setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode}));
-                          }}
-                          accounts={accounts}
-                          contacts={contacts.filter(c=>!c.inactive)}
-                          onContactSelect={id=>setForm(p=>({...p,contactId:id}))}
-                          side="debit"
-                        />
-                      :<AccDrop value={line.debitCode||""} onChange={v=>{
-                          const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                          lines[li]={...lines[li],debitCode:v};
-                          setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                        }} accounts={accounts}/>
-                    }
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>{reskontroMode?"Credit / Contact":"Credit"}</div>
-                    {reskontroMode
-                      ?<AccDropReskontro
-                          value={line.creditCode||""}
-                          onChange={v=>{
-                            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                            lines[li]={...lines[li],creditCode:v};
-                            setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode}));
-                          }}
-                          accounts={accounts}
-                          contacts={contacts.filter(c=>!c.inactive)}
-                          onContactSelect={id=>setForm(p=>({...p,contactId:id}))}
-                          side="credit"
-                        />
-                      :<AccDrop value={line.creditCode||""} onChange={v=>{
-                          const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                          lines[li]={...lines[li],creditCode:v};
-                          setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                        }} accounts={accounts}/>
-                    }
-                  </div>
-                </div>
-                {/* − remove button only on extra lines */}
-                {li>0&&(
-                  <button onClick={()=>{
-                    const lines=[...(form.lines||[])];
-                    lines.splice(li,1);
-                    setForm(p=>({...p,lines,_lineMenu:null}));
-                  }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:30,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
-                )}
-              </div>
-              {/* Description + Amount for extra lines */}
-              {li>0&&(
-                <div style={{display:"flex",gap:5,marginTop:5}}>
-                  <input placeholder="Description" value={line.description||""} onChange={e=>{
-                    const lines=[...(form.lines||[])];
-                    lines[li]={...lines[li],description:e.target.value};
-                    setForm(p=>({...p,lines}));
-                  }} style={{...inp,fontSize:10,padding:"5px 8px",flex:2}}/>
-                  <input type="number" placeholder="Amount" value={line.amount||""} onChange={e=>{
-                    const lines=[...(form.lines||[])];
-                    lines[li]={...lines[li],amount:e.target.value};
-                    setForm(p=>({...p,lines}));
-                  }} style={{...inp,fontSize:10,padding:"5px 8px",flex:1}}/>
-                </div>
-              )}
-            </div>
-          ))}
-          {/* Add line button */}
+          {/* Add line */}
           <button onClick={()=>{
-            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",description:"",amount:""}];
+            const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",amount:""}];
             setForm(p=>({...p,lines}));
           }} style={{fontSize:11,color:T.accent,background:T.accentLight,border:"none",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add line</button>
         </div>
@@ -10494,30 +10542,35 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           </div>
         )}
 
-        {/* Attach from Inbox — pick an existing file or upload straight into Inbox */}
+        {/* Attachment — a clear upload target instead of a cramped select+button row */}
         <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}>
           <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>📎 Attachment (optional)</div>
           {form.attachmentId?(()=>{
             const f=inboxFiles.find(x=>x.id===form.attachmentId);
+            const isImg=f&&f.type&&f.type.startsWith("image");
             return(
-              <div style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 12px"}}>
-                <span style={{fontSize:16}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
-                <span style={{fontSize:12,fontWeight:600,color:T.accent,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:14,padding:"0 2px"}}>✕</button>
+              <div style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 10px"}}>
+                <div style={{width:36,height:36,borderRadius:8,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{isImg?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:T.redLight,border:"none",borderRadius:7,cursor:"pointer",color:T.red,fontSize:11,padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>Remove</button>
               </div>
             );
           })():(
-            <div style={{display:"flex",gap:6}}>
-              <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,flex:1}}>
-                <option value="">— Select from Inbox —</option>
-                {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-              </select>
-              <label style={{...btnSm,cursor:uploadingReceipt?"wait":"pointer",whiteSpace:"nowrap",opacity:uploadingReceipt?0.6:1}}>{uploadingReceipt?"Uploading…":"+ Upload"}
+            <div>
+              <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"16px 10px",cursor:uploadingReceipt?"wait":"pointer",background:"#fff"}}>
+                <span style={{fontSize:20}}>{uploadingReceipt?"⏳":"📎"}</span>
+                <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload a file"}</span>
+                <span style={{fontSize:9,color:T.muted}}>Image, PDF, or document</span>
                 <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
               </label>
+              {inboxFiles.length>0&&(
+                <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:8}}>
+                  <option value="">— or pick an existing Inbox file —</option>
+                  {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                </select>
+              )}
             </div>
           )}
-          {!inboxFiles.length&&!form.attachmentId&&<div style={{fontSize:11,color:T.muted,marginTop:6}}>No files in Inbox yet — upload one above.</div>}
         </div>
 
         {/* Smart contact selector — only when 1500 or 2400 */}
@@ -10668,40 +10721,46 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
               );
             })()}
 
-            {/* Attachment — small, compact, toggle via icon, supports multiple files */}
-            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"7px 10px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {/* Attachment — chips for attached files, plus a clear upload target */}
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:invAttachmentIds.length||invAttOpen?8:0}}>
                 <span style={{fontSize:12}}>📎</span>
-                <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
+                <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
                 {invAttachmentIds.length>0&&(
-                  <button onClick={()=>setInvAttOpen(o=>!o)} title={invAttOpen?"Hide":"Show"} style={{background:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:11,fontWeight:700,padding:0}}>{invAttOpen?"Hide":"Show"}</button>
+                  <button onClick={()=>setInvAttOpen(o=>!o)} title={invAttOpen?"Hide":"Show"} style={{background:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:11,fontWeight:700,padding:0,fontFamily:"inherit"}}>{invAttOpen?"Hide":"Show"}</button>
                 )}
               </div>
-              {invAttOpen&&invAttachmentIds.map(fid=>{
-                const f=inboxFiles.find(x=>x.id===fid);
-                return(
-                  <div key={fid} style={{display:"flex",alignItems:"center",gap:6,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:8,padding:"5px 8px",marginTop:5}}>
-                    <span style={{fontSize:12}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
-                    <span style={{fontSize:10,fontWeight:600,color:T.accent,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                    <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:12}}>✕</button>
-                  </div>
-                );
-              })}
-              <div style={{display:"flex",gap:5,marginTop:6}}>
-                <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,flex:1,fontSize:10,padding:"6px 8px"}}>
-                  <option value="">— Add from Inbox —</option>
+              {invAttOpen&&invAttachmentIds.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+                  {invAttachmentIds.map(fid=>{
+                    const f=inboxFiles.find(x=>x.id===fid);
+                    return(
+                      <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
+                        <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                        <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                        <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"9px",cursor:uploadingInvAtt?"wait":"pointer",background:"#fff"}}>
+                <span style={{fontSize:13}}>{uploadingInvAtt?"⏳":"📎"}</span>
+                <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
+                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
+                  if(!e.target.files[0])return;
+                  setUploadingInvAtt(true);
+                  const newFile=await uploadInboxFile(e.target.files[0]);
+                  if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+                  setUploadingInvAtt(false);
+                }}/>
+              </label>
+              {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
+                <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:6}}>
+                  <option value="">— or pick an existing Inbox file —</option>
                   {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
                 </select>
-                <label style={{...btnSm,cursor:uploadingInvAtt?"wait":"pointer",whiteSpace:"nowrap",fontSize:10,padding:"5px 9px",opacity:uploadingInvAtt?0.6:1}}>{uploadingInvAtt?"Uploading…":"+ Upload"}
-                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
-                    if(!e.target.files[0])return;
-                    setUploadingInvAtt(true);
-                    const newFile=await uploadInboxFile(e.target.files[0]);
-                    if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
-                    setUploadingInvAtt(false);
-                  }}/>
-                </label>
-              </div>
+              )}
             </div>
 
             {/* Payment — a single clean dropdown. Nothing selected → posts as a
@@ -12725,7 +12784,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   };
   const registerEntry=(fileId)=>{
     try{if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");}catch{}
-    if(onNavigate)onNavigate("Transactions");
+    if(onNavigate)onNavigate(isDesktop?"NewVoucher":"Transactions");
   };
   const[viewing,setViewing]=useState(null);
   const[inlinePreview,setInlinePreview]=useState(null);
@@ -13240,6 +13299,7 @@ const ADMIN_FEATURES=[
   {id:"aiBookkeeping",label:"AI Bookkeeping",icon:"🤖",desc:"Natural-language entry parser"},
   {id:"files",label:"Inbox",icon:"📥",desc:"Upload & manage receipt files"},
   {id:"calcAmount",label:"Amount Calculator",icon:"🔢",desc:"Type 500+200 in amount field"},
+  {id:"whose",label:"Whose (Money Source)",icon:"👤",desc:"Tag entries by whose money it is"},
 ];
 // Package tiers — bulk-assigns per-user feature overrides to match a plan.
 // This is the enforcement layer on top of the existing feature-flag system;
@@ -14215,7 +14275,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         return;
       }
       if(typing)return;
-      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="n"){e.preventDefault();setTab("Transactions");}
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="n"){e.preventDefault();setTab(isDesktop?"NewVoucher":"Transactions");}
       if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="i"){e.preventDefault();setTab("InvoiceNew");}
     };
     window.addEventListener("keydown",handler);
@@ -14353,16 +14413,15 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   // First-run onboarding — shown once, until the company has a name saved or
   // it's explicitly skipped. Doesn't block returning users at all.
   if(!onboardingDismissed&&!companyProfile.companyName&&!transactions.length)return(
-    <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab("Transactions");}} onSkip={dismissOnboarding}/>
+    <OnboardingWizard companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} onFinish={()=>{dismissOnboarding();setTab(isDesktop?"NewVoucher":"Transactions");}} onSkip={dismissOnboarding}/>
   );
-
-  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
   const feat={
     bank:getFeature("bank"),
     reskontro:getFeature("reskontro"),
+    whose:getFeature("whose"),
     budget:getFeature("budget"),
     sinkingFunds:getFeature("sinkingFunds"),
     reports:getFeature("reports"),
@@ -14371,12 +14430,18 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     tags:getFeature("tags"),
     calcAmount:getFeature("calcAmount"),
   };
+  // When "whose" is off for this user, every screen below simply sees an
+  // empty money-source list — each already hides its own Whose UI whenever
+  // that list is empty, so this one gate covers all of them.
+  const effectiveMoneySources=feat.whose?moneySources:[];
+
+  if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/>);
 
   // Handle direct ledger navigation from home KPI cards — redirect to Reskontro
   if(tab==="ledger_1500"||tab==="ledger_2400"){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/>);
   }
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
@@ -14385,7 +14450,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
-    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}/>);
+    return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/>);
   }
   if(tab==="Import"){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
@@ -14410,7 +14475,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} onStartRegistration={setRegistrationQueue}/>);
   if(tab==="Bank"&&!isDesktop){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
-    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))} moneySources={moneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/></div></div>);
+    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/></div></div>);
   }
 
   // Contextual export — Excel for the screens with structured tabular data
@@ -14657,8 +14722,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
-              {tab:"NewVoucher",label:"New voucher",requiresWrite:true},
-              {tab:"Transactions",label:"New entry",requiresWrite:true},
+              {tab:"NewVoucher",label:"New Entry",requiresWrite:true},
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
               {tab:"Import",label:"Import Excel",featureKey:"import",requiresWrite:true},
@@ -14801,7 +14865,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {registrationQueue?(
           <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
         ):ledgerAcc?(
-          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)}/>
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog}/>}
@@ -14897,7 +14961,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </>);
             })()}
             {entriesDetailTxn&&(
-              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={moneySources} tagTransaction={tagTransaction}
+              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}
                 fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
                 onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
                 onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
@@ -14915,14 +14979,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="NewVoucher"&&(
-          <div style={{maxWidth:1000}}>
-            <NewVoucherScreen accounts={accounts} contacts={contacts} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} addTransaction={addTransactionNotified} onDone={()=>setTab("Dashboard")}/>
-          </div>
-        )}
-
-        {tab==="Transactions"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={moneySources} tagTransaction={tagTransaction} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
               <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -14986,13 +15044,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
         {(tab==="BankDashboard"||tab==="BankWhose")&&(
           feat.bank
-            ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} moneySources={moneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/>
+            ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -15040,7 +15098,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="InvoiceNew"&&(
           <div style={{maxWidth:1000}}>
-            <InvoiceFormScreen accounts={accounts} contacts={contacts} companyProfile={companyProfile} nextInvoiceNo={nextInvoiceNo} createInvoice={createInvoice} transactions={transactions} onDone={()=>setTab("InvoiceOverview")}/>
+            <InvoiceFormScreen accounts={accounts} contacts={contacts} companyProfile={companyProfile} nextInvoiceNo={nextInvoiceNo} createInvoice={createInvoice} transactions={transactions} onDone={()=>setTab("InvoiceOverview")} posProducts={posProducts} onManageProducts={()=>setTab("POSProducts")}/>
           </div>
         )}
 
@@ -15263,7 +15321,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction} moneySources={moneySources} tagTransaction={tagTransaction}/>)}
+            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/>)}
           </div>
         )}
 
