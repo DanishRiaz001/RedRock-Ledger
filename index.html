@@ -752,7 +752,7 @@ function AppShell({user}){
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setMoneySourcesState((msR.data||[]).map(m=>({id:m.id,name:m.name,openingReceived:parseFloat(m.opening_received)||0,openingUsed:parseFloat(m.opening_used)||0,inactive:!!m.inactive})));
-      setBudgetsState((bR.data||[]).map(b=>({year:b.year,month:b.month,code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
+      setBudgetsState((bR.data||[]).map(b=>({year:parseInt(b.year),month:parseInt(b.month),code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
@@ -1482,13 +1482,20 @@ function AppShell({user}){
   // Budgets — per-user, cloud-synced (Supabase), one row per (year, month, code).
   // month is -1 for the "All Year" bucket, 0-11 for a calendar month.
   const saveBudget=async(year,month,code,amount)=>{
+    const isNew=!budgets.some(b=>b.year===year&&b.month===month&&b.code===code);
     setBudgetsState(p=>{
       const idx=p.findIndex(b=>b.year===year&&b.month===month&&b.code===code);
       if(idx===-1)return[...p,{year,month,code,amount,surplusAction:"rollover",surplusFundId:null,swept:false}];
       const n=[...p];n[idx]={...n[idx],amount};return n; // preserve existing surplus settings, only amount changes
     });
     if(!canEdit)return;
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,amount},{onConflict:"user_id,year,month,code"});
+    // A brand-new row must write its surplus defaults explicitly — otherwise
+    // the DB column defaults (or lack thereof) can silently diverge from what
+    // local state assumes ("rollover", not swept), until the next full reload.
+    const payload=isNew
+      ?{user_id:user.id,year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
+      :{user_id:user.id,year,month,code,amount};
+    const{error}=await sb.from("budgets").upsert(payload,{onConflict:"user_id,year,month,code"});
     if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
   };
   // What should happen to THIS month's leftover once it closes: roll over into next
@@ -3804,6 +3811,28 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
 
   const hasTxns=(code)=>(transactions||[]).some(t=>t.debitCode===code||t.creditCode===code);
 
+  // Safety net: a transaction can reference an account code that never
+  // actually got saved into the chart of accounts (e.g. an account-creation
+  // save that didn't persist, or a code typed into an import). Those
+  // accounts have real activity but would otherwise be invisible here
+  // forever — so detect them and offer a one-click way to add them properly.
+  const orphanCodes=useMemo(()=>{
+    const knownCodes=new Set(list.map(a=>a.code));
+    const seen=new Set();
+    (transactions||[]).forEach(t=>{
+      if(t.debitCode&&!knownCodes.has(t.debitCode))seen.add(t.debitCode);
+      if(t.creditCode&&!knownCodes.has(t.creditCode))seen.add(t.creditCode);
+    });
+    return[...seen].sort();
+  },[transactions,list]);
+  const addOrphanToChart=(code)=>{
+    const name=window.prompt(`Account ${code} is used in transactions but isn't in your chart of accounts yet. Give it a name:`);
+    if(!name)return;
+    const updated=[...list,{code,name:name.trim(),matchable:false}];
+    setList(updated);
+    onSave(updated,null);
+  };
+
   const openEdit=(ri)=>{
     setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):"",customCategory:list[ri].customCategory||"",currency:list[ri].currency||"",inactive:list[ri].inactive||false});
     setOrigCode(list[ri].code);
@@ -3898,6 +3927,17 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
           </label>
         </div>
 
+        {orphanCodes.length>0&&(
+          <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {orphanCodes.length} account code{orphanCodes.length===1?"":"s"} used in transactions but missing from your chart of accounts — add {orphanCodes.length===1?"it":"them"} so they show up properly everywhere:</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {orphanCodes.map(code=>(
+                <button key={code} onClick={()=>addOrphanToChart(code)} style={{background:"#fff",border:`1px solid ${T.orange}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>+ Add {code}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:`1px solid ${T.border}`}}>
             <div style={{fontSize:15,fontWeight:800,color:T.text}}>Chart of accounts</div>
@@ -3980,6 +4020,31 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
                   </React.Fragment>
                 );
               })}
+              {/* Catch-all — a code outside every recognized range (e.g. an
+                  unusual custom code) must still show up somewhere, never
+                  silently vanish. */}
+              {(()=>{
+                const known=new Set();
+                Object.keys(SERIES).forEach(key=>tableFiltered.filter(a=>getSK(a.code)===key).forEach(a=>known.add(a.code)));
+                const other=tableFiltered.filter(a=>!known.has(a.code)).sort((a,b)=>a.code.localeCompare(b.code));
+                if(!other.length)return null;
+                return(
+                  <React.Fragment key="other">
+                    <tr style={{background:T.bg}}><td colSpan="7" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
+                    {other.map(a=>(
+                      <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
+                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
+                        <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
+                        <td style={{color:T.muted,fontSize:12}}>—</td>
+                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.notes||"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
+                        <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
+                        <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })()}
               {!tableFiltered.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
             </tbody>
           </table>
@@ -4038,6 +4103,16 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
         <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:12}}/>
         <button style={{...btnRed,marginBottom:14}} onClick={()=>setShowNew(s=>!s)}>{showNew?"✕ Cancel":"+ New Account"}</button>
         {showNew&&<Card style={{marginBottom:14}}><SL>New Account</SL><div style={{display:"flex",flexDirection:"column",gap:10}}><input placeholder="Code e.g. 4005" value={newAcc.code} onChange={e=>setNewAcc(p=>({...p,code:e.target.value}))} style={inp}/><input placeholder="Name e.g. Office Supplies" value={newAcc.name} onChange={e=>setNewAcc(p=>({...p,name:e.target.value}))} style={inp}/><div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px",lineHeight:1.7}}>1000–1999 = Assets · 2000–2999 = Equity & Liabilities · 3000–3999 = Revenue · 4000–7999 = Expenses · 8000–8999 = Finance Items · 9000–9999 = Internal</div><SaveFlashButton onClick={()=>{if(!newAcc.code.trim()||!newAcc.name.trim())return;if(list.some(a=>a.code===newAcc.code.trim())){alert("Code already exists.");return;}const updated=[...list,{code:newAcc.code.trim(),name:newAcc.name.trim(),matchable:false}];setList(updated);onSave(updated,null);setNewAcc({code:"",name:""});setShowNew(false);}} label="Add Account"/></div></Card>}
+        {orphanCodes.length>0&&(
+          <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {orphanCodes.length} account code{orphanCodes.length===1?"":"s"} used in transactions but missing from your chart — tap to add:</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {orphanCodes.map(code=>(
+                <button key={code} onClick={()=>addOrphanToChart(code)} style={{background:"#fff",border:`1px solid ${T.orange}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>+ {code}</button>
+              ))}
+            </div>
+          </div>
+        )}
         {Object.entries(SERIES).map(([key,s])=>{
           const grp=filtered.filter(a=>getSK(a.code)===key).sort((a,b)=>a.code.localeCompare(b.code));
           if(!grp.length)return null;
@@ -4056,6 +4131,26 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
             );})}
           </div>);
         })}
+        {(()=>{
+          const known=new Set();
+          Object.keys(SERIES).forEach(key=>filtered.filter(a=>getSK(a.code)===key).forEach(a=>known.add(a.code)));
+          const other=filtered.filter(a=>!known.has(a.code)).sort((a,b)=>a.code.localeCompare(b.code));
+          if(!other.length)return null;
+          return(<div style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span>❓</span><span style={{fontSize:12,fontWeight:800,color:T.muted,textTransform:"uppercase"}}>Other / Uncategorized</span></div>
+            {other.map(a=>{const hasT=hasTxns(a.code);return(
+              <div key={a.code} onClick={()=>openAccount(a.code)} className="rr-table-row" style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,padding:"12px 14px",marginBottom:6,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                  <span style={{background:T.bg,color:T.muted,borderRadius:7,padding:"4px 9px",fontSize:12,fontWeight:800,flexShrink:0}}>{a.code}</span>
+                  <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                  {a.matchable&&<span style={{fontSize:9,background:"#DCFCE7",color:T.green,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ Match</span>}
+                  {hasT&&<span style={{fontSize:9,background:"#FEF3C7",color:T.orange,borderRadius:5,padding:"1px 6px",fontWeight:700,flexShrink:0}}>Has Txns</span>}
+                </div>
+                <i className="ti ti-chevron-right" style={{fontSize:16,color:T.muted,flexShrink:0,marginLeft:8}}/>
+              </div>
+            );})}
+          </div>);
+        })()}
         <div style={{display:"flex",gap:8,marginTop:8}}><button style={{...btnGhost,padding:"10px 14px",fontSize:12}} onClick={onBack}>← Back</button></div>
       </div>
       {viewingCode&&<AccountModal key={viewingCode} account={list.find(a=>a.code===viewingCode)} filtered={filtered} editForm={editForm} setEditForm={setEditForm} saveEdit={saveEdit} onClose={closeAccount} onGoAdjacent={dir=>{const idx=filtered.findIndex(a=>a.code===viewingCode);const next=filtered[idx+dir];if(next)openAccount(next.code);}} hasTxns={hasTxns} deleteAcc={(code)=>{const ri=list.findIndex(a=>a.code===code);deleteAcc(ri);closeAccount();}} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>}
@@ -6258,15 +6353,15 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   const GroupRows=({groups})=>groups.map(g=>(
     <React.Fragment key={g.sk}>
       <tr style={{borderTop:`1px solid ${T.border}`}}>
-        <td style={{padding:"7px 0",fontWeight:800}}>{g.label}</td>
-        <td style={{textAlign:"right",fontWeight:800}}>{fmt(g.total)}</td>
-        <td style={{textAlign:"right",fontSize:12,color:T.muted}}>{fmt(g.totalPrev)}</td>
+        <td style={{padding:"8px 10px",fontWeight:800,fontSize:13}}>{g.label}</td>
+        <td style={{textAlign:"right",fontWeight:800,padding:"8px 10px",fontSize:13}}>{fmt(g.total)}</td>
+        <td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"8px 10px"}}>{fmt(g.totalPrev)}</td>
       </tr>
       {g.rows.map(r=>(
         <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},from,to)} style={{cursor:"pointer"}}>
-          <td style={{padding:"4px 0",paddingLeft:16,color:T.accent,fontSize:12}}>{r.code} {r.name}</td>
-          <td style={{textAlign:"right",fontSize:12}}>{fmt(r.cur)}</td>
-          <td style={{textAlign:"right",fontSize:11,color:T.muted}}>{fmt(r.prev)}</td>
+          <td style={{padding:"6px 10px 6px 26px",color:T.accent,fontSize:13}}>{r.code} {r.name}</td>
+          <td style={{textAlign:"right",fontSize:13,padding:"6px 10px"}}>{fmt(r.cur)}</td>
+          <td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"6px 10px"}}>{fmt(r.prev)}</td>
         </tr>
       ))}
     </React.Fragment>
@@ -6306,6 +6401,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
           <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
         </div>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0"}}>
+          <colgroup><col style={{width:"55%"}}/><col style={{width:"22.5%"}}/><col style={{width:"22.5%"}}/></colgroup>
           <tbody><tr style={{color:T.muted,fontSize:11}}>
             <td style={{padding:"8px 10px"}}></td><td style={{textAlign:"right",padding:"8px 10px"}}>{periodLabel}</td><td style={{textAlign:"right",padding:"8px 10px"}}>Previous period</td>
           </tr></tbody>
@@ -6319,19 +6415,20 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
           never lost once the report is viewed or filed on its own. */}
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}{fullYear?"":` (${from} to ${to})`}</div>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+        <colgroup><col style={{width:"55%"}}/><col style={{width:"22.5%"}}/><col style={{width:"22.5%"}}/></colgroup>
         <tbody style={{padding:"0 10px"}}>
-          <tr><td colSpan="3" style={{padding:"8px 10px 4px",fontSize:11,fontWeight:800,color:T.green,textTransform:"uppercase"}}>Income</td></tr>
+          <tr><td colSpan="3" style={{padding:"10px 10px 6px",fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.3}}>Income</td></tr>
           <GroupRows groups={incomeGroups}/>
-          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 10px"}}>Total income</td><td style={{textAlign:"right",fontWeight:800,padding:"8px 10px"}}>{fmt(totalIncome)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"8px 10px"}}>{fmt(totalIncomePrev)}</td></tr>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"10px",fontWeight:800,fontSize:13}}>Total income</td><td style={{textAlign:"right",fontWeight:800,fontSize:13,padding:"10px"}}>{fmt(totalIncome)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"10px"}}>{fmt(totalIncomePrev)}</td></tr>
 
-          <tr><td colSpan="3" style={{padding:"14px 10px 4px",fontSize:11,fontWeight:800,color:"#D97706",textTransform:"uppercase"}}>Expenses</td></tr>
+          <tr><td colSpan="3" style={{padding:"16px 10px 6px",fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.3}}>Expenses</td></tr>
           <GroupRows groups={expenseGroups}/>
-          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"8px 10px",fontWeight:800}}>Total expenses</td><td style={{textAlign:"right",fontWeight:800,padding:"8px 10px"}}>{fmt(totalExpense)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"8px 10px"}}>{fmt(totalExpensePrev)}</td></tr>
+          <tr style={{borderTop:`1px solid ${T.border}`}}><td style={{padding:"10px",fontWeight:800,fontSize:13}}>Total expenses</td><td style={{textAlign:"right",fontWeight:800,fontSize:13,padding:"10px"}}>{fmt(totalExpense)}</td><td style={{textAlign:"right",fontSize:12,color:T.muted,padding:"10px"}}>{fmt(totalExpensePrev)}</td></tr>
 
           <tr style={{borderTop:`2px solid ${T.text}`}}>
-            <td style={{padding:"10px 10px",fontWeight:900,fontSize:14}}>Net profit / loss</td>
-            <td style={{textAlign:"right",fontWeight:900,fontSize:14,color:net>=0?T.green:T.red,padding:"10px 10px"}}>{fmt(net)}</td>
-            <td style={{textAlign:"right",fontWeight:700,fontSize:12,color:T.muted,padding:"10px 10px"}}>{fmt(netPrev)}</td>
+            <td style={{padding:"12px 10px",fontWeight:900,fontSize:15}}>Net profit / loss</td>
+            <td style={{textAlign:"right",fontWeight:900,fontSize:15,color:net>=0?T.green:T.red,padding:"12px 10px"}}>{fmt(net)}</td>
+            <td style={{textAlign:"right",fontWeight:700,fontSize:12,color:T.muted,padding:"12px 10px"}}>{fmt(netPrev)}</td>
           </tr>
         </tbody>
       </table>
@@ -6380,15 +6477,15 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
   const GroupRows=({groups})=>groups.map(g=>(
     <React.Fragment key={g.sk}>
       <tr style={{borderTop:`1px solid ${T.border}`}}>
-        <td style={{padding:"7px 0",fontWeight:800}}>{g.label}</td>
-        <td style={{textAlign:"right",fontWeight:800}}>{fmt(g.total)}</td>
-        {compareOn&&<td style={{textAlign:"right",fontWeight:600,color:T.muted,fontSize:12}}>{fmt(compareTotalsBySk[g.sk]||0)}</td>}
+        <td style={{padding:"8px 10px",fontWeight:800,fontSize:13}}>{g.label}</td>
+        <td style={{textAlign:"right",fontWeight:800,padding:"8px 10px",fontSize:13}}>{fmt(g.total)}</td>
+        {compareOn&&<td style={{textAlign:"right",fontWeight:600,color:T.muted,fontSize:12,padding:"8px 10px"}}>{fmt(compareTotalsBySk[g.sk]||0)}</td>}
       </tr>
       {g.rows.map(r=>(
         <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},"2020-01-01",asOf)} style={{cursor:"pointer"}}>
-          <td style={{padding:"4px 0",paddingLeft:16,color:T.accent,fontSize:12}}>{r.code} {r.name}</td>
-          <td style={{textAlign:"right",fontSize:12}}>{fmt(r.bal)}</td>
-          {compareOn&&<td></td>}
+          <td style={{padding:"6px 10px 6px 26px",color:T.accent,fontSize:13}}>{r.code} {r.name}</td>
+          <td style={{textAlign:"right",fontSize:13,padding:"6px 10px"}}>{fmt(r.bal)}</td>
+          {compareOn&&<td style={{padding:"6px 10px"}}></td>}
         </tr>
       ))}
     </React.Fragment>
@@ -6433,13 +6530,14 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
+            <colgroup><col style={{width:"55%"}}/><col style={{width:compareOn?"22.5%":"45%"}}/>{compareOn&&<col style={{width:"22.5%"}}/>}</colgroup>
+            {compareOn&&<thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={assetGroups}/>
               <tr style={{borderTop:`2px solid ${T.text}`}}>
-                <td style={{padding:"8px 0",fontWeight:900}}>Total assets</td>
-                <td style={{textAlign:"right",fontWeight:900}}>{fmt(totalAssets)}</td>
-                {compareOn&&<td style={{textAlign:"right",fontWeight:700,color:T.muted,fontSize:12}}>{fmt(compareTotalAssets)}</td>}
+                <td style={{padding:"10px",fontWeight:900,fontSize:14}}>Total assets</td>
+                <td style={{textAlign:"right",fontWeight:900,fontSize:14,padding:"10px"}}>{fmt(totalAssets)}</td>
+                {compareOn&&<td style={{textAlign:"right",fontWeight:700,color:T.muted,fontSize:12,padding:"10px"}}>{fmt(compareTotalAssets)}</td>}
               </tr>
             </tbody>
           </table>
@@ -6447,13 +6545,14 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Equity and liabilities</div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            {compareOn&&<thead><tr style={{color:T.muted,fontSize:10}}><td></td><td style={{textAlign:"right"}}>{asOf}</td><td style={{textAlign:"right"}}>{compareDate}</td></tr></thead>}
+            <colgroup><col style={{width:"55%"}}/><col style={{width:compareOn?"22.5%":"45%"}}/>{compareOn&&<col style={{width:"22.5%"}}/>}</colgroup>
+            {compareOn&&<thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={eqLiabGroups}/>
               <tr style={{borderTop:`2px solid ${T.text}`}}>
-                <td style={{padding:"8px 0",fontWeight:900}}>Total equity and liabilities</td>
-                <td style={{textAlign:"right",fontWeight:900}}>{fmt(totalEqLiab)}</td>
-                {compareOn&&<td style={{textAlign:"right",fontWeight:700,color:T.muted,fontSize:12}}>{fmt(compareTotalEqLiab)}</td>}
+                <td style={{padding:"10px",fontWeight:900,fontSize:14}}>Total equity and liabilities</td>
+                <td style={{textAlign:"right",fontWeight:900,fontSize:14,padding:"10px"}}>{fmt(totalEqLiab)}</td>
+                {compareOn&&<td style={{textAlign:"right",fontWeight:700,color:T.muted,fontSize:12,padding:"10px"}}>{fmt(compareTotalEqLiab)}</td>}
               </tr>
             </tbody>
           </table>
@@ -10431,7 +10530,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
   return(
-    <Card>
+    <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+    <Card style={{flex:1,marginBottom:0,minWidth:0}}>
       {/* Bilag + Date — Entry type is its own row of buttons below, since it's
           the first real decision (what kind of entry this is), not something
           to bury in a dropdown. */}
@@ -10541,37 +10641,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
             })()}
           </div>
         )}
-
-        {/* Attachment — a clear upload target instead of a cramped select+button row */}
-        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}>
-          <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>📎 Attachment (optional)</div>
-          {form.attachmentId?(()=>{
-            const f=inboxFiles.find(x=>x.id===form.attachmentId);
-            const isImg=f&&f.type&&f.type.startsWith("image");
-            return(
-              <div style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 10px"}}>
-                <div style={{width:36,height:36,borderRadius:8,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{isImg?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-                <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:T.redLight,border:"none",borderRadius:7,cursor:"pointer",color:T.red,fontSize:11,padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>Remove</button>
-              </div>
-            );
-          })():(
-            <div>
-              <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"16px 10px",cursor:uploadingReceipt?"wait":"pointer",background:"#fff"}}>
-                <span style={{fontSize:20}}>{uploadingReceipt?"⏳":"📎"}</span>
-                <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload a file"}</span>
-                <span style={{fontSize:9,color:T.muted}}>Image, PDF, or document</span>
-                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
-              </label>
-              {inboxFiles.length>0&&(
-                <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:8}}>
-                  <option value="">— or pick an existing Inbox file —</option>
-                  {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                </select>
-              )}
-            </div>
-          )}
-        </div>
 
         {/* Smart contact selector — only when 1500 or 2400 */}
         {needContact&&(
@@ -10721,48 +10790,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
               );
             })()}
 
-            {/* Attachment — chips for attached files, plus a clear upload target */}
-            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:invAttachmentIds.length||invAttOpen?8:0}}>
-                <span style={{fontSize:12}}>📎</span>
-                <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
-                {invAttachmentIds.length>0&&(
-                  <button onClick={()=>setInvAttOpen(o=>!o)} title={invAttOpen?"Hide":"Show"} style={{background:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:11,fontWeight:700,padding:0,fontFamily:"inherit"}}>{invAttOpen?"Hide":"Show"}</button>
-                )}
-              </div>
-              {invAttOpen&&invAttachmentIds.length>0&&(
-                <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
-                  {invAttachmentIds.map(fid=>{
-                    const f=inboxFiles.find(x=>x.id===fid);
-                    return(
-                      <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
-                        <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-                        <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                        <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"9px",cursor:uploadingInvAtt?"wait":"pointer",background:"#fff"}}>
-                <span style={{fontSize:13}}>{uploadingInvAtt?"⏳":"📎"}</span>
-                <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
-                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
-                  if(!e.target.files[0])return;
-                  setUploadingInvAtt(true);
-                  const newFile=await uploadInboxFile(e.target.files[0]);
-                  if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
-                  setUploadingInvAtt(false);
-                }}/>
-              </label>
-              {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
-                <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:6}}>
-                  <option value="">— or pick an existing Inbox file —</option>
-                  {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                </select>
-              )}
-            </div>
-
             {/* Payment — a single clean dropdown. Nothing selected → posts as a
                 plain open item to Accounts Payable/Receivable. Pick Cash or a
                 bank → settles the full amount immediately against that account,
@@ -10785,6 +10812,84 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         );
       })()}
     </Card>
+
+    {/* Attachment — pulled out into its own right-hand panel instead of
+        living inline in the form, so it's always visible regardless of
+        which entry type is selected or how long the form gets. */}
+    <div style={{width:320,flexShrink:0,position:"sticky",top:16}}>
+      <Card style={{marginBottom:0}}>
+        {entryMode==="receipt"?(
+          <>
+            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>📎 Attachment (optional)</div>
+            {form.attachmentId?(()=>{
+              const f=inboxFiles.find(x=>x.id===form.attachmentId);
+              const isImg=f&&f.type&&f.type.startsWith("image");
+              return(
+                <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 10px"}}>
+                  <div style={{width:36,height:36,borderRadius:8,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{isImg?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                  <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                  <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:T.redLight,border:"none",borderRadius:7,cursor:"pointer",color:T.red,fontSize:11,padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>Remove</button>
+                </div>
+              );
+            })():(
+              <div>
+                <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"20px 10px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg}}>
+                  <span style={{fontSize:22}}>{uploadingReceipt?"⏳":"📎"}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload a file"}</span>
+                  <span style={{fontSize:9,color:T.muted}}>Image, PDF, or document</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
+                </label>
+                {inboxFiles.length>0&&(
+                  <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:8}}>
+                    <option value="">— or pick an existing Inbox file —</option>
+                    {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                  </select>
+                )}
+              </div>
+            )}
+          </>
+        ):(
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+              <span style={{fontSize:12}}>📎</span>
+              <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
+            </div>
+            {invAttachmentIds.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+                {invAttachmentIds.map(fid=>{
+                  const f=inboxFiles.find(x=>x.id===fid);
+                  return(
+                    <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
+                      <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                      <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                      <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
+              <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
+              <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
+                if(!e.target.files[0])return;
+                setUploadingInvAtt(true);
+                const newFile=await uploadInboxFile(e.target.files[0]);
+                if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+                setUploadingInvAtt(false);
+              }}/>
+            </label>
+            {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
+              <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
+                <option value="">— or pick an existing Inbox file —</option>
+                {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+              </select>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+    </div>
   );
 }
 
@@ -10809,6 +10914,25 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   const totalGoal=activeFunds.reduce((s,f)=>s+(f.goal||0),0);
   const totalSaved=activeFunds.reduce((s,f)=>s+(f.saved||0),0);
   const overallPct=totalGoal>0?Math.min(Math.round((totalSaved/totalGoal)*100),100):0;
+
+  // Detect leftover damage from a fixed bug where a new fund's id could
+  // collide with an existing one after a fund was deleted — two funds
+  // sharing an id would make lookups (sweeps, edits, deletes) ambiguous.
+  const duplicateIdFunds=useMemo(()=>{
+    const counts={};
+    funds.forEach(f=>{counts[f.id]=(counts[f.id]||0)+1;});
+    return funds.filter(f=>counts[f.id]>1);
+  },[funds]);
+  const fixDuplicateIds=()=>{
+    const seen=new Set();
+    let maxNum=funds.reduce((max,f)=>{const m=/^SF(\d+)$/.exec(f.id);return m?Math.max(max,parseInt(m[1],10)):max;},0);
+    const fixed=funds.map(f=>{
+      if(!seen.has(f.id)){seen.add(f.id);return f;}
+      maxNum+=1;
+      return{...f,id:"SF"+String(maxNum).padStart(3,"0")};
+    });
+    saveSinkingFunds(fixed);
+  };
 
   // Monthly contribution = sum of all monthly required amounts
   const totalMonthly=activeFunds.reduce((s,f)=>{
@@ -10881,7 +11005,16 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
       const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}:f);
       saveSinkingFunds(updated);
     } else {
-      const id="SF"+String(funds.length+1).padStart(3,"0");
+      // Using funds.length+1 for the id collided after any fund got deleted
+      // (e.g. 3 funds → delete the 2nd → length is 2 → next new fund reuses
+      // an id already taken by the 3rd) — silently pointing budget sweeps,
+      // edits, and deletes at the wrong fund. Base it on the highest existing
+      // numeric suffix instead, so it's unique no matter what's been removed.
+      const maxNum=funds.reduce((max,f)=>{
+        const m=/^SF(\d+)$/.exec(f.id);
+        return m?Math.max(max,parseInt(m[1],10)):max;
+      },0);
+      const id="SF"+String(maxNum+1).padStart(3,"0");
       const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}];
       saveSinkingFunds(newList);
     }
@@ -10896,6 +11029,13 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   return(
     <div style={isDesktop?{maxWidth:900}:{background:"#f1efe8",minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       {(menuOpen||cardMenu)&&<div onClick={()=>{setMenuOpen(false);setCardMenu(null);}} style={{position:"fixed",inset:0,zIndex:90}}/>}
+
+      {duplicateIdFunds.length>0&&(
+        <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {duplicateIdFunds.length} fund{duplicateIdFunds.length===1?"":"s"} share an internal ID with another fund (a past bug could cause this after deleting one) — sweeps, edits, or deletes could affect the wrong fund until this is fixed.</div>
+          <button onClick={fixDuplicateIds} style={{background:"#fff",border:`1px solid ${T.orange}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Fix now</button>
+        </div>
+      )}
 
       {/* Header */}
       {isDesktop?(
@@ -11109,6 +11249,7 @@ function ReportsHubScreen({onNavigate}){
       {label:"Aged receivables/payables",tab:"AgedReskontro"},
     ]},
     {label:"Result reports",icon:"ti-chart-line",items:[
+      {label:"Monthly overview",tab:"MonthlyOverview"},
       {label:"Income statement",tab:"Resultat"},
       {label:"Analytics",tab:"Reports"},
     ]},
@@ -11133,6 +11274,116 @@ function ReportsHubScreen({onNavigate}){
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Monthly overview — the single-screen "how did this month go" report:
+// income, expenses, net profit, and a balance-sheet snapshot (assets /
+// liabilities / equity as of month-end), each compared against the prior
+// month with a delta and % change. Reuses the same account-grouping
+// conventions as the Income Statement and Balance Sheet screens.
+function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
+  const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const year=parseInt(viewMonth.slice(0,4));
+  const monthIdx=parseInt(viewMonth.slice(5,7))-1;
+  const lastDay=new Date(year,monthIdx+1,0).getDate();
+  const from=`${viewMonth}-01`;
+  const to=`${viewMonth}-${String(lastDay).padStart(2,"0")}`;
+  const periodLabel=new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
+  const stepMonth=dir=>{let m=monthIdx+dir,y=year;if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}setViewMonth(`${y}-${String(m+1).padStart(2,"0")}`);};
+
+  const prevDate=new Date(year,monthIdx-1,1);
+  const prevY=prevDate.getFullYear(),prevM=prevDate.getMonth();
+  const prevFrom=`${prevY}-${String(prevM+1).padStart(2,"0")}-01`;
+  const prevLastDay=new Date(prevY,prevM+1,0).getDate();
+  const prevTo=`${prevY}-${String(prevM+1).padStart(2,"0")}-${String(prevLastDay).padStart(2,"0")}`;
+  const prevLabel=new Date(prevY,prevM,1).toLocaleString("default",{month:"long"})+" "+prevY;
+
+  const movement=(code,f,t)=>transactions.filter(tx=>tx.date>=f&&tx.date<=t).reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
+  const balanceAsOf=(code,asOf)=>transactions.filter(tx=>tx.date<=asOf).reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
+
+  const incomeSKs=["3000","3900"];
+  const expenseSKs=["4000","5000","6000","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"];
+  const assetSKs=["1000","1100","1200","1300","1400","1500","1600","1700","1800","1900"];
+  const eqLiabSKs=["2000","2100","2200","2300","2400","2500","2600","2700","2800","2900"];
+
+  const sumFlow=(sks,flip,f,t)=>accounts.filter(a=>sks.includes(getSK(a.code))).reduce((s,a)=>s+movement(a.code,f,t)*(flip?-1:1),0);
+  const sumBalance=(sks,asOf)=>accounts.filter(a=>sks.includes(getSK(a.code))).reduce((s,a)=>s+balanceAsOf(a.code,asOf),0);
+
+  const income=sumFlow(incomeSKs,true,from,to), incomePrev=sumFlow(incomeSKs,true,prevFrom,prevTo);
+  const expense=sumFlow(expenseSKs,false,from,to), expensePrev=sumFlow(expenseSKs,false,prevFrom,prevTo);
+  const net=income-expense, netPrev=incomePrev-expensePrev;
+  const assets=sumBalance(assetSKs,to), assetsPrev=sumBalance(assetSKs,prevTo);
+  const eqLiab=sumBalance(eqLiabSKs,to), eqLiabPrev=sumBalance(eqLiabSKs,prevTo);
+
+  const byCategory=(sks,flip,f,t)=>sks.map(sk=>{
+    const grp=accounts.filter(a=>getSK(a.code)===sk);
+    if(!grp.length)return null;
+    const total=grp.reduce((s,a)=>s+movement(a.code,f,t)*(flip?-1:1),0);
+    if(!total)return null;
+    return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,total};
+  }).filter(Boolean).sort((a,b)=>b.total-a.total);
+  const incomeCats=byCategory(incomeSKs,true,from,to);
+  const expenseCats=byCategory(expenseSKs,false,from,to);
+
+  const Delta=({cur,prev,invert=false})=>{
+    const diff=cur-prev;
+    const pct=prev!==0?Math.round((diff/Math.abs(prev))*100):null;
+    const good=invert?diff<=0:diff>=0;
+    if(diff===0)return<span style={{fontSize:11,color:T.muted}}>— no change</span>;
+    return<span style={{fontSize:11,color:good?T.green:T.red,fontWeight:700}}>{diff>=0?"▲":"▼"} {fmt(Math.abs(diff))}{pct!=null?` (${Math.abs(pct)}%)`:""}</span>;
+  };
+
+  const Kpi=({label,value,prev,invert})=>(
+    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,flex:1,minWidth:160}}>
+      <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{label}</div>
+      <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:4}}>{fmt(value)}</div>
+      <Delta cur={value} prev={prev} invert={invert}/>
+      <div style={{fontSize:10,color:T.muted,marginTop:2}}>vs {fmt(prev)} in {prevLabel}</div>
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Monthly overview</h1>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
+          <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:120,textAlign:"center"}}>{periodLabel}</span>
+          <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+        </div>
+      </div>
+      <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Every figure below is automatically compared against {prevLabel} — no toggle needed.</div>
+
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:24}}>
+        <Kpi label="Income" value={income} prev={incomePrev}/>
+        <Kpi label="Expenses" value={expense} prev={expensePrev} invert/>
+        <Kpi label="Net profit" value={net} prev={netPrev}/>
+        <Kpi label="Total assets (month-end)" value={assets} prev={assetsPrev}/>
+        <Kpi label="Equity & liabilities (month-end)" value={eqLiab} prev={eqLiabPrev}/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.green,marginBottom:10,textTransform:"uppercase"}}>Income by category</div>
+          {incomeCats.map(c=>(
+            <div key={c.sk} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.border}`,fontSize:13}}>
+              <span style={{color:T.text}}>{c.label}</span><span style={{fontWeight:700}}>{fmt(c.total)}</span>
+            </div>
+          ))}
+          {!incomeCats.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No income recorded this month.</div>}
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:"#D97706",marginBottom:10,textTransform:"uppercase"}}>Expenses by category</div>
+          {expenseCats.map(c=>(
+            <div key={c.sk} onClick={()=>onOpenLedger&&onOpenLedger(null,from,to)} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.border}`,fontSize:13}}>
+              <span style={{color:T.text}}>{c.label}</span><span style={{fontWeight:700}}>{fmt(c.total)}</span>
+            </div>
+          ))}
+          {!expenseCats.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No expenses recorded this month.</div>}
+        </div>
       </div>
     </div>
   );
@@ -14296,7 +14547,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",VoucherSettings:"voucher",
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
     Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",AccountingSettings:"accounting",
-    ReportsHub:"accounting",AgedReskontro:"accounting",SalesPerCustomer:"accounting",BalanceLists:"accounting",
+    ReportsHub:"accounting",AgedReskontro:"accounting",SalesPerCustomer:"accounting",BalanceLists:"accounting",MonthlyOverview:"accounting",
     Bank:"bank",BankDashboard:"bank",BankWhose:"bank",Cheques:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
@@ -14979,24 +15230,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="NewVoucher"&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:24,alignItems:"start",maxWidth:900}}>
+          <div style={{maxWidth:1400}}>
             <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,position:"sticky",top:16}}>
-              <div style={{fontSize:11,color:T.muted,marginBottom:12,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Recent entries</div>
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                {[...transactions].sort((a,b)=>b.bilag-a.bilag).slice(0,8).map(t=>(
-                  <div key={t.id} style={{fontSize:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <span style={{color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</span>
-                      <span style={{fontWeight:700}}>{fmt(t.amount)}</span>
-                    </div>
-                    <div style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
-                    <div style={{color:T.muted,fontSize:10}}>{t.date}</div>
-                  </div>
-                ))}
-                {!transactions.length&&<div style={{fontSize:12,color:T.muted}}>Nothing recorded yet.</div>}
-              </div>
-            </div>
           </div>
         )}
 
@@ -15075,6 +15310,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="VATReport"&&(
           <div style={{maxWidth:1000}}>
             <VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>
+          </div>
+        )}
+
+        {tab==="MonthlyOverview"&&(
+          <div style={{maxWidth:1000}}>
+            <MonthlyOverviewScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
           </div>
         )}
 
