@@ -1889,6 +1889,24 @@ const INCOME_SK=new Set(["3000","3900","8000"]);
 const EXPENSE_SK=new Set(["4000","5000","6000","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900","8100","8200","8300","8800"]);
 const isIncomeSK=(code)=>INCOME_SK.has(getSK(code));
 const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
+// Reports (Income Statement, Balance Sheet, Monthly Overview...) group by
+// filtering `accounts` for a given series key — but a transaction can
+// reference a code that never actually got saved into the chart of accounts
+// (see AccountPlanScreen's orphan-detection banner for the same root cause).
+// Filtering `accounts` alone silently drops that code's activity from every
+// report. This returns the known accounts for a series key PLUS a synthetic
+// placeholder entry for any code touched by a transaction but missing from
+// the chart, so nothing with real activity is ever left out of a report.
+const accountsForSK=(accounts,transactions,sk)=>{
+  const known=accounts.filter(a=>getSK(a.code)===sk);
+  const knownCodes=new Set(known.map(a=>a.code));
+  const orphanCodes=new Set();
+  (transactions||[]).forEach(t=>{
+    if(t.debitCode&&getSK(t.debitCode)===sk&&!knownCodes.has(t.debitCode))orphanCodes.add(t.debitCode);
+    if(t.creditCode&&getSK(t.creditCode)===sk&&!knownCodes.has(t.creditCode))orphanCodes.add(t.creditCode);
+  });
+  return[...known,...[...orphanCodes].sort().map(code=>({code,name:"(Not in chart of accounts)"}))];
+};
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
 
@@ -6077,7 +6095,16 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   });
 
   const rows=useMemo(()=>{
-    return accounts
+    // Same orphan-account gap as Income Statement/Balance Sheet — a code can
+    // have real transactions without ever having been saved to the chart.
+    const knownCodes=new Set(accounts.map(a=>a.code));
+    const orphanCodes=new Set();
+    transactions.forEach(t=>{
+      if(t.debitCode&&!knownCodes.has(t.debitCode))orphanCodes.add(t.debitCode);
+      if(t.creditCode&&!knownCodes.has(t.creditCode))orphanCodes.add(t.creditCode);
+    });
+    const allAccounts=[...accounts,...[...orphanCodes].map(code=>({code,name:"(Not in chart of accounts)"}))];
+    return allAccounts
       .filter(a=>(!fromAcct||a.code>=fromAcct)&&(!toAcct||a.code<=toAcct))
       .filter(a=>!activeCategories||activeCategories.has(getSK(a.code)))
       .filter(a=>!reportSearch||a.code.includes(reportSearch)||a.name.toLowerCase().includes(reportSearch.toLowerCase()))
@@ -6330,7 +6357,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   const expenseSKs=["4000","5000","6000","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"];
 
   const buildGroup=(sks,flip)=>sks.map(sk=>{
-    const grpAccounts=accounts.filter(a=>getSK(a.code)===sk);
+    const grpAccounts=accountsForSK(accounts,transactions,sk);
     if(!grpAccounts.length)return null;
     const rows=grpAccounts.map(a=>{
       const cur=movement(a.code,from,to)*(flip?-1:1);
@@ -6449,7 +6476,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
   const eqLiabSKs=["2000","2100","2200","2300","2400","2500","2600","2700","2800","2900"];
 
   const buildGroup=(sks,flip,date)=>sks.map(sk=>{
-    const grpAccounts=accounts.filter(a=>getSK(a.code)===sk);
+    const grpAccounts=accountsForSK(accounts,transactions,sk);
     if(!grpAccounts.length)return null;
     const rows=grpAccounts.map(a=>({code:a.code,name:a.name,bal:balAt(a.code,date)*(flip?-1:1)})).filter(r=>r.bal!==0);
     if(!rows.length)return null;
@@ -10338,7 +10365,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:""};
@@ -10530,7 +10557,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
   return(
-    <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+    <div style={{display:"flex",gap:20,alignItems:"flex-start",flexDirection:isDesktop?"row":"column"}}>
     <Card style={{flex:1,marginBottom:0,minWidth:0}}>
       {/* Bilag + Date — Entry type is its own row of buttons below, since it's
           the first real decision (what kind of entry this is), not something
@@ -10816,7 +10843,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     {/* Attachment — pulled out into its own right-hand panel instead of
         living inline in the form, so it's always visible regardless of
         which entry type is selected or how long the form gets. */}
-    <div style={{width:320,flexShrink:0,position:"sticky",top:16}}>
+    <div style={isDesktop?{width:320,flexShrink:0,position:"sticky",top:16}:{width:"100%"}}>
       <Card style={{marginBottom:0}}>
         {entryMode==="receipt"?(
           <>
@@ -11284,7 +11311,7 @@ function ReportsHubScreen({onNavigate}){
 // liabilities / equity as of month-end), each compared against the prior
 // month with a delta and % change. Reuses the same account-grouping
 // conventions as the Income Statement and Balance Sheet screens.
-function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
+function MonthlyOverviewScreen({accounts,transactions,onOpenLedger,budgets=[],moneySources=[]}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
@@ -11309,24 +11336,51 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
   const assetSKs=["1000","1100","1200","1300","1400","1500","1600","1700","1800","1900"];
   const eqLiabSKs=["2000","2100","2200","2300","2400","2500","2600","2700","2800","2900"];
 
-  const sumFlow=(sks,flip,f,t)=>accounts.filter(a=>sks.includes(getSK(a.code))).reduce((s,a)=>s+movement(a.code,f,t)*(flip?-1:1),0);
-  const sumBalance=(sks,asOf)=>accounts.filter(a=>sks.includes(getSK(a.code))).reduce((s,a)=>s+balanceAsOf(a.code,asOf),0);
+  // Itemized by-account lists (not just category subtotals) — includes any
+  // orphan code (used in transactions but missing from the chart) via the
+  // same accountsForSK helper the other reports use, so nothing is silently
+  // left out here either.
+  const itemize=(sks,flip,fn)=>{
+    const rows=[];
+    sks.forEach(sk=>accountsForSK(accounts,transactions,sk).forEach(a=>{
+      const val=fn(a.code)*(flip?-1:1);
+      if(val)rows.push({code:a.code,name:a.name,sk,val});
+    }));
+    return rows.sort((a,b)=>b.val-a.val);
+  };
+  const expenseRows=itemize(expenseSKs,false,code=>movement(code,from,to));
+  const incomeRows=itemize(incomeSKs,true,code=>movement(code,from,to));
+  const assetRows=itemize(assetSKs,false,code=>balanceAsOf(code,to)).filter(r=>r.val!==0);
+  const eqLiabRows=itemize(eqLiabSKs,true,code=>balanceAsOf(code,to)).filter(r=>r.val!==0);
 
-  const income=sumFlow(incomeSKs,true,from,to), incomePrev=sumFlow(incomeSKs,true,prevFrom,prevTo);
-  const expense=sumFlow(expenseSKs,false,from,to), expensePrev=sumFlow(expenseSKs,false,prevFrom,prevTo);
+  const income=incomeRows.reduce((s,r)=>s+r.val,0);
+  const incomePrev=itemize(incomeSKs,true,code=>movement(code,prevFrom,prevTo)).reduce((s,r)=>s+r.val,0);
+  const expense=expenseRows.reduce((s,r)=>s+r.val,0);
+  const expensePrev=itemize(expenseSKs,false,code=>movement(code,prevFrom,prevTo)).reduce((s,r)=>s+r.val,0);
   const net=income-expense, netPrev=incomePrev-expensePrev;
-  const assets=sumBalance(assetSKs,to), assetsPrev=sumBalance(assetSKs,prevTo);
-  const eqLiab=sumBalance(eqLiabSKs,to), eqLiabPrev=sumBalance(eqLiabSKs,prevTo);
+  const assets=assetRows.reduce((s,r)=>s+r.val,0);
+  const assetsPrev=itemize(assetSKs,false,code=>balanceAsOf(code,prevTo)).reduce((s,r)=>s+r.val,0);
+  const eqLiab=eqLiabRows.reduce((s,r)=>s+r.val,0);
+  const eqLiabPrev=itemize(eqLiabSKs,true,code=>balanceAsOf(code,prevTo)).reduce((s,r)=>s+r.val,0);
 
-  const byCategory=(sks,flip,f,t)=>sks.map(sk=>{
-    const grp=accounts.filter(a=>getSK(a.code)===sk);
-    if(!grp.length)return null;
-    const total=grp.reduce((s,a)=>s+movement(a.code,f,t)*(flip?-1:1),0);
-    if(!total)return null;
-    return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,total};
-  }).filter(Boolean).sort((a,b)=>b.total-a.total);
-  const incomeCats=byCategory(incomeSKs,true,from,to);
-  const expenseCats=byCategory(expenseSKs,false,from,to);
+  // Expense budget remaining this month — sum of what was budgeted for every
+  // expense account this month vs. what's actually been spent so far.
+  const monthBudgets=budgets.filter(b=>b.year===year&&b.month===monthIdx);
+  const budgetedExpense=monthBudgets.filter(b=>expenseSKs.includes(getSK(b.code))).reduce((s,b)=>s+(b.amount||0),0);
+  const expenseRemaining=budgetedExpense-expense;
+
+  // Money sources — how much of each source's money, moved through a sale/
+  // income account, is still left this month. "Received" = bank deposits
+  // tagged to that source where the other leg is an income (3xxx) account;
+  // "spent" = bank withdrawals tagged to that source, any purpose.
+  const bankCodes=new Set(accounts.filter(a=>getSK(a.code)==="1900").map(a=>a.code));
+  const monthBankTxns=transactions.filter(t=>t.date>=from&&t.date<=to&&(bankCodes.has(t.debitCode)||bankCodes.has(t.creditCode)));
+  const sourceRows=moneySources.filter(m=>!m.inactive).map(src=>{
+    const tagged=monthBankTxns.filter(t=>t.moneySourceId===src.id);
+    const receivedViaSale=tagged.filter(t=>bankCodes.has(t.debitCode)&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const spent=tagged.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    return{id:src.id,name:src.name,receivedViaSale,spent,remaining:receivedViaSale-spent};
+  }).filter(r=>r.receivedViaSale||r.spent);
 
   const Delta=({cur,prev,invert=false})=>{
     const diff=cur-prev;
@@ -11336,14 +11390,22 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
     return<span style={{fontSize:11,color:good?T.green:T.red,fontWeight:700}}>{diff>=0?"▲":"▼"} {fmt(Math.abs(diff))}{pct!=null?` (${Math.abs(pct)}%)`:""}</span>;
   };
 
-  const Kpi=({label,value,prev,invert})=>(
+  const Kpi=({label,value,prev,invert,sub})=>(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,flex:1,minWidth:160}}>
       <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{label}</div>
       <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:4}}>{fmt(value)}</div>
-      <Delta cur={value} prev={prev} invert={invert}/>
-      <div style={{fontSize:10,color:T.muted,marginTop:2}}>vs {fmt(prev)} in {prevLabel}</div>
+      {prev!=null?(<><Delta cur={value} prev={prev} invert={invert}/><div style={{fontSize:10,color:T.muted,marginTop:2}}>vs {fmt(prev)} in {prevLabel}</div></>):(sub&&<div style={{fontSize:10,color:T.muted,marginTop:2}}>{sub}</div>)}
     </div>
   );
+
+  const ItemList=({rows,color,openable})=>(<>
+    {rows.map(r=>(
+      <div key={r.code} onClick={()=>openable&&onOpenLedger&&onOpenLedger({code:r.code,name:r.name},from,to)} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.border}`,fontSize:12,cursor:openable?"pointer":"default"}}>
+        <span style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{r.code} {r.name}</span>
+        <span style={{fontWeight:700,color:color||T.text,flexShrink:0}}>{fmt(r.val)}</span>
+      </div>
+    ))}
+  </>);
 
   return(
     <div style={{maxWidth:1000}}>
@@ -11355,9 +11417,9 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
           <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
         </div>
       </div>
-      <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Every figure below is automatically compared against {prevLabel} — no toggle needed.</div>
+      <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Every figure below is automatically compared against {prevLabel} — no toggle needed. Assets/liabilities/equity are balances as of the end of {periodLabel}, which is how a balance sheet always works (they're running totals, not a monthly flow) — but only accounts with a non-zero balance that month are listed.</div>
 
-      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:24}}>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:16}}>
         <Kpi label="Income" value={income} prev={incomePrev}/>
         <Kpi label="Expenses" value={expense} prev={expensePrev} invert/>
         <Kpi label="Net profit" value={net} prev={netPrev}/>
@@ -11365,24 +11427,49 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger}){
         <Kpi label="Equity & liabilities (month-end)" value={eqLiab} prev={eqLiabPrev}/>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      {budgetedExpense>0&&(
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:24}}>
+          <Kpi label="Expense budget remaining" value={expenseRemaining} sub={`${fmt(expense)} spent of ${fmt(budgetedExpense)} budgeted`}/>
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
-          <div style={{fontSize:13,fontWeight:800,color:T.green,marginBottom:10,textTransform:"uppercase"}}>Income by category</div>
-          {incomeCats.map(c=>(
-            <div key={c.sk} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.border}`,fontSize:13}}>
-              <span style={{color:T.text}}>{c.label}</span><span style={{fontWeight:700}}>{fmt(c.total)}</span>
-            </div>
-          ))}
-          {!incomeCats.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No income recorded this month.</div>}
+          <div style={{fontSize:13,fontWeight:800,color:T.green,marginBottom:6,textTransform:"uppercase"}}>Income — every account</div>
+          <ItemList rows={incomeRows} color={T.green} openable/>
+          {!incomeRows.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No income recorded this month.</div>}
         </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
-          <div style={{fontSize:13,fontWeight:800,color:"#D97706",marginBottom:10,textTransform:"uppercase"}}>Expenses by category</div>
-          {expenseCats.map(c=>(
-            <div key={c.sk} onClick={()=>onOpenLedger&&onOpenLedger(null,from,to)} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.border}`,fontSize:13}}>
-              <span style={{color:T.text}}>{c.label}</span><span style={{fontWeight:700}}>{fmt(c.total)}</span>
+          <div style={{fontSize:13,fontWeight:800,color:"#D97706",marginBottom:6,textTransform:"uppercase"}}>Expenses — every account</div>
+          <ItemList rows={expenseRows} color="#D97706" openable/>
+          {!expenseRows.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No expenses recorded this month.</div>}
+        </div>
+      </div>
+
+      {sourceRows.length>0&&(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6,textTransform:"uppercase"}}>Money sources — this month</div>
+          <div style={{fontSize:10,color:T.muted,marginBottom:8}}>Received = deposited via a sale/income account and tagged to this source. Spent = any withdrawal tagged to this source. Remaining is just for {periodLabel}, not a running total.</div>
+          {sourceRows.map(r=>(
+            <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderTop:`1px solid ${T.border}`,fontSize:12}}>
+              <span style={{color:T.text,fontWeight:600}}>{r.name}</span>
+              <span style={{color:T.muted}}>Received {fmt(r.receivedViaSale)} · Spent {fmt(r.spent)}</span>
+              <span style={{fontWeight:800,color:r.remaining>=0?T.green:T.red}}>{fmtBal(r.remaining)} left</span>
             </div>
           ))}
-          {!expenseCats.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No expenses recorded this month.</div>}
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6,textTransform:"uppercase"}}>Assets — as of {periodLabel} only</div>
+          <ItemList rows={assetRows} openable/>
+          {!assetRows.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No asset balances this month.</div>}
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6,textTransform:"uppercase"}}>Equity & liabilities — as of {periodLabel} only</div>
+          <ItemList rows={eqLiabRows} openable/>
+          {!eqLiabRows.length&&<div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>No equity/liability balances this month.</div>}
         </div>
       </div>
     </div>
@@ -15231,7 +15318,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
           </div>
         )}
 
@@ -15315,7 +15402,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="MonthlyOverview"&&(
           <div style={{maxWidth:1000}}>
-            <MonthlyOverviewScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}}/>
+            <MonthlyOverviewScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} budgets={budgets} moneySources={effectiveMoneySources}/>
           </div>
         )}
 
@@ -15567,7 +15654,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(
