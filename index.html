@@ -879,7 +879,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -888,7 +888,7 @@ function AppShell({user}){
       if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
       return{id:data.id,bilag:nb,description:form.description,amount:form.amount};
     }
@@ -1906,6 +1906,19 @@ const accountsForSK=(accounts,transactions,sk)=>{
     if(t.creditCode&&getSK(t.creditCode)===sk&&!knownCodes.has(t.creditCode))orphanCodes.add(t.creditCode);
   });
   return[...known,...[...orphanCodes].sort().map(code=>({code,name:"(Not in chart of accounts)"}))];
+};
+// An account's `notes` field sometimes holds structured bank details (branch,
+// account number) as JSON rather than free text — see BankAccountDetailsModal.
+// This renders whichever it actually is, instead of showing raw JSON.
+const displayNotes=(notes)=>{
+  if(!notes)return"";
+  try{
+    const parsed=JSON.parse(notes);
+    if(parsed&&typeof parsed==="object"){
+      return[parsed.bankName,parsed.branch,parsed.accountNumber].filter(Boolean).join(" · ");
+    }
+  }catch{}
+  return notes;
 };
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
@@ -4029,7 +4042,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
                         <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
                         <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
-                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayNotes(a.notes)||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
                         <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
                         <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
@@ -4054,7 +4067,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
                         <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
                         <td style={{color:T.muted,fontSize:12}}>—</td>
-                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayNotes(a.notes)||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
                         <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
                         <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
@@ -6859,7 +6872,22 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 // summary (from unpaid invoices and bills), and a transaction history view
 // with a money-in/money-out breakdown. All computed from real data already
 // in the app, not a separate feed.
-function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedger,moneySources,saveMoneySources,tagTransaction}){
+function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedger,moneySources,saveMoneySources,tagTransaction,onSaveAccounts}){
+  const[editingBankAccount,setEditingBankAccount]=useState(null);
+  // Bank-specific details (branch, account number) aren't their own DB
+  // columns — stored as JSON inside the account's existing `notes` field so
+  // no schema change is needed. Falls back gracefully if notes is plain text
+  // (from before this existed) or empty.
+  const bankDetailsFor=(a)=>{
+    try{const parsed=JSON.parse(a.notes||"{}");return{branch:parsed.branch||"",accountNumber:parsed.accountNumber||"",bankName:parsed.bankName||""};}
+    catch{return{branch:"",accountNumber:"",bankName:""};}
+  };
+  const saveBankDetails=(code,details)=>{
+    if(!onSaveAccounts)return;
+    const updated=accounts.map(a=>a.code===code?{...a,notes:JSON.stringify(details)}:a);
+    onSaveAccounts(updated);
+    setEditingBankAccount(null);
+  };
   const[dayRange,setDayRange]=useState(90);
   const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
@@ -6943,12 +6971,19 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            {bankAccounts.map(a=>(
-              <div key={a.code} onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",cursor:"pointer",flex:"1 1 160px"}}>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
-                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
+            {bankAccounts.map(a=>{
+              const details=bankDetailsFor(a);
+              return(
+              <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",flex:"1 1 160px",position:"relative"}}>
+                <div onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{cursor:"pointer"}}>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
+                  <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
+                  {(details.branch||details.accountNumber)&&<div style={{fontSize:10,color:T.sub,marginTop:3}}>{details.branch}{details.branch&&details.accountNumber?" · ":""}{details.accountNumber}</div>}
+                </div>
+                {onSaveAccounts&&<button onClick={()=>setEditingBankAccount(a.code)} style={{position:"absolute",top:8,right:8,background:"rgba(255,255,255,0.7)",border:"none",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:700,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit</button>}
               </div>
-            ))}
+              );
+            })}
             {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No bank accounts set up yet.</div>}
           </div>
         </div>
@@ -7008,6 +7043,46 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
           <div style={{fontSize:11,color:T.sub}}>{moneySources.length} source{moneySources.length===1?"":"s"}</div>
         </div>
         <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction}/>
+      </div>
+
+      {editingBankAccount&&(()=>{
+        const acct=bankAccounts.find(a=>a.code===editingBankAccount);
+        if(!acct)return null;
+        const existing=bankDetailsFor(acct);
+        return<BankAccountDetailsModal account={acct} initial={existing} onSave={details=>saveBankDetails(acct.code,details)} onClose={()=>setEditingBankAccount(null)}/>;
+      })()}
+    </div>
+  );
+}
+
+// Edit a bank account's branch/account number — stored inside the account's
+// `notes` field as JSON (no schema change needed). Trial Balance and other
+// reports never read this, so it stays out of those simple code+name views.
+function BankAccountDetailsModal({account,initial,onSave,onClose}){
+  const[form,setForm]=useState(initial);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+        <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Bank account</div>
+        <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:20}}>{account.code} {account.name}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:20}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Bank name</div>
+            <input value={form.bankName} onChange={e=>setForm(p=>({...p,bankName:e.target.value}))} placeholder="e.g. HBL, UBL, Meezan" style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Branch</div>
+            <input value={form.branch} onChange={e=>setForm(p=>({...p,branch:e.target.value}))} placeholder="e.g. Gujrat Cantt" style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account number</div>
+            <input value={form.accountNumber} onChange={e=>setForm(p=>({...p,accountNumber:e.target.value}))} placeholder="Account number" style={inp}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>onSave(form)} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        </div>
       </div>
     </div>
   );
@@ -11369,18 +11444,18 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger,budgets=[],mo
   const budgetedExpense=monthBudgets.filter(b=>expenseSKs.includes(getSK(b.code))).reduce((s,b)=>s+(b.amount||0),0);
   const expenseRemaining=budgetedExpense-expense;
 
-  // Money sources — how much of each source's money, moved through a sale/
-  // income account, is still left this month. "Received" = bank deposits
-  // tagged to that source where the other leg is an income (3xxx) account;
-  // "spent" = bank withdrawals tagged to that source, any purpose.
+  // Money sources — scoped strictly to income accounts, per the person's
+  // request: how much came in via a sale/income account this month, tagged
+  // to each source. Deliberately doesn't try to net off "spending" against
+  // this — mixing in withdrawals for any purpose made every source look
+  // like it was always positive regardless of what actually happened.
   const bankCodes=new Set(accounts.filter(a=>getSK(a.code)==="1900").map(a=>a.code));
   const monthBankTxns=transactions.filter(t=>t.date>=from&&t.date<=to&&(bankCodes.has(t.debitCode)||bankCodes.has(t.creditCode)));
   const sourceRows=moneySources.filter(m=>!m.inactive).map(src=>{
     const tagged=monthBankTxns.filter(t=>t.moneySourceId===src.id);
-    const receivedViaSale=tagged.filter(t=>bankCodes.has(t.debitCode)&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
-    const spent=tagged.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
-    return{id:src.id,name:src.name,receivedViaSale,spent,remaining:receivedViaSale-spent};
-  }).filter(r=>r.receivedViaSale||r.spent);
+    const received=tagged.filter(t=>bankCodes.has(t.debitCode)&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    return{id:src.id,name:src.name,received};
+  }).filter(r=>r.received>0);
 
   const Delta=({cur,prev,invert=false})=>{
     const diff=cur-prev;
@@ -11449,12 +11524,11 @@ function MonthlyOverviewScreen({accounts,transactions,onOpenLedger,budgets=[],mo
       {sourceRows.length>0&&(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6,textTransform:"uppercase"}}>Money sources — this month</div>
-          <div style={{fontSize:10,color:T.muted,marginBottom:8}}>Received = deposited via a sale/income account and tagged to this source. Spent = any withdrawal tagged to this source. Remaining is just for {periodLabel}, not a running total.</div>
+          <div style={{fontSize:10,color:T.muted,marginBottom:8}}>Received via a sale/income account and tagged to this source, for {periodLabel} only.</div>
           {sourceRows.map(r=>(
             <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderTop:`1px solid ${T.border}`,fontSize:12}}>
               <span style={{color:T.text,fontWeight:600}}>{r.name}</span>
-              <span style={{color:T.muted}}>Received {fmt(r.receivedViaSale)} · Spent {fmt(r.spent)}</span>
-              <span style={{fontWeight:800,color:r.remaining>=0?T.green:T.red}}>{fmtBal(r.remaining)} left</span>
+              <span style={{fontWeight:800,color:T.green}}>{fmt(r.received)}</span>
             </div>
           ))}
         </div>
@@ -11645,6 +11719,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
+  const[periodPickerOpen,setPeriodPickerOpen]=useState(false);
   const[selAcc,setSelAcc]=useState("");
 
   // Sync when global period changes
@@ -11881,9 +11956,16 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
   if(isDesktop){
     const{topExp,maxExp,months,maxBar,suggestions}=analyticsData;
+    const periodLabel=rFrom&&rTo?`${rFrom} – ${rTo}`:"Select period";
     return(
       <div style={{maxWidth:1000}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Analytics</h1>
+        {periodPickerOpen&&(
+          <PeriodPickerModal initialFrom={rFrom} initialTo={rTo} onApply={(f,t)=>{setRFrom(f);setRTo(t);if(onChangePeriod)onChangePeriod(f,t);setPeriodPickerOpen(false);}} onClose={()=>setPeriodPickerOpen(false)}/>
+        )}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Analytics</h1>
+          <button onClick={()=>setPeriodPickerOpen(true)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-calendar" style={{fontSize:13}}/>{periodLabel}</button>
+        </div>
         <div style={{display:"flex",gap:6,marginBottom:20}}>
           {[["resultat","Income statement"],["balanse","Balance sheet"],["account","Account ledger"],["analytics","Trends & insights"]].map(([id,label])=>(
             <button key={id} onClick={()=>setRTab(id)} style={{background:rTab===id?T.accent:"none",color:rTab===id?"#fff":T.sub,border:`1px solid ${rTab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
@@ -11928,27 +12010,28 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
         {rTab==="balanse"&&(
           <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.xl,overflow:"hidden"}}>
             {Object.entries(SERIES).map(([key,s])=>{
-              const grp=accounts.filter(a=>getSK(a.code)===key);
+              const grp=accountsForSK(accounts,transactions,key);
               if(!grp.length)return null;
-              const total=grp.reduce((sum,a)=>sum+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0);
+              const balAsOf=code=>transactions.filter(t=>t.date<=rTo).reduce((ss,t)=>{if(t.debitCode===code)return ss+t.amount;if(t.creditCode===code)return ss-t.amount;return ss;},0);
+              const nonZero=grp.filter(a=>balAsOf(a.code)!==0);
+              if(!nonZero.length)return null;
+              const total=nonZero.reduce((sum,a)=>sum+balAsOf(a.code),0);
               return(
                 <div key={key} style={{borderBottom:`1px solid ${T.border}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px",background:T.bg}}>
                     <div style={{fontSize:12,fontWeight:700,color:T.text,textTransform:"uppercase",letterSpacing:0.4}}>{s.icon} {s.name}</div>
                     <div style={{fontSize:13,fontWeight:800,color:total>=0?T.waterTeal:T.accent}}>{signRs(total)}</div>
                   </div>
-                  {grp.map(a=>{
-                    const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);
-                    return(
-                      <div key={a.code} onClick={()=>{setRTab("account");setSelAcc(a.code);}} style={{display:"flex",justifyContent:"space-between",padding:"8px 20px 8px 34px",cursor:"pointer",fontSize:12}} className="rr-sidebar-item">
-                        <span style={{color:T.text}}>{a.code} · {a.name}</span>
-                        <span style={{fontWeight:600,color:T.text}}>{signRs(bal)}</span>
-                      </div>
-                    );
-                  })}
+                  {nonZero.map(a=>(
+                    <div key={a.code} onClick={()=>{setRTab("account");setSelAcc(a.code);}} style={{display:"flex",justifyContent:"space-between",padding:"8px 20px 8px 34px",cursor:"pointer",fontSize:12}} className="rr-sidebar-item">
+                      <span style={{color:T.text}}>{a.code} · {a.name}</span>
+                      <span style={{fontWeight:600,color:T.text}}>{signRs(balAsOf(a.code))}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })}
+            <div style={{padding:"10px 20px",fontSize:10,color:T.muted,background:T.bg}}>Balances as of {rTo} — change the period above to see a different date.</div>
           </div>
         )}
 
@@ -12044,6 +12127,10 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
   return(
     <div>
+      {periodPickerOpen&&(
+        <PeriodPickerModal initialFrom={rFrom} initialTo={rTo} onApply={(f,t)=>{setRFrom(f);setRTo(t);if(onChangePeriod)onChangePeriod(f,t);setPeriodPickerOpen(false);}} onClose={()=>setPeriodPickerOpen(false)}/>
+      )}
+      <button onClick={()=>setPeriodPickerOpen(true)} style={{width:"100%",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><i className="ti ti-calendar" style={{fontSize:13}}/>{rFrom} – {rTo}</button>
       {/* Tab switcher */}
       <div style={{display:"flex",gap:3,background:T.bg,borderRadius:10,padding:4,marginBottom:14,border:`1px solid ${T.border}`}}>
         {[["resultat","📈 P&L"],["balanse","⚖️ Balanse"],["account","📋 Account"],["analytics","📊 Analytics"]].map(([id,label])=>(
@@ -12093,21 +12180,24 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
             ]}/>
           </div>
           {Object.entries(SERIES).map(([key,s])=>{
-            const grp=accounts.filter(a=>getSK(a.code)===key);
+            const grp=accountsForSK(accounts,transactions,key);
             if(!grp.length)return null;
-            const total=grp.reduce((sum,a)=>sum+transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0),0);
+            const balAsOf=code=>transactions.filter(t=>t.date<=rTo).reduce((ss,t)=>{if(t.debitCode===code)return ss+t.amount;if(t.creditCode===code)return ss-t.amount;return ss;},0);
+            const nonZero=grp.filter(a=>balAsOf(a.code)!==0);
+            if(!nonZero.length)return null;
+            const total=nonZero.reduce((sum,a)=>sum+balAsOf(a.code),0);
             return(
               <div key={key} style={{marginBottom:14}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontSize:11,color:s.color,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>{s.icon} {s.name}</div>
                   <div style={{fontSize:12,fontWeight:800,color:total>=0?T.green:T.red}}>{signRs(total)}</div>
                 </div>
-                {grp.map(a=>{const bal=transactions.reduce((ss,t)=>{if(t.debitCode===a.code)return ss+t.amount;if(t.creditCode===a.code)return ss-t.amount;return ss;},0);return(
+                {nonZero.map(a=>(
                   <div key={a.code} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingLeft:12,paddingBottom:5,color:T.sub}}>
                     <span>{a.code} · {a.name}</span>
-                    <span style={{fontWeight:700,color:bal>=0?T.green:T.red}}>{signRs(bal)}</span>
+                    <span style={{fontWeight:700,color:balAsOf(a.code)>=0?T.green:T.red}}>{signRs(balAsOf(a.code))}</span>
                   </div>
-                );})}
+                ))}
                 <div style={{height:1,background:T.border,marginTop:4}}/>
               </div>
             );
@@ -15372,7 +15462,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {(tab==="BankDashboard"||tab==="BankWhose")&&(
           feat.bank
-            ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/>
+            ?<BankDashboardScreen accounts={accounts} transactions={transactions} invoices={invoices} contacts={contacts} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction} onSaveAccounts={setAccounts}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
