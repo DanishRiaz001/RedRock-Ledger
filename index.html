@@ -314,14 +314,15 @@ function SignedFileViewer({storagePath,type,name,style}){
         reader.onerror=reject;
         reader.readAsDataURL(blob);
       });
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      const{data,error}=await callClaudeAPI({
         model:"claude-sonnet-4-6",max_tokens:1500,
         messages:[{role:"user",content:[
           {type:"image",source:{type:"base64",media_type:blob.type||"image/jpeg",data:base64}},
           {type:"text",text:"Transcribe every piece of text visible in this image exactly as it appears, preserving line breaks. Return only the transcribed text, nothing else — no commentary."},
         ]}],
-      })});
-      const data=await res.json();
+      });
+      if(error==="NO_KEY"){setExtractedText("NO_KEY");setExtracting(false);return;}
+      if(error){setExtractedText("Couldn't read text from this image: "+error);setExtracting(false);return;}
       const text=data.content.map(b=>b.text||"").join("");
       setExtractedText(text.trim()||"No text found in this image.");
     }catch(e){setExtractedText("Couldn't read text from this image.");}
@@ -397,9 +398,16 @@ function SignedFileViewer({storagePath,type,name,style}){
           <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
         </div>
       </div>
-      {extractedText?(
+      {extractedText==="NO_KEY"?(
+        <div style={{marginTop:8,background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,padding:10,flexShrink:0,fontSize:11,color:"#92400E"}}>
+          Add your Anthropic API key in <b>Company → Settings</b> to enable text extraction — it's stored only in this browser.
+        </div>
+      ):extractedText?(
         <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10,flexShrink:0}}>
-          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Extracted text — select to copy</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,textTransform:"uppercase"}}>Extracted text</div>
+            <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:"#FF5A1F",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
+          </div>
           <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
         </div>
       ):(
@@ -1584,6 +1592,27 @@ function AppShell({user}){
     const{error}=await sb.from("inbox_files").update({name:newName}).eq("user_id",user.id).eq("id",id);
     if(error)console.error("Inbox file rename error:",error);
   };
+  const moveInboxFileEntry=async(id,newFolder)=>{
+    if(!canEdit)return;
+    setInboxFilesState(p=>p.map(f=>f.id===id?{...f,folder:newFolder}:f));
+    const{error}=await sb.from("inbox_files").update({folder:newFolder}).eq("user_id",user.id).eq("id",id);
+    if(error)console.error("Inbox file move error:",error);
+  };
+  // Copies both the storage object and the DB row — the copy is fully
+  // independent afterward (renaming/deleting one never touches the other).
+  const copyInboxFileEntry=async(id,targetFolder)=>{
+    if(!canEdit)return null;
+    const f=inboxFiles.find(x=>x.id===id);
+    if(!f)return null;
+    const newPath=`${user.id}/${Date.now()}_${f.name}`;
+    const{error:copyError}=await sb.storage.from("attachments").copy(f.storagePath,newPath);
+    if(copyError){console.error("Storage copy error:",copyError);return null;}
+    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
+    if(error){console.error("Inbox file copy error:",error);return null;}
+    const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
+    setInboxFilesState(p=>[newFile,...p]);
+    return newFile;
+  };
   // Merge selected images into one combined image, straight into the Inbox —
   // no new tab, no print dialog, just the original file pages stacked into one.
   const mergeInboxFilesEntry=async(fileIds)=>{
@@ -1718,7 +1747,7 @@ function AppShell({user}){
         saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
         inboxFiles={inboxFiles} attachedTxnIds={attachedTxnIds}
         uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry} restoreInboxFileEntry={restoreInboxFileEntry} permanentlyDeleteInboxFileEntry={permanentlyDeleteInboxFileEntry}
-        renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry}
+        renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry} moveInboxFileEntry={moveInboxFileEntry} copyInboxFileEntry={copyInboxFileEntry}
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
@@ -1919,6 +1948,37 @@ const displayNotes=(notes)=>{
     }
   }catch{}
   return notes;
+};
+// Every direct browser call to Anthropic's API needs three headers Anthropic
+// requires specifically for client-side use — x-api-key, anthropic-version,
+// and anthropic-dangerous-direct-browser-access. Without them every call
+// fails with a CORS/auth error, which is why "Extract text" and AI
+// Bookkeeping never actually worked outside Claude.ai's own preview sandbox
+// (which injects a key automatically — a real deployed copy of this app has
+// no such thing). This is a "bring your own key" pattern: each person pastes
+// their own Anthropic API key in Settings, stored only in their own browser,
+// never sent anywhere but api.anthropic.com.
+const ANTHROPIC_KEY_STORAGE="rr_anthropic_api_key";
+const getAnthropicKey=()=>{try{return localStorage.getItem(ANTHROPIC_KEY_STORAGE)||"";}catch{return"";}};
+const setAnthropicKey=(key)=>{try{if(key)localStorage.setItem(ANTHROPIC_KEY_STORAGE,key);else localStorage.removeItem(ANTHROPIC_KEY_STORAGE);}catch{}};
+const callClaudeAPI=async(body)=>{
+  const key=getAnthropicKey();
+  if(!key)return{error:"NO_KEY"};
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true",
+      },
+      body:JSON.stringify(body),
+    });
+    const data=await res.json();
+    if(!res.ok||data.type==="error")return{error:(data.error&&data.error.message)||`Request failed (${res.status})`};
+    return{data};
+  }catch(e){return{error:e.message||"Network error"};}
 };
 const fmt=(n)=>new Intl.NumberFormat("en-PK",{maximumFractionDigits:0}).format(Math.abs(n));
 const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0}).format(Math.abs(n));
@@ -5381,10 +5441,15 @@ function AssistantPanel({onClose}){
     try{
       const systemPrompt=`You are the in-app assistant for RedRock Ledger, a double-entry accounting web app. Answer questions about HOW TO USE THE SOFTWARE clearly and briefly — 2-4 sentences unless real detail is needed. Only answer questions about using this software's actual features, grounded in the list below; don't invent capabilities that aren't listed. If asked for accounting, tax, or legal advice, say you're a feature guide, not an accountant, and suggest a qualified professional.\n\nFEATURES:\n${ASSISTANT_CONTEXT}`;
       const apiMessages=newMessages.filter(m=>!m.isGreeting).map(m=>({role:m.role,content:m.content}));
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        model:"claude-sonnet-4-6",max_tokens:500,system:systemPrompt,messages:apiMessages,
-      })});
-      const data=await res.json();
+      const{data,error}=await callClaudeAPI({model:"claude-sonnet-4-6",max_tokens:500,system:systemPrompt,messages:apiMessages});
+      if(error==="NO_KEY"){
+        setMessages(p=>[...p,{role:"assistant",content:"I need an Anthropic API key to answer — add one in Company → Settings (it's stored only in this browser, never shared)."}]);
+        setSending(false);return;
+      }
+      if(error){
+        setMessages(p=>[...p,{role:"assistant",content:"Something went wrong reaching the assistant: "+error}]);
+        setSending(false);return;
+      }
       const replyText=(data.content||[]).map(b=>b.text||"").join("").trim();
       setMessages(p=>[...p,{role:"assistant",content:replyText||"I couldn't come up with an answer just now — try rephrasing?"}]);
     }catch(e){
@@ -7127,7 +7192,8 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
   const[showHistory,setShowHistory]=useState(false);
   const[showMatched,setShowMatched]=useState(false);
-  const[filterMode,setFilterMode]=useState("unmatched"); // "all" | "unmatched" | "matched" — segmented toggle
+  const[filterMode,setFilterMode]=useState("unmatched"); // "unmatched" | "matched" — status toggle
+  const[directionFilter,setDirectionFilter]=useState("all"); // "all" | "incoming" | "outgoing" — separate axis
   const[searchQuery,setSearchQuery]=useState("");
   const[reconApprovedTick,setReconApprovedTick]=useState(0); // bump to force a re-read of localStorage approval state
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
@@ -7227,8 +7293,9 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   },[bankStatementLines,transactions,selectedAccount,month]);
 
   const searchMatch=(text)=>!searchQuery||String(text||"").toLowerCase().includes(searchQuery.toLowerCase());
-  const displayLeftRows=leftRows.filter(t=>searchMatch(t.description)||searchMatch(fmtBal(mv(t))));
-  const displayRightRows=(filterMode==="matched"?matchedLines:rightRows).filter(l=>searchMatch(l.description)||searchMatch(fmtBal(l.amount)));
+  const matchesDirection=(amount)=>directionFilter==="all"||(directionFilter==="incoming"?amount>=0:amount<0);
+  const displayLeftRows=leftRows.filter(t=>(searchMatch(t.description)||searchMatch(fmtBal(mv(t))))&&matchesDirection(mv(t)));
+  const displayRightRows=(filterMode==="matched"?matchedLines:rightRows).filter(l=>(searchMatch(l.description)||searchMatch(fmtBal(l.amount)))&&matchesDirection(l.amount));
 
 
   // condition for being allowed to approve; once approved, the period is
@@ -7364,17 +7431,6 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setShowHistory(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-history" style={{fontSize:13,marginRight:5}}/>History</button>
-          <button onClick={()=>setShowMatched(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-checks" style={{fontSize:13,marginRight:5}}/>Matched ({matchedLines.length+matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length})</button>
-          {lastImport&&lastImport.accountCode===selectedAccount&&(
-            <button onClick={doUndoImport} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo last import ({lastImport.count})</button>
-          )}
-          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1}}>
-            {uploading?"Reading file…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload statement</>)}
-            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
-          </label>
-        </div>
       </div>
       {isApproved?(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
@@ -7464,8 +7520,13 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           <span style={{fontSize:12,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</span>
           <button onClick={()=>{const d=new Date(month+"-01");d.setMonth(d.getMonth()+1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub,padding:"2px 4px"}}>›</button>
         </div>
+        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0}}>
+          <option value="all">All</option>
+          <option value="incoming">Incoming</option>
+          <option value="outgoing">Outgoing</option>
+        </select>
         <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",flexShrink:0}}>
-          {[["all","All"],["unmatched","Unmatched"],["matched","Matched"]].map(([id,label])=>(
+          {[["unmatched","Unmatched"],["matched","Matched"]].map(([id,label])=>(
             <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
@@ -8012,10 +8073,24 @@ function CustomerImportScreen({contacts,setContacts}){
 function VoucherSettingsScreen({companyProfile}){
   const[splitElectronic,setSplitElectronic]=useState(()=>{try{return localStorage.getItem("rr_voucher_split")==="1";}catch{return false;}});
   const[emailNoAttachment,setEmailNoAttachment]=useState(()=>{try{return localStorage.getItem("rr_voucher_email_no_att")==="1";}catch{return false;}});
+  const[apiKey,setApiKeyState]=useState(()=>getAnthropicKey());
+  const[showKey,setShowKey]=useState(false);
+  const[keySaved,setKeySaved]=useState(false);
+  const saveKey=()=>{setAnthropicKey(apiKey.trim());setKeySaved(true);setTimeout(()=>setKeySaved(false),1800);};
   const inboxEmail=companyProfile&&companyProfile.companyName?`${companyProfile.companyName.toLowerCase().replace(/[^a-z0-9]/g,"")}@redrock-inbox.com`:"yourcompany@redrock-inbox.com";
   return(
     <div style={{maxWidth:800}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Voucher settings</h1>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>AI features</div>
+        <p style={{fontSize:12,color:T.muted,marginBottom:12}}>"Extract text from image", AI Bookkeeping, and the Assistant chat all call Anthropic's API directly from your browser — that needs your own Anthropic API key. It's stored only in this browser (never sent to us or to Supabase), so each device/team member needs to add their own once. Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style={{color:T.accent}}>console.anthropic.com</a>.</p>
+        <div style={{display:"flex",gap:8,marginBottom:6}}>
+          <input type={showKey?"text":"password"} placeholder="sk-ant-…" value={apiKey} onChange={e=>setApiKeyState(e.target.value)} style={{...inp,flex:1,fontFamily:"monospace",fontSize:12}}/>
+          <button onClick={()=>setShowKey(s=>!s)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 12px",fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>{showKey?"Hide":"Show"}</button>
+          <button onClick={saveKey} style={{background:keySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{keySaved?"✓ Saved":"Save"}</button>
+        </div>
+        {getAnthropicKey()&&<div style={{fontSize:11,color:T.green,fontWeight:600}}>✓ A key is set on this browser.</div>}
+      </div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
         <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Voucher inbox</div>
         <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:12}}>
@@ -8146,14 +8221,22 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
   const[parsing,setParsing]=useState(false);
   const[parseError,setParseError]=useState("");
   const[parsed,setParsed]=useState(null); // {companyName, accounts, customers, suppliers, transactions}
-  const[opts,setOpts]=useState({createVouchers:true,createContacts:true,createContactsCustomers:true,createContactsSuppliers:true,createAccounts:true});
+  const[opts,setOpts]=useState({
+    createVouchers:true,
+    createContacts:true,createContactsCustomers:true,createContactsSuppliers:true,
+    overwriteContacts:false,contactsWithTxnsOnly:false,
+    createAccounts:true,accountsWithTxnsOnly:false,overwriteAccountNames:false,
+    openingBalanceAccounts:false,openingBalanceAR:false,openingBalanceAP:false,
+  });
   const[importing,setImporting]=useState(false);
   const[importResult,setImportResult]=useState(null);
+  const[accountMap,setAccountMap]=useState({}); // importedCode -> existing account code to post against instead
 
   const text=(el,tag)=>{const n=el.getElementsByTagName(tag)[0];return n?n.textContent.trim():"";};
+  const num=(el,tag)=>{const v=text(el,tag);return v?parseFloat(v):null;};
 
   const parseFile=async(file)=>{
-    setParsing(true);setParseError("");setParsed(null);setImportResult(null);
+    setParsing(true);setParseError("");setParsed(null);setImportResult(null);setAccountMap({});
     try{
       const xmlText=await file.text();
       const doc=new DOMParser().parseFromString(xmlText,"text/xml");
@@ -8164,6 +8247,8 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       const glAccounts=Array.from(doc.getElementsByTagName("Account")).map(a=>({
         code:text(a,"AccountID"),
         name:text(a,"AccountDescription")||text(a,"AccountName"),
+        openingDebit:num(a,"OpeningDebitBalance"),
+        openingCredit:num(a,"OpeningCreditBalance"),
       })).filter(a=>a.code&&a.name);
 
       const parseParty=(tag)=>Array.from(doc.getElementsByTagName(tag)).map(c=>({
@@ -8172,6 +8257,9 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
         address:text(c,"StreetName")||"",
         email:text(c,"Email")||"",
         phone:text(c,"Telephone")||"",
+        openingDebit:num(c,"OpeningDebitBalance"),
+        openingCredit:num(c,"OpeningCreditBalance"),
+        hasTxns:!!c.getElementsByTagName("InvoiceNo").length,
       })).filter(c=>c.name);
       const customers=parseParty("Customer");
       const suppliers=parseParty("Supplier");
@@ -8187,36 +8275,73 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
         return{date,description,lines};
       }).filter(t=>t.date&&t.lines.length);
 
-      setParsed({companyName,accounts:glAccounts,customers,suppliers,transactions});
+      const accountsWithTxns=new Set();
+      transactions.forEach(t=>t.lines.forEach(l=>accountsWithTxns.add(l.accountId)));
+
+      setParsed({companyName,accounts:glAccounts,customers,suppliers,transactions,accountsWithTxns});
     }catch(e){
       setParseError("Couldn't parse this file as SAF-T XML. Double-check it's an unmodified export from your previous system.");
     }
     setParsing(false);
   };
 
+  const resolveCode=code=>accountMap[code]||code;
+
+  // Every opening balance is posted against a single suspense/equity account
+  // so the whole import always nets to zero, exactly like Tripletex's own
+  // "opening balance" mechanism — auto-created if it doesn't exist yet.
+  const OPENING_BALANCE_CODE="2960";
+  const ensureOpeningBalanceAccount=async(currentAccounts)=>{
+    if(currentAccounts.some(a=>a.code===OPENING_BALANCE_CODE))return currentAccounts;
+    const updated=[...currentAccounts,{code:OPENING_BALANCE_CODE,name:"Opening balance equity",matchable:false}];
+    setAccounts(updated);
+    return updated;
+  };
+
   const doImport=async()=>{
     if(!parsed)return;
     setImporting(true);
-    let accountsAdded=0,contactsAdded=0,txnsAdded=0;
+    let accountsAdded=0,accountsUpdated=0,contactsAdded=0,contactsUpdated=0,txnsAdded=0,openingBalancesAdded=0;
 
     let currentAccounts=accounts;
     if(opts.createAccounts){
-      const existingCodes=new Set(currentAccounts.map(a=>a.code));
-      const newAccts=parsed.accounts.filter(a=>!existingCodes.has(a.code));
-      if(newAccts.length){
-        currentAccounts=[...currentAccounts,...newAccts];
+      const byCode={};currentAccounts.forEach(a=>{byCode[a.code]=a;});
+      const relevantParsed=opts.accountsWithTxnsOnly?parsed.accounts.filter(a=>parsed.accountsWithTxns.has(a.code)):parsed.accounts;
+      const toAdd=[],toUpdate=new Map();
+      relevantParsed.forEach(a=>{
+        if(accountMap[a.code])return; // mapped to an existing account — don't create a duplicate
+        if(!byCode[a.code])toAdd.push({code:a.code,name:a.name,matchable:false});
+        else if(opts.overwriteAccountNames&&byCode[a.code].name!==a.name)toUpdate.set(a.code,a.name);
+      });
+      if(toAdd.length||toUpdate.size){
+        currentAccounts=currentAccounts.map(a=>toUpdate.has(a.code)?{...a,name:toUpdate.get(a.code)}:a).concat(toAdd);
         setAccounts(currentAccounts);
-        accountsAdded=newAccts.length;
+        accountsAdded=toAdd.length;accountsUpdated=toUpdate.size;
       }
     }
 
     if(opts.createContacts){
       let nextC=Math.max(0,...contacts.filter(c=>c.type==="customer").map(c=>parseInt((c.id||"").slice(1))||0))+1;
       let nextS=Math.max(0,...contacts.filter(c=>c.type==="supplier").map(c=>parseInt((c.id||"").slice(1))||0))+1;
-      const newContacts=[];
-      if(opts.createContactsCustomers)parsed.customers.forEach(c=>newContacts.push({id:`C${String(nextC++).padStart(3,"0")}`,type:"customer",name:c.name,email:c.email,phone:c.phone,address:c.address,paymentTermsDays:30}));
-      if(opts.createContactsSuppliers)parsed.suppliers.forEach(s=>newContacts.push({id:`S${String(nextS++).padStart(3,"0")}`,type:"supplier",name:s.name,email:s.email,phone:s.phone,address:s.address,paymentTermsDays:30}));
-      if(newContacts.length){setContacts([...contacts,...newContacts]);contactsAdded=newContacts.length;}
+      const byName={};contacts.forEach(c=>{byName[c.type+"|"+c.name]=c;});
+      const newContacts=[];const updatedContacts=[];
+      const addParty=(list,type)=>list.forEach(p=>{
+        if(opts.contactsWithTxnsOnly&&!p.hasTxns)return;
+        const existing=byName[type+"|"+p.name];
+        if(existing){
+          if(opts.overwriteContacts)updatedContacts.push({...existing,email:p.email||existing.email,phone:p.phone||existing.phone,address:p.address||existing.address});
+          return;
+        }
+        const id=type==="customer"?`C${String(nextC++).padStart(3,"0")}`:`S${String(nextS++).padStart(3,"0")}`;
+        newContacts.push({id,type,name:p.name,email:p.email,phone:p.phone,address:p.address,paymentTermsDays:30});
+      });
+      if(opts.createContactsCustomers)addParty(parsed.customers,"customer");
+      if(opts.createContactsSuppliers)addParty(parsed.suppliers,"supplier");
+      if(newContacts.length||updatedContacts.length){
+        const updatedIds=new Set(updatedContacts.map(c=>c.id));
+        setContacts([...contacts.filter(c=>!updatedIds.has(c.id)),...updatedContacts,...newContacts]);
+        contactsAdded=newContacts.length;contactsUpdated=updatedContacts.length;
+      }
     }
 
     if(opts.createVouchers){
@@ -8226,19 +8351,53 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
         if(!debitLine||!creditLine)continue;
         const amount=debitLine.debit||creditLine.credit;
         if(!amount)continue;
-        await addTransaction({date:t.date.slice(0,10),debitCode:debitLine.accountId,creditCode:creditLine.accountId,description:t.description||"Imported from SAF-T",amount});
+        await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(debitLine.accountId),creditCode:resolveCode(creditLine.accountId),description:t.description||"Imported from SAF-T",amount});
         txnsAdded++;
       }
     }
 
-    setImportResult({accountsAdded,contactsAdded,txnsAdded});
+    if(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP){
+      currentAccounts=await ensureOpeningBalanceAccount(currentAccounts);
+      const today=new Date().toISOString().slice(0,10);
+      if(opts.openingBalanceAccounts){
+        for(const a of parsed.accounts){
+          const debit=a.openingDebit||0,credit=a.openingCredit||0;
+          const net=debit-credit;
+          if(!net)continue;
+          const code=resolveCode(a.code);
+          if(net>0)await addTransaction({date:today,debitCode:code,creditCode:OPENING_BALANCE_CODE,description:"Opening balance (SAF-T import)",amount:net});
+          else await addTransaction({date:today,debitCode:OPENING_BALANCE_CODE,creditCode:code,description:"Opening balance (SAF-T import)",amount:-net});
+          openingBalancesAdded++;
+        }
+      }
+      if(opts.openingBalanceAR){
+        for(const c of parsed.customers){
+          const net=(c.openingDebit||0)-(c.openingCredit||0);
+          if(!net)continue;
+          const contact=contacts.find(x=>x.type==="customer"&&x.name===c.name);
+          await addTransaction({date:today,debitCode:"1500",creditCode:OPENING_BALANCE_CODE,description:`Opening balance — ${c.name}`,amount:net,contactId:contact?contact.id:undefined});
+          openingBalancesAdded++;
+        }
+      }
+      if(opts.openingBalanceAP){
+        for(const s of parsed.suppliers){
+          const net=(s.openingCredit||0)-(s.openingDebit||0);
+          if(!net)continue;
+          const contact=contacts.find(x=>x.type==="supplier"&&x.name===s.name);
+          await addTransaction({date:today,debitCode:OPENING_BALANCE_CODE,creditCode:"2400",description:`Opening balance — ${s.name}`,amount:net,contactId:contact?contact.id:undefined});
+          openingBalancesAdded++;
+        }
+      }
+    }
+
+    setImportResult({accountsAdded,accountsUpdated,contactsAdded,contactsUpdated,txnsAdded,openingBalancesAdded});
     setImporting(false);
   };
 
   return(
     <div style={{maxWidth:800}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>Import account information (SAF-T)</h1>
-      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>SAF-T (Standard Audit File for Tax) is the standard export format most accounting systems support — this lets you bring your chart of accounts, customers, suppliers, and journal entries in from a previous system.</p>
+      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>SAF-T (Standard Audit File for Tax) is the standard export format most accounting systems support — this lets you bring your chart of accounts, customers, suppliers, opening balances, and journal entries in from a previous system.</p>
 
       {!parsed&&(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
@@ -8253,18 +8412,21 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       )}
 
       {parsed&&!importResult&&(
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+        <>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Found in {parsed.companyName}</div>
-          <div style={{display:"flex",gap:20,marginBottom:18,fontSize:12,color:T.sub}}>
+          <div style={{display:"flex",gap:20,marginBottom:18,fontSize:12,color:T.sub,flexWrap:"wrap"}}>
             <span>{parsed.accounts.length} accounts</span>
             <span>{parsed.customers.length} customers</span>
             <span>{parsed.suppliers.length} suppliers</span>
             <span>{parsed.transactions.length} journal entries</span>
           </div>
+
+          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",marginBottom:8}}>Settings</div>
           <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={opts.createAccounts} onChange={e=>setOpts(o=>({...o,createAccounts:e.target.checked}))}/>
-              Create new accounting accounts ({parsed.accounts.length} found)
+              <input type="checkbox" checked={opts.createVouchers} onChange={e=>setOpts(o=>({...o,createVouchers:e.target.checked}))}/>
+              Create vouchers from journal entries ({parsed.transactions.length} found)
             </label>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
               <input type="checkbox" checked={opts.createContacts} onChange={e=>setOpts(o=>({...o,createContacts:e.target.checked}))}/>
@@ -8280,28 +8442,97 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
                   <input type="checkbox" checked={opts.createContactsSuppliers} onChange={e=>setOpts(o=>({...o,createContactsSuppliers:e.target.checked}))}/>
                   Suppliers ({parsed.suppliers.length})
                 </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.overwriteContacts} onChange={e=>setOpts(o=>({...o,overwriteContacts:e.target.checked}))}/>
+                  Overwrite existing customers/suppliers with matching names
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.contactsWithTxnsOnly} onChange={e=>setOpts(o=>({...o,contactsWithTxnsOnly:e.target.checked}))}/>
+                  Import only customers/suppliers with transactions
+                </label>
               </div>
             )}
+          </div>
+
+          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",marginBottom:8}}>Accounts</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={opts.createVouchers} onChange={e=>setOpts(o=>({...o,createVouchers:e.target.checked}))}/>
-              Create vouchers from journal entries ({parsed.transactions.length} found)
+              <input type="checkbox" checked={opts.createAccounts} onChange={e=>setOpts(o=>({...o,createAccounts:e.target.checked}))}/>
+              Create new accounts ({parsed.accounts.length} found)
             </label>
+            {opts.createAccounts&&(
+              <div style={{marginLeft:26,display:"flex",flexDirection:"column",gap:8}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.accountsWithTxnsOnly} onChange={e=>setOpts(o=>({...o,accountsWithTxnsOnly:e.target.checked}))}/>
+                  Import only accounts with transactions ({parsed.accountsWithTxns?parsed.accountsWithTxns.size:0})
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={opts.overwriteAccountNames} onChange={e=>setOpts(o=>({...o,overwriteAccountNames:e.target.checked}))}/>
+                  Overwrite existing names on accounts
+                </label>
+              </div>
+            )}
           </div>
-          <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"10px 12px",marginBottom:16}}>
-            Only simple two-line (one debit, one credit) journal entries are imported as vouchers. Multi-line entries are skipped and can be entered manually — this avoids silently misrepresenting a complex entry as something simpler than it was.
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={doImport} disabled={importing} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":"Import"}</button>
-            <button onClick={()=>setParsed(null)} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+
+          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",marginBottom:8}}>Opening balance</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.openingBalanceAccounts} onChange={e=>setOpts(o=>({...o,openingBalanceAccounts:e.target.checked}))}/>
+              Create an opening balance for every account from the import file
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.openingBalanceAR} onChange={e=>setOpts(o=>({...o,openingBalanceAR:e.target.checked}))}/>
+              Create an opening balance on accounts receivable from customers
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.openingBalanceAP} onChange={e=>setOpts(o=>({...o,openingBalanceAP:e.target.checked}))}/>
+              Create an opening balance on accounts payable to suppliers
+            </label>
+            {(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP)&&(
+              <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"9px 12px"}}>Every opening balance is posted against a suspense account ({OPENING_BALANCE_CODE} · Opening balance equity, created automatically) so the import always nets to zero — move it into real equity yourself afterward if needed.</div>
+            )}
           </div>
         </div>
+
+        {/* Mapping of accounts — redirect an imported code onto one of your
+            existing accounts instead of creating a duplicate. */}
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Mapping of accounts</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Optional — for any imported account code that should actually post against one of your existing accounts, map it here instead of letting the import create a new one.</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 30px",gap:8,marginBottom:6,fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase"}}>
+            <div>Imported account</div><div>Maps to (your account)</div><div></div>
+          </div>
+          {Object.keys(accountMap).length===0&&<div style={{fontSize:12,color:T.muted,padding:"8px 0"}}>No mappings yet.</div>}
+          {Object.entries(accountMap).map(([from,to])=>(
+            <div key={from} style={{display:"grid",gridTemplateColumns:"1fr 1fr 30px",gap:8,alignItems:"center",marginBottom:6}}>
+              <select value={from} onChange={e=>{const v=e.target.value;setAccountMap(m=>{const n={...m};delete n[from];n[v]=to;return n;});}} style={{...inp,fontSize:12}}>
+                {parsed.accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+              </select>
+              <select value={to} onChange={e=>setAccountMap(m=>({...m,[from]:e.target.value}))} style={{...inp,fontSize:12}}>
+                <option value="">— select —</option>
+                {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+              </select>
+              <button onClick={()=>setAccountMap(m=>{const n={...m};delete n[from];return n;})} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>
+            </div>
+          ))}
+          <button onClick={()=>{
+            const unmapped=parsed.accounts.find(a=>!(a.code in accountMap));
+            if(unmapped)setAccountMap(m=>({...m,[unmapped.code]:""}));
+          }} style={{background:"none",border:"none",color:T.accent,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",padding:0,marginTop:4}}>+ New row</button>
+        </div>
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={doImport} disabled={importing} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":"Import account information"}</button>
+          <button onClick={()=>{setParsed(null);setAccountMap({});}} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        </div>
+        </>
       )}
 
       {importResult&&(
         <div style={{background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:12,padding:20}}>
           <div style={{fontSize:14,fontWeight:800,color:T.green,marginBottom:8}}>Import complete</div>
-          <div style={{fontSize:13,color:T.text}}>
-            {importResult.accountsAdded} account{importResult.accountsAdded===1?"":"s"} added · {importResult.contactsAdded} contact{importResult.contactsAdded===1?"":"s"} added · {importResult.txnsAdded} voucher{importResult.txnsAdded===1?"":"s"} created
+          <div style={{fontSize:13,color:T.text,lineHeight:1.8}}>
+            {importResult.accountsAdded} account{importResult.accountsAdded===1?"":"s"} added{importResult.accountsUpdated>0&&`, ${importResult.accountsUpdated} updated`} · {importResult.contactsAdded} contact{importResult.contactsAdded===1?"":"s"} added{importResult.contactsUpdated>0&&`, ${importResult.contactsUpdated} updated`} · {importResult.txnsAdded} voucher{importResult.txnsAdded===1?"":"s"} created{importResult.openingBalancesAdded>0&&<><br/>{importResult.openingBalancesAdded} opening balance entr{importResult.openingBalancesAdded===1?"y":"ies"} posted against {OPENING_BALANCE_CODE} · Opening balance equity</>}
           </div>
         </div>
       )}
@@ -8911,14 +9142,16 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   const[posting,setPosting]=useState(false);
 
   const suppliers=contacts.filter(c=>c.type==="supplier");
+  const customers=contacts.filter(c=>c.type==="customer");
   const expenseAccounts=accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+  const incomeAccounts=accounts.filter(a=>a.code.startsWith("3"));
   const today=new Date().toISOString().slice(0,10);
   const currentFileId=queue[idx];
   const currentFile=inboxFiles.find(f=>f.id===currentFileId);
 
   const defaultForm=(fid)=>{
     const f=inboxFiles.find(x=>x.id===fid);
-    return{voucherType:"supplier",supplierId:suppliers[0]?suppliers[0].id:"",invoiceNo:"",date:today,dueDate:today,expenseAccount:expenseAccounts[0]?expenseAccounts[0].code:"",amount:"",vatPct:"0",description:f?f.name.replace(/\.[^.]+$/,""):"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",creditCode:accounts[0]?accounts[0].code:""};
+    return{voucherType:"supplier",supplierId:suppliers[0]?suppliers[0].id:"",customerId:customers[0]?customers[0].id:"",invoiceNo:"",date:today,dueDate:today,expenseAccount:expenseAccounts[0]?expenseAccounts[0].code:"",incomeAccount:incomeAccounts[0]?incomeAccounts[0].code:"",amount:"",vatPct:"0",description:f?f.name.replace(/\.[^.]+$/,""):"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",creditCode:accounts[0]?accounts[0].code:""};
   };
   const form=formsByFile[currentFileId]||defaultForm(currentFileId);
   const setForm=(updates)=>setFormsByFile(p=>({...p,[currentFileId]:{...(p[currentFileId]||defaultForm(currentFileId)),...updates}}));
@@ -8927,7 +9160,9 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   const vatRate=parseFloat(form.vatPct)||0;
   const vatAmount=grossAmount-(grossAmount/(1+vatRate/100));
   const netAmount=grossAmount-vatAmount;
-  const valid=form.voucherType==="supplier"?(grossAmount>0&&form.expenseAccount&&form.supplierId):(grossAmount>0&&form.debitCode&&form.creditCode&&form.debitCode!==form.creditCode);
+  const valid=form.voucherType==="supplier"?(grossAmount>0&&form.expenseAccount&&form.supplierId)
+    :form.voucherType==="income"?(grossAmount>0&&form.incomeAccount&&form.customerId)
+    :(grossAmount>0&&form.debitCode&&form.creditCode&&form.debitCode!==form.creditCode);
   const alreadyPosted=postedIds.includes(currentFileId);
 
   const goto=(newIdx)=>{if(newIdx>=0&&newIdx<queue.length)setIdx(newIdx);};
@@ -8941,9 +9176,12 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
     if(!valid||alreadyPosted||posting)return;
     setPosting(true);
     const supplier=contacts.find(c=>c.id===form.supplierId);
-    const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
+    const customer=contacts.find(c=>c.id===form.customerId);
+    const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:form.voucherType==="income"?`${customer?customer.name:"Customer"} sale${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
     const txnForm=form.voucherType==="supplier"
       ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
+      :form.voucherType==="income"
+      ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:form.incomeAccount,description:desc,amount:grossAmount,contactId:form.customerId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
       :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
     await addTransaction(txnForm);
     setPosting(false);
@@ -8980,13 +9218,14 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         </div>
       </div>
 
-      <div style={{flex:1,display:"flex",flexWrap:"wrap",overflow:"auto"}}>
-        <div style={{flex:"1 1 400px",padding:24,overflowY:"visible",maxWidth:560}}>
+      <ResizableSplit defaultRightWidth={420} minRightWidth={320} maxRightWidth={800} collapsible collapseLabel="Hide document" expandLabel="Show document" left={(
+        <div style={{padding:24,overflowY:"visible"}}>
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
             <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
-              <option value="supplier">Supplier invoice (simple registration)</option>
-              <option value="receipt">Receipt</option>
+              <option value="supplier">Expense invoice (supplier)</option>
+              <option value="income">Income (sale to customer)</option>
+              <option value="receipt">Simple entry</option>
             </select>
           </div>
 
@@ -9055,6 +9294,66 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                 </div>
               </div>
             </div>
+          ):form.voucherType==="income"?(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
+                <select value={form.customerId} onChange={e=>setForm({customerId:e.target.value})} style={{...inp}}>
+                  {!customers.length&&<option value="">No customers yet</option>}
+                  {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+                  <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+                  <input type="date" value={form.dueDate} onChange={e=>setForm({dueDate:e.target.value})} style={{...inp}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
+                <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp}}/>
+              </div>
+              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`}}>
+                <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>Income</div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Income account</div>
+                    <select value={form.incomeAccount} onChange={e=>setForm({incomeAccount:e.target.value})} style={{...inp}}>
+                      {incomeAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount incl. VAT</div>
+                      <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
+                      <select value={form.vatPct} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp}}>
+                        <option value="0">0% — Not liable to VAT</option>
+                        <option value="5">5%</option>
+                        <option value="17">17%</option>
+                        <option value="18">18%</option>
+                        <option value="25">25%</option>
+                      </select>
+                    </div>
+                  </div>
+                  {vatRate>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+                      <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                    <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
+                  </div>
+                </div>
+              </div>
+            </div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -9093,14 +9392,14 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
             {alreadyPosted?"✓ Already posted":posting?"Creating…":"Create"}
           </button>
         </div>
-
-        <div style={{flex:"1 1 320px",minWidth:280,borderLeft:`1px solid ${T.border}`,padding:16,background:T.bg,display:"flex",flexDirection:"column"}}>
+      )} right={(
+        <div style={{padding:16,background:T.bg,display:"flex",flexDirection:"column",height:"100%"}}>
           <div style={{fontSize:12,color:T.sub,fontWeight:600,marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentFile.name}</div>
-          <div style={{height:520}}>
+          <div style={{flex:1}}>
             <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",height:"100%",borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
           </div>
         </div>
-      </div>
+      )}/>
     </div>
   );
 }
@@ -13289,7 +13588,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMerge,isDesktop,onStartRegistration}){
+function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMove,onCopy,onMerge,isDesktop,onStartRegistration}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[selected,setSelected]=useState([]);
@@ -13298,6 +13597,66 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   const[viewMode,setViewMode]=useState("active"); // "active" | "deleted"
   const[filterOpen,setFilterOpen]=useState(false);
   const[typeFilter,setTypeFilter]=useState(""); // "" | "image" | "pdf"
+  // Folders — "General" always exists; empty ones a person creates (with no
+  // file in them yet) are remembered locally so they don't vanish, since the
+  // backend only knows about a folder once a file is actually filed into it.
+  const[folderFilter,setFolderFilter]=useState(""); // "" = all folders
+  const[customFolders,setCustomFolders]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_custom_folders")||"[]");}catch{return[];}});
+  const allFolders=useMemo(()=>{
+    const fromFiles=new Set(files.map(f=>f.folder||"General"));
+    customFolders.forEach(f=>fromFiles.add(f));
+    fromFiles.add("General");
+    return[...fromFiles].sort((a,b)=>a==="General"?-1:b==="General"?1:a.localeCompare(b));
+  },[files,customFolders]);
+  const createFolder=()=>{
+    const name=window.prompt("New folder name:");
+    if(!name||!name.trim())return;
+    setCustomFolders(p=>{
+      const next=[...new Set([...p,name.trim()])];
+      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
+      return next;
+    });
+    setFolderFilter(name.trim());
+  };
+  const moveFile=async(id)=>{
+    const target=window.prompt(`Move to which folder? (existing: ${allFolders.join(", ")})`,folderFilter||"General");
+    if(!target||!target.trim()||!onMove)return;
+    setBusy(true);await onMove(id,target.trim());setBusy(false);
+  };
+  const moveSelected=async()=>{
+    const target=window.prompt(`Move ${selected.length} file(s) to which folder? (existing: ${allFolders.join(", ")})`,folderFilter||"General");
+    if(!target||!target.trim()||!onMove)return;
+    setBusy(true);for(const id of selected)await onMove(id,target.trim());setSelected([]);setBusy(false);
+  };
+  const copyFile=async(id)=>{
+    if(!onCopy)return;
+    setBusy(true);await onCopy(id,folderFilter||undefined);setBusy(false);
+  };
+  const renameFolder=(oldName)=>{
+    if(oldName==="General")return;
+    const newName=window.prompt("Rename folder to:",oldName);
+    if(!newName||!newName.trim()||newName===oldName)return;
+    const trimmed=newName.trim();
+    setBusy(true);
+    Promise.all(files.filter(f=>(f.folder||"General")===oldName).map(f=>onMove(f.id,trimmed))).then(()=>setBusy(false));
+    setCustomFolders(p=>{
+      const next=[...new Set(p.filter(f=>f!==oldName).concat(trimmed))];
+      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
+      return next;
+    });
+    if(folderFilter===oldName)setFolderFilter(trimmed);
+  };
+  const deleteFolder=(name)=>{
+    if(name==="General")return;
+    const count=files.filter(f=>(f.folder||"General")===name&&!f.deletedAt).length;
+    if(count>0){alert(`"${name}" has ${count} file${count===1?"":"s"} in it — move or delete them first.`);return;}
+    setCustomFolders(p=>{
+      const next=p.filter(f=>f!==name);
+      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
+      return next;
+    });
+    if(folderFilter===name)setFolderFilter("");
+  };
 
   const addFile=async(file)=>{setBusy(true);await onUpload(file);setBusy(false);};
   const deleteFile=async(id)=>{setBusy(true);await onDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
@@ -13328,7 +13687,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   const filtered=files
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
     .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()))
-    .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")));
+    .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
+    .filter(f=>!folderFilter||(f.folder||"General")===folderFilter);
   const activeCount=files.filter(f=>!f.deletedAt).length;
   const deletedCount=files.filter(f=>!!f.deletedAt).length;
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
@@ -13369,14 +13729,27 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                 <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload
                 <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple disabled={busy} style={{display:"none"}} onChange={e=>{Array.from(e.target.files||[]).forEach(f=>addFile(f));e.target.value="";}}/>
               </label>
-              <button onClick={()=>registerEntry(null)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New voucher</button>
+              <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <i className="ti ti-trash" style={{fontSize:15}}/>
+                {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}
+              </button>
             </div>
           </div>
-          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly.</p>
+          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":"Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly."}</p>
 
-          <div style={{display:"flex",gap:6,marginBottom:14}}>
-            <button onClick={()=>{setViewMode("active");setSelected([]);}} style={{background:viewMode==="active"?T.accent:"none",color:viewMode==="active"?"#fff":T.sub,border:`1px solid ${viewMode==="active"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Inbox ({activeCount})</button>
-            <button onClick={()=>{setViewMode("deleted");setSelected([]);}} style={{background:viewMode==="deleted"?T.accent:"none",color:viewMode==="deleted"?"#fff":T.sub,border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Deleted ({deletedCount})</button>
+          <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
+            {allFolders.map(name=>(
+              <div key={name} style={{position:"relative",display:"flex",alignItems:"center"}}>
+                <button onClick={()=>setFolderFilter(name)} onDoubleClick={()=>name!=="General"&&renameFolder(name)} title={name!=="General"?"Double-click to rename":undefined} style={{background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+                  <i className="ti ti-folder" style={{fontSize:12}}/>{name}
+                </button>
+                {name!=="General"&&folderFilter===name&&(
+                  <button onClick={()=>deleteFolder(name)} title="Delete empty folder" style={{background:"none",border:"none",color:folderFilter===name?"#fff":T.muted,cursor:"pointer",fontSize:11,marginLeft:2}}>✕</button>
+                )}
+              </div>
+            ))}
+            <button onClick={createFolder} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New folder</button>
           </div>
 
           <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
@@ -13403,6 +13776,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                 <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
                 <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
                 {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
+                <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Move</button>
                 <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
               </div>
             )}
@@ -13419,7 +13793,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
             {filtered.map((f,i)=>{
               const isFocused=previewFile&&previewFile.id===f.id;
               return(
-                <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
+                <div key={f.id} onClick={()=>setPreviewFile(f)} onMouseEnter={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
                   <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
                   <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
                     {editingFileId===f.id?(
@@ -13442,6 +13816,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                     {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
                   ]:[
                     {label:"Rename",action:()=>renameFile(f.id)},
+                    {label:"Move to folder…",action:()=>moveFile(f.id)},
+                    {label:"Copy",action:()=>copyFile(f.id)},
                     {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
                     {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
@@ -13489,10 +13865,13 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
       <BackHeader title="Inbox" sub="UPLOAD & MANAGE FILES" onBack={onBack}/>
       <div style={{padding:16}}>
         {busy&&<div style={{textAlign:"center",fontSize:11,color:T.accent,marginBottom:10}}>Working…</div>}
-        {/* Upload (small) + Register — same row */}
+        {/* Upload (small) + Deleted trash toggle — same row */}
         <div style={{position:"relative",display:"flex",gap:8,marginBottom:14}}>
           <button onClick={()=>setUploadMenu(o=>!o)} disabled={busy} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.sub,borderColor:T.border,background:"#F3F4F6"}}>⬆ Upload</button>
-          <button onClick={()=>registerEntry(null)} style={{...btnGhost,flex:1,padding:"9px 10px",fontSize:12,color:T.accent,borderColor:T.accent}}>Register Entry</button>
+          <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",...btnGhost,width:44,flex:"0 0 auto",padding:"9px 10px",display:"flex",alignItems:"center",justifyContent:"center",background:viewMode==="deleted"?T.accent:"#F3F4F6",borderColor:viewMode==="deleted"?T.accent:T.border,color:viewMode==="deleted"?"#fff":T.sub}}>
+            <i className="ti ti-trash" style={{fontSize:15}}/>
+            {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}
+          </button>
           {uploadMenu&&(<>
             <div onClick={()=>setUploadMenu(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
             <div style={{position:"absolute",left:0,top:"100%",marginTop:6,width:"calc(50% - 4px)",background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:300,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",overflow:"hidden"}}>
@@ -13516,6 +13895,15 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
           <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
         </div>
 
+        {/* Folders */}
+        <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+          <button onClick={()=>setFolderFilter("")} style={{flexShrink:0,background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+          {allFolders.map(name=>(
+            <button key={name} onClick={()=>setFolderFilter(name)} style={{flexShrink:0,background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📁 {name}</button>
+          ))}
+          <button onClick={createFolder} style={{flexShrink:0,background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New</button>
+        </div>
+
         {/* Selection bar */}
         {selected.length>0&&(
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 12px",marginBottom:10}}>
@@ -13523,6 +13911,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub}}>Clear</button>
               {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
+              <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>📁 Move</button>
               <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
             </div>
           </div>
@@ -13544,6 +13933,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                   <Menu3 items={[
                     {label:"View",action:()=>setViewing(f)},
                     {label:"Rename",action:()=>renameFile(f.id)},
+                    {label:"Move to folder…",action:()=>moveFile(f.id)},
+                    {label:"Copy",action:()=>copyFile(f.id)},
                     {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
                     {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
@@ -14469,8 +14860,9 @@ Return ONLY valid JSON, no markdown:
 
 User note: ${note.trim()}`;
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
-      const data=await res.json();
+      const{data,error}=await callClaudeAPI({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:prompt}]});
+      if(error==="NO_KEY"){alert("Add your Anthropic API key in Company → Settings to use AI bookkeeping.");return;}
+      if(error){alert("AI bookkeeping request failed: "+error);return;}
       const text=data.content.map(b=>b.text||"").join("");
       const clean=text.replace(/```json|```/g,"").trim();
       const parsed=JSON.parse(clean);
@@ -14516,14 +14908,15 @@ RULES:
 
 Return ONLY valid JSON, no markdown:
 {"entries":[{"id":1,"description":"short description of purchase and vendor","date":"YYYY-MM-DD","reasoning":"what you read off the receipt","unknown_parties":[],"lines":[{"type":"Dr","account_code":"4001","account_name":"...","party":"","contact_id":"","amount":0},{"type":"Cr","account_code":"1001","account_name":"Cash","party":"vendor name if known","contact_id":"","amount":0}]}]}`;
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      const{data,error}=await callClaudeAPI({
         model:"claude-sonnet-4-6",max_tokens:1200,
         messages:[{role:"user",content:[
           {type:"image",source:{type:"base64",media_type:file.type||"image/jpeg",data:base64}},
           {type:"text",text:prompt},
         ]}],
-      })});
-      const data=await res.json();
+      });
+      if(error==="NO_KEY"){alert("Add your Anthropic API key in Company → Settings to use AI bookkeeping.");return;}
+      if(error){alert("AI bookkeeping request failed: "+error);return;}
       const text=data.content.map(b=>b.text||"").join("");
       const clean=text.replace(/```json|```/g,"").trim();
       const parsed=JSON.parse(clean);
@@ -14787,7 +15180,7 @@ const SIDEBAR=[
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted}){
+function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -14889,6 +15282,8 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[toasts,setToasts]=useState([]);
   const[toastPanelOpen,setToastPanelOpen]=useState(false);
   const[clientSwitcherOpen,setClientSwitcherOpen]=useState(false);
+  const[clientSwitcherSearch,setClientSwitcherSearch]=useState("");
+  const[showInviteClient,setShowInviteClient]=useState(false);
   const pushToast=(message)=>{
     const id=Date.now()+Math.random();
     setToasts(prev=>[{id,message,at:new Date().toISOString(),read:false},...prev].slice(0,20));
@@ -15037,7 +15432,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     if(!feat.aiBookkeeping)return(<DisabledScreen title="AI Bookkeeping" onBack={()=>setTab("Dashboard")}/>);
     return(<AIBookkeepingScreen accounts={accounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransaction} nextBilag={nextBilag} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onBack={()=>setTab("Dashboard")}/>);
   }
-  if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} onStartRegistration={setRegistrationQueue}/>);
+  if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMove={moveInboxFileEntry} onCopy={copyInboxFileEntry} onMerge={mergeInboxFilesEntry} onStartRegistration={setRegistrationQueue}/>);
   if(tab==="Bank"&&!isDesktop){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
     return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/></div></div>);
@@ -15117,28 +15512,71 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
           <span style={{fontSize:8,color:T.sub}}>▾</span>
         </div>
-        {myClientAccess.length>0&&(
-          <div style={{position:"relative"}}>
-            <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
-              <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
-              <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"My books":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
-              <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
-            </div>
-            {clientSwitcherOpen&&(<>
-              <div onClick={()=>setClientSwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
-                <div onClick={()=>{setViewingUserId(user.id);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===user.id?700:500,color:viewingUserId===user.id?T.accent:T.text,borderBottom:`1px solid ${T.border}`}}>My books</div>
-                {myClientAccess.map(c=>(
-                  <div key={c.id} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",fontWeight:viewingUserId===c.clientUserId?700:500,color:viewingUserId===c.clientUserId?T.accent:T.text,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span>{c.clientEmail}</span>
-                    <span style={{fontSize:9,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel}</span>
-                  </div>
-                ))}
+        <div style={{position:"relative"}}>
+          <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
+            <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
+            <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"Redrock Danria":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
+            <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
+          </div>
+          {clientSwitcherOpen&&(<>
+            <div onClick={()=>{setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{position:"fixed",inset:0,zIndex:490}}/>
+            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:420,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+              <div style={{padding:10,borderBottom:`1px solid ${T.border}`}}>
+                <input autoFocus placeholder="Search company" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:12}}/>
               </div>
-            </>)}
+              <div style={{overflowY:"auto"}}>
+                {(()=>{
+                  const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+                  const q=clientSwitcherSearch.trim().toLowerCase();
+                  const rows=[{id:user.id,label:"Redrock Danria",sub:null},...myClientAccess.map(c=>({id:c.clientUserId,label:c.clientEmail,sub:c.accessLevel}))].filter(r=>!q||r.label.toLowerCase().includes(q));
+                  return rows.map(r=>{
+                    const active=viewingUserId===r.id;
+                    return(
+                      <div key={r.id} onClick={()=>{setViewingUserId(r.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                        <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(r.label)}</div>
+                        <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label}</span>
+                        {r.sub&&<span style={{fontSize:9,color:T.muted,textTransform:"capitalize",flexShrink:0}}>{r.sub}</span>}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              {isAdmin&&(
+                <button onClick={()=>{setClientSwitcherOpen(false);setShowInviteClient(true);}} style={{display:"flex",alignItems:"center",gap:6,background:T.accent,color:"#fff",border:"none",borderTop:`1px solid ${T.border}`,padding:"11px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  <i className="ti ti-user-plus" style={{fontSize:14}}/>Invite new client
+                </button>
+              )}
+            </div>
+          </>)}
+        </div>
+        <div style={{flex:1}}/>
+        {showInviteClient&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInviteClient(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Invite a new client</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:18,lineHeight:1.5}}>New clients set up their own login first, then you grant yourself (or your team) access to their books:</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>1</div>
+                  <div style={{fontSize:12,color:T.text}}>Send them the sign-up link below. They create their own email + password and fill in their company info.</div>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>2</div>
+                  <div style={{fontSize:12,color:T.text}}>Approve their account in <b>Admin Panel → Users</b> (new sign-ups start inactive until approved).</div>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>3</div>
+                  <div style={{fontSize:12,color:T.text}}>Still in Admin Panel, grant yourself (or whichever team member is doing the bookkeeping) access to that client — they'll then show up in this dropdown for that team member too.</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:16}}>
+                <input readOnly value={typeof window!=="undefined"?window.location.origin:""} style={{...inp,flex:1,background:T.bg,fontSize:11}}/>
+                <button onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(window.location.origin);}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Copy</button>
+              </div>
+              <button onClick={()=>setShowInviteClient(false)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+            </div>
           </div>
         )}
-        <div style={{flex:1}}/>
         <div style={{position:"relative",width:260}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
           <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
@@ -15613,7 +16051,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="Files"&&(
           <div style={{maxWidth:1000}}>
-            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRestore={restoreInboxFileEntry} onPermanentDelete={permanentlyDeleteInboxFileEntry} onRename={renameInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
+            <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRestore={restoreInboxFileEntry} onPermanentDelete={permanentlyDeleteInboxFileEntry} onRename={renameInboxFileEntry} onMove={moveInboxFileEntry} onCopy={copyInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
           </div>
         )}
 
