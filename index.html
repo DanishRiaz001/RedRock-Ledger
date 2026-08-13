@@ -1831,14 +1831,14 @@ const SERIES={
   "1800":{name:"Short-term Investments",color:"#0D7377",bg:"#E8F4F4",icon:"📈"},
   "1900":{name:"Bank & Cash",color:"#0D7377",bg:"#E8F4F4",icon:"🏧"},
   "2000":{name:"Equity",color:"#7C3AED",bg:"#EDE9FE",icon:"📊"},
-  "2100":{name:"Long-term Debt",color:"#7C3AED",bg:"#EDE9FE",icon:"🏦"},
-  "2200":{name:"Deferred Tax & Provisions",color:"#7C3AED",bg:"#EDE9FE",icon:"🔒"},
-  "2300":{name:"Other Long-term Liabilities",color:"#7C3AED",bg:"#EDE9FE",icon:"📝"},
+  "2100":{name:"Provisions for Liabilities",color:"#7C3AED",bg:"#EDE9FE",icon:"🏦"},
+  "2200":{name:"Other Long-term Debt",color:"#7C3AED",bg:"#EDE9FE",icon:"🔒"},
+  "2300":{name:"Convertible Loans & Credit Institution Debt",color:"#7C3AED",bg:"#EDE9FE",icon:"📝"},
   "2400":{name:"Accounts Payable (AP)",color:"#DC2626",bg:"#FEF2F2",icon:"📤"},
-  "2500":{name:"VAT & Tax Payable",color:"#DC2626",bg:"#FEF2F2",icon:"🧾"},
-  "2600":{name:"Duties & Public Charges",color:"#DC2626",bg:"#FEF2F2",icon:"🏛️"},
-  "2700":{name:"Wages & Salaries Payable",color:"#DC2626",bg:"#FEF2F2",icon:"👷"},
-  "2800":{name:"Short-term Debt",color:"#DC2626",bg:"#FEF2F2",icon:"💳"},
+  "2500":{name:"Tax Payable",color:"#DC2626",bg:"#FEF2F2",icon:"🧾"},
+  "2600":{name:"Withholding Tax & Other Deductions",color:"#DC2626",bg:"#FEF2F2",icon:"🏛️"},
+  "2700":{name:"Public Duties Payable (incl. VAT)",color:"#DC2626",bg:"#FEF2F2",icon:"🧾"},
+  "2800":{name:"Dividend",color:"#DC2626",bg:"#FEF2F2",icon:"💳"},
   "2900":{name:"Other Current Liabilities",color:"#DC2626",bg:"#FEF2F2",icon:"📌"},
   "3000":{name:"Sales Revenue",color:"#059669",bg:"#ECFDF5",icon:"💰"},
   "3900":{name:"Other Operating Income",color:"#059669",bg:"#ECFDF5",icon:"💹"},
@@ -3332,6 +3332,8 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
 
 function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,attachments,onAttach,moneySources,saveMoneySources,tagTransaction}){
   const[viewing,setViewing]=useState(null);
+  const[extractedText,setExtractedText]=useState("");
+  const[extracting,setExtracting]=useState(false);
   const banks=accounts.filter(a=>getSK(a.code)==="1900");
 
   const getBal=(code,beforeDate)=>transactions
@@ -3359,9 +3361,43 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
             <button onClick={()=>setViewing(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:14,cursor:"pointer",padding:"6px 14px",fontWeight:600}}>✕ Close</button>
           </div>
           {viewing.type&&viewing.type.startsWith("image")
-            ?<img src={viewing.data} style={{flex:1,objectFit:"contain",padding:10}}/>
+            ?<img src={viewing.data} style={{flex:1,objectFit:"contain",padding:10,minHeight:0}}/>
             :<iframe src={viewing.data} style={{flex:1,border:"none",background:"#fff"}}/>
           }
+          {viewing.type&&viewing.type.startsWith("image")&&(
+            <div style={{padding:"10px 16px",background:"rgba(0,0,0,0.5)",flexShrink:0}}>
+              {extractedText==="NO_KEY"?(
+                <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,padding:10,fontSize:11,color:"#92400E"}}>
+                  Add your Anthropic API key in <b>Company → Settings</b> to enable text extraction — it's stored only in this browser.
+                </div>
+              ):extractedText?(
+                <div style={{background:"#fff",border:"1px solid #E8ECF0",borderRadius:8,padding:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,textTransform:"uppercase"}}>Extracted text</div>
+                    <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:"#FF5A1F",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
+                  </div>
+                  <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,maxHeight:160,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
+                </div>
+              ):(
+                <button onClick={async()=>{
+                  setExtracting(true);
+                  const[header,base64]=(viewing.data||"").split(",");
+                  const mediaType=(header.match(/data:(.*);base64/)||[])[1]||"image/jpeg";
+                  const{data,error}=await callClaudeAPI({
+                    model:"claude-sonnet-4-6",max_tokens:1500,
+                    messages:[{role:"user",content:[
+                      {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+                      {type:"text",text:"Transcribe every piece of text visible in this image exactly as it appears, preserving line breaks. Return only the transcribed text, nothing else — no commentary."},
+                    ]}],
+                  });
+                  if(error==="NO_KEY")setExtractedText("NO_KEY");
+                  else if(error)setExtractedText("Couldn't read text from this image: "+error);
+                  else setExtractedText((data.content.map(b=>b.text||"").join("")).trim()||"No text found in this image.");
+                  setExtracting(false);
+                }} disabled={extracting} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:"#fff",cursor:extracting?"wait":"pointer",fontFamily:"inherit"}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {banks.map(a=>{
@@ -3382,7 +3418,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
                   📎 {att?"Replace":"Attach"}
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(a.code,e.target.files[0]);}}/>
                 </label>
-                {att&&<button onClick={()=>setViewing(att)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600}}>👁 View</button>}
+                {att&&<button onClick={()=>{setViewing(att);setExtractedText("");}} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600}}>👁 View</button>}
                 <button style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px"}} onClick={()=>onOpenLedger(a)}>Ledger ›</button>
               </div>
             </div>
@@ -13305,7 +13341,8 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
   const lmFrom=`${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,"0")}-01`;
   const lmTo=new Date(lastMonthDate.getFullYear(),lastMonthDate.getMonth()+1,0).toISOString().slice(0,10);
 
-  const expAccounts=accounts.filter(a=>isExpenseSK(a.code));
+  const expAccounts=useMemo(()=>["4000","5000","6000","6100","6200","6300","6400","6500","6600","6700","6800","6900","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"]
+    .flatMap(sk=>accountsForSK(accounts,transactions,sk)),[accounts,transactions]);
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=bFrom&&t.date<=bTo&&!t.reversedBy&&!t.reversalOf),[transactions,bFrom,bTo]);
   const lastMonthTxns=useMemo(()=>transactions.filter(t=>t.date>=lmFrom&&t.date<=lmTo&&!t.reversedBy&&!t.reversalOf),[transactions,lmFrom,lmTo]);
   const getActual=(code,txns)=>txns.filter(t=>t.debitCode===code).reduce((s,t)=>s+t.amount,0);
@@ -13590,9 +13627,11 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
           </div>
         </div>
 
-        {/* Account cards — 2 column grid on mobile, 3 on desktop — shows all expense accounts with an effective budget */}
+        {/* Account cards — every expense account with a budget AND/OR actual
+            spending this period shows here, so this is a complete picture
+            of where money went, not just the accounts someone planned for. */}
         <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 1fr 1fr":"1fr 1fr",gap:10}}>
-          {expAccounts.filter(a=>getEffective(a.code)>0).map(a=>{
+          {expAccounts.filter(a=>getEffective(a.code)>0||getActual(a.code,periodTxns)>0).sort((a,b)=>getActual(b.code,periodTxns)-getActual(a.code,periodTxns)).map(a=>{
             const budget=getEffective(a.code);
             const rollover=getRollover(a.code);
             const actual=getActual(a.code,periodTxns);
@@ -13665,43 +13704,9 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
         </div>
         {!expAccounts.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>Add expense accounts (4000s) first.</div>}
 
-        {/* Not assigned budget — any expense account (including one missing
-            from the chart entirely) with real spending this period but no
-            budget set for it. Always visible, not tucked behind "+ Add
-            Budget", since this is the "you spent here without planning for
-            it" signal that matters most. */}
-        {(()=>{
-          const allExpenseCodes=["4000","5000","6000","6100","6200","6300","6400","6500","6600","6700","6800","6900","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"]
-            .flatMap(sk=>accountsForSK(accounts,transactions,sk));
-          const unbudgeted=allExpenseCodes.filter(a=>{
-            const already=expAccounts.some(e=>e.code===a.code);
-            const budgeted=already&&getEffective(a.code)>0;
-            if(budgeted)return false;
-            return getActual(a.code,periodTxns)>0;
-          });
-          if(!unbudgeted.length)return null;
-          return(
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:12,fontWeight:800,color:T.orange,marginBottom:8,textTransform:"uppercase"}}>⚠ Not assigned budget — spent this period anyway</div>
-              <div style={{display:"grid",gridTemplateColumns:isDesktop?"repeat(auto-fill,minmax(220px,1fr))":"1fr 1fr",gap:8}}>
-                {unbudgeted.map(a=>{
-                  const actual=getActual(a.code,periodTxns);
-                  return(
-                    <div key={a.code} style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:12,padding:"10px 12px"}}>
-                      <div style={{fontSize:10,fontWeight:700,color:T.orange,marginBottom:2}}>{a.code} {a.name}</div>
-                      <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:6}}>{fmt(actual)} spent</div>
-                      <button onClick={()=>openEdit(a)} style={{width:"100%",background:"#fff",border:`1px solid ${T.orange}`,borderRadius:7,padding:"5px",fontSize:10,fontWeight:700,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>+ Set budget</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
-
-        {expAccounts.length>0&&expAccounts.filter(a=>getEffective(a.code)>0).length===0&&(
+        {expAccounts.length>0&&expAccounts.filter(a=>getEffective(a.code)>0||getActual(a.code,periodTxns)>0).length===0&&(
           <div style={{textAlign:"center",color:"#888780",padding:24,fontSize:13,background:"#fff",borderRadius:12,border:"0.5px solid #d3d1c7"}}>
-            No budgets set yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap "+ Add Budget" below to set a budget for an expense account.</span>
+            No budgets set, and nothing spent this period yet.<br/><span style={{fontSize:11,color:"#aaa"}}>Tap "+ Add Budget" below to set a budget for an expense account.</span>
           </div>
         )}
         {expAccounts.length>0&&(
