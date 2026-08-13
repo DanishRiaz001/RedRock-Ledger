@@ -27,6 +27,13 @@
     .rr-sidebar-item:hover{background:#F5F9FA;}
     .rr-sidebar-item .rr-sidebar-pin{opacity:0;transition:opacity .12s ease;}
     .rr-sidebar-item:hover .rr-sidebar-pin{opacity:1;}
+    /* While a resizable split divider is being dragged, kill any transition/
+       reflow-driven animation on preview content (esp. the image zoom
+       transition) so the document doesn't appear to "zoom" as the panel
+       resizes — it should just track the pointer at a fixed zoom level. */
+    body.rr-panel-resizing{cursor:col-resize!important;user-select:none!important;}
+    body.rr-panel-resizing *{user-select:none!important;}
+    body.rr-panel-resizing img{transition:none!important;}
     /* Watery glass utilities — secondary buttons and floating chrome */
     .rr-glass-btn{
       background:rgba(255,255,255,0.45);
@@ -423,16 +430,34 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   const[rightWidth,setRightWidth]=useState(defaultRightWidth);
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
+  const rafRef=React.useRef(null);
   const startDrag=(e)=>{
     e.preventDefault();
     draggingRef.current={startX:e.clientX,startWidth:rightWidth};
+    // Mark the body while dragging so preview content (esp. the image's
+    // transform transition) doesn't animate — without this the document
+    // preview visibly "zooms" as the panel width changes mid-drag.
+    document.body.classList.add("rr-panel-resizing");
     const onMove=(ev)=>{
       if(!draggingRef.current)return;
-      const delta=draggingRef.current.startX-ev.clientX;
-      const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
-      setRightWidth(next);
+      // Only apply the resize once per animation frame — applying it on
+      // every raw mousemove event causes rapid, jittery reflows of the
+      // preview content that read as "zooming" rather than a smooth resize.
+      if(rafRef.current)cancelAnimationFrame(rafRef.current);
+      rafRef.current=requestAnimationFrame(()=>{
+        if(!draggingRef.current)return;
+        const delta=draggingRef.current.startX-ev.clientX;
+        const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
+        setRightWidth(next);
+      });
     };
-    const onUp=()=>{draggingRef.current=null;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+    const onUp=()=>{
+      draggingRef.current=null;
+      if(rafRef.current)cancelAnimationFrame(rafRef.current);
+      document.body.classList.remove("rr-panel-resizing");
+      window.removeEventListener("mousemove",onMove);
+      window.removeEventListener("mouseup",onUp);
+    };
     window.addEventListener("mousemove",onMove);
     window.addEventListener("mouseup",onUp);
   };
@@ -1975,6 +2000,13 @@ const MVA_CODES=[
 // picked, instead of asking the person to know the code number by heart.
 const SALES_ACCOUNT_VAT_RATE={"3000":25,"3001":15,"3002":12,"3011":11.11,"3100":0,"3200":0};
 const vatCodeForRate=(rate,direction)=>MVA_CODES.find(c=>c.direction===direction&&c.rate===rate)||null;
+// Sales (output) vs purchase (input) each get their OWN single-digit MVA
+// code list — a sale posts against one outgoing code (e.g. "3"), never the
+// paired kjøp/salg codes a purchase voucher uses. This mirrors the real
+// Norwegian code list (and Tripletex's own dropdown) instead of a single
+// generic list shared by both directions.
+const vatCodeOptions=(direction)=>MVA_CODES.filter(c=>c.direction===direction);
+const findVatCode=(code,direction)=>MVA_CODES.find(c=>c.code===code&&c.direction===direction)||null;
 
 const isIncomeSK=(code)=>INCOME_SK.has(getSK(code));
 const isExpenseSK=(code)=>EXPENSE_SK.has(getSK(code));
@@ -4474,10 +4506,6 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
   const saveProfile=(updates)=>{const n={...profileData,...updates};setProfileData(n);try{localStorage.setItem("rr_profile",JSON.stringify(n));}catch{}};
   const primaryCurrency=(profileData.currencies||["PKR"])[0];
 
-  const[companyForm,setCompanyForm]=useState(companyProfile||{companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:""});
-  const[companySaved,setCompanySaved]=useState(false);
-  const saveCompany=()=>{if(saveCompanyProfile)saveCompanyProfile(companyForm);setCompanySaved(true);setTimeout(()=>setCompanySaved(false),1800);};
-
   // Period close state — must be before any early returns (screen checks)
   const periodClose=companyProfile.periodCloseDate||"";
   const[tempPeriodClose,setTempPeriodClose]=useState(null);
@@ -4953,74 +4981,24 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
             </div>
           </div>
         )}
-        {/* Stats row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
-          {[{label:"Accounts",val:accounts.length,icon:"📒"},{label:"Contacts",val:contacts.length,icon:"👥"},{label:"Currency",val:primaryCurrency,icon:"💱"}].map((s,i)=>(
-            <div key={i} style={{background:T.card,borderRadius:12,padding:"14px 8px",textAlign:"center",border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{fontSize:20,marginBottom:4}}>{s.icon}</div>
-              <div style={{fontSize:15,fontWeight:800,color:T.text}}>{s.val}</div>
-              <div style={{fontSize:9,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Company info — used as the issuer header on invoices */}
-        <div style={{background:T.card,borderRadius:14,padding:16,marginBottom:16,border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Company info (for invoices)</div>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-            {companyForm.logoDataUrl?(
-              <img src={companyForm.logoDataUrl} style={{width:56,height:56,objectFit:"contain",borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
-            ):(
-              <div style={{width:56,height:56,borderRadius:8,border:`1px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:T.muted,textAlign:"center"}}>No logo</div>
-            )}
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              <label style={{fontSize:11,fontWeight:700,color:T.accent,cursor:"pointer"}}>
-                {companyForm.logoDataUrl?"Change logo":"Upload logo"}
-                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
-                  const file=e.target.files[0];
-                  if(!file)return;
-                  const reader=new FileReader();
-                  reader.onload=ev=>setCompanyForm(p=>({...p,logoDataUrl:ev.target.result}));
-                  reader.readAsDataURL(file);
-                }}/>
-              </label>
-              {companyForm.logoDataUrl&&<span onClick={()=>setCompanyForm(p=>({...p,logoDataUrl:""}))} style={{fontSize:11,color:T.muted,cursor:"pointer"}}>Remove</span>}
-            </div>
-          </div>
-          <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}:{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-            <input placeholder="Company name" value={companyForm.companyName} onChange={e=>setCompanyForm(p=>({...p,companyName:e.target.value}))} style={inp}/>
-            <input placeholder="Address" value={companyForm.address} onChange={e=>setCompanyForm(p=>({...p,address:e.target.value}))} style={inp}/>
-            <input placeholder="Mobile" value={companyForm.mobile} onChange={e=>setCompanyForm(p=>({...p,mobile:e.target.value}))} style={inp}/>
-            <input placeholder="Email" value={companyForm.email} onChange={e=>setCompanyForm(p=>({...p,email:e.target.value}))} style={inp}/>
-            <input placeholder="Org. number" value={companyForm.orgNumber} onChange={e=>setCompanyForm(p=>({...p,orgNumber:e.target.value}))} style={inp}/>
-            <input placeholder="Bank account (for invoices)" value={companyForm.bankAccount} onChange={e=>setCompanyForm(p=>({...p,bankAccount:e.target.value}))} style={inp}/>
-            <input type="number" placeholder="Default VAT %" value={companyForm.vatPct} onChange={e=>setCompanyForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>
-            <div>
-              <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Fiscal year starts</div>
-              <select value={companyForm.fiscalYearStartMonth||1} onChange={e=>setCompanyForm(p=>({...p,fiscalYearStartMonth:parseInt(e.target.value)}))} style={inp}>
-                {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m,i)=>(
-                  <option key={i} value={i+1}>{m}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <button onClick={saveCompany} style={{background:companySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:isDesktop?"auto":"100%",minWidth:isDesktop?180:"auto"}}>{companySaved?"✓ Saved":"Save company info"}</button>
-        </div>
-
-        {/* All settings as navigation cards — stacked on mobile, 2-column grid on desktop */}
+        {/* All settings as clean navigation cards — one line each, no inline
+            forms or stats cluttering this landing page. Company info now
+            lives only in its own dedicated screen (reached from here or the
+            header), so it isn't duplicated in two places. */}
         <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
         {[
-          {icon:"📋",label:"Account Plan",sub:"Edit chart of accounts",action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
-          {icon:"👥",label:"Customers & suppliers",sub:"Manage contacts (opens Customers)",action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
-          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
+          {icon:"🏢",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue},
+          {icon:"📋",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
+          {icon:"👥",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
           {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
           {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
+          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
           {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
           ...(isAdmin?[{icon:"🐞",label:"Bug Log",sub:"Errors reported by the app",action:()=>onNavigate&&onNavigate("BugLog"),bg:"#FEE2E2",color:T.red}]:[]),
         ].map((item,i)=>(
           <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
-            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1}}>{item.sub}</div></div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div></div>
             <span style={{fontSize:18,color:T.muted}}>›</span>
           </div>
         ))}
@@ -7580,6 +7558,13 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
   const[directionFilter,setDirectionFilter]=useState("all"); // "all" | "incoming" | "outgoing" — separate axis
   const[searchQuery,setSearchQuery]=useState("");
   const[reconApprovedTick,setReconApprovedTick]=useState(0); // bump to force a re-read of localStorage approval state
+  const[showExportModal,setShowExportModal]=useState(false);
+  const[exportMode,setExportMode]=useState("download"); // "download" | "email" | "log"
+  const[exportScope,setExportScope]=useState("period"); // "period" | "all" | "selected"
+  const[exportFormat,setExportFormat]=useState("pdf");
+  const[exportEmail,setExportEmail]=useState("");
+  const[exportMessage,setExportMessage]=useState("Hi!\n\nHere's a reminder that some vouchers are still missing from your account. It would be great if you could look over the attached list and send in the vouchers as soon as possible.");
+  const[exportSendLog,setExportSendLog]=useState([]); // {date, to, count}
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   // Left column: what's actually in the ledger for this account and month.
@@ -7723,6 +7708,55 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
     if(!window.confirm(`Remove the ${lastImport.count} statement line${lastImport.count===1?"":"s"} just imported?`))return;
     await undoBankImport(lastImport.ids);
     setLastImport(null);
+  };
+  // Scope resolver for the export/send modal — mirrors the "which posts"
+  // choice in the Tripletex-style dialog: this period's unmatched lines,
+  // every unmatched line on the account regardless of month, or just
+  // whatever's currently ticked on the right-hand (statement) list.
+  const exportRows=()=>{
+    if(exportScope==="selected")return unmatchedLines.filter(l=>selectedLineIds.has(l.id));
+    if(exportScope==="all")return bankStatementLines.filter(l=>l.accountCode===selectedAccount&&!l.posted);
+    return unmatchedLines;
+  };
+  const runExport=()=>{
+    const rows=exportRows();
+    if(!rows.length){alert("No open posts to export.");return;}
+    const accName=getName(selectedAccount);
+    if(exportFormat==="xlsx"){
+      const aoa=[["Date","Description","Amount (NOK)"],...rows.map(l=>[l.date,l.description||"",l.amount])];
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb,ws,"Open posts");
+      XLSX.writeFile(wb,`OpenPosts_${accName.replace(/[^a-z0-9]/gi,"")}_${month}.xlsx`);
+    } else {
+      const container=document.createElement("div");
+      container.style.cssText="padding:24px;font-family:system-ui,sans-serif;color:#111827;max-width:700px;";
+      container.innerHTML=`
+        <div style="font-size:18px;font-weight:800;margin-bottom:4px;">Open posts — ${accName}</div>
+        <div style="font-size:12px;color:#6B7280;margin-bottom:16px;">${new Date().toISOString().slice(0,10)}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="border-bottom:1px solid #111827;text-align:left;"><td style="padding:6px 0;">Date</td><td>Description</td><td style="text-align:right;">Amount</td></tr></thead>
+          <tbody>${rows.map(l=>`<tr style="border-bottom:1px solid #eee;"><td style="padding:6px 0;">${l.date}</td><td>${(l.description||"").replace(/</g,"&lt;")}</td><td style="text-align:right;">${fmtBal(l.amount)}</td></tr>`).join("")}</tbody>
+        </table>`;
+      document.body.appendChild(container);
+      if(window.html2pdf){
+        window.html2pdf().from(container).set({margin:20,filename:`OpenPosts_${accName.replace(/[^a-z0-9]/gi,"")}_${month}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>document.body.removeChild(container));
+      } else {
+        document.body.removeChild(container);
+      }
+    }
+  };
+  const runEmailSend=()=>{
+    if(!exportEmail.trim()){alert("Enter a recipient email address.");return;}
+    const rows=exportRows();
+    if(!rows.length){alert("No open posts to send.");return;}
+    runExport(); // downloads the file so it's ready to attach — mailto can't attach files itself
+    const listText=rows.map(l=>`${l.date}  ${l.description||""}  ${fmtBal(l.amount)}`).join("\n");
+    const subject=encodeURIComponent(`Missing vouchers — ${getName(selectedAccount)}`);
+    const body=encodeURIComponent(`${exportMessage}\n\n${listText}`);
+    window.location.href=`mailto:${exportEmail.trim()}?subject=${subject}&body=${body}`;
+    setExportSendLog(p=>[{date:new Date().toISOString(),to:exportEmail.trim(),count:rows.length},...p]);
+    setShowExportModal(false);
   };
   const clearSelection=()=>{setSelectedLineIds(new Set());setSelectedTxnIds(new Set());setPostPickerLineId(null);setOffsetCode("");};
   const toggleLineSel=(id)=>{
@@ -7889,42 +7923,110 @@ function BankReconciliationScreen({accounts,transactions,bankStatementLines,uplo
           </div>
         );
       })()}
-      {/* Filter bar */}
+      {/* Filter bar — search stays narrow (it's a quick filter, not the main
+          input), the icon buttons on the right are all the same 36×36 box so
+          the row reads clean and aligned, matching the reference layout. */}
       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{position:"relative",flex:"1 1 200px",minWidth:160}}>
+        <div style={{position:"relative",flex:"0 1 10%",minWidth:100}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
           <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%"}}/>
         </div>
-        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);clearSelection();}} style={{...inp,width:210,background:"#fff"}}>
+        <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);clearSelection();}} style={{...inp,width:210,background:"#fff",flexShrink:0}}>
           {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
           {!bankAccounts.length&&<option value="">No bank accounts yet</option>}
         </select>
-        <div style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 8px",background:"#fff"}}>
+        <div style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 8px",background:"#fff",height:36,boxSizing:"border-box",flexShrink:0}}>
           <button onClick={()=>{const d=new Date(month+"-01");d.setMonth(d.getMonth()-1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub,padding:"2px 4px"}}>‹</button>
           <span style={{fontSize:12,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</span>
           <button onClick={()=>{const d=new Date(month+"-01");d.setMonth(d.getMonth()+1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub,padding:"2px 4px"}}>›</button>
         </div>
-        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0}}>
+        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0,height:36,boxSizing:"border-box"}}>
           <option value="all">All</option>
           <option value="incoming">Incoming</option>
           <option value="outgoing">Outgoing</option>
         </select>
-        <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",flexShrink:0}}>
+        <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",flexShrink:0,height:36}}>
           {[["unmatched","Unmatched"],["matched","Matched"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+            <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"0 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",height:"100%"}}>{label}</button>
           ))}
         </div>
-        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-          <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-history" style={{fontSize:15}}/></button>
+        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
-            <button onClick={doUndoImport} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo import ({lastImport.count})</button>
+            <button onClick={doUndoImport} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 14px",height:36,fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo import ({lastImport.count})</button>
           )}
-          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap"}}>
+          <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-history" style={{fontSize:15}}/></button>
+          <button onClick={()=>{setExportScope("period");setShowExportModal(true);}} title="Send or download" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-download" style={{fontSize:15}}/></button>
+          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:12,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
             {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload</>)}
             <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
           </label>
         </div>
       </div>
+
+      {/* Send or download modal — mirrors the reference "Send eller last ned
+          fil" dialog: choose which posts, pick a format, then either
+          download directly or fire off an email with the list attached. */}
+      {showExportModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowExportModal(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text}}>Send or download file</div>
+              <button onClick={()=>setShowExportModal(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",marginBottom:16}}>
+              {[["email","Email file"],["download","Download file"],["log",`Sent log (${exportSendLog.length})`]].map(([id,label])=>(
+                <button key={id} onClick={()=>setExportMode(id)} style={{flex:1,background:exportMode===id?T.accentLight:"#fff",color:exportMode===id?T.accent:T.sub,border:"none",borderRight:id!=="log"?`1px solid ${T.border}`:"none",padding:"8px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+              ))}
+            </div>
+
+            {exportMode==="log"?(
+              <div>
+                {!exportSendLog.length&&<div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"20px 0"}}>Nothing sent yet.</div>}
+                {exportSendLog.map((e,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<exportSendLog.length-1?`1px solid ${T.border}`:"none",fontSize:12}}>
+                    <span style={{color:T.text,fontWeight:600}}>{e.to}</span>
+                    <span style={{color:T.muted}}>{e.count} posts · {new Date(e.date).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            ):(
+              <>
+                <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:8}}>WHICH POSTS</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                  {[["period","All open posts in the current period"],["all","All open posts on this account"],["selected",`Selected posts (${selectedLineIds.size})`]].map(([id,label])=>(
+                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                      <input type="radio" name="exportScope" checked={exportScope===id} onChange={()=>setExportScope(id)} disabled={id==="selected"&&!selectedLineIds.size} style={{accentColor:T.accent}}/>
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:8}}>FILE FORMAT</div>
+                <div style={{display:"flex",gap:16,marginBottom:16}}>
+                  {[["pdf","PDF"],["xlsx","XLSX"]].map(([id,label])=>(
+                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                      <input type="radio" name="exportFormat" checked={exportFormat===id} onChange={()=>setExportFormat(id)} style={{accentColor:T.accent}}/>
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {exportMode==="email"&&(<>
+                  <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>RECIPIENT EMAIL *</div>
+                  <input type="email" placeholder="name@mail.com" value={exportEmail} onChange={e=>setExportEmail(e.target.value)} style={{...inp,marginBottom:12}}/>
+                  <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>MESSAGE</div>
+                  <textarea value={exportMessage} onChange={e=>setExportMessage(e.target.value)} rows={4} style={{...inp,marginBottom:16,resize:"vertical",fontFamily:"inherit"}}/>
+                </>)}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={exportMode==="email"?runEmailSend:runExport} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    <i className={exportMode==="email"?"ti ti-send":"ti ti-download"} style={{fontSize:14}}/>
+                    {exportMode==="email"?"Send file as email":`Download ${exportFormat.toUpperCase()}`}
+                  </button>
+                  <button onClick={()=>setShowExportModal(false)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Month tabs — click to jump, ✓ = fully reconciled, clock = pending */}
       <div style={{display:"flex",gap:2,marginBottom:16,borderBottom:`1px solid ${T.border}`,overflowX:"auto"}}>
@@ -9494,7 +9596,17 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
             </>
           ):(
             <>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"20% 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                  <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
                   <select value={debitCode} onChange={e=>setDebitCode(e.target.value)} style={{...inp}}>
@@ -9507,6 +9619,10 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                     {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                   </select>
                 </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+                  <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
+                </div>
               </div>
               {debitCode===creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
               {receiptNeedContact&&(
@@ -9515,20 +9631,6 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                   <ContactSearchInline contacts={contacts} value={receiptContactId} onChange={setReceiptContactId} type={receiptContactType}/>
                 </div>
               )}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
-                  <input type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)} style={{...inp}}/>
-                </div>
-              </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-                <input value={description} onChange={e=>setDescription(e.target.value)} style={{...inp}}/>
-              </div>
             </>
           )}
           <button onClick={handlePost} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Posting…":"Post voucher"}</button>
@@ -9567,12 +9669,15 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
 // Register voucher queue — the real batch flow: step through every selected
 // file with Previous/Next, "Remove from queue" (skips without deleting), and
 // per-item Create. Each file keeps its own draft as you navigate away and back.
-function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone}){
+function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone,renameInboxFileEntry}){
   const[queue,setQueue]=useState(fileIds);
   const[idx,setIdx]=useState(0);
   const[formsByFile,setFormsByFile]=useState({});
   const[postedIds,setPostedIds]=useState([]);
   const[posting,setPosting]=useState(false);
+  const[editingName,setEditingName]=useState(false);
+  const[nameDraft,setNameDraft]=useState("");
+  const[autoFilling,setAutoFilling]=useState(false);
 
   const suppliers=contacts.filter(c=>c.type==="supplier");
   const customers=contacts.filter(c=>c.type==="customer");
@@ -9582,19 +9687,53 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   const currentFileId=queue[idx];
   const currentFile=inboxFiles.find(f=>f.id===currentFileId);
 
+  const CURRENCIES=["PKR","USD","EUR","GBP","AED","SAR","NOK"];
+  const newIncomeLine=()=>({lid:Date.now()+Math.random().toString(36).slice(2),accountCode:incomeAccounts[0]?incomeAccounts[0].code:"",vatCode:"5",amount:"",description:""});
   const defaultForm=(fid)=>{
     const f=inboxFiles.find(x=>x.id===fid);
-    return{voucherType:"supplier",supplierId:suppliers[0]?suppliers[0].id:"",customerId:customers[0]?customers[0].id:"",invoiceNo:"",date:today,dueDate:today,expenseAccount:expenseAccounts[0]?expenseAccounts[0].code:"",incomeAccount:incomeAccounts[0]?incomeAccounts[0].code:"",amount:"",vatPct:"0",description:f?f.name.replace(/\.[^.]+$/,""):"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",creditCode:accounts[0]?accounts[0].code:""};
+    return{voucherType:"supplier",supplierId:suppliers[0]?suppliers[0].id:"",customerId:customers[0]?customers[0].id:"",invoiceNo:"",date:today,dueDate:today,currency:"PKR",expenseAccount:expenseAccounts[0]?expenseAccounts[0].code:"",incomeLines:[{...newIncomeLine(),description:f?f.name.replace(/\.[^.]+$/,""):""}],amount:"",vatPct:"0",description:f?f.name.replace(/\.[^.]+$/,""):"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",creditCode:accounts[0]?accounts[0].code:""};
   };
   const form=formsByFile[currentFileId]||defaultForm(currentFileId);
   const setForm=(updates)=>setFormsByFile(p=>({...p,[currentFileId]:{...(p[currentFileId]||defaultForm(currentFileId)),...updates}}));
+  const incomeLines=form.incomeLines||[newIncomeLine()];
+  const setIncomeLines=lines=>setForm({incomeLines:lines});
+  const updateIncomeLine=(lid,updates)=>setIncomeLines(incomeLines.map(l=>l.lid===lid?{...l,...updates}:l));
+  const addIncomeLine=()=>setIncomeLines([...incomeLines,newIncomeLine()]);
+  const copyIncomeLine=(lid)=>{
+    const src=incomeLines.find(l=>l.lid===lid);
+    if(!src)return;
+    setIncomeLines([...incomeLines,{...src,lid:Date.now()+Math.random().toString(36).slice(2)}]);
+  };
+  const removeIncomeLine=(lid)=>{if(incomeLines.length>1)setIncomeLines(incomeLines.filter(l=>l.lid!==lid));};
+  // Per-line VAT split (excl./VAT/incl.), grouped by MVA code for the
+  // breakdown table under the lines — same shape as the reference dialog.
+  const incomeLineCalc=(l)=>{
+    const gross=parseFloat(l.amount)||0;
+    const vc=findVatCode(l.vatCode,"output");
+    const rate=vc?vc.rate:0;
+    const excl=gross/(1+rate/100);
+    return{gross,excl,vat:gross-excl,rate};
+  };
+  const incomeVatBreakdown=useMemo(()=>{
+    const byCode={};
+    incomeLines.forEach(l=>{
+      const{gross,excl,vat}=incomeLineCalc(l);
+      if(!byCode[l.vatCode])byCode[l.vatCode]={code:l.vatCode,excl:0,vat:0,gross:0};
+      byCode[l.vatCode].excl+=excl;byCode[l.vatCode].vat+=vat;byCode[l.vatCode].gross+=gross;
+    });
+    return Object.values(byCode);
+  },[incomeLines]);
+  const incomeTotal=incomeVatBreakdown.reduce((s,r)=>s+r.gross,0);
+  const[showLineOptions,setShowLineOptions]=useState(false);
+  const[showDept,setShowDept]=useState(false);
+  const[showEmployee,setShowEmployee]=useState(false);
 
-  const grossAmount=parseFloat(form.amount)||0;
+  const grossAmount=form.voucherType==="income"?incomeTotal:(parseFloat(form.amount)||0);
   const vatRate=parseFloat(form.vatPct)||0;
   const vatAmount=grossAmount-(grossAmount/(1+vatRate/100));
   const netAmount=grossAmount-vatAmount;
   const valid=form.voucherType==="supplier"?(grossAmount>0&&form.expenseAccount&&form.supplierId)
-    :form.voucherType==="income"?(grossAmount>0&&form.incomeAccount&&form.customerId)
+    :form.voucherType==="income"?(incomeTotal>0&&incomeLines.every(l=>l.accountCode&&parseFloat(l.amount)>0)&&form.customerId)
     :(grossAmount>0&&form.debitCode&&form.creditCode&&form.debitCode!==form.creditCode);
   const alreadyPosted=postedIds.includes(currentFileId);
 
@@ -9610,13 +9749,24 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
     setPosting(true);
     const supplier=contacts.find(c=>c.id===form.supplierId);
     const customer=contacts.find(c=>c.id===form.customerId);
-    const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:form.voucherType==="income"?`${customer?customer.name:"Customer"} sale${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
-    const txnForm=form.voucherType==="supplier"
-      ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
-      :form.voucherType==="income"
-      ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:form.incomeAccount,description:desc,amount:grossAmount,contactId:form.customerId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
-      :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
-    await addTransaction(txnForm);
+    if(form.voucherType==="income"){
+      // One ledger entry per income line (Dr 1500 Accounts Receivable / Cr the
+      // line's income account), sharing a groupRef so opening any one of them
+      // shows the whole invoice — same pattern as the manual multi-line entry.
+      const groupRef=incomeLines.length>1?`grp-${Date.now()}`:null;
+      for(const l of incomeLines){
+        const{gross,vat}=incomeLineCalc(l);
+        const desc=l.description||form.description||`${customer?customer.name:"Customer"} sale${form.invoiceNo?" "+form.invoiceNo:""}`;
+        const lineVc=findVatCode(l.vatCode,"output");
+        await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:l.accountCode,description:desc,amount:gross,contactId:form.customerId,attachmentId:currentFileId,vatPct:lineVc?lineVc.rate:0,vatCode:l.vatCode,vatAmount:Math.round(vat*100)/100,currency:form.currency,groupRef});
+      }
+    } else {
+      const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
+      const txnForm=form.voucherType==="supplier"
+        ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
+        :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
+      await addTransaction(txnForm);
+    }
     setPosting(false);
     // Remove it from the queue entirely — once it's posted there's nothing
     // left to do with it here, so it shouldn't still show up when paging
@@ -9629,37 +9779,79 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   };
 
   if(!currentFile)return null;
-  const navBtn={background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"};
+  const navBtn={background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0};
+
+  const startNameEdit=()=>{setNameDraft(currentFile.name);setEditingName(true);};
+  const commitNameEdit=async()=>{
+    const trimmed=nameDraft.trim();
+    if(trimmed&&trimmed!==currentFile.name&&renameInboxFileEntry)await renameInboxFileEntry(currentFile.id,trimmed);
+    setEditingName(false);
+  };
+
+  // OCR-style auto-fill — reads the current document with Claude vision and
+  // pulls out the date (and total, if visible) straight into the form, the
+  // same way a real bookkeeper would glance at the invoice before typing.
+  const autoFillFromDocument=async()=>{
+    if(!currentFile||autoFilling)return;
+    if(!(currentFile.type||"").startsWith("image")){alert("Auto-fill currently only reads image files.");return;}
+    setAutoFilling(true);
+    try{
+      const url=await getSignedUrl(currentFile.storagePath);
+      if(!url)throw new Error("no url");
+      const resp=await fetch(url);
+      const blob=await resp.blob();
+      const base64=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result.split(",")[1]);
+        reader.onerror=reject;
+        reader.readAsDataURL(blob);
+      });
+      const{data,error}=await callClaudeAPI({
+        model:"claude-sonnet-4-6",max_tokens:300,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:blob.type||"image/jpeg",data:base64}},
+          {type:"text",text:"Look at this invoice or receipt image. Find the invoice/receipt date and the total amount due. Return ONLY valid JSON, no markdown: {\"date\":\"YYYY-MM-DD\" or \"\" if not found,\"amount\":number or null}"},
+        ]}],
+      });
+      if(error==="NO_KEY"){alert("Add your Anthropic API key in Company → Settings to use auto-fill.");setAutoFilling(false);return;}
+      if(error){alert("Couldn't read the document: "+error);setAutoFilling(false);return;}
+      const text=data.content.map(b=>b.text||"").join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      const updates={};
+      if(parsed.date)updates.date=parsed.date;
+      if(parsed.amount!=null&&!isNaN(parsed.amount)&&parsed.amount>0)updates.amount=String(parsed.amount);
+      if(Object.keys(updates).length)setForm(updates);
+      else alert("Couldn't find a date on this document — try a clearer photo.");
+    }catch(e){
+      alert("Couldn't read that document clearly.");
+    }
+    setAutoFilling(false);
+  };
 
   return(
-    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",minHeight:"calc(100vh - 140px)"}}>
+    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"16px 24px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-        <div>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>Register voucher</h1>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <button onClick={()=>goto(0)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>«</button>
-            <button onClick={()=>goto(idx-1)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>‹</button>
-            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:60,textAlign:"center"}}>{idx+1} of {queue.length}</span>
-            <button onClick={()=>goto(idx+1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>›</button>
-            <button onClick={()=>goto(queue.length-1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>»</button>
-            {alreadyPosted&&<span style={{fontSize:11,color:T.green,fontWeight:700,marginLeft:8}}>✓ Posted</span>}
-          </div>
-        </div>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Register voucher</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={removeFromQueue} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Remove from queue</button>
           <button onClick={onDone} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
         </div>
       </div>
 
-      <ResizableSplit defaultRightWidth={420} minRightWidth={320} maxRightWidth={800} collapsible collapseLabel="Hide document" expandLabel="Show document" left={(
-        <div style={{padding:24,overflowY:"visible"}}>
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
-            <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
-              <option value="supplier">Expense invoice (supplier)</option>
-              <option value="income">Income (sale to customer)</option>
-              <option value="receipt">Simple entry</option>
-            </select>
+      <div style={{flex:1,minHeight:0,display:"flex"}}>
+      <ResizableSplit defaultRightWidth={560} minRightWidth={360} maxRightWidth={1000} collapsible collapseLabel="Hide document" expandLabel="Show document" left={(
+        <div style={{padding:24,height:"100%",overflowY:"auto"}}>
+          <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
+              <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
+                <option value="supplier">Expense invoice (supplier)</option>
+                <option value="income">Income (sale to customer)</option>
+                <option value="receipt">Simple entry</option>
+              </select>
+            </div>
+            <button onClick={autoFillFromDocument} disabled={autoFilling} title="Read the date and amount off this document" style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:autoFilling?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{autoFilling?"Reading…":"✨ Auto-fill from document"}</button>
           </div>
 
           {form.voucherType==="supplier"?(
@@ -9735,64 +9927,142 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                   {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {/* Date, due date and invoice number share one row */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
                   <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
                   <input type="date" value={form.dueDate} onChange={e=>setForm({dueDate:e.target.value})} style={{...inp}}/>
                 </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
+                  <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp}}/>
+                </div>
               </div>
               <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
-                <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp}}/>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+                <select value={form.currency||"PKR"} onChange={e=>setForm({currency:e.target.value})} style={{...inp,width:140}}>
+                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
-              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`}}>
-                <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>Income</div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <div>
-                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Income account</div>
-                    <select value={form.incomeAccount} onChange={e=>{
-                      const code=e.target.value;
-                      const acc=accounts.find(a=>a.code===code);
-                      const suggestedRate=acc&&acc.defaultVatPct!=null?acc.defaultVatPct:SALES_ACCOUNT_VAT_RATE[code];
-                      setForm(suggestedRate!=null?{incomeAccount:code,vatPct:String(suggestedRate)}:{incomeAccount:code});
-                    }} style={{...inp}}>
-                      {incomeAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                    </select>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <div>
-                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount incl. VAT</div>
-                      <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
-                    </div>
-                    <div>
-                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
-                      <select value={form.vatPct} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp}}>
-                        <option value="0">0% — Kode 5/6/7</option>
-                        <option value="12">12% — Kode 33/13 (lav sats)</option>
-                        <option value="15">15% — Kode 31/11 (middels sats)</option>
-                        <option value="25">25% — Kode 3/1 (høy sats)</option>
-                      </select>
-                    </div>
-                  </div>
-                  {vatRate>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
-                      <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
-                    </div>
-                  )}
-                  <div>
-                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-                    <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
-                  </div>
+
+              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`,position:"relative"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:800,color:T.text,textTransform:"uppercase",letterSpacing:0.5}}>Income</div>
+                  <button onClick={()=>setShowLineOptions(o=>!o)} title="Display options" style={{background:"none",border:"none",cursor:"pointer",color:T.sub,fontSize:15,padding:2}}><i className="ti ti-settings"/></button>
                 </div>
+                {showLineOptions&&(<>
+                  <div onClick={()=>setShowLineOptions(false)} style={{position:"fixed",inset:0,zIndex:290}}/>
+                  <div style={{position:"absolute",right:12,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:300,minWidth:200,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <span style={{fontSize:12,fontWeight:800,color:T.text}}>Display options</span>
+                      <span style={{fontSize:11,color:T.accent,fontWeight:700,cursor:"pointer"}} onClick={()=>{setShowDept(false);setShowEmployee(false);}}>Reset</span>
+                    </div>
+                    {[["Department",showDept,setShowDept],["Employee",showEmployee,setShowEmployee]].map(([label,val,setter])=>(
+                      <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0"}}>
+                        <span style={{fontSize:12,color:T.text}}>{label}</span>
+                        <button onClick={()=>setter(v=>!v)} style={{width:34,height:19,borderRadius:10,border:"none",background:val?T.accent:T.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+                          <span style={{position:"absolute",top:2,left:val?17:2,width:15,height:15,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>)}
+
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {incomeLines.map((l,li)=>{
+                    const calc=incomeLineCalc(l);
+                    return(
+                      <div key={l.lid} style={{paddingBottom:10,borderBottom:li<incomeLines.length-1?`1px solid ${T.border}`:"none"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                          <div>
+                            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Income account</div>
+                            <select value={l.accountCode} onChange={e=>{
+                              const code=e.target.value;
+                              const acc=accounts.find(a=>a.code===code);
+                              const suggestedRate=acc&&acc.defaultVatPct!=null?acc.defaultVatPct:SALES_ACCOUNT_VAT_RATE[code];
+                              const matchCode=suggestedRate!=null?vatCodeForRate(suggestedRate,"output"):null;
+                              updateIncomeLine(l.lid,matchCode?{accountCode:code,vatCode:matchCode.code}:{accountCode:code});
+                            }} style={{...inp}}>
+                              {incomeAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
+                            <select value={l.vatCode} onChange={e=>updateIncomeLine(l.lid,{vatCode:e.target.value})} style={{...inp}}>
+                              {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                          <div>
+                            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
+                            <input type="number" placeholder="0" value={l.amount} onChange={e=>updateIncomeLine(l.lid,{amount:e.target.value})} style={{...inp}}/>
+                          </div>
+                          <div>
+                            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                            <div style={{display:"flex",gap:6}}>
+                              <input value={l.description} onChange={e=>updateIncomeLine(l.lid,{description:e.target.value})} style={{...inp,flex:1}}/>
+                              <button onClick={()=>copyIncomeLine(l.lid)} title="Copy line" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:38,cursor:"pointer",color:T.sub,flexShrink:0}}><i className="ti ti-copy" style={{fontSize:13}}/></button>
+                              {incomeLines.length>1&&<button onClick={()=>removeIncomeLine(l.lid)} title="Remove line" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:38,cursor:"pointer",color:T.red,flexShrink:0}}><i className="ti ti-trash" style={{fontSize:13}}/></button>}
+                            </div>
+                          </div>
+                        </div>
+                        {(showDept||showEmployee)&&(
+                          <div style={{display:"grid",gridTemplateColumns:showDept&&showEmployee?"1fr 1fr":"1fr",gap:10}}>
+                            {showDept&&<div><div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Department</div><input value={l.department||""} onChange={e=>updateIncomeLine(l.lid,{department:e.target.value})} style={{...inp}}/></div>}
+                            {showEmployee&&<div><div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Employee</div><input value={l.employee||""} onChange={e=>updateIncomeLine(l.lid,{employee:e.target.value})} style={{...inp}}/></div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button onClick={addIncomeLine} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left",padding:0,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-plus" style={{fontSize:13}}/>Add line</button>
+                </div>
+
+                {/* VAT breakdown — one row per code used, then totals, exactly
+                    the "excl. VAT / VAT / incl. VAT" shape from the reference. */}
+                {incomeTotal>0&&(
+                  <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,marginBottom:4}}>
+                      {["VAT code","Excl. VAT","VAT","Incl. VAT"].map(h=>(
+                        <div key={h} style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:h==="VAT code"?"left":"right"}}>{h}</div>
+                      ))}
+                    </div>
+                    {incomeVatBreakdown.map(r=>(
+                      <div key={r.code} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,fontSize:12,color:T.text,padding:"3px 0"}}>
+                        <div>{r.code}</div>
+                        <div style={{textAlign:"right"}}>{fmt(r.excl)}</div>
+                        <div style={{textAlign:"right"}}>{fmt(r.vat)}</div>
+                        <div style={{textAlign:"right",fontWeight:700}}>{fmt(r.gross)}</div>
+                      </div>
+                    ))}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,fontSize:12,fontWeight:800,color:T.text,padding:"6px 0 0",marginTop:4,borderTop:`1px solid ${T.border}`}}>
+                      <div>Total</div>
+                      <div style={{textAlign:"right"}}>{fmt(incomeVatBreakdown.reduce((s,r)=>s+r.excl,0))}</div>
+                      <div style={{textAlign:"right"}}>{fmt(incomeVatBreakdown.reduce((s,r)=>s+r.vat,0))}</div>
+                      <div style={{textAlign:"right"}}>{fmt(incomeTotal)}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"20% 1fr",gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
+                  <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                  <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
                   <select value={form.debitCode} onChange={e=>setForm({debitCode:e.target.value})} style={{...inp}}>
@@ -9805,22 +10075,12 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                   </select>
                 </div>
-              </div>
-              {form.debitCode===form.creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-                  <input type="date" value={form.date} onChange={e=>setForm({date:e.target.value})} style={{...inp}}/>
-                </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
                   <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
                 </div>
               </div>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-                <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
-              </div>
+              {form.debitCode===form.creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
             </div>
           )}
 
@@ -9829,13 +10089,33 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
           </button>
         </div>
       )} right={(
-        <div style={{padding:16,background:T.bg,display:"flex",flexDirection:"column",height:"100%"}}>
-          <div style={{fontSize:12,color:T.sub,fontWeight:600,marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentFile.name}</div>
-          <div style={{flex:1}}>
-            <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",height:"100%",borderRadius:8,border:`1px solid ${T.border}`,background:"#fff"}}/>
+        <div style={{background:T.bg,display:"flex",flexDirection:"column",height:"100%",borderLeft:`1px solid ${T.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",flexShrink:0}}>
+            <button onClick={()=>goto(0)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>«</button>
+            <button onClick={()=>goto(idx-1)} disabled={idx===0} style={{...navBtn,opacity:idx===0?0.4:1}}>‹</button>
+            <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:40,textAlign:"center",flexShrink:0}}>{idx+1}/{queue.length}</span>
+            <button onClick={()=>goto(idx+1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>›</button>
+            <button onClick={()=>goto(queue.length-1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>»</button>
+            {editingName?(
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={e=>setNameDraft(e.target.value)}
+                onBlur={commitNameEdit}
+                onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingName(false);}}
+                style={{fontSize:13,fontWeight:700,color:T.text,flex:1,minWidth:0,border:`1px solid ${T.accent}`,borderRadius:6,padding:"3px 7px",fontFamily:"inherit",background:"#fff",marginLeft:4}}
+              />
+            ):(
+              <span onDoubleClick={startNameEdit} title="Double-click to rename" style={{fontSize:13,fontWeight:700,color:T.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",marginLeft:4}}>{currentFile.name}</span>
+            )}
+            {alreadyPosted&&<span style={{fontSize:11,color:T.green,fontWeight:700,flexShrink:0}}>✓ Posted</span>}
+          </div>
+          <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+            <SignedFileViewer storagePath={currentFile.storagePath} type={currentFile.type} name={currentFile.name} style={{width:"100%",height:"100%",background:"#fff"}}/>
           </div>
         </div>
       )}/>
+      </div>
     </div>
   );
 }
@@ -14125,134 +14405,151 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
 
   if(isDesktop){
     return(
-      <ResizableSplit defaultRightWidth={420} minRightWidth={320} maxRightWidth={800} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
-        <div style={{paddingRight:16,minWidth:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
-            <div style={{display:"flex",gap:8}}>
+      <div style={{height:"calc(100vh - 100px)",display:"flex",flexDirection:"column",minHeight:0}}>
+        <div style={{flex:1,minHeight:0,display:"flex"}}>
+        <ResizableSplit defaultRightWidth={640} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
+          <div style={{paddingRight:16,minWidth:0,height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexShrink:0}}>
+              <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
               <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:busy?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center"}}>
                 <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload
                 <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple disabled={busy} style={{display:"none"}} onChange={e=>{Array.from(e.target.files||[]).forEach(f=>addFile(f));e.target.value="";}}/>
               </label>
-              <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            </div>
+            <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":"Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly."}</p>
+
+            <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+              <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
+              {allFolders.map(name=>(
+                <div key={name} style={{position:"relative",display:"flex",alignItems:"center"}}>
+                  <button onClick={()=>setFolderFilter(name)} onDoubleClick={()=>name!=="General"&&renameFolder(name)} title={name!=="General"?"Double-click to rename":undefined} style={{background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+                    <i className="ti ti-folder" style={{fontSize:12}}/>{name}
+                  </button>
+                  {name!=="General"&&folderFilter===name&&(
+                    <button onClick={()=>deleteFolder(name)} title="Delete empty folder" style={{background:"none",border:"none",color:folderFilter===name?"#fff":T.muted,cursor:"pointer",fontSize:11,marginLeft:2}}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button onClick={createFolder} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New folder</button>
+            </div>
+
+            {/* Search, filter, deleted-toggle and selection actions all live in
+                a single structured row — search takes the remaining space,
+                everything else sits fixed-width to its right. */}
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,flexShrink:0}}>
+              <div style={{position:"relative",flex:1,minWidth:120}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
+                <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
+              </div>
+              <div style={{position:"relative",flexShrink:0}}>
+                <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"9px 14px",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
+                  <i className="ti ti-filter" style={{fontSize:13}}/>Filter{typeFilter&&` (1)`}
+                </button>
+                {filterOpen&&(<>
+                  <div onClick={()=>setFilterOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+                  <div style={{position:"absolute",right:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,minWidth:180,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6,padding:"0 4px"}}>File type</div>
+                    {[["","All files"],["image","Images only"],["pdf","Documents only"]].map(([id,label])=>(
+                      <div key={id} onClick={()=>{setTypeFilter(id);setFilterOpen(false);}} style={{padding:"8px 10px",fontSize:12,cursor:"pointer",borderRadius:7,background:typeFilter===id?T.accentLight:"transparent",color:typeFilter===id?T.accent:T.text,fontWeight:typeFilter===id?700:400}}>{label}</div>
+                    ))}
+                  </div>
+                </>)}
+              </div>
+              <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",flexShrink:0,background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <i className="ti ti-trash" style={{fontSize:15}}/>
                 {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}
               </button>
-            </div>
-          </div>
-          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":"Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly."}</p>
-
-          <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-            <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
-            {allFolders.map(name=>(
-              <div key={name} style={{position:"relative",display:"flex",alignItems:"center"}}>
-                <button onClick={()=>setFolderFilter(name)} onDoubleClick={()=>name!=="General"&&renameFolder(name)} title={name!=="General"?"Double-click to rename":undefined} style={{background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
-                  <i className="ti ti-folder" style={{fontSize:12}}/>{name}
-                </button>
-                {name!=="General"&&folderFilter===name&&(
-                  <button onClick={()=>deleteFolder(name)} title="Delete empty folder" style={{background:"none",border:"none",color:folderFilter===name?"#fff":T.muted,cursor:"pointer",fontSize:11,marginLeft:2}}>✕</button>
-                )}
-              </div>
-            ))}
-            <button onClick={createFolder} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New folder</button>
-          </div>
-
-          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
-            <div style={{position:"relative",flex:1}}>
-              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
-              <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
-            </div>
-            <div style={{position:"relative"}}>
-              <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"9px 14px",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:12,fontWeight:600}}>
-                <i className="ti ti-filter" style={{fontSize:13}}/>Filter{typeFilter&&` (1)`}
-              </button>
-              {filterOpen&&(<>
-                <div onClick={()=>setFilterOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-                <div style={{position:"absolute",right:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,minWidth:180,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
-                  <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:6,padding:"0 4px"}}>File type</div>
-                  {[["","All files"],["image","Images only"],["pdf","Documents only"]].map(([id,label])=>(
-                    <div key={id} onClick={()=>{setTypeFilter(id);setFilterOpen(false);}} style={{padding:"8px 10px",fontSize:12,cursor:"pointer",borderRadius:7,background:typeFilter===id?T.accentLight:"transparent",color:typeFilter===id?T.accent:T.text,fontWeight:typeFilter===id?700:400}}>{label}</div>
-                  ))}
+              {selected.length>0&&viewMode==="active"&&(
+                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                  <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
+                  <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
+                  {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
+                  <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Move</button>
+                  <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
                 </div>
-              </>)}
-            </div>
-            {selected.length>0&&viewMode==="active"&&(
-              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
-                <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
-                {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
-                <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Move</button>
-                <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
-              </div>
-            )}
-            {selected.length>0&&viewMode==="deleted"&&(
-              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
-                <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
-              </div>
-            )}
-          </div>
-
-          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-            {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>{viewMode==="deleted"?"No deleted files.":"No files yet."}</div>}
-            {filtered.map((f,i)=>{
-              const isFocused=previewFile&&previewFile.id===f.id;
-              return(
-                <div key={f.id} onClick={()=>setPreviewFile(f)} onMouseEnter={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
-                  <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
-                  <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
-                    {editingFileId===f.id?(
-                      <input
-                        autoFocus
-                        value={editingFileName}
-                        onClick={e=>e.stopPropagation()}
-                        onChange={e=>setEditingFileName(e.target.value)}
-                        onBlur={commitInlineRename}
-                        onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingFileId(null);}}
-                        style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
-                      />
-                    ):(
-                      <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-                    )}
-                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
-                  </div>
-                  <Menu3 items={viewMode==="deleted"?[
-                    {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
-                    {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
-                  ]:[
-                    {label:"Rename",action:()=>renameFile(f.id)},
-                    {label:"Move to folder…",action:()=>moveFile(f.id)},
-                    {label:"Copy",action:()=>copyFile(f.id)},
-                    {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
-                    {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
-                  ]}/>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )} right={(
-        <div style={{background:T.bg,borderRadius:12,padding:16,position:"sticky",top:16}}>
-          {previewFile?(
-            <>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <span style={{fontSize:12,color:T.sub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</span>
-                <button onClick={()=>renameFile(previewFile.id)} title="Rename" style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13}}>✏️</button>
-              </div>
-              <div style={{background:"#fff",borderRadius:8,height:"calc(100vh - 220px)",minHeight:420,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,overflow:"hidden"}}>
-                <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
-              </div>
-              {viewMode==="deleted"?(
-                <button onClick={()=>restoreFile(previewFile.id)} style={{width:"100%",marginTop:10,background:T.greenBg,color:T.green,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Restore</button>
-              ):(
-                <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",marginTop:10,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
               )}
-            </>
-          ):(
-            <div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
-          )}
+              {selected.length>0&&viewMode==="deleted"&&(
+                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                  <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
+                  <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
+                </div>
+              )}
+            </div>
+
+            <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",flexShrink:0}}>
+              {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>{viewMode==="deleted"?"No deleted files.":"No files yet."}</div>}
+              {filtered.map((f,i)=>{
+                const isFocused=previewFile&&previewFile.id===f.id;
+                return(
+                  <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
+                    <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
+                    <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
+                      {editingFileId===f.id?(
+                        <input
+                          autoFocus
+                          value={editingFileName}
+                          onClick={e=>e.stopPropagation()}
+                          onChange={e=>setEditingFileName(e.target.value)}
+                          onBlur={commitInlineRename}
+                          onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingFileId(null);}}
+                          style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
+                        />
+                      ):(
+                        <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                      )}
+                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+                    </div>
+                    <Menu3 items={viewMode==="deleted"?[
+                      {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
+                      {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
+                    ]:[
+                      {label:"Rename",action:()=>renameFile(f.id)},
+                      {label:"Move to folder…",action:()=>moveFile(f.id)},
+                      {label:"Copy",action:()=>copyFile(f.id)},
+                      {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
+                      {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
+                    ]}/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )} right={(
+          <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#fff",borderLeft:`1px solid ${T.border}`}}>
+            {previewFile?(
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,flexShrink:0,gap:8}}>
+                  {editingFileId===previewFile.id?(
+                    <input
+                      autoFocus
+                      value={editingFileName}
+                      onChange={e=>setEditingFileName(e.target.value)}
+                      onBlur={commitInlineRename}
+                      onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingFileId(null);}}
+                      style={{fontSize:13,fontWeight:700,color:T.text,flex:1,minWidth:0,border:`1px solid ${T.accent}`,borderRadius:6,padding:"3px 7px",fontFamily:"inherit",background:"#fff"}}
+                    />
+                  ):(
+                    <span onDoubleClick={()=>startInlineRename(previewFile)} title="Double-click to rename" style={{fontSize:13,color:T.text,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",flex:1,minWidth:0}}>{previewFile.name}</span>
+                  )}
+                </div>
+                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",background:"#fafafa"}}>
+                  <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%"}}/>
+                </div>
+                <div style={{padding:12,flexShrink:0,borderTop:`1px solid ${T.border}`}}>
+                  {viewMode==="deleted"?(
+                    <button onClick={()=>restoreFile(previewFile.id)} style={{width:"100%",background:T.greenBg,color:T.green,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Restore</button>
+                  ):(
+                    <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
+                  )}
+                </div>
+              </>
+            ):(
+              <div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"60px 10px"}}>Select a file to preview it here.</div>
+            )}
+          </div>
+        )}/>
         </div>
-      )}/>
+      </div>
     );
   }
 
@@ -15913,15 +16210,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             <div style={{fontSize:8,color:T.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Accountants</div>
           </div>
         </div>
-        <div onClick={()=>setTab("CompanyInfo")} title="Company information" style={{display:"flex",alignItems:"center",gap:6,background:T.bg,borderRadius:20,padding:"4px 10px 4px 6px",cursor:"pointer",flexShrink:0,border:`1px solid ${T.border}`}}>
-          <div style={{width:18,height:18,borderRadius:5,background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>RD</div>
-          <span style={{fontSize:11,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>Redrock Danria</span>
-          <span style={{fontSize:8,color:T.sub}}>▾</span>
-        </div>
         <div style={{position:"relative"}}>
           <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
             <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
             <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"Redrock Danria":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
+            {viewingUserId===user.id&&(
+              <span onClick={e=>{e.stopPropagation();setTab("CompanyInfo");}} title="Edit company information" style={{color:T.sub,fontSize:11,marginLeft:2,display:"flex",alignItems:"center"}}><i className="ti ti-settings" style={{fontSize:12}}/></span>
+            )}
             <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
           </div>
           {clientSwitcherOpen&&(<>
@@ -16274,7 +16569,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {registrationQueue?(
-          <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} onDone={()=>setRegistrationQueue(null)}/>
+          <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} renameInboxFileEntry={renameInboxFileEntry} onDone={()=>setRegistrationQueue(null)}/>
         ):ledgerAcc?(
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)}/>
         ):(<>
