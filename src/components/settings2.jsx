@@ -1613,6 +1613,15 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
     .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()))
     .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
     .filter(f=>!folderFilter||(f.folder||"General")===folderFilter);
+  // Default to previewing the first file in the current list — an empty
+  // preview pane on open just wastes a click most of the time. Re-syncs
+  // whenever the visible list changes (filters, folder switch, deletions)
+  // as long as the person hasn't deliberately picked something else that's
+  // still in view.
+  useEffect(()=>{
+    if(previewFile&&filtered.some(f=>f.id===previewFile.id))return;
+    setPreviewFile(filtered[0]||null);
+  },[filtered.map(f=>f.id).join(",")]);
   const activeCount=files.filter(f=>!f.deletedAt).length;
   const deletedCount=files.filter(f=>!!f.deletedAt).length;
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
@@ -1655,7 +1664,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                 <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple disabled={busy} style={{display:"none"}} onChange={e=>{Array.from(e.target.files||[]).forEach(f=>addFile(f));e.target.value="";}}/>
               </label>
             </div>
-            <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":"Drag and drop files here, or click Upload to browse — no extra menu, it opens your file picker directly."}</p>
+            <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":""}</p>
 
             <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
               <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
@@ -1672,14 +1681,33 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               <button onClick={createFolder} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New folder</button>
             </div>
 
-            {/* Search, filter, deleted-toggle and selection actions all live in
-                a single structured row — search takes the remaining space,
-                everything else sits fixed-width to its right. */}
+            {/* A select-all checkbox is always visible on the left. When
+                nothing's selected, the search box fills the row. Once
+                something's selected, the search box is replaced by the
+                selection count + actions — filter and deleted-toggle stay
+                put on the right either way. */}
             <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,flexShrink:0}}>
-              <div style={{position:"relative",flex:1,minWidth:120}}>
-                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
-                <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
-              </div>
+              <input type="checkbox" title={selected.length&&selected.length===filtered.length?"Deselect all":"Select all"} checked={filtered.length>0&&selected.length===filtered.length} onChange={()=>setSelected(s=>s.length===filtered.length?[]:filtered.map(f=>f.id))} style={{width:16,height:16,cursor:filtered.length?"pointer":"default",accentColor:T.accent,flexShrink:0}} disabled={!filtered.length}/>
+              {selected.length>0?(
+                <div style={{display:"flex",gap:8,alignItems:"center",flex:1,minWidth:0}}>
+                  <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
+                  {viewMode==="active"?(<>
+                    <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
+                    <Menu3 items={[
+                      ...(selectedImageIds.length>=2?[{label:"Merge",action:mergeSelected}]:[]),
+                      {label:"Move to folder…",action:moveSelected},
+                      {label:"Delete",color:T.red,action:deleteSelected},
+                    ]}/>
+                  </>):(
+                    <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
+                  )}
+                </div>
+              ):(
+                <div style={{position:"relative",flex:1,minWidth:120}}>
+                  <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
+                  <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
+                </div>
+              )}
               <div style={{position:"relative",flexShrink:0}}>
                 <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"9px 14px",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
                   <i className="ti ti-filter" style={{fontSize:13}}/>Filter{typeFilter&&` (1)`}
@@ -1698,21 +1726,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                 <i className="ti ti-trash" style={{fontSize:15}}/>
                 {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}
               </button>
-              {selected.length>0&&viewMode==="active"&&(
-                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                  <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
-                  <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
-                  {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Merge</button>}
-                  <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>Move</button>
-                  <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.red}}>Delete</button>
-                </div>
-              )}
-              {selected.length>0&&viewMode==="deleted"&&(
-                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                  <span style={{fontSize:12,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{selected.length} selected</span>
-                  <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
-                </div>
-              )}
             </div>
 
             <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",flexShrink:0}}>
@@ -1771,15 +1784,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                     <span onDoubleClick={()=>startInlineRename(previewFile)} title="Double-click to rename" style={{fontSize:13,color:T.text,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",flex:1,minWidth:0}}>{previewFile.name}</span>
                   )}
                 </div>
-                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",background:"#fafafa"}}>
+                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"flex-end",overflow:"hidden",background:"#fafafa"}}>
                   <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%"}}/>
-                </div>
-                <div style={{padding:12,flexShrink:0,borderTop:`1px solid ${T.border}`}}>
-                  {viewMode==="deleted"?(
-                    <button onClick={()=>restoreFile(previewFile.id)} style={{width:"100%",background:T.greenBg,color:T.green,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Restore</button>
-                  ):(
-                    <button onClick={()=>registerEntry(previewFile.id)} style={{width:"100%",background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Register as entry</button>
-                  )}
                 </div>
               </>
             ):(

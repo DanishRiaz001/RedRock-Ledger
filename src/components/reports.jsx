@@ -3653,7 +3653,10 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
 }
 
 function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction}){
-  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
+  // "Bank" reconciliation only makes sense for accounts with a real external bank
+  // statement — cash-on-hand shares the 1900 series with real banks in the chart of
+  // accounts, but has no bank statement to reconcile against, so it's excluded here.
+  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"&&!/cash/i.test(a.name)),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
   const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[selectedLineIds,setSelectedLineIds]=useState(()=>new Set()); // right side, multi-select

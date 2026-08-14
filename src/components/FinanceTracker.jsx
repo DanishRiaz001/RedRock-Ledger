@@ -227,6 +227,12 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
   // ── Admin feature gate ── (uses global + per-user settings)
   const getFeature=(id)=>isFeatureOn(id,viewingUserId);
+  // VAT/MVA features are gated by country, not the admin feature-flag system —
+  // Norway keeps VAT fully on; Pakistan hides it until Pakistani tax rules
+  // are built. Uses the SAME `feat.x` mechanism as every other feature gate
+  // below, so nav filtering, tab routing, and the mobile "off" banner all
+  // just work without special-casing VAT anywhere else.
+  const isNorway=(companyProfile.country||"PK")==="NO";
   const feat={
     bank:getFeature("bank"),
     reskontro:getFeature("reskontro"),
@@ -238,6 +244,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
     cheque:getFeature("cheque"),
     tags:getFeature("tags"),
     calcAmount:getFeature("calcAmount"),
+    vat:isNorway,
   };
   // When "whose" is off for this user, every screen below simply sees an
   // empty money-source list — each already hides its own Whose UI whenever
@@ -256,7 +263,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
-  if(tab==="Settings"&&!isDesktop)return(<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>);
+  if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>);
@@ -600,9 +607,9 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"SalesPerCustomer",label:"Sales per customer"},
               {tab:"BalanceLists",label:"Balance lists"},
               {tab:"Budget",label:"Budget",featureKey:"budget"},
-              {tab:"VATReport",label:"VAT report"},
-              {tab:"VATTermin",label:"Mva-meldinger"},
-              {tab:"VATCodes",label:"VAT codes"},
+              {tab:"VATReport",label:"VAT report",featureKey:"vat"},
+              {tab:"VATTermin",label:"Mva-meldinger",featureKey:"vat"},
+              {tab:"VATCodes",label:"VAT codes",featureKey:"vat"},
               {tab:"Accounts",label:"Chart of accounts"},
               {tab:"Reports",label:"Analytics",featureKey:"reports"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
@@ -872,7 +879,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="VoucherSettings"&&<VoucherSettingsScreen companyProfile={companyProfile}/>}
         {tab==="InvoiceSettings"&&<InvoiceSettingsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
         {tab==="AccountingSettings"&&<AccountingSettingsScreen onNavigate={setTab}/>}
-        {tab==="VATCodes"&&<div style={{maxWidth:900}}><VATCodesScreen accounts={accounts}/></div>}
+        {tab==="VATCodes"&&<div style={{maxWidth:900}}>{feat.vat?<VATCodesScreen accounts={accounts}/>:<DisabledScreen title="VAT codes" onBack={()=>setTab("Dashboard")}/>}</div>}
         {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts}/>}
         {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
         {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}
@@ -913,12 +920,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="VATReport"&&(
           <div style={{maxWidth:1000}}>
-            <VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>
+            {feat.vat?<VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>:<DisabledScreen title="VAT report" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
 
         {tab==="VATTermin"&&(
-          vatTerminView
+          !feat.vat?<DisabledScreen title="Mva-meldinger" onBack={()=>setTab("Dashboard")}/>
+          :vatTerminView
             ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} detailModalProps={{
                 auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,tagTransaction,
                 fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
@@ -1041,7 +1049,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
           </div>
         )}
 
-        {tab==="Settings"&&<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
+        {tab==="Settings"&&(canWriteFull?<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted}}>Your access level for these books doesn't include Settings.</div></div>)}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 

@@ -747,6 +747,14 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
           </div>
 
           <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Country</div>
+            <select value={form.country||"PK"} onChange={e=>{const country=e.target.value;setForm(p=>({...p,country,currency:country==="NO"?"NOK":"PKR"}));}} style={inp}>
+              <option value="PK">Pakistan</option>
+              <option value="NO">Norway</option>
+            </select>
+            <div style={{fontSize:10,color:T.muted,marginTop:4}}>{form.country==="NO"?"VAT/MVA features are enabled.":"VAT features are hidden — Pakistani tax filing isn't built yet."}</div>
+          </div>
+          <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
             <input type="number" value={form.vatPct} onChange={e=>setForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>
           </div>
@@ -1454,18 +1462,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
             <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:40,textAlign:"center",flexShrink:0}}>{idx+1}/{queue.length}</span>
             <button onClick={()=>goto(idx+1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>›</button>
             <button onClick={()=>goto(queue.length-1)} disabled={idx===queue.length-1} style={{...navBtn,opacity:idx===queue.length-1?0.4:1}}>»</button>
-            {editingName?(
-              <input
-                autoFocus
-                value={nameDraft}
-                onChange={e=>setNameDraft(e.target.value)}
-                onBlur={commitNameEdit}
-                onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingName(false);}}
-                style={{fontSize:13,fontWeight:700,color:T.text,flex:1,minWidth:0,border:`1px solid ${T.accent}`,borderRadius:6,padding:"3px 7px",fontFamily:"inherit",background:"#fff",marginLeft:4}}
-              />
-            ):(
-              <span onDoubleClick={startNameEdit} title="Double-click to rename" style={{fontSize:13,fontWeight:700,color:T.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",marginLeft:4}}>{currentFile.name}</span>
-            )}
+            <div style={{flex:1}}/>
             {alreadyPosted&&<span style={{fontSize:11,color:T.green,fontWeight:700,flexShrink:0}}>✓ Posted</span>}
           </div>
           <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
