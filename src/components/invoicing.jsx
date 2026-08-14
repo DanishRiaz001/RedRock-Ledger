@@ -1635,63 +1635,81 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   return(
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,alignItems:"start"}}>
       <div>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>New invoice</h1>
-        <p style={{fontSize:12,color:T.muted,margin:"0 0 20px"}}>Invoice no. {nextInvoiceNo} · posts to Receivable (1500) automatically</p>
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 3px"}}>New invoice</h1>
+        <p style={{fontSize:11,color:T.muted,margin:"0 0 14px"}}>Invoice no. {nextInvoiceNo} · posts to Receivable (1500) automatically</p>
 
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-            <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{...inp}}>
-              {!customers.length&&<option value="">No customers yet</option>}
-              {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?" ✉":""}</option>)}
-            </select>
-            {contact&&(contact.email?<div style={{fontSize:11,color:T.green,marginTop:4}}>✉ {contact.email} — can be emailed after posting</div>:<div style={{fontSize:11,color:T.muted,marginTop:4}}>No email on file — add one in Customers to enable emailing this invoice</div>)}
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx series)</div>
-            <select value={saleAccount} onChange={e=>setSaleAccount(e.target.value)} style={{...inp}}>
-              {!saleAccounts.length&&<option value="">No sale accounts yet</option>}
-              {saleAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
-              <div style={{fontSize:11,color:T.sub,fontWeight:600}}>Product</div>
-              {onManageProducts&&<button onClick={onManageProducts} style={{background:"none",border:"none",color:T.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Add / edit products</button>}
-            </div>
-            <select value={productId} onChange={e=>setProductId(e.target.value)} style={{...inp}}>
-              <option value="">No product — set price manually</option>
-              {productsForAccount.map(p=><option key={p.id} value={p.id}>{p.name} — {fmt(p.price)}</option>)}
-            </select>
-            {saleAccount&&!productsForAccount.length&&<div style={{fontSize:11,color:T.muted,marginTop:4}}>No products set up for this account yet.</div>}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
             <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From month</div>
-              <input type="month" value={periodFrom} onChange={e=>{setPeriodFrom(e.target.value);if(e.target.value>periodTo)setPeriodTo(e.target.value);}} style={{...inp}}/>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Customer</div>
+              <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
+                {!customers.length&&<option value="">No customers yet</option>}
+                {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?" ✉":""}</option>)}
+              </select>
             </div>
             <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To month</div>
-              <input type="month" value={periodTo} min={periodFrom} onChange={e=>setPeriodTo(e.target.value)} style={{...inp}}/>
-            </div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Monthly rate</div>
-            <input type="number" placeholder="0" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)} style={{...inp}}/>
-            {productId&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>Filled from the product's price — edit freely if this invoice needs a different rate.</div>}
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-            <input value={effectiveDesc} onChange={e=>{setDescription(e.target.value);setDescTouched(true);}} style={{...inp}}/>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Discount (optional)</div>
-              <input type="number" placeholder="0" value={discountValue} onChange={e=>setDiscountValue(e.target.value)} style={{...inp}}/>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
+              <FlexDateInput value={date} onChange={setDate} style={{}}/>
             </div>
             <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Discount type</div>
-              <select value={discountType} onChange={e=>setDiscountType(e.target.value)} style={{...inp}}>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Due date</div>
+              <FlexDateInput value={dueDate} onChange={setDueDate} style={{}}/>
+            </div>
+          </div>
+          {contact&&(contact.email?<div style={{fontSize:11,color:T.green,marginTop:-4}}>✉ {contact.email} — can be emailed after posting</div>:<div style={{fontSize:11,color:T.muted,marginTop:-4}}>No email on file — add one in Customers to enable emailing this invoice</div>)}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Sale account (3xxx series)</div>
+              <select value={saleAccount} onChange={e=>setSaleAccount(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
+                {!saleAccounts.length&&<option value="">No sale accounts yet</option>}
+                {saleAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+                <div style={{fontSize:10,color:T.sub,fontWeight:600}}>Product</div>
+                {onManageProducts&&<button onClick={onManageProducts} style={{background:"none",border:"none",color:T.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Add / edit</button>}
+              </div>
+              <select value={productId} onChange={e=>setProductId(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
+                <option value="">No product — set price manually</option>
+                {productsForAccount.map(p=><option key={p.id} value={p.id}>{p.name} — {fmt(p.price)}</option>)}
+              </select>
+            </div>
+          </div>
+          {saleAccount&&!productsForAccount.length&&<div style={{fontSize:11,color:T.muted,marginTop:-4}}>No products set up for this account yet.</div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>From month</div>
+              <input type="month" value={periodFrom} onChange={e=>{setPeriodFrom(e.target.value);if(e.target.value>periodTo)setPeriodTo(e.target.value);}} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>To month</div>
+              <input type="month" value={periodTo} min={periodFrom} onChange={e=>setPeriodTo(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Monthly rate</div>
+              <input type="number" placeholder="0" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>VAT %</div>
+              <input type="number" value={vatPct} onChange={e=>setVatPct(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+            </div>
+          </div>
+          {productId&&<div style={{fontSize:10,color:T.muted,marginTop:-4}}>Rate filled from the product's price — edit freely for a one-off override.</div>}
+          <div>
+            <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Description</div>
+            <input value={effectiveDesc} onChange={e=>{setDescription(e.target.value);setDescTouched(true);}} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Discount (optional)</div>
+              <input type="number" placeholder="0" value={discountValue} onChange={e=>setDiscountValue(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Discount type</div>
+              <select value={discountType} onChange={e=>setDiscountType(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
                 <option value="pct">Percent (%)</option>
                 <option value="fixed">Fixed amount</option>
               </select>
@@ -1702,21 +1720,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
               <span>Discount applied: −{fmt(discountAmount)}</span><span>Subtotal after discount: {fmt(subtotal)}</span>
             </div>
           )}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
-              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
-              <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
-              <input type="number" value={vatPct} onChange={e=>setVatPct(e.target.value)} style={{...inp}}/>
-            </div>
-          </div>
-          <button onClick={handleCreate} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:14,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Creating…":`Create invoice · ${fmt(total)}`}</button>
+          <button onClick={handleCreate} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{saving?"Creating…":`Create invoice · ${fmt(total)}`}</button>
         </div>
       </div>
 
