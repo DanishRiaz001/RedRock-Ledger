@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T, inp } from "../lib/theme.js";
-import { getAnthropicKey, setAnthropicKey } from "../lib/utils.js";
+import { getAnthropicKey, setAnthropicKey, fmt } from "../lib/utils.js";
+import { AccDrop, FlexDateInput } from "./ledger.jsx";
 
 function CustomerImportScreen({contacts,setContacts}){
   const[importType,setImportType]=useState(null); // null | "customer" | "supplier"
@@ -197,9 +198,286 @@ function AccountingSettingsScreen({onNavigate}){
   );
 }
 
+// Opening balance import — for a business switching from a different
+// accounting system, this posts a trial balance (from that old system) as
+// the starting point here, so every account's real ledger balance matches
+// exactly what it was on day one. Accepts CSV/Excel with account code +
+// debit/credit columns (any of several common header spellings), or manual
+// entry for a handful of accounts. Every row posts as its own transaction
+// against a single "Opening Balance Equity" suspense account (2960,
+// auto-created) — the same proven pattern already used by the SAF-T
+// importer. Since a genuine trial balance always has total debits = total
+// credits, once every row is posted the suspense account nets to exactly
+// zero on its own; the running "difference" shown here is what validates
+// that before anything is posted, catching typos or an incomplete export.
+function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onSave,onBack}){
+  const OPENING_BALANCE_CODE="2960";
+  const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:""});
+  const[rows,setRows]=useState([newRow()]);
+  const[importing,setImporting]=useState(false);
+  const[importError,setImportError]=useState("");
+  const[posting,setPosting]=useState(false);
+  const[posted,setPosted]=useState(false);
+  const[asOfDate,setAsOfDate]=useState(new Date().toISOString().slice(0,10));
+  const[step,setStep]=useState("balances"); // "balances" | "openItems" | "done"
+  // Per-contact open-item breakdown for AR (1500) / AP (2400) — matches how
+  // real systems handle this: the trial balance gives one lump AR/AP figure,
+  // but the ledger needs it split across actual customers/suppliers to be
+  // useful (aged receivables, statements, etc). Only shown if 1500 or 2400
+  // actually has a balance in what was just imported.
+  const[custOpenItems,setCustOpenItems]=useState([]);
+  const[supOpenItems,setSupOpenItems]=useState([]);
+
+  const updateRow=(rid,updates)=>setRows(rows.map(r=>r.rid===rid?{...r,...updates}:r));
+  const addRow=()=>setRows([...rows,newRow()]);
+  const removeRow=rid=>setRows(rows.length>1?rows.filter(r=>r.rid!==rid):rows);
+
+  const totalDebit=rows.reduce((s,r)=>s+(parseFloat(r.debit)||0),0);
+  const totalCredit=rows.reduce((s,r)=>s+(parseFloat(r.credit)||0),0);
+  const difference=Math.round((totalDebit-totalCredit)*100)/100;
+  const balanced=Math.abs(difference)<0.01&&rows.some(r=>r.accountCode&&(parseFloat(r.debit)||parseFloat(r.credit)));
+
+  const doImport=async(file)=>{
+    setImportError("");setImporting(true);
+    try{
+      const isCsv=/\.csv$/i.test(file.name);
+      const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+      const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const newRows=[];
+      json.forEach(row=>{
+        const code=String(row["Account"]||row["Account Code"]||row["Konto"]||row["Kontonr"]||row["Account no"]||"").trim();
+        if(!code)return;
+        // Accept either separate Debit/Credit columns, or a single signed
+        // "Balance"/"Amount" column (positive = debit, negative = credit) —
+        // covers the two most common trial-balance export shapes.
+        let debit=parseFloat(row["Debit"]||row["Debet"]||0)||0;
+        let credit=parseFloat(row["Credit"]||row["Kredit"]||0)||0;
+        if(!debit&&!credit){
+          const bal=parseFloat(row["Balance"]||row["Amount"]||row["Sum"]||0)||0;
+          if(bal>0)debit=bal;else if(bal<0)credit=-bal;
+        }
+        if(!debit&&!credit)return;
+        newRows.push({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:code,debit:debit||"",credit:credit||""});
+      });
+      if(!newRows.length){setImportError("No usable rows found. Expected columns like Account/Konto plus Debit/Credit or a single signed Balance column.");setImporting(false);return;}
+      setRows(newRows);
+    }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+    setImporting(false);
+  };
+
+  const ensureOpeningBalanceAccount=async()=>{
+    if(accounts.some(a=>a.code===OPENING_BALANCE_CODE))return;
+    await onSave([...accounts,{code:OPENING_BALANCE_CODE,name:"Opening balance equity",matchable:false}]);
+  };
+
+  const goToOpenItems=()=>{
+    const arRow=rows.find(r=>r.accountCode==="1500");
+    const apRow=rows.find(r=>r.accountCode==="2400");
+    const needsAR=arRow&&(parseFloat(arRow.debit)||0)>0;
+    const needsAP=apRow&&(parseFloat(apRow.credit)||0)>0;
+    if(needsAR)setCustOpenItems([{rid:Date.now()+"a",contactId:"",amount:""}]);
+    if(needsAP)setSupOpenItems([{rid:Date.now()+"b",contactId:"",amount:""}]);
+    if(needsAR||needsAP)setStep("openItems");
+    else doPost();
+  };
+
+  const doPost=async()=>{
+    setPosting(true);
+    await ensureOpeningBalanceAccount();
+    for(const r of rows){
+      const debit=parseFloat(r.debit)||0;
+      const credit=parseFloat(r.credit)||0;
+      if(!r.accountCode||(!debit&&!credit))continue;
+      if(debit>0)await addTransaction({date:asOfDate,debitCode:r.accountCode,creditCode:OPENING_BALANCE_CODE,description:"Opening balance import",amount:debit});
+      else if(credit>0)await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:r.accountCode,description:"Opening balance import",amount:credit});
+    }
+    for(const oi of custOpenItems){
+      const amt=parseFloat(oi.amount)||0;
+      if(!oi.contactId||!amt)continue;
+      await addTransaction({date:asOfDate,debitCode:"1500",creditCode:OPENING_BALANCE_CODE,description:"Opening balance — customer open item",amount:amt,contactId:oi.contactId});
+    }
+    for(const oi of supOpenItems){
+      const amt=parseFloat(oi.amount)||0;
+      if(!oi.contactId||!amt)continue;
+      await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:"2400",description:"Opening balance — supplier open item",amount:amt,contactId:oi.contactId});
+    }
+    setPosting(false);setPosted(true);setStep("done");
+  };
+
+  const customers=contacts.filter(c=>c.type==="customer");
+  const suppliers=contacts.filter(c=>c.type==="supplier");
+
+  if(step==="done"){
+    return(
+      <div style={{maxWidth:700}}>
+        <div style={{background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:14,padding:24,textAlign:"center"}}>
+          <i className="ti ti-circle-check" style={{fontSize:36,color:T.green,marginBottom:10,display:"block"}}/>
+          <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Opening balance posted</div>
+          <div style={{fontSize:13,color:T.sub}}>Every account now carries its imported balance as of {asOfDate}. Check Trial Balance to confirm it matches your old system exactly.</div>
+        </div>
+        <button onClick={onBack} style={{marginTop:16,background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Back to settings</button>
+      </div>
+    );
+  }
+
+  if(step==="openItems"){
+    return(
+      <div style={{maxWidth:900}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 6px"}}>Break down open balances</h1>
+        <p style={{fontSize:12,color:T.muted,marginBottom:20}}>Your imported trial balance has a lump Accounts Receivable/Payable figure — split it across the actual customers/suppliers who owe or are owed money, so aged reports work correctly from day one.</p>
+        {custOpenItems.length>0&&(
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Customer open items (Accounts Receivable)</div>
+            {custOpenItems.map(oi=>(
+              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6}}>
+                <select value={oi.contactId} onChange={e=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:e.target.value}:x))} style={{...inp}}>
+                  <option value="">— Select customer —</option>
+                  {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
+                <button onClick={()=>setCustOpenItems(custOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+              </div>
+            ))}
+            <button onClick={()=>setCustOpenItems([...custOpenItems,{rid:Date.now()+Math.random(),contactId:"",amount:""}])} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add customer</button>
+          </div>
+        )}
+        {supOpenItems.length>0&&(
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Supplier open items (Accounts Payable)</div>
+            {supOpenItems.map(oi=>(
+              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6}}>
+                <select value={oi.contactId} onChange={e=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:e.target.value}:x))} style={{...inp}}>
+                  <option value="">— Select supplier —</option>
+                  {suppliers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
+                <button onClick={()=>setSupOpenItems(supOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+              </div>
+            ))}
+            <button onClick={()=>setSupOpenItems([...supOpenItems,{rid:Date.now()+Math.random(),contactId:"",amount:""}])} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add supplier</button>
+          </div>
+        )}
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setStep("balances")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",color:T.sub}}>‹ Back</button>
+          <button onClick={doPost} disabled={posting} style={{background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:posting?"wait":"pointer",fontFamily:"inherit"}}>{posting?"Posting…":"Post opening balance"}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Opening balance</h1>
+        <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+      </div>
+      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>Switching from another system? Import its trial balance here so every account starts with the correct real balance — not just a fresh, empty ledger.</p>
+
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+        <div>
+          <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>As-of date</div>
+          <FlexDateInput value={asOfDate} onChange={setAsOfDate}/>
+        </div>
+        <label style={{marginTop:17,background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+          <i className="ti ti-upload" style={{fontSize:14}}/>{importing?"Reading…":"Import CSV / Excel"}
+          <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])doImport(e.target.files[0]);e.target.value="";}}/>
+        </label>
+      </div>
+      {importError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"9px 12px",fontSize:12,marginBottom:14}}>{importError}</div>}
+      <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"9px 12px",marginBottom:16}}>
+        Expects columns like <strong>Account</strong> (or Konto) plus either <strong>Debit</strong>/<strong>Credit</strong> columns, or a single signed <strong>Balance</strong> column. Or just type rows in manually below.
+      </div>
+
+      <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1fr 40px",gap:8,padding:"8px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+          {["Account","Debit","Credit",""].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+        </div>
+        {rows.map((r,i)=>{
+          const matched=accounts.find(a=>a.code===r.accountCode);
+          return(
+            <div key={r.rid} style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1fr 40px",gap:8,padding:"7px 10px",alignItems:"center",borderBottom:i<rows.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
+              <AccDrop value={r.accountCode} onChange={v=>updateRow(r.rid,{accountCode:v})} accounts={accounts}/>
+              <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+              <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+              <button onClick={()=>removeRow(r.rid)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+              {r.accountCode&&!matched&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.orange,marginTop:-3}}>Account {r.accountCode} doesn't exist in your chart of accounts yet — add it first, or pick an existing one.</div>}
+            </div>
+          );
+        })}
+        <button onClick={addRow} style={{width:"100%",background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"9px"}}>+ Add row</button>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16,background:Math.abs(difference)<0.01?T.greenBg:T.redLight,borderRadius:10,padding:"12px 16px"}}>
+        <div style={{fontSize:12,color:T.sub}}>Debit: <strong>{fmt(totalDebit)}</strong> · Credit: <strong>{fmt(totalCredit)}</strong></div>
+        <div style={{fontSize:13,fontWeight:800,color:Math.abs(difference)<0.01?T.green:T.red}}>
+          {Math.abs(difference)<0.01?"✓ Balanced":`Difference: ${fmt(difference)}`}
+        </div>
+      </div>
+      {Math.abs(difference)>=0.01&&<div style={{fontSize:11,color:T.muted,marginTop:6}}>A real trial balance always has debits = credits — if this isn't zero, double-check for a missing row or typo before posting.</div>}
+
+      <button onClick={goToOpenItems} disabled={!balanced||posting} style={{marginTop:16,background:balanced?T.accent:T.border,color:balanced?"#fff":T.muted,border:"none",borderRadius:10,padding:"12px 24px",fontWeight:700,fontSize:14,cursor:balanced?"pointer":"default",fontFamily:"inherit"}}>
+        {posting?"Posting…":"Continue"}
+      </button>
+    </div>
+  );
+}
+
+// Project/department tracking — toggle it on, manage the list. Deliberately
+// much simpler than MoneySourcesPanel (no balances/matching) since a
+// project here is just a tag transactions carry, used to filter Resultat.
+function ProjectTrackingScreen({companyProfile,saveCompanyProfile,projects,saveProjects,onBack}){
+  const[newName,setNewName]=useState("");
+  const addProject=()=>{
+    if(!newName.trim())return;
+    saveProjects([...projects,{id:"proj_"+Date.now().toString(36),name:newName.trim(),inactive:false}]);
+    setNewName("");
+  };
+  const toggleInactive=id=>saveProjects(projects.map(p=>p.id===id?{...p,inactive:!p.inactive}:p));
+  const removeProject=id=>{if(confirm("Remove this project? Transactions already tagged with it keep the tag, but it won't be selectable for new ones."))saveProjects(projects.filter(p=>p.id!==id));};
+
+  return(
+    <div style={{maxWidth:700}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Project tracking</h1>
+        <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+      </div>
+      <p style={{fontSize:12,color:T.muted,marginBottom:16}}>Tag entries by project or department, then filter your Income Statement to see results for just one of them.</p>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:13,fontWeight:700,color:T.text}}>Show project field in entries</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:2}}>When on, New Entry and Register Voucher show a Project selector on every line.</div>
+        </div>
+        <label style={{position:"relative",display:"inline-block",width:44,height:24,flexShrink:0}}>
+          <input type="checkbox" checked={!!companyProfile.trackProjects} onChange={e=>saveCompanyProfile({...companyProfile,trackProjects:e.target.checked})} style={{opacity:0,width:0,height:0}}/>
+          <span style={{position:"absolute",inset:0,background:companyProfile.trackProjects?T.accent:T.border,borderRadius:24,cursor:"pointer",transition:"background .15s"}}/>
+          <span style={{position:"absolute",top:3,left:companyProfile.trackProjects?23:3,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+        </label>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <input placeholder="New project or department name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addProject()} style={{...inp,flex:1}}/>
+        <button onClick={addProject} style={{background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"0 18px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
+      </div>
+
+      <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        {!projects.length&&<div style={{padding:20,textAlign:"center",fontSize:12,color:T.muted}}>No projects yet — add one above.</div>}
+        {projects.map((p,i)=>(
+          <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:i<projects.length-1?`1px solid ${T.border}`:"none",opacity:p.inactive?0.5:1}}>
+            <span style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>{p.name}{p.inactive&&" (inactive)"}</span>
+            <button onClick={()=>toggleInactive(p.id)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>{p.inactive?"Reactivate":"Deactivate"}</button>
+            <button onClick={()=>removeProject(p.id)} style={{background:"none",border:"none",color:T.red,cursor:"pointer",padding:4}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // VAT codes reference — the real Norwegian mva-koder (Skatteetaten/Tripletex
 // standard), each with its rate, direction, and which GL account its VAT
 // amount settles to. Pulled from an actual verified company setup, not
 // guessed — see the account-linking note per code.
 
-export { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen };
+export { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen };

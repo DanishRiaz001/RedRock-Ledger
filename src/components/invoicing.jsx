@@ -1060,6 +1060,25 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
     setIncomeLines([...incomeLines,{...src,lid:Date.now()+Math.random().toString(36).slice(2)}]);
   };
   const removeIncomeLine=(lid)=>{if(incomeLines.length>1)setIncomeLines(incomeLines.filter(l=>l.lid!==lid));};
+
+  // General/receipt voucher — same multi-line pattern as incomeLines, but
+  // each line carries its OWN debit account, credit account, and a VAT code
+  // for each side independently (an expense debit and an income credit can
+  // have genuinely different VAT treatment). Every line is a complete,
+  // self-balanced Dr/Cr pair — multiple lines just mean multiple pairs
+  // posted together and linked by one groupRef, same as incomeLines does.
+  const newGeneralLine=()=>({lid:Date.now()+Math.random().toString(36).slice(2),description:"",debitCode:expenseAccounts[0]?expenseAccounts[0].code:"",debitVatCode:"0",creditCode:accounts[0]?accounts[0].code:"",creditVatCode:"0",amount:""});
+  const generalLines=form.generalLines||[newGeneralLine()];
+  const setGeneralLines=lines=>setForm({generalLines:lines});
+  const updateGeneralLine=(lid,updates)=>setGeneralLines(generalLines.map(l=>l.lid===lid?{...l,...updates}:l));
+  const addGeneralLine=()=>setGeneralLines([...generalLines,newGeneralLine()]);
+  const copyGeneralLine=(lid)=>{
+    const src=generalLines.find(l=>l.lid===lid);
+    if(!src)return;
+    setGeneralLines([...generalLines,{...src,lid:Date.now()+Math.random().toString(36).slice(2)}]);
+  };
+  const removeGeneralLine=(lid)=>{if(generalLines.length>1)setGeneralLines(generalLines.filter(l=>l.lid!==lid));};
+  const generalTotal=generalLines.reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
   // Per-line VAT split (excl./VAT/incl.), grouped by MVA code for the
   // breakdown table under the lines — same shape as the reference dialog.
   const incomeLineCalc=(l)=>{
@@ -1089,7 +1108,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   const netAmount=grossAmount-vatAmount;
   const valid=form.voucherType==="supplier"?(grossAmount>0&&form.expenseAccount&&form.supplierId)
     :form.voucherType==="income"?(incomeTotal>0&&incomeLines.every(l=>l.accountCode&&parseFloat(l.amount)>0)&&form.customerId)
-    :(grossAmount>0&&form.debitCode&&form.creditCode&&form.debitCode!==form.creditCode);
+    :generalLines.every(l=>l.debitCode&&l.creditCode&&l.debitCode!==l.creditCode&&parseFloat(l.amount)>0);
   const alreadyPosted=postedIds.includes(currentFileId);
 
   const goto=(newIdx)=>{if(newIdx>=0&&newIdx<queue.length)setIdx(newIdx);};
@@ -1115,12 +1134,20 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         const lineVc=findVatCode(l.vatCode,"output");
         await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:l.accountCode,description:desc,amount:gross,contactId:form.customerId,attachmentId:currentFileId,vatPct:lineVc?lineVc.rate:0,vatCode:l.vatCode,vatAmount:Math.round(vat*100)/100,currency:form.currency,groupRef});
       }
+    } else if(form.voucherType==="supplier"){
+      const desc=form.description||`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`;
+      await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100});
     } else {
-      const desc=form.description||(form.voucherType==="supplier"?`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`:"Receipt");
-      const txnForm=form.voucherType==="supplier"
-        ?{date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}
-        :{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:desc,amount:grossAmount,attachmentId:currentFileId};
-      await addTransaction(txnForm);
+      // General voucher — one ledger entry per line, sharing a groupRef
+      // when there's more than one, exactly like the income-lines path above.
+      const groupRef=generalLines.length>1?`grp-${Date.now()}`:null;
+      for(const l of generalLines){
+        const amt=parseFloat(l.amount)||0;
+        const debitVc=findVatCode(l.debitVatCode,"input");
+        const creditVc=findVatCode(l.creditVatCode,"output");
+        const desc=l.description||form.description||"Voucher entry";
+        await addTransaction({date:form.date,debitCode:l.debitCode,creditCode:l.creditCode,description:desc,amount:amt,attachmentId:currentFileId,vatCode:l.debitVatCode||l.creditVatCode,vatPct:debitVc?debitVc.rate:(creditVc?creditVc.rate:0),groupRef});
+      }
     }
     setPosting(false);
     // Remove it from the queue entirely — once it's posted there's nothing
@@ -1185,7 +1212,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   };
 
   return(
-    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
+    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",height:"calc(100vh - 140px)",marginRight:-32}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"16px 24px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Register voucher</h1>
         <div style={{display:"flex",gap:8}}>
@@ -1424,29 +1451,45 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                   <FlexDateInput value={form.date} onChange={v=>setForm({date:v})}/>
                 </div>
                 <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Voucher description (optional — falls back to each line's own)</div>
                   <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
-                  <select value={form.debitCode} onChange={e=>setForm({debitCode:e.target.value})} style={{...inp}}>
-                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  </select>
+
+              <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr 0.8fr 1fr 0.8fr 0.9fr 56px",gap:8,padding:"8px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+                  {["Description","Debit account","VAT (debit)","Credit account","VAT (credit)","Amount",""].map(h=>(
+                    <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
+                  ))}
                 </div>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Credit account</div>
-                  <select value={form.creditCode} onChange={e=>setForm({creditCode:e.target.value})} style={{...inp}}>
-                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
-                  <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
-                </div>
+                {generalLines.map((l,i)=>(
+                  <div key={l.lid} style={{display:"grid",gridTemplateColumns:"1.3fr 1fr 0.8fr 1fr 0.8fr 0.9fr 56px",gap:8,padding:"8px 10px",alignItems:"center",borderBottom:i<generalLines.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
+                    <input placeholder="Line description" value={l.description} onChange={e=>updateGeneralLine(l.lid,{description:e.target.value})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+                    <AccDrop value={l.debitCode} onChange={v=>updateGeneralLine(l.lid,{debitCode:v})} accounts={accounts}/>
+                    <select value={l.debitVatCode} onChange={e=>updateGeneralLine(l.lid,{debitVatCode:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px"}}>
+                      {vatCodeOptions("input").map(c=><option key={c.code} value={c.code}>{c.code}: {c.rate}%</option>)}
+                    </select>
+                    <AccDrop value={l.creditCode} onChange={v=>updateGeneralLine(l.lid,{creditCode:v})} accounts={accounts}/>
+                    <select value={l.creditVatCode} onChange={e=>updateGeneralLine(l.lid,{creditVatCode:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px"}}>
+                      {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: {c.rate}%</option>)}
+                    </select>
+                    <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                      <button onClick={()=>copyGeneralLine(l.lid)} title="Copy this line" style={{background:"none",border:"none",color:T.sub,cursor:"pointer",padding:4}}><i className="ti ti-copy" style={{fontSize:14}}/></button>
+                      <button onClick={()=>removeGeneralLine(l.lid)} disabled={generalLines.length<=1} title="Remove this line" style={{background:"none",border:"none",color:generalLines.length<=1?T.muted:T.red,cursor:generalLines.length<=1?"default":"pointer",padding:4,opacity:generalLines.length<=1?0.4:1}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+                    </div>
+                    {l.debitCode===l.creditCode&&l.debitCode&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.red,marginTop:-4}}>Debit and credit can't be the same account on this line.</div>}
+                  </div>
+                ))}
+                <button onClick={addGeneralLine} style={{width:"100%",background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"9px",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                  <i className="ti ti-plus" style={{fontSize:13}}/>Add line
+                </button>
               </div>
-              {form.debitCode===form.creditCode&&<div style={{fontSize:11,color:T.red}}>Debit and credit can't be the same account.</div>}
+
+              <div style={{display:"flex",justifyContent:"flex-end",gap:24,padding:"4px 4px 0",fontSize:12,color:T.sub}}>
+                <span>Lines: <strong style={{color:T.text}}>{generalLines.length}</strong></span>
+                <span>Total: <strong style={{color:T.text}}>{fmt(generalTotal)}</strong></span>
+              </div>
             </div>
           )}
 
@@ -2889,10 +2932,10 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:"",projectId:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -2973,6 +3016,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         sfFundId:form.sfFundId||null,
         groupRef,
         moneySourceId:form.moneySourceId||null,
+        projectId:form.projectId||null,
       });
     });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
@@ -3106,6 +3150,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{flex:"0 0 30%",minWidth:0}}/>
           <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inpSm,flex:"0 0 70%",minWidth:0}}/>
         </div>
+        {trackProjects&&(
+          <select value={form.projectId||""} onChange={e=>setForm(p=>({...p,projectId:e.target.value}))} style={{...inpSm}}>
+            <option value="">— No project —</option>
+            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
 
         {/* Debit (40%) / Credit (40%) / Amount (20%) — one row per line, no
             per-line date or description, since those belong to the entry as

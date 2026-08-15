@@ -38,6 +38,7 @@ function AppShell({user}){
   const[transactions,setTransactionsState]=useState([]);
   const[sinkingFunds,setSFState]=useState([]);
   const[moneySources,setMoneySourcesState]=useState([]);
+  const[projects,setProjectsState]=useState([]);
   const[budgets,setBudgetsState]=useState([]);
   const[inboxFiles,setInboxFilesState]=useState([]);
   const[bankStatementLines,setBankStatementLines]=useState([]);
@@ -55,7 +56,7 @@ function AppShell({user}){
   // Default 'PK' — your existing PKR-denominated data belongs on the
   // Pakistan side per your instruction that current data carries over there;
   // new signups pick explicitly during onboarding.
-  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",country:"PK"});
+  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",country:"PK",trackProjects:false});
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
@@ -89,7 +90,8 @@ function AppShell({user}){
       sb.from("pos_products").select("*").eq("user_id",viewingUserId).order("name"),
       sb.from("payroll_runs").select("*, payroll_lines(*)").eq("user_id",viewingUserId).order("run_date",{ascending:false}),
       sb.from("money_sources").select("*").eq("user_id",viewingUserId).order("created_at"),
-    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR])=>{
+      sb.from("projects").select("*").eq("user_id",viewingUserId).order("created_at"),
+    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -111,13 +113,14 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
       setNextBilag(startBilag);
       setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
       setMoneySourcesState((msR.data||[]).map(m=>({id:m.id,name:m.name,openingReceived:parseFloat(m.opening_received)||0,openingUsed:parseFloat(m.opening_used)||0,inactive:!!m.inactive})));
+      setProjectsState((projR.data||[]).map(p=>({id:p.id,name:p.name,inactive:!!p.inactive})));
       setBudgetsState((bR.data||[]).map(b=>({year:parseInt(b.year),month:parseInt(b.month),code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
@@ -128,7 +131,7 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK"});
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects});
       }
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
@@ -252,7 +255,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -261,7 +264,7 @@ function AppShell({user}){
       if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
       return{id:data.id,bilag:nb,description:form.description,amount:form.amount};
     }
@@ -575,7 +578,7 @@ function AppShell({user}){
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,updated_at:new Date().toISOString()},{onConflict:"user_id"});
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
@@ -867,6 +870,28 @@ function AppShell({user}){
     await sb.from("transactions").update({money_source_id:sourceId}).eq("id",txnId);
   };
 
+  // Projects/departments — same list-management + tagging pattern as money
+  // sources above, but tags onto project_id instead. Used for #7/#8: entry
+  // forms show a Project selector when company_profile.track_projects is on,
+  // and Resultat can filter its whole income statement down to just one
+  // project's activity.
+  const saveProjects=async(list)=>{
+    setProjectsState(list);
+    if(!canEdit)return;
+    const {error:delErr}=await sb.from("projects").delete().eq("user_id",user.id);
+    if(delErr){console.error("Projects delete error:",delErr);alert("Project save failed (delete): "+delErr.message);return;}
+    if(list.length){
+      const rows=list.map(p=>({id:p.id,user_id:user.id,name:p.name,inactive:p.inactive||false}));
+      const {error:insErr}=await sb.from("projects").insert(rows);
+      if(insErr){console.error("Projects insert error:",insErr);alert("Project save failed (insert): "+insErr.message);}
+    }
+  };
+  const tagTransactionProject=async(txnId,projectId)=>{
+    setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,projectId}:t));
+    if(!canEdit)return;
+    await sb.from("transactions").update({project_id:projectId}).eq("id",txnId);
+  };
+
   // Budgets — per-user, cloud-synced (Supabase), one row per (year, month, code).
   // month is -1 for the "All Year" bucket, 0-11 for a calendar month.
   const saveBudget=async(year,month,code,amount)=>{
@@ -1123,6 +1148,7 @@ function AppShell({user}){
         reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
         sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
         moneySources={moneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}
+        projects={projects} saveProjects={saveProjects} tagTransactionProject={tagTransactionProject}
         budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
         saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
         inboxFiles={inboxFiles} attachedTxnIds={attachedTxnIds}

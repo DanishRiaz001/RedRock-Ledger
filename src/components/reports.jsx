@@ -1103,6 +1103,8 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
         {[
           {icon:"🏢",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue},
           {icon:"📋",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
+          {icon:"📥",label:"Opening Balance",sub:"Import a trial balance from another system",action:()=>onNavigate&&onNavigate("OpeningBalance"),bg:"#E0F2FE",color:"#0284C7"},
+          {icon:"🏷️",label:"Project Tracking",sub:companyProfile.trackProjects?"On":"Off — tag entries by project/department",action:()=>onNavigate&&onNavigate("ProjectTracking"),bg:"#F3E8FF",color:"#9333EA"},
           {icon:"👥",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
           {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
           {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
@@ -2625,9 +2627,10 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
 // Income statement (Resultat) — grouped by account series, with a
 // same-length previous-period comparison column and drill-down to ledger.
-function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
+function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,projects=[]}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
+  const[projectFilter,setProjectFilter]=useState("");
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
   const lastDay=new Date(year,monthIdx+1,0).getDate();
@@ -2640,7 +2643,13 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   const prevTo=new Date(new Date(from).getTime()-86400000).toISOString().slice(0,10);
   const prevFrom=new Date(new Date(from).getTime()-spanDays*86400000).toISOString().slice(0,10);
 
-  const movement=(code,f,t)=>transactions.filter(tx=>tx.date>=f&&tx.date<=t).reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
+  // Project filter narrows the same underlying transaction set that
+  // powers every total below — this is the whole mechanism for #8: pick a
+  // project, and the entire income statement recomputes for just that
+  // project's tagged entries, using the exact same movement() logic as the
+  // unfiltered view (no separate code path to keep in sync).
+  const scopedTxns=projectFilter?transactions.filter(tx=>tx.projectId===projectFilter):transactions;
+  const movement=(code,f,t)=>scopedTxns.filter(tx=>tx.date>=f&&tx.date<=t).reduce((s,tx)=>{if(tx.debitCode===code)return s+tx.amount;if(tx.creditCode===code)return s-tx.amount;return s;},0);
 
   const incomeSKs=["3000","3900"];
   const expenseSKs=["4000","5000","6000","6100","6200","6300","6400","6500","6600","6700","6800","6900","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900"];
@@ -2699,7 +2708,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Income statement</h1>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Income statement{projectFilter&&projects.find(p=>p.id===projectFilter)&&<span style={{color:T.accent}}> · {projects.find(p=>p.id===projectFilter).name}</span>}</h1>
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
 
@@ -2715,6 +2724,12 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
             <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
           </div>
           <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+          {projects.length>0&&(
+            <select value={projectFilter} onChange={e=>setProjectFilter(e.target.value)} style={{border:`1px solid ${projectFilter?T.accent:T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:600,color:projectFilter?T.accent:T.sub,background:projectFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
+              <option value="">All projects</option>
+              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
         </div>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0"}}>
           <colgroup><col style={{width:"55%"}}/><col style={{width:"22.5%"}}/><col style={{width:"22.5%"}}/></colgroup>
