@@ -5,7 +5,7 @@ import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
-import { BankAccountDetailsModal } from "./reports.jsx";
+import { BankAccountDetailsModal, ConicChart } from "./reports.jsx";
 
 function VATCodesScreen({accounts}){
   const nameFor=code=>{const a=accounts.find(x=>x.code===code);return a?a.name:null;};
@@ -1924,6 +1924,8 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
   const[payDate,setPayDate]=useState(today);
   const[payAmount,setPayAmount]=useState("");
   const[payBusy,setPayBusy]=useState(false);
+  const[search,setSearch]=useState("");
+  const[statusFilter,setStatusFilter]=useState("all"); // all | draft | sent | paid | overdue
   const openPayModal=(inv)=>{
     const alreadyPaid=getInvoicePaid?getInvoicePaid(inv):0;
     setPayingInv(inv);setPayBank(bankAccounts[0]?bankAccounts[0].code:"");setPayDate(today);setPayAmount(String(Math.round((inv.total-alreadyPaid)*100)/100));
@@ -1937,6 +1939,16 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
   };
 
   const isCN=(inv)=>inv.status==="credit_note";
+  const filteredInvoices=useMemo(()=>[...invoices].sort((a,b)=>b.invoiceNo-a.invoiceNo).filter(inv=>{
+    if(search){
+      const q=search.toLowerCase();
+      const custName=getContactName(inv.customerId).toLowerCase();
+      if(!custName.includes(q)&&!String(inv.invoiceNo).includes(q))return false;
+    }
+    if(statusFilter==="all")return true;
+    if(statusFilter==="overdue")return!isCN(inv)&&inv.status!=="paid"&&inv.status!=="credited"&&daysOverdue(inv)>0;
+    return inv.status===statusFilter;
+  }),[invoices,search,statusFilter,contacts]);
   const open=invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&!isCN(i));
   const over30=open.filter(i=>daysOverdue(i)>30).reduce((s,i)=>s+i.total,0);
   const over1to30=open.filter(i=>{const d=daysOverdue(i);return d>0&&d<=30;}).reduce((s,i)=>s+i.total,0);
@@ -2046,13 +2058,21 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
         </div>
       </div>
 
+      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+        {[["all","All"],["draft","Draft"],["sent","Sent"],["paid","Paid"],["overdue","Overdue"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setStatusFilter(id)} style={{background:statusFilter===id?T.accent:"none",color:statusFilter===id?"#fff":T.sub,border:`1px solid ${statusFilter===id?T.accent:T.border}`,borderRadius:8,padding:"6px 13px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}{id==="overdue"&&overdueInvoices.length>0?` (${overdueInvoices.length})`:""}</button>
+        ))}
+        <div style={{flex:1}}/>
+        <input placeholder="Search customer or invoice #" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220,padding:"7px 12px",fontSize:12}}/>
+      </div>
+
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700}}>Invoice</td><td style={{fontWeight:700}}>Customer</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Due date</td><td style={{textAlign:"right",fontWeight:700}}>Total</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
-          {[...invoices].sort((a,b)=>b.invoiceNo-a.invoiceNo).map(inv=>{
+          {filteredInvoices.map(inv=>{
             const cn=isCN(inv);
             const overdue=!cn&&inv.status!=="paid"&&inv.status!=="credited"&&daysOverdue(inv)>0;
             const canPay=!cn&&inv.status!=="paid"&&inv.status!=="credited";
@@ -2091,7 +2111,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
               </tr>
             );
           })}
-          {!invoices.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No invoices yet. Create your first one.</td></tr>}
+          {!filteredInvoices.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{invoices.length?"No invoices match your filter.":"No invoices yet. Create your first one."}</td></tr>}
         </tbody>
       </table>
       </div>
