@@ -399,13 +399,13 @@ function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onS
             <div key={r.rid} style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1fr 40px",gap:8,padding:"7px 10px",alignItems:"center",borderBottom:i<rows.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
               <AccDrop value={r.accountCode} onChange={v=>updateRow(r.rid,{accountCode:v})} accounts={accounts}/>
               <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
-              <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+              <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} onKeyDown={e=>{if(e.key==="Enter"&&i===rows.length-1){e.preventDefault();addRow();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
               <button onClick={()=>removeRow(r.rid)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
               {r.accountCode&&!matched&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.orange,marginTop:-3}}>Account {r.accountCode} doesn't exist in your chart of accounts yet — add it first, or pick an existing one.</div>}
             </div>
           );
         })}
-        <button onClick={addRow} style={{width:"100%",background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"9px"}}>+ Add row</button>
+        <button onClick={addRow} style={{background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 10px",width:"100%",textAlign:"left"}}>+ Add row</button>
       </div>
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16,background:Math.abs(difference)<0.01?T.greenBg:T.redLight,borderRadius:10,padding:"12px 16px"}}>
@@ -428,11 +428,17 @@ function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onS
 // project here is just a tag transactions carry, used to filter Resultat.
 function ProjectTrackingScreen({companyProfile,saveCompanyProfile,projects,saveProjects,onBack}){
   const[newName,setNewName]=useState("");
+  const[editingNumberId,setEditingNumberId]=useState(null);
+  const nextNumber=()=>{
+    const nums=projects.map(p=>parseInt(p.number)||0);
+    return String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+  };
   const addProject=()=>{
     if(!newName.trim())return;
-    saveProjects([...projects,{id:"proj_"+Date.now().toString(36),name:newName.trim(),inactive:false}]);
+    saveProjects([...projects,{id:"proj_"+Date.now().toString(36),number:nextNumber(),name:newName.trim(),inactive:false}]);
     setNewName("");
   };
+  const updateNumber=(id,number)=>saveProjects(projects.map(p=>p.id===id?{...p,number}:p));
   const toggleInactive=id=>saveProjects(projects.map(p=>p.id===id?{...p,inactive:!p.inactive}:p));
   const removeProject=id=>{if(confirm("Remove this project? Transactions already tagged with it keep the tag, but it won't be selectable for new ones."))saveProjects(projects.filter(p=>p.id!==id));};
 
@@ -465,6 +471,11 @@ function ProjectTrackingScreen({companyProfile,saveCompanyProfile,projects,saveP
         {!projects.length&&<div style={{padding:20,textAlign:"center",fontSize:12,color:T.muted}}>No projects yet — add one above.</div>}
         {projects.map((p,i)=>(
           <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:i<projects.length-1?`1px solid ${T.border}`:"none",opacity:p.inactive?0.5:1}}>
+            {editingNumberId===p.id?(
+              <input autoFocus value={p.number||""} onChange={e=>updateNumber(p.id,e.target.value)} onBlur={()=>setEditingNumberId(null)} onKeyDown={e=>e.key==="Enter"&&setEditingNumberId(null)} style={{width:52,fontSize:11,fontWeight:700,color:T.accent,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit"}}/>
+            ):(
+              <span onClick={()=>setEditingNumberId(p.id)} title="Click to edit number" style={{fontSize:11,fontWeight:700,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 8px",cursor:"pointer",flexShrink:0}}>{p.number||"—"}</span>
+            )}
             <span style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>{p.name}{p.inactive&&" (inactive)"}</span>
             <button onClick={()=>toggleInactive(p.id)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>{p.inactive?"Reactivate":"Deactivate"}</button>
             <button onClick={()=>removeProject(p.id)} style={{background:"none",border:"none",color:T.red,cursor:"pointer",padding:4}}><i className="ti ti-trash" style={{fontSize:14}}/></button>

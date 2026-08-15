@@ -2727,7 +2727,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           {projects.length>0&&(
             <select value={projectFilter} onChange={e=>setProjectFilter(e.target.value)} style={{border:`1px solid ${projectFilter?T.accent:T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:600,color:projectFilter?T.accent:T.sub,background:projectFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
               <option value="">All projects</option>
-              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
             </select>
           )}
         </div>

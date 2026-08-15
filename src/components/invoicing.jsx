@@ -1473,7 +1473,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     <select value={l.creditVatCode} onChange={e=>updateGeneralLine(l.lid,{creditVatCode:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px"}}>
                       {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: {c.rate}%</option>)}
                     </select>
-                    <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+                    <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"&&i===generalLines.length-1){e.preventDefault();addGeneralLine();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
                     <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                       <button onClick={()=>copyGeneralLine(l.lid)} title="Copy this line" style={{background:"none",border:"none",color:T.sub,cursor:"pointer",padding:4}}><i className="ti ti-copy" style={{fontSize:14}}/></button>
                       <button onClick={()=>removeGeneralLine(l.lid)} disabled={generalLines.length<=1} title="Remove this line" style={{background:"none",border:"none",color:generalLines.length<=1?T.muted:T.red,cursor:generalLines.length<=1?"default":"pointer",padding:4,opacity:generalLines.length<=1?0.4:1}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
@@ -1481,7 +1481,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     {l.debitCode===l.creditCode&&l.debitCode&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.red,marginTop:-4}}>Debit and credit can't be the same account on this line.</div>}
                   </div>
                 ))}
-                <button onClick={addGeneralLine} style={{width:"100%",background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"9px",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                <button onClick={addGeneralLine} style={{background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 10px",width:"100%",display:"flex",alignItems:"center",gap:5}}>
                   <i className="ti ti-plus" style={{fontSize:13}}/>Add line
                 </button>
               </div>
@@ -3153,7 +3153,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         {trackProjects&&(
           <select value={form.projectId||""} onChange={e=>setForm(p=>({...p,projectId:e.target.value}))} style={{...inpSm}}>
             <option value="">— No project —</option>
-            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
           </select>
         )}
 
