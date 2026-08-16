@@ -571,13 +571,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               </div>
             );
           })()}
-          <div onClick={()=>setTab("Files")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent",marginBottom:6}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-folder" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
-            <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Inbox</span>
-          </div>
 
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
+              {tab:"Files",label:"Inbox"},
               {tab:"NewVoucher",label:"New Entry",requiresWrite:true},
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
@@ -606,7 +603,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
               {tab:"VATReport",label:"VAT report",featureKey:"vat"},
               {tab:"VATTermin",label:"Mva-meldinger",featureKey:"vat"},
               {tab:"VATCodes",label:"VAT codes",featureKey:"vat"},
-              {tab:"Accounts",label:"Chart of accounts"},
               {tab:"AccountingSettings",label:"Settings"},
             ]},
             {id:"reports",label:"Reports",icon:"ti-chart-bar",items:[
@@ -619,6 +615,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
+              {tab:"Accounts",label:"Chart of accounts"},
               {tab:"Employees",label:"Employees"},
               {tab:"EmployeeNew",label:"New employee",requiresWrite:true},
               {tab:"Payroll",label:"Payroll"},
@@ -637,7 +634,17 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             const containsActive=visibleItems.some(it=>it.tab===tab||(it.subItems&&it.subItems.some(si=>si.tab===tab)));
             return(
               <div key={cat.id}>
-                <div onClick={()=>setExpandedCat(e=>e===cat.id?null:cat.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
+                <div onClick={()=>{
+                  const opening=expandedCat!==cat.id;
+                  setExpandedCat(e=>e===cat.id?null:cat.id);
+                  // Expanding a category with nothing from it currently
+                  // active should also navigate to its first screen —
+                  // otherwise the sidebar shows the new category open while
+                  // the main content area is still stuck on whatever the
+                  // previous category was showing, which reads as "this
+                  // just goes to the wrong place."
+                  if(opening&&!containsActive&&visibleItems[0]&&!visibleItems[0].subItems)setTab(visibleItems[0].tab);
+                }} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
                   <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                     <i className={`ti ${cat.icon}`} style={{fontSize:13,color:containsActive?"#fff":T.sub}}/>
                   </div>

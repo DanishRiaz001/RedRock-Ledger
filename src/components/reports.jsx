@@ -8,7 +8,7 @@ import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
-  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
+  const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
   const[origCode,setOrigCode]=useState("");
   const[showNew,setShowNew]=useState(false);
   const[acctImporting,setAcctImporting]=useState(false);
@@ -81,7 +81,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
   };
 
   const openEdit=(ri)=>{
-    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):"",customCategory:list[ri].customCategory||"",currency:list[ri].currency||"",inactive:list[ri].inactive||false});
+    setEditForm({code:list[ri].code,name:list[ri].name,matchable:list[ri].matchable||false,notes:list[ri].notes||"",defaultVatPct:list[ri].defaultVatPct!=null?String(list[ri].defaultVatPct):"",customCategory:list[ri].customCategory||"",currency:list[ri].currency||"",inactive:list[ri].inactive||false,depreciationCode:list[ri].depreciationCode||""});
     setOrigCode(list[ri].code);
     setEditingIdx(ri);
   };
@@ -89,7 +89,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
   const cancelEdit=()=>{
     setList(accounts.map(a=>({...a})));
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
     setOrigCode("");
   };
 
@@ -106,7 +106,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
     // Pass oldCode + newCode so transactions get migrated when code changes
     onSave(updated,codeChanged?origCode:null,codeChanged?newCode:null);
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
     setOrigCode("");
   };
 
@@ -123,7 +123,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
   const closeAccount=()=>{
     setViewingCode(null);
     setEditingIdx(null);
-    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
+    setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
     setOrigCode("");
   };
 
@@ -269,13 +269,12 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
           </div>
           <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <thead><tr style={{background:T.bg,color:T.sub}}>
-              <td style={{padding:"10px 18px",fontWeight:700}}>Number</td>
+              <td style={{padding:"10px 18px",fontWeight:700}}>Account number</td>
               <td style={{fontWeight:700}}>Name</td>
-              <td style={{fontWeight:700}}>Type</td>
-              <td style={{fontWeight:700}}>Description</td>
-              <td style={{textAlign:"center",fontWeight:700}}>Default VAT</td>
-              <td style={{textAlign:"center",fontWeight:700}}>Open items</td>
-              <td style={{textAlign:"center",fontWeight:700,padding:"10px 18px"}}>Inactive</td>
+              <td style={{fontWeight:700}}>Category</td>
+              <td style={{textAlign:"center",fontWeight:700}}>VAT</td>
+              <td style={{fontWeight:700}}>Depreciation code</td>
+              <td style={{fontWeight:700,padding:"10px 18px"}}>Balance sheet category</td>
             </tr></thead>
             <tbody>
               {Object.entries(SERIES).map(([key,s])=>{
@@ -283,16 +282,15 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
                 if(!grp.length)return null;
                 return(
                   <React.Fragment key={key}>
-                    <tr style={{background:T.bg}}><td colSpan="7" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="6" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
                     {grp.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer",background:a.code===highlightCode?T.accentLight:undefined,transition:"background 0.4s"}}>
-                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
+                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}{a.inactive&&<span style={{marginLeft:6,fontSize:9,color:T.red,fontWeight:700}}>INACTIVE</span>}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
-                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayNotes(a.notes)||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.customCategory||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
-                        <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
-                        <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.depreciationCode||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12,padding:"9px 18px"}}>{s.name}</td>
                       </tr>
                     ))}
                   </React.Fragment>
@@ -308,22 +306,21 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
                 if(!other.length)return null;
                 return(
                   <React.Fragment key="other">
-                    <tr style={{background:T.bg}}><td colSpan="7" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="6" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
                     {other.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
-                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}</td>
+                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}{a.inactive&&<span style={{marginLeft:6,fontSize:9,color:T.red,fontWeight:700}}>INACTIVE</span>}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>—</td>
-                        <td style={{color:T.muted,fontSize:12,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayNotes(a.notes)||"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatPct!=null?a.defaultVatPct+"%":"—"}</td>
-                        <td style={{textAlign:"center"}}>{a.matchable&&<i className="ti ti-check" style={{color:T.green,fontSize:14}}/>}</td>
-                        <td style={{textAlign:"center",padding:"9px 18px"}}>{a.inactive&&<i className="ti ti-check" style={{color:T.red,fontSize:14}}/>}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.customCategory||"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.depreciationCode||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12,padding:"9px 18px"}}>—</td>
                       </tr>
                     ))}
                   </React.Fragment>
                 );
               })()}
-              {!tableFiltered.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
+              {!tableFiltered.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -604,6 +601,10 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Internal category</div>
               <input value={val("customCategory",account.customCategory||"")} onChange={set("customCategory")} placeholder="e.g. Marketing, Travel" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Depreciation code</div>
+              <input value={val("depreciationCode",account.depreciationCode||"")} onChange={set("depreciationCode")} placeholder="e.g. 5yr straight-line, or leave blank" style={inp}/>
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
