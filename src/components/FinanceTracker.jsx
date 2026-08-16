@@ -543,7 +543,6 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             const custItems=[
               {tab:"Contacts",label:"Customers/Suppliers"},
               {tab:"ContactNew",label:"New customer/supplier",requiresWrite:true},
-              {tab:"CustomerImport",label:"Import",requiresWrite:true},
               {tab:"CustomerSettings",label:"Settings"},
             ];
             const custExpanded=expandedCat==="customers";
@@ -842,7 +841,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
           </div>
         )}
 
@@ -872,7 +871,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {(tab==="Contacts"||tab==="ContactNew")&&(
           <div style={{maxWidth:900}}>
             <ScreenErrorBoundary name="Customers/Suppliers">
-              <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} mergeContacts={mergeContacts} onOpenReskontro={(type)=>setTab("Reskontro")} autoOpenNew={tab==="ContactNew"}/>
+              <CustomersRegisterScreen contacts={contacts} setContacts={setContacts} transactions={transactions} mergeContacts={mergeContacts} onOpenReskontro={(type)=>setTab("Reskontro")} autoOpenNew={tab==="ContactNew"} companyProfile={companyProfile} onNavigateImport={()=>setTab("CustomerImport")}/>
             </ScreenErrorBoundary>
           </div>
         )}
@@ -1209,7 +1208,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
         )}
 
         {tab==="Accounts"&&(

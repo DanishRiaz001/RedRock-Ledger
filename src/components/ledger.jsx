@@ -424,6 +424,111 @@ function ContactSearch({contacts,value,onChange,onCreateContact}){
   );
 }
 
+// New customer/supplier — a real popup (not an inline card that pushes the
+// rest of the page down), matching the same clean, sectioned pattern used
+// throughout the app. Deliberately does NOT include a credit-check feature
+// — that needs a real third-party credit bureau integration neither side
+// has, and a fake/non-functional "check credit" button would be worse than
+// not having one. Org number only shows for Norway-based books, since it's
+// meaningless for Pakistan-side clients and would just be visual noise there.
+function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onBulkImport}){
+  const[type,setType]=useState(defaultType);
+  const[name,setName]=useState("");
+  const[orgNumber,setOrgNumber]=useState("");
+  const[email,setEmail]=useState("");
+  const[phone,setPhone]=useState("");
+  const[address,setAddress]=useState("");
+  const[accountNo,setAccountNo]=useState("");
+  const[paymentTermsDays,setPaymentTermsDays]=useState("30");
+  const[creditLimit,setCreditLimit]=useState("");
+
+  const valid=name.trim().length>0;
+  const submit=()=>{
+    if(!valid)return;
+    onSave({type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null});
+  };
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
+        <div style={{position:"sticky",top:0,background:"#fff",zIndex:1,padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:16,fontWeight:800,color:T.text}}>New customer / supplier</div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {onBulkImport&&<button onClick={onBulkImport} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bulk import instead →</button>}
+            <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
+          </div>
+        </div>
+
+        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"flex",gap:8}}>
+            {["customer","supplier"].map(t=>(
+              <button key={t} onClick={()=>setType(t)} style={{flex:1,background:type===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:type===t?(t==="customer"?T.blue:T.red):T.sub,border:`1.5px solid ${type===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:8,padding:"9px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+            ))}
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
+            <input autoFocus value={name} onChange={e=>setName(e.target.value)} style={inp}/>
+          </div>
+
+          {country==="NO"&&(
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Organisasjonsnummer (9 digits)</div>
+              <input value={orgNumber} onChange={e=>setOrgNumber(e.target.value.replace(/[^\d]/g,"").slice(0,9))} placeholder="e.g. 923456789" style={inp}/>
+            </div>
+          )}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Phone</div>
+              <input value={phone} onChange={e=>setPhone(e.target.value)} style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Email</div>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inp}/>
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Address</div>
+            <input value={address} onChange={e=>setAddress(e.target.value)} style={inp}/>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account no. / IBAN (optional)</div>
+              <input value={accountNo} onChange={e=>setAccountNo(e.target.value)} style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Payment terms</div>
+              <select value={paymentTermsDays} onChange={e=>setPaymentTermsDays(e.target.value)} style={inp}>
+                <option value="0">Due immediately</option>
+                <option value="7">Net 7</option>
+                <option value="15">Net 15</option>
+                <option value="30">Net 30</option>
+                <option value="45">Net 45</option>
+                <option value="60">Net 60</option>
+              </select>
+            </div>
+          </div>
+
+          {type==="customer"&&(
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Credit limit (optional — warns before invoicing past it)</div>
+              <input type="number" value={creditLimit} onChange={e=>setCreditLimit(e.target.value)} style={inp}/>
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8,marginTop:6}}>
+            <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
+            <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
 function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction}){
@@ -2003,4 +2108,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, NewContactModal };

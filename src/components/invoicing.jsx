@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
@@ -481,7 +481,7 @@ function CustomerSettingsScreen({contacts}){
   );
 }
 
-function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro,autoOpenNew}){
+function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro,autoOpenNew,companyProfile,onNavigateImport}){
   const[type,setType]=useState("customer");
   const[search,setSearch]=useState("");
   const[editingId,setEditingId]=useState(null);
@@ -621,7 +621,16 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <input placeholder="Search name or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
 
-      {(showNew||editingId)&&(
+      {showNew&&(
+        <NewContactModal
+          defaultType={type}
+          country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
+          onSave={contact=>{setContacts(p=>[...p,{id:nextId(),...contact}]);setShowNew(false);}}
+          onClose={()=>setShowNew(false)}
+          onBulkImport={onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
+        />
+      )}
+      {editingId&&(
         <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>{editingId?"Edit contact":`New ${type}`}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
@@ -3005,7 +3014,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:"",projectId:""};
@@ -3225,9 +3234,23 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inpSm,flex:"0 0 70%",minWidth:0}}/>
         </div>
         {trackProjects&&(
-          <select value={form.projectId||""} onChange={e=>setForm(p=>({...p,projectId:e.target.value}))} style={{...inpSm}}>
+          <select value={form.projectId||""} onChange={e=>{
+            if(e.target.value==="__new__"){
+              const name=prompt("New project or department name:");
+              if(name&&name.trim()&&saveProjects){
+                const nums=projects.map(p=>parseInt(p.number)||0);
+                const number=String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+                const newProj={id:"proj_"+Date.now().toString(36),number,name:name.trim(),inactive:false};
+                saveProjects([...projects,newProj]);
+                setForm(p=>({...p,projectId:newProj.id}));
+              }
+              return;
+            }
+            setForm(p=>({...p,projectId:e.target.value}));
+          }} style={{...inpSm}}>
             <option value="">— No project —</option>
             {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
+            {saveProjects&&<option value="__new__">+ New project / department…</option>}
           </select>
         )}
 
