@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB } from "../lib/utils.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, SaveFlashButton } from "./ledger.jsx";
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
@@ -134,7 +134,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
       .filter(a=>!showActiveOnly||!a.inactive);
 
     return(
-      <div style={{maxWidth:1000}}>
+      <div style={{maxWidth:1500}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Chart of accounts</h1>
         <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",marginBottom:20}}>
           <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}}/>
@@ -209,7 +209,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
               <span onClick={()=>setShowNew(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
             </div>
           </div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <thead><tr style={{background:T.bg,color:T.sub}}>
               <td style={{padding:"10px 18px",fontWeight:700}}>Number</td>
               <td style={{fontWeight:700}}>Name</td>
