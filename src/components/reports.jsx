@@ -2343,6 +2343,17 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     window.addEventListener("mousemove",onMove);
     window.addEventListener("mouseup",onUp);
   };
+  // The table itself is forced to width:100% of its container, but colWidths
+  // are stored as raw pixels for simple resize-drag math. If those pixels
+  // dont happen to sum to the containers actual width (they never will,
+  // since the container width varies by screen size), the browser stretches
+  // things unevenly, exactly the disproportionate-columns-plus-dead-space
+  // bug. Converting to percentages that always sum to exactly 100 percent
+  // removes the mismatch entirely, regardless of container width.
+  const colWidthsPct=useMemo(()=>{
+    const total=colWidths.reduce((s,w)=>s+w,0)||1;
+    return colWidths.map(w=>(w/total*100)+"%");
+  },[colWidths]);
   const ResizeHandle=({idx})=>(
     <div onMouseDown={e=>startColResize(idx,e)} style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:3}}/>
   );
@@ -2581,7 +2592,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             with zero gap, instead of being a second sticky element guessing
             a pixel offset to line up underneath. */}
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed",marginTop:8,background:"#fff",borderRadius:"12px 12px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
-          <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+          <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
           <tbody><tr style={{color:T.sub,background:T.bg}}>
             <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
             <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Opening balance<ResizeHandle idx={1}/></td>
@@ -2595,7 +2606,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
-        <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+        <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
         <thead><tr style={{display:"none"}}>
           <td/><td/><td/><td/>
         </tr></thead>
@@ -3347,7 +3358,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   );
 }
 
-function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
+function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=[]}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[search,setSearch]=useState("");
@@ -3361,14 +3372,15 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
 
   const accountLedgers=useMemo(()=>{
     return accounts
-      .filter(a=>!search||a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase()))
+      .filter(a=>!search||a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase())||transactions.some(t=>(t.debitCode===a.code||t.creditCode===a.code)&&t.description&&t.description.toLowerCase().includes(search.toLowerCase())))
       .map(a=>{
         const opening=transactions.filter(t=>t.date<from).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
         const entries=transactions.filter(t=>t.date>=from&&t.date<=to&&(t.debitCode===a.code||t.creditCode===a.code)).sort((x,y)=>x.date.localeCompare(y.date));
         if(!entries.length&&opening===0)return null;
         let running=opening;
         const rows=entries.map(t=>{const mv=t.debitCode===a.code?t.amount:-t.amount;running+=mv;return{...t,mv,running};});
-        return{account:a,opening,rows,closing:running};
+        const periodChange=rows.reduce((s,r)=>s+r.mv,0);
+        return{account:a,opening,rows,closing:running,periodChange};
       }).filter(Boolean);
   },[accounts,transactions,from,to,search]);
 
@@ -3411,7 +3423,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
         <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
 
-      {accountLedgers.map(({account,opening,rows,closing})=>(
+      {accountLedgers.map(({account,opening,rows,closing,periodChange})=>(
         <div key={account.code} style={{marginBottom:22,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"9px 14px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
             <div style={{fontSize:13,fontWeight:800,color:T.text}}>{account.code} {account.name}</div>
@@ -3419,17 +3431,25 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger}){
           </div>
           <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <tbody>
-              {rows.map((r,i)=>(
+              {rows.map((r,i)=>{
+                const hasAttachment=attachedTxnIds.includes(r.id);
+                return(
                 <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
                   <td style={{padding:"7px 14px",color:T.text,width:80}}>{r.date}</td>
+                  <td style={{width:20,padding:0}}>{hasAttachment&&<i className="ti ti-paperclip" title="Has attachment" style={{fontSize:12,color:T.muted}}/>}</td>
                   <td onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{color:T.accent,fontWeight:600,width:60,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</td>
                   <td style={{color:T.text}}>{r.description}</td>
                   <td style={{textAlign:"right",fontWeight:600,width:100,color:T.text}}>{sign(r.mv)}</td>
                   <td style={{textAlign:"right",color:T.muted,width:100,padding:"7px 14px"}}>{fmt(r.running)}</td>
                 </tr>
-              ))}
+              );})}
+              <tr style={{background:T.bg}}>
+                <td colSpan="4" style={{padding:"7px 14px",color:T.sub,fontSize:11}}>Change in period</td>
+                <td></td>
+                <td style={{textAlign:"right",padding:"7px 14px",color:periodChange>=0?T.green:T.red,fontSize:11,fontWeight:700}}>{sign(periodChange)}</td>
+              </tr>
               <tr style={{borderTop:`2px solid ${T.border}`,fontWeight:800,background:"#fff"}}>
-                <td colSpan="3" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
+                <td colSpan="4" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
                 <td></td>
                 <td style={{textAlign:"right",padding:"9px 14px",color:T.text}}>{fmt(closing)}</td>
               </tr>
@@ -4810,9 +4830,10 @@ const RECON_STATUSES=[
 ];
 function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,inboxFiles=[],uploadInboxFile,profiles=[],isDesktop=false}){
   const[period,setPeriod]=useState(()=>new Date().toISOString().slice(0,7));
-  const[allFilesFor,setAllFilesFor]=useState(null); // account code, when viewing the "all periods" file modal
+  const[allFilesFor,setAllFilesFor]=useState(null);
   const[uploadingFor,setUploadingFor]=useState(null);
-  const[expandedComment,setExpandedComment]=useState(null);
+  const[expandedRow,setExpandedRow]=useState(null);
+  const[collapsedGroups,setCollapsedGroups]=useState({});
 
   const year=parseInt(period.slice(0,4));
   const monthIdx=parseInt(period.slice(5,7))-1;
@@ -4824,30 +4845,49 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
   const balAt=(code,d)=>transactions.filter(t=>t.date<=d).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
   const balSKs=["1000","1100","1200","1300","1400","1500","1600","1700","1800","1900","2000","2100","2200","2300","2400","2500","2600","2700","2800","2900"];
 
-  const rows=useMemo(()=>{
+  const profileName=uid=>{
+    if(!uid)return null;
+    const p=profiles.find(x=>x.id===uid);
+    return p?(p.name||p.email||"Someone"):"Someone";
+  };
+
+  // Grouped by account series — mirrors the real accounting workflow of
+  // walking through "Fixed assets," then "Bank," then "Short-term debt" as
+  // coherent sections rather than one flat 40-row list, and gives an
+  // at-a-glance per-group progress count the way Sticos's collapsible
+  // KONTOGRUPPE rows do.
+  const groups=useMemo(()=>{
     const out=[];
     balSKs.forEach(sk=>{
+      const seriesInfo=SERIES[sk];
+      const groupRows=[];
       accountsForSK(accounts,transactions,sk).forEach(a=>{
         const ib=balAt(a.code,new Date(new Date(periodStart).getTime()-86400000).toISOString().slice(0,10));
         const ub=balAt(a.code,periodEnd);
         const change=ub-ib;
-        if(ib===0&&ub===0&&change===0)return; // no activity, no balance — skip clutter
+        if(ib===0&&ub===0&&change===0)return;
         const status=reconciliationStatus.find(r=>r.accountCode===a.code&&r.period===period);
         const files=reconciliationFiles.filter(f=>f.accountCode===a.code&&f.period===period);
-        out.push({code:a.code,name:a.name,ib,change,ub,status:status?status.status:"not_started",statusComment:status?status.statusComment:"",accountComment:status?status.accountComment:"",files});
+        groupRows.push({code:a.code,name:a.name,ib,change,ub,status:status?status.status:"not_started",statusComment:status?status.statusComment:"",accountComment:status?status.accountComment:"",updatedBy:status?status.updatedBy:null,updatedAt:status?status.updatedAt:null,files});
       });
+      if(groupRows.length)out.push({sk,label:seriesInfo?seriesInfo.name:sk,rows:groupRows});
     });
     return out;
   },[accounts,transactions,period,reconciliationStatus,reconciliationFiles]);
 
-  const doneCount=rows.filter(r=>["done","reviewed","not_applicable"].includes(r.status)).length;
-  const followUpCount=rows.filter(r=>r.status==="follow_up").length;
+  const allRows=groups.flatMap(g=>g.rows);
+  const doneCount=allRows.filter(r=>["done","reviewed","not_applicable"].includes(r.status)).length;
+  const followUpCount=allRows.filter(r=>r.status==="follow_up").length;
 
   const doUpload=async(code,file)=>{
     if(!uploadInboxFile)return;
     setUploadingFor(code);
     const uploaded=await uploadInboxFile(file,"Reconciliation");
-    if(uploaded&&attachReconciliationFile)await attachReconciliationFile(code,period,uploaded.id);
+    if(uploaded&&attachReconciliationFile){
+      const ok=await attachReconciliationFile(code,period,uploaded.id);
+      // attachReconciliationFile already alerts on failure and rolls back
+      // its own state — nothing extra needed here either way.
+    }
     setUploadingFor(null);
   };
 
@@ -4857,7 +4897,7 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
   };
 
   return(
-    <div style={{maxWidth:isDesktop?1300:"100%"}}>
+    <div style={{maxWidth:isDesktop?1200:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Reconciliation</h1>
       </div>
@@ -4870,43 +4910,84 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
           <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
         </div>
         <div style={{fontSize:12,color:T.sub}}>
-          <span style={{fontWeight:700,color:T.green}}>{doneCount}</span> of <span style={{fontWeight:700}}>{rows.length}</span> confirmed
+          <span style={{fontWeight:700,color:T.green}}>{doneCount}</span> of <span style={{fontWeight:700}}>{allRows.length}</span> confirmed
           {followUpCount>0&&<span style={{color:T.red,fontWeight:700,marginLeft:10}}>· {followUpCount} need follow-up</span>}
         </div>
       </div>
 
-      <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1.6fr 0.9fr 0.9fr 0.9fr 1.3fr 1.6fr 70px",gap:8,padding:"8px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-          {["Account","IB","Change","UB","Status","Comment","Files"].map(h=>(
-            <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:["IB","Change","UB"].includes(h)?"right":"left"}}>{h}</div>
-          ))}
-        </div>
-        {rows.length===0&&<div style={{padding:24,textAlign:"center",fontSize:12,color:T.muted}}>No balance sheet activity in {periodLabel}.</div>}
-        {rows.map((r,i)=>{
-          const st=RECON_STATUSES.find(s=>s.id===r.status)||RECON_STATUSES[0];
-          return(
-            <div key={r.code} style={{borderBottom:i<rows.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg,padding:"9px 10px"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1.6fr 0.9fr 0.9fr 0.9fr 1.3fr 1.6fr 70px",gap:8,alignItems:"center"}}>
-                <div style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</div>
-                <div style={{fontSize:12,textAlign:"right",color:T.sub}}>{fmt(r.ib)}</div>
-                <div style={{fontSize:12,textAlign:"right",color:r.change===0?T.muted:(r.change>0?T.green:T.red)}}>{r.change===0?"—":sign(r.change)}</div>
-                <div style={{fontSize:12,textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.ub)}</div>
-                <select value={r.status} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{status:e.target.value})} style={{...inp,padding:"6px 8px",fontSize:11,color:st.color,fontWeight:700,borderColor:st.color+"55"}}>
-                  {RECON_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-                </select>
-                <input placeholder="Comment…" value={r.statusComment} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{statusComment:e.target.value})} style={{...inp,padding:"6px 8px",fontSize:11}}/>
-                <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
-                  <label title="Upload for this period" style={{cursor:uploadingFor===r.code?"wait":"pointer",color:T.sub}}>
-                    <i className="ti ti-paperclip" style={{fontSize:15}}/>
-                    <input type="file" style={{display:"none"}} disabled={uploadingFor===r.code} onChange={e=>{if(e.target.files[0])doUpload(r.code,e.target.files[0]);e.target.value="";}}/>
-                  </label>
-                  <span onClick={()=>setAllFilesFor(r.code)} title="View all periods' files for this account" style={{fontSize:11,fontWeight:700,color:r.files.length?T.accent:T.muted,cursor:"pointer"}}>{r.files.length||0}</span>
-                </div>
+      {groups.length===0&&<div style={{padding:24,textAlign:"center",fontSize:12,color:T.muted,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12}}>No balance sheet activity in {periodLabel}.</div>}
+
+      {groups.map(g=>{
+        const gDone=g.rows.filter(r=>["done","reviewed","not_applicable"].includes(r.status)).length;
+        const gFollowUp=g.rows.some(r=>r.status==="follow_up");
+        const collapsed=!!collapsedGroups[g.sk];
+        return(
+          <div key={g.sk} style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:12}}>
+            <div onClick={()=>setCollapsedGroups(p=>({...p,[g.sk]:!p[g.sk]}))} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:T.bg,cursor:"pointer"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <i className={`ti ti-chevron-${collapsed?"right":"down"}`} style={{fontSize:13,color:T.sub}}/>
+                <span style={{fontSize:13,fontWeight:700,color:T.text}}>{g.label}</span>
+                <span style={{fontSize:11,color:T.muted}}>· {g.sk}s</span>
               </div>
+              <span style={{fontSize:11,fontWeight:700,color:gFollowUp?T.red:(gDone===g.rows.length?T.green:T.sub)}}>{gFollowUp?<><i className="ti ti-alert-triangle" style={{fontSize:12,marginRight:3}}/></>:null}{gDone} of {g.rows.length}</span>
             </div>
-          );
-        })}
-      </div>
+            {!collapsed&&(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1.6fr 0.9fr 0.9fr 0.9fr 1.3fr 70px",gap:8,padding:"6px 14px",borderBottom:`1px solid ${T.border}`}}>
+                  {["Account","IB","Change","UB","Status","Files"].map(h=>(
+                    <div key={h} style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:["IB","Change","UB"].includes(h)?"right":"left"}}>{h}</div>
+                  ))}
+                </div>
+                {g.rows.map((r,i)=>{
+                  const st=RECON_STATUSES.find(s=>s.id===r.status)||RECON_STATUSES[0];
+                  const expanded=expandedRow===r.code;
+                  const setterName=profileName(r.updatedBy);
+                  return(
+                    <div key={r.code} style={{borderBottom:i<g.rows.length-1||expanded?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1.6fr 0.9fr 0.9fr 0.9fr 1.3fr 70px",gap:8,alignItems:"center",padding:"9px 14px"}}>
+                        <div onClick={()=>setExpandedRow(expanded?null:r.code)} style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                          <i className={`ti ti-chevron-${expanded?"down":"right"}`} style={{fontSize:11,color:T.muted,flexShrink:0}}/>
+                          {r.code} {r.name}
+                        </div>
+                        <div style={{fontSize:12,textAlign:"right",color:T.sub}}>{fmt(r.ib)}</div>
+                        <div style={{fontSize:12,textAlign:"right",color:r.change===0?T.muted:(r.change>0?T.green:T.red)}}>{r.change===0?"—":sign(r.change)}</div>
+                        <div style={{fontSize:12,textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.ub)}</div>
+                        <select value={r.status} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{status:e.target.value})} style={{...inp,padding:"6px 8px",fontSize:11,color:st.color,fontWeight:700,borderColor:st.color+"55"}}>
+                          {RECON_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                        <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
+                          <label title="Upload for this period" style={{cursor:uploadingFor===r.code?"wait":"pointer",color:T.sub}}>
+                            <i className="ti ti-paperclip" style={{fontSize:15}}/>
+                            <input type="file" style={{display:"none"}} disabled={uploadingFor===r.code} onChange={e=>{if(e.target.files[0])doUpload(r.code,e.target.files[0]);e.target.value="";}}/>
+                          </label>
+                          <span onClick={()=>setAllFilesFor(r.code)} title="View all periods' files for this account" style={{fontSize:11,fontWeight:700,color:r.files.length?T.accent:T.muted,cursor:"pointer"}}>{r.files.length||0}</span>
+                        </div>
+                      </div>
+                      {expanded&&(
+                        <div style={{padding:"4px 14px 14px 32px",display:"flex",flexDirection:"column",gap:8}}>
+                          <div>
+                            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3}}>STATUS COMMENT</div>
+                            <input placeholder="Why this status — e.g. matched against year-end statement" value={r.statusComment} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{statusComment:e.target.value})} style={{...inp,fontSize:11,padding:"7px 10px"}}/>
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3}}>ACCOUNT COMMENT <span style={{fontWeight:400,textTransform:"none"}}>— persists across periods, for anything ongoing about this account</span></div>
+                            <input placeholder="e.g. Always reconcile against the year-end statement, not monthly" value={r.accountComment} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{accountComment:e.target.value})} style={{...inp,fontSize:11,padding:"7px 10px"}}/>
+                          </div>
+                          {setterName&&(
+                            <div style={{fontSize:10,color:T.muted}}>
+                              Last set by <strong style={{color:T.sub}}>{setterName}</strong>{r.updatedAt?` on ${new Date(r.updatedAt).toLocaleDateString()}`:""}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {allFilesFor&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setAllFilesFor(null)}>

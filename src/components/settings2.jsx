@@ -1751,6 +1751,9 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                       )}
                       <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                     </div>
+                    {viewMode!=="deleted"&&(
+                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>Register</button>
+                    )}
                     <Menu3 items={viewMode==="deleted"?[
                       {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
                       {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
@@ -1758,7 +1761,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                       {label:"Rename",action:()=>renameFile(f.id)},
                       {label:"Move to folder…",action:()=>moveFile(f.id)},
                       {label:"Copy",action:()=>copyFile(f.id)},
-                      {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
                       {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                     ]}/>
                   </div>
@@ -1877,12 +1879,12 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                     <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
                   </div>
+                  <button onClick={()=>registerEntry(f.id)} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Register</button>
                   <Menu3 items={[
                     {label:"View",action:()=>setViewing(f)},
                     {label:"Rename",action:()=>renameFile(f.id)},
                     {label:"Move to folder…",action:()=>moveFile(f.id)},
                     {label:"Copy",action:()=>copyFile(f.id)},
-                    {label:"Register as entry",color:T.accent,action:()=>registerEntry(f.id)},
                     {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
                 </div>

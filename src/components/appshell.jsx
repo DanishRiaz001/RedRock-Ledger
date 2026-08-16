@@ -903,26 +903,62 @@ function AppShell({user}){
   // the same account+period just updates in place.
   const saveReconciliationStatus=async(accountCode,period,updates)=>{
     const existing=reconciliationStatus.find(r=>r.accountCode===accountCode&&r.period===period);
+    const previous=existing?{...existing}:null;
     const merged={accountCode,period,status:"not_started",statusComment:"",accountComment:"",...existing,...updates};
     setReconciliationStatusState(p=>{
       const idx=p.findIndex(r=>r.accountCode===accountCode&&r.period===period);
       if(idx>=0){const next=[...p];next[idx]=merged;return next;}
       return[...p,merged];
     });
-    if(!canEdit)return;
-    await sb.from("reconciliation_status").upsert({user_id:user.id,account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:"user_id,account_code,period"});
+    if(!canEdit)return true;
+    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:"user_id,account_code,period"});
+    if(error){
+      // Same silent-loss risk as attachments — a status flip or a comment
+      // someone just typed would otherwise look saved and then quietly
+      // revert on the next reload. Roll back and say so.
+      console.error("Reconciliation status save failed:",error);
+      setReconciliationStatusState(p=>{
+        const idx=p.findIndex(r=>r.accountCode===accountCode&&r.period===period);
+        if(idx<0)return p;
+        const next=[...p];
+        if(previous)next[idx]=previous;else next.splice(idx,1);
+        return next;
+      });
+      alert("Couldn't save that change — check your connection and try again. It has NOT been saved.");
+      return false;
+    }
+    return true;
   };
   const attachReconciliationFile=async(accountCode,period,inboxFileId)=>{
     const row={id:"rf_"+Date.now().toString(36),accountCode,period,inboxFileId};
     setReconciliationFilesState(p=>[...p,row]);
-    if(!canEdit)return;
+    if(!canEdit)return true;
     const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
-    if(!error&&data)setReconciliationFilesState(p=>p.map(r=>r.id===row.id?{...r,id:data.id}:r));
+    if(error){
+      // Real save failed — the optimistic add above would otherwise make it
+      // LOOK attached until the next page refresh silently drops it. Roll
+      // the local state back immediately and tell the person plainly, so
+      // "it looks attached" and "it's actually saved" never disagree.
+      console.error("Reconciliation file attach failed:",error);
+      setReconciliationFilesState(p=>p.filter(r=>r.id!==row.id));
+      alert("Couldn't save that attachment — check your connection and try again. It has NOT been saved.");
+      return false;
+    }
+    if(data)setReconciliationFilesState(p=>p.map(r=>r.id===row.id?{...r,id:data.id}:r));
+    return true;
   };
   const removeReconciliationFile=async(id)=>{
+    const removed=reconciliationFiles.find(r=>r.id===id);
     setReconciliationFilesState(p=>p.filter(r=>r.id!==id));
     if(!canEdit)return;
-    await sb.from("reconciliation_files").delete().eq("id",id);
+    const{error}=await sb.from("reconciliation_files").delete().eq("id",id);
+    if(error){
+      // Same principle in reverse — if the delete didn't actually happen
+      // server-side, don't let the UI pretend it's gone.
+      console.error("Reconciliation file remove failed:",error);
+      if(removed)setReconciliationFilesState(p=>[...p,removed]);
+      alert("Couldn't remove that attachment — check your connection and try again.");
+    }
   };
 
   // Budgets — per-user, cloud-synced (Supabase), one row per (year, month, code).

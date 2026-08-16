@@ -933,7 +933,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="GeneralLedger"&&(
           <div style={{maxWidth:1000}}>
-            <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc}/>
+            <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} attachedTxnIds={attachedTxnIds}/>
           </div>
         )}
 
