@@ -3768,7 +3768,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to the cash-name
@@ -4123,23 +4123,23 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Preview import — {preview.fileName}</div>
             {preview.error?(
               <>
-                <div style={{background:T.redLight,color:T.red,borderRadius:10,padding:"12px 14px",fontSize:12,marginTop:12,lineHeight:1.5}}>{preview.error}</div>
+                <div style={{background:T.redLight,color:T.red,borderRadius:10,padding:"12px 14px",fontSize:11,marginTop:12,lineHeight:1.5}}>{preview.error}</div>
                 {preview.detectedColumns&&(
                   <div style={{fontSize:11,color:T.muted,marginTop:10}}>
                     Detected: Date → <b>{preview.detectedColumns.date}</b>, Description → <b>{preview.detectedColumns.description}</b>
                     {preview.detectedColumns.amount&&<>, Amount → <b>{preview.detectedColumns.amount}</b></>}
                   </div>
                 )}
-                <button onClick={()=>setPreview(null)} style={{marginTop:16,width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+                <button onClick={()=>setPreview(null)} style={{marginTop:16,width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
               </>
             ):(
               <>
                 <div style={{fontSize:11,color:T.muted,marginBottom:14}}>
                   Detected columns — Date: <b>{preview.detectedColumns.date}</b> · Description: <b>{preview.detectedColumns.description}</b>{preview.detectedColumns.amount&&<> · Amount: <b>{preview.detectedColumns.amount}</b></>}{preview.detectedColumns.debit&&<> · Debit: <b>{preview.detectedColumns.debit}</b></>}{preview.detectedColumns.credit&&<> · Credit: <b>{preview.detectedColumns.credit}</b></>}
                 </div>
-                <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:8}}>{preview.rows.length} row{preview.rows.length===1?"":"s"} ready to import{(preview.skippedNoDate||preview.skippedZeroOrBad)?` (${(preview.skippedNoDate||0)+(preview.skippedZeroOrBad||0)} skipped — no date or zero amount)`:""}</div>
+                <div style={{fontSize:11,fontWeight:700,color:T.text,marginBottom:8}}>{preview.rows.length} row{preview.rows.length===1?"":"s"} ready to import{(preview.skippedNoDate||preview.skippedZeroOrBad)?` (${(preview.skippedNoDate||0)+(preview.skippedZeroOrBad||0)} skipped — no date or zero amount)`:""}</div>
                 <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
-                  <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                  <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
                     <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"7px 10px"}}>Date</td><td>Description</td><td style={{textAlign:"right",padding:"7px 10px"}}>Amount</td></tr></thead>
                     <tbody>
                       {preview.rows.slice(0,8).map((r,i)=>(
@@ -4154,8 +4154,8 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   {preview.rows.length>8&&<div style={{padding:"7px 10px",fontSize:11,color:T.muted,textAlign:"center",borderTop:`1px solid ${T.border}`}}>+{preview.rows.length-8} more row{preview.rows.length-8===1?"":"s"} not shown here</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={confirmImport} disabled={importing} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":`Import ${preview.rows.length} row${preview.rows.length===1?"":"s"}`}</button>
-                  <button onClick={()=>setPreview(null)} disabled={importing} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={confirmImport} disabled={importing} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:11,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":`Import ${preview.rows.length} row${preview.rows.length===1?"":"s"}`}</button>
+                  <button onClick={()=>setPreview(null)} disabled={importing} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:11,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                 </div>
               </>
             )}
@@ -4167,13 +4167,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       </div>
       {isApproved?(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-          <div style={{fontSize:12,color:T.green,fontWeight:700}}><i className="ti ti-lock" style={{fontSize:13,marginRight:6}}/>Reconciliation approved for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — this account is locked for that month.</div>
+          <div style={{fontSize:11,color:T.green,fontWeight:700}}><i className="ti ti-lock" style={{fontSize:11,marginRight:6}}/>Reconciliation approved for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — this account is locked for that month.</div>
           <button onClick={doReopen} style={{background:"none",border:`1px solid ${T.green}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:T.green,cursor:"pointer",fontFamily:"inherit"}}>Reopen</button>
         </div>
       ):canApprove?(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-          <div style={{fontSize:12,color:T.accent,fontWeight:700}}>Everything's matched or posted for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — ready to approve.</div>
-          <button onClick={doApprove} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Approve reconciliation</button>
+          <div style={{fontSize:11,color:T.accent,fontWeight:700}}>Everything's matched or posted for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — ready to approve.</div>
+          <button onClick={doApprove} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Approve reconciliation</button>
         </div>
       ):null}
       {showMatched&&(
@@ -4184,7 +4184,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <button onClick={()=>setShowMatched(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
             </div>
             <div style={{fontSize:11,color:T.muted,marginBottom:12}}>These were reconciled by hand, or as the "extra" side of a many-to-one match — they don't carry a direct link to a specific statement line, so they're listed here separately.</div>
-            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+            <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:10}}><td style={{padding:"6px 0"}}>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td></tr></thead>
               <tbody>
                 {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).map(t=>(
@@ -4211,7 +4211,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 <div style={{fontSize:15,fontWeight:800,color:T.text}}>Reconciliation history — {getName(selectedAccount)}</div>
                 <button onClick={()=>setShowHistory(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
               </div>
-              <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+              <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
                 <thead><tr style={{color:T.sub,background:T.bg}}><td style={{padding:"9px 12px"}}>Month</td><td style={{textAlign:"right"}}>Entries</td><td style={{textAlign:"right"}}>Reconciled</td><td style={{textAlign:"right",padding:"9px 12px"}}>Status</td></tr></thead>
                 <tbody>
                   {monthsBack.map(m=>{
@@ -4243,7 +4243,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           the row reads clean and aligned, matching the reference layout. */}
       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:"0 1 10%",minWidth:100}}>
-          <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
+          <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
           <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%"}}/>
         </div>
         <div style={{width:210,flexShrink:0}}>
@@ -4251,18 +4251,18 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         </div>
         <div style={{position:"relative",flexShrink:0}}>
           <div onClick={()=>setMonthDropdownOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"0 6px",background:"#fff",height:36,boxSizing:"border-box",cursor:"pointer"}}>
-            <button onClick={e=>{e.stopPropagation();const d=new Date(month+"-01");d.setMonth(d.getMonth()-1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub,padding:"2px 4px"}}>‹</button>
-            <span style={{fontSize:12,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</span>
-            <button onClick={e=>{e.stopPropagation();const d=new Date(month+"-01");d.setMonth(d.getMonth()+1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub,padding:"2px 4px"}}>›</button>
-            <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,marginLeft:2}}/>
+            <button onClick={e=>{e.stopPropagation();const d=new Date(month+"-01");d.setMonth(d.getMonth()-1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub,padding:"2px 4px"}}>‹</button>
+            <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:90,textAlign:"center"}}>{new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</span>
+            <button onClick={e=>{e.stopPropagation();const d=new Date(month+"-01");d.setMonth(d.getMonth()+1);setMonth(d.toISOString().slice(0,7));clearSelection();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub,padding:"2px 4px"}}>›</button>
+            <i className="ti ti-chevron-down" style={{fontSize:11,color:T.muted,marginLeft:2}}/>
           </div>
           {monthDropdownOpen&&(<>
             <div onClick={()=>setMonthDropdownOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
             <div style={{position:"absolute",left:0,top:40,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,padding:12,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",width:260}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <button onClick={()=>setMonth(m=>`${parseInt(m.slice(0,4))-1}-${m.slice(5,7)}`)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
-                <span style={{fontSize:13,fontWeight:800,color:T.text}}>{month.slice(0,4)}</span>
-                <button onClick={()=>setMonth(m=>`${parseInt(m.slice(0,4))+1}-${m.slice(5,7)}`)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
+                <button onClick={()=>setMonth(m=>`${parseInt(m.slice(0,4))-1}-${m.slice(5,7)}`)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
+                <span style={{fontSize:11,fontWeight:800,color:T.text}}>{month.slice(0,4)}</span>
+                <button onClick={()=>setMonth(m=>`${parseInt(m.slice(0,4))+1}-${m.slice(5,7)}`)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
                 {MONTH_NAMES.map((mn,i)=>{
@@ -4283,12 +4283,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         </select>
         <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",flexShrink:0,height:36}}>
           {[["unmatched","Unmatched"],["matched","Matched"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"0 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",height:"100%"}}>{label}</button>
+            <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"0 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",height:"100%"}}>{label}</button>
           ))}
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
-            <button onClick={doUndoImport} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 14px",height:36,fontSize:12,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo import ({lastImport.count})</button>
+            <button onClick={doUndoImport} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo import ({lastImport.count})</button>
           )}
           <button onClick={()=>setShowAttachPanel(o=>!o)} title={currentAttachment?"Bank statement attached":"Attach bank statement"} style={{position:"relative",background:showAttachPanel?T.accentLight:"#fff",border:`1px solid ${showAttachPanel?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:showAttachPanel?T.accent:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <i className="ti ti-paperclip" style={{fontSize:15}}/>
@@ -4296,8 +4296,8 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </button>
           <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-history" style={{fontSize:15}}/></button>
           <button onClick={()=>{setExportScope("period");setShowExportModal(true);}} title="Send or download" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-download" style={{fontSize:15}}/></button>
-          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:12,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
-            {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload</>)}
+          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
+            {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:11,marginRight:5}}/>Upload</>)}
             <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
           </label>
         </div>
@@ -4311,7 +4311,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       {showAttachPanel&&(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:currentAttachment?10:0}}>
-            <div style={{fontSize:12,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
+            <div style={{fontSize:11,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
             <div style={{display:"flex",gap:8}}>
               <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
                 {currentAttachment?"Replace":"Attach file"}
@@ -4327,7 +4327,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <iframe src={currentAttachment.data} style={{width:"100%",height:320,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>
             )
           ):(
-            <div style={{fontSize:12,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
+            <div style={{fontSize:11,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
           )}
         </div>
       )}
@@ -4350,9 +4350,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
             {exportMode==="log"?(
               <div>
-                {!exportSendLog.length&&<div style={{textAlign:"center",color:T.muted,fontSize:12,padding:"20px 0"}}>Nothing sent yet.</div>}
+                {!exportSendLog.length&&<div style={{textAlign:"center",color:T.muted,fontSize:11,padding:"20px 0"}}>Nothing sent yet.</div>}
                 {exportSendLog.map((e,i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<exportSendLog.length-1?`1px solid ${T.border}`:"none",fontSize:12}}>
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<exportSendLog.length-1?`1px solid ${T.border}`:"none",fontSize:11}}>
                     <span style={{color:T.text,fontWeight:600}}>{e.to}</span>
                     <span style={{color:T.muted}}>{e.count} posts · {new Date(e.date).toLocaleDateString()}</span>
                   </div>
@@ -4363,7 +4363,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:8}}>WHICH POSTS</div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
                   {[["period","All open posts in the current period"],["all","All open posts on this account"],["selected",`Selected posts (${selectedLineIds.size})`]].map(([id,label])=>(
-                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:T.text,cursor:"pointer"}}>
                       <input type="radio" name="exportScope" checked={exportScope===id} onChange={()=>setExportScope(id)} disabled={id==="selected"&&!selectedLineIds.size} style={{accentColor:T.accent}}/>
                       {label}
                     </label>
@@ -4372,7 +4372,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:8}}>FILE FORMAT</div>
                 <div style={{display:"flex",gap:16,marginBottom:16}}>
                   {[["pdf","PDF"],["xlsx","XLSX"]].map(([id,label])=>(
-                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                    <label key={id} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:T.text,cursor:"pointer"}}>
                       <input type="radio" name="exportFormat" checked={exportFormat===id} onChange={()=>setExportFormat(id)} style={{accentColor:T.accent}}/>
                       {label}
                     </label>
@@ -4385,11 +4385,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   <textarea value={exportMessage} onChange={e=>setExportMessage(e.target.value)} rows={4} style={{...inp,marginBottom:16,resize:"vertical",fontFamily:"inherit"}}/>
                 </>)}
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={exportMode==="email"?runEmailSend:runExport} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                    <i className={exportMode==="email"?"ti ti-send":"ti ti-download"} style={{fontSize:14}}/>
+                  <button onClick={exportMode==="email"?runEmailSend:runExport} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    <i className={exportMode==="email"?"ti ti-send":"ti ti-download"} style={{fontSize:12}}/>
                     {exportMode==="email"?"Send file as email":`Download ${exportFormat.toUpperCase()}`}
                   </button>
-                  <button onClick={()=>setShowExportModal(false)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={()=>setShowExportModal(false)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                 </div>
               </>
             )}
@@ -4444,7 +4444,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
             {readyToBokfor?(
               <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"18px 22px",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:8}}>
-                <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit",width:"100%"}}>Bokfør ({selectedLines.length})</button>
+                <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit",width:"100%"}}>Bokfør ({selectedLines.length})</button>
               </div>
             ):(
               <div style={{background:Math.abs(diff)>0.01?T.redLight:T.greenBg,border:`1px solid ${Math.abs(diff)>0.01?T.red:T.green}`,borderRadius:10,padding:"18px 22px"}}>
@@ -4462,27 +4462,27 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <div style={{fontSize:16,fontWeight:800,color:T.text}}>Bokfør transactions</div>
               <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:T.sub,marginBottom:16,lineHeight:1.5}}>{selectedLines.length} line{selectedLines.length===1?"":"s"} selected · {fmtBal(selLinesTotal)} total. Each will post as its own entry against the account you choose{currentAttachment?", with the attached bank statement kept as proof.":"."}</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:16,lineHeight:1.5}}>{selectedLines.length} line{selectedLines.length===1?"":"s"} selected · {fmtBal(selLinesTotal)} total. Each will post as its own entry against the account you choose{currentAttachment?", with the attached bank statement kept as proof.":"."}</div>
             <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>POST AS *</div>
             <div style={{marginBottom:16}}>
               <AccDrop value={bulkOffsetCode} onChange={setBulkOffsetCode} accounts={offsetOptions} onCreateAccount={onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined}/>
             </div>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Bokfør"}</button>
-              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Bokfør"}</button>
+              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
             </div>
           </div>
         </div>
       )}
       {matchBlockedByBothMulti&&(
-        <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:T.orange,fontWeight:600}}>Narrow one side to a single entry — a match can be several lines to one ledger entry, or one line to several entries, but not many on both sides at once.</div>
+        <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.orange,fontWeight:600}}>Narrow one side to a single entry — a match can be several lines to one ledger entry, or one line to several entries, but not many on both sides at once.</div>
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         {/* Left: Entered in ledger */}
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:12,fontWeight:700,color:T.text}}>Entered in ledger</div>
+            <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
             <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
           </div>
           {/* Column header — select-all + sortable Date/Amount, so both sides
@@ -4506,18 +4506,27 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                       <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
-                      <div style={{fontSize:13,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                     </div>
                     <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
                       <span>{t.date}</span>
                       {!!t.reconciled&&<span style={{color:T.green,fontWeight:700}}>· reconciled</span>}
                     </div>
                   </div>
-                  <div style={{fontWeight:700,fontSize:13,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+                  <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
                 </div>
               );
             })}
-            {!displayLeftRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:12}}>{ledgerEntries.length?"Everything here is matched — see the Matched tab.":"No ledger entries this month."}</div>}
+            {!displayLeftRows.length&&(
+              <div style={{padding:"36px 20px",textAlign:"center",color:T.muted,fontSize:11}}>
+                {ledgerEntries.length?"Everything here is matched — see the Matched tab.":(
+                  <>
+                    <div style={{marginBottom:10}}>No ledger entries this month. Check another period, or register new vouchers from the Inbox.</div>
+                    <button onClick={()=>onNavigate&&onNavigate("Files")} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to Inbox →</button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
             <button onClick={()=>setShowMatched(true)} style={{width:"100%",background:T.bg,border:"none",borderTop:`1px solid ${T.border}`,padding:"9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>
@@ -4529,7 +4538,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         {/* Right: From bank statement */}
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:12,fontWeight:700,color:T.text}}>From bank statement</div>
+            <div style={{fontSize:11,fontWeight:700,color:T.text}}>From bank statement</div>
             <div style={{fontSize:11,color:T.muted}}>{matchedLines.length} matched</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
@@ -4546,7 +4555,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             <>
               <div onClick={()=>setPostMenu(null)} style={{position:"fixed",inset:0,zIndex:900}}/>
               <div style={{position:"fixed",left:postMenu.x,top:postMenu.y,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.18)",zIndex:901,padding:4,minWidth:170}}>
-                <button onClick={()=>{setBulkPostOpen(true);setPostMenu(null);}} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"9px 12px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>Select account…</button>
+                <button onClick={()=>{setBulkPostOpen(true);setPostMenu(null);}} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"9px 12px",fontSize:11,fontWeight:600,color:T.text,cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>Select account…</button>
               </div>
             </>
           )}
@@ -4568,11 +4577,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                       {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
-                      <div style={{fontSize:13,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                     </div>
                     <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
                   </div>
-                  <div style={{fontWeight:700,fontSize:13,color:T.text,flexShrink:0}}>{fmtBal(l.amount)}</div>
+                  <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(l.amount)}</div>
                   <div style={{flexShrink:0,display:"flex",gap:4}}>
                     {isMatchedMode?(
                       <button onClick={e=>{e.stopPropagation();doUnmatch(l);}} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button>
@@ -4582,13 +4591,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                         <button onClick={e=>{e.stopPropagation();dismissSuggestion(l.id);}} style={{background:"none",border:`1px solid ${T.orange}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                       </>
                     ):(
-                      <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:13}}><i className="ti ti-note"/></button>
+                      <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}><i className="ti ti-note"/></button>
                     )}
                   </div>
                 </div>
               );
             })}
-            {!displayRightRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:12}}>{filterMode==="matched"?"Nothing matched yet this month.":"No unposted lines. Upload a statement to get started."}</div>}
+            {!displayRightRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:11}}>{filterMode==="matched"?"Nothing matched yet this month.":"No unposted lines. Upload a statement to get started."}</div>}
           </div>
         </div>
       </div>
