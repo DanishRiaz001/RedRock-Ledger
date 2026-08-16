@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { T, inp } from "../lib/theme.js";
 import { getAnthropicKey, setAnthropicKey, fmt } from "../lib/utils.js";
-import { AccDrop, FlexDateInput } from "./ledger.jsx";
+import { AccDrop, FlexDateInput, ContactSearch } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
 
 function CustomerImportScreen({contacts,setContacts}){
@@ -211,7 +211,7 @@ function AccountingSettingsScreen({onNavigate}){
 // credits, once every row is posted the suspense account nets to exactly
 // zero on its own; the running "difference" shown here is what validates
 // that before anything is posted, catching typos or an incomplete export.
-function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onSave,onBack,uploadInboxFile}){
+function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTransaction,onSave,onBack,uploadInboxFile}){
   const OPENING_BALANCE_CODE="2960";
   const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:""});
   const[rows,setRows]=useState([newRow()]);
@@ -321,6 +321,18 @@ function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onS
 
   const customers=contacts.filter(c=>c.type==="customer");
   const suppliers=contacts.filter(c=>c.type==="supplier");
+  // Same quick-create pattern as everywhere else in the app — type a name
+  // right in the picker, pick Customer or Supplier, done. Returns the new
+  // contact's id synchronously since ContactSearch immediately selects it.
+  const handleCreateContact=({name,type})=>{
+    if(!setContacts)return null;
+    const prefix=type==="customer"?"C":"S";
+    const existing=contacts.filter(c=>c.type===type);
+    const nums=existing.map(c=>parseInt((c.id||"").slice(1))||0);
+    const id=`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
+    setContacts(p=>[...p,{id,type,name,notes:""}]);
+    return id;
+  };
 
   if(step==="done"){
     return(
@@ -344,11 +356,8 @@ function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onS
           <div style={{marginBottom:20}}>
             <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Customer open items (Accounts Receivable)</div>
             {custOpenItems.map(oi=>(
-              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6}}>
-                <select value={oi.contactId} onChange={e=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:e.target.value}:x))} style={{...inp}}>
-                  <option value="">— Select customer —</option>
-                  {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6,alignItems:"start"}}>
+                <ContactSearch contacts={customers} value={oi.contactId} onChange={v=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:v}:x))} onCreateContact={handleCreateContact}/>
                 <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
                 <button onClick={()=>setCustOpenItems(custOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
               </div>
@@ -360,11 +369,8 @@ function OpeningBalanceScreen({accounts,contacts,transactions,addTransaction,onS
           <div style={{marginBottom:20}}>
             <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Supplier open items (Accounts Payable)</div>
             {supOpenItems.map(oi=>(
-              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6}}>
-                <select value={oi.contactId} onChange={e=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:e.target.value}:x))} style={{...inp}}>
-                  <option value="">— Select supplier —</option>
-                  {suppliers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6,alignItems:"start"}}>
+                <ContactSearch contacts={suppliers} value={oi.contactId} onChange={v=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:v}:x))} onCreateContact={handleCreateContact}/>
                 <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
                 <button onClick={()=>setSupOpenItems(supOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
               </div>

@@ -885,7 +885,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="OpeningBalance"&&(
           <ScreenErrorBoundary name="Opening Balance">
-            <OpeningBalanceScreen accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransactionNotified} onSave={setAccounts} onBack={()=>setTab("Settings")} uploadInboxFile={uploadInboxFile}/>
+            <OpeningBalanceScreen accounts={accounts} contacts={contacts} setContacts={setContacts} transactions={transactions} addTransaction={addTransactionNotified} onSave={setAccounts} onBack={()=>setTab("Settings")} uploadInboxFile={uploadInboxFile}/>
           </ScreenErrorBoundary>
         )}
 
