@@ -3082,10 +3082,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
     // Multi-line entries share one groupRef so opening any line shows the whole entry
     const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
+    const line0=lines[0]||{};
+    const vc0=findVatCode(line0.debitVatCode,"input")||findVatCode(line0.creditVatCode,"output");
     // Save primary entry
-    onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null});
+    onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
     // Save each extra line as its own entry, linked via groupRef
     extraLines.forEach(l=>{
+      const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
       onSave({
         date:form.date,
         debitCode:l.debitCode,
@@ -3097,6 +3100,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         groupRef,
         moneySourceId:form.moneySourceId||null,
         projectId:form.projectId||null,
+        vatCode:(l.debitVatCode&&l.debitVatCode!=="0")?l.debitVatCode:(l.creditVatCode&&l.creditVatCode!=="0"?l.creditVatCode:null),
+        vatPct:vc?vc.rate:null,
       });
     });
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
@@ -3264,6 +3269,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                   lines[li]={...lines[li],debitCode:v};
                   setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
+                <select value={line.debitVatCode||"0"} onChange={e=>{
+                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                  lines[li]={...lines[li],debitVatCode:e.target.value};
+                  setForm(p=>({...p,lines}));
+                }} style={{...inpSm,fontSize:10,padding:"4px 6px",marginTop:3}}>
+                  {vatCodeOptions("input").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
+                </select>
               </div>
               <div style={{flex:"0 0 40%",minWidth:0}}>
                 {li===0&&<div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>}
@@ -3272,6 +3284,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                   lines[li]={...lines[li],creditCode:v};
                   setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
+                <select value={line.creditVatCode||"0"} onChange={e=>{
+                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                  lines[li]={...lines[li],creditVatCode:e.target.value};
+                  setForm(p=>({...p,lines}));
+                }} style={{...inpSm,fontSize:10,padding:"4px 6px",marginTop:3}}>
+                  {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
+                </select>
               </div>
               <div style={{flex:"0 0 20%",minWidth:0}}>
                 {li===0&&<div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>}
@@ -3508,10 +3527,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
       })()}
     </Card>
 
-    {/* Attachment — pulled out into its own right-hand panel instead of
-        living inline in the form, so it's always visible regardless of
-        which entry type is selected or how long the form gets. */}
     <div style={isDesktop?{width:320,flexShrink:0,position:"sticky",top:16}:{width:"100%"}}>
+      {/* Mobile only — desktop gets the richer live-preview panel below
+          instead, which now includes this same upload/pick-file capability
+          in its own empty state, so the two don't duplicate each other. */}
+      {!isDesktop&&(
       <Card style={{marginBottom:0}}>
         {entryMode==="receipt"?(
           <>
@@ -3583,6 +3603,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           </>
         )}
       </Card>
+      )}
       {isDesktop&&(()=>{
         const attached=form.attachmentId?inboxFiles.find(f=>f.id===form.attachmentId):null;
         if(!showEntryPreview)return(
@@ -3593,9 +3614,20 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
         return(
           <div style={{width:400,flexShrink:0,position:"sticky",top:16,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
             {!attached?(
-              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:8,padding:24,textAlign:"center"}}>
+              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center"}}>
                 <i className="ti ti-file-off" style={{fontSize:28}}/>
                 <div style={{fontSize:12}}>No document attached to this entry yet.</div>
+                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"10px 16px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg,marginTop:6}}>
+                  <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Upload a file"}</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
+                </label>
+                {inboxFiles.length>0&&(
+                  <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:2}}>
+                    <option value="">— or pick an existing Inbox file —</option>
+                    {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                  </select>
+                )}
               </div>
             ):(
               <>

@@ -2328,7 +2328,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   const today=new Date().toISOString().slice(0,10);
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell.
-  const[colWidths,setColWidths]=useState([320,150,150,150]);
+  const[colWidths,setColWidths]=useState([260,160,160,160]);
   const resizeDragRef=React.useRef(null);
   const startColResize=(idx,e)=>{
     e.preventDefault();e.stopPropagation();
