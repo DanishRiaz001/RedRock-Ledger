@@ -1299,68 +1299,65 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
           </div>
 
           {form.voucherType==="supplier"?(
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
-                <select value={form.supplierId} onChange={e=>setForm({supplierId:e.target.value})} style={{...inp}}>
-                  {!suppliers.length&&<option value="">No suppliers yet</option>}
-                  {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
                 <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
+                  <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Supplier</div>
+                  <select value={form.supplierId} onChange={e=>setForm({supplierId:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}>
+                    {!suppliers.length&&<option value="">No suppliers yet</option>}
+                    {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
                   <FlexDateInput value={form.date} onChange={v=>setForm({date:v})}/>
                 </div>
                 <div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
+                  <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Due date</div>
                   <FlexDateInput value={form.dueDate} onChange={v=>setForm({dueDate:v})}/>
                 </div>
               </div>
               <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice number</div>
-                <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp}}/>
+                <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice number</div>
+                <input value={form.invoiceNo} onChange={e=>setForm({invoiceNo:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}/>
               </div>
-              <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`}}>
-                <div style={{fontSize:11,fontWeight:800,color:T.text,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>Costs</div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <div>
-                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Cost account</div>
-                    <AccDrop value={form.expenseAccount} onChange={code=>{
-                      const acc=accounts.find(a=>a.code===code);
-                      if(acc&&acc.defaultVatCode){setForm({expenseAccount:code,vatPct:String(acc.defaultVatPct)});return;}
-                      setForm(acc&&acc.defaultVatPct!=null?{expenseAccount:code,vatPct:String(acc.defaultVatPct)}:{expenseAccount:code});
-                    }} accounts={expenseAccounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
-                    {(()=>{const acc=accounts.find(a=>a.code===form.expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:4}}>ℹ️ {acc.notes}</div>:null;})()}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <div>
-                      <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount incl. VAT</div>
-                      <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp}}/>
-                    </div>
-                    <div>
-                      {(()=>{
-                        const costAcc=accounts.find(a=>a.code===form.expenseAccount);
-                        const costLocked=!!(costAcc&&costAcc.vatLocked&&costAcc.defaultVatCode);
-                        return(<>
-                          <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %{costLocked&&<span title="Locked on this account" style={{marginLeft:4,color:T.muted}}><i className="ti ti-lock" style={{fontSize:10}}/></span>}</div>
-                          <select value={form.vatPct} disabled={costLocked} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp,opacity:costLocked?0.6:1}}>
-                            {vatCodeOptions("input").map(c=><option key={c.code} value={c.rate}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                          </select>
-                        </>);
-                      })()}
-                    </div>
-                  </div>
-                  {vatRate>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
-                      <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
-                    </div>
-                  )}
-                  <div>
-                    <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-                    <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp}}/>
-                  </div>
+
+              <div style={{fontSize:10,fontWeight:800,color:T.muted,marginTop:6,textTransform:"uppercase",letterSpacing:0.5}}>Cost posting</div>
+              <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Cost account</div>
+                  <AccDrop value={form.expenseAccount} onChange={code=>{
+                    const acc=accounts.find(a=>a.code===code);
+                    if(acc&&acc.defaultVatCode){setForm({expenseAccount:code,vatPct:String(acc.defaultVatPct)});return;}
+                    setForm(acc&&acc.defaultVatPct!=null?{expenseAccount:code,vatPct:String(acc.defaultVatPct)}:{expenseAccount:code});
+                  }} accounts={expenseAccounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
                 </div>
+                {(()=>{
+                  const costAcc=accounts.find(a=>a.code===form.expenseAccount);
+                  const costLocked=!!(costAcc&&costAcc.vatLocked&&costAcc.defaultVatCode);
+                  return(
+                    <div>
+                      <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>VAT %{costLocked&&<span title="Locked on this account" style={{marginLeft:4,color:T.muted}}><i className="ti ti-lock" style={{fontSize:9}}/></span>}</div>
+                      <select value={form.vatPct} disabled={costLocked} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12,opacity:costLocked?0.6:1}}>
+                        {vatCodeOptions("input").map(c=><option key={c.code} value={c.rate}>{c.code}: ({c.rate}%) {c.name}</option>)}
+                      </select>
+                    </div>
+                  );
+                })()}
+                <div>
+                  <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Amount incl. VAT</div>
+                  <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}/>
+                </div>
+              </div>
+              {(()=>{const acc=accounts.find(a=>a.code===form.expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:-4}}>ℹ️ {acc.notes}</div>:null;})()}
+              {vatRate>0&&(
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T.muted}}>
+                  <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
+                </div>
+              )}
+              <div>
+                <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Description</div>
+                <input value={form.description} onChange={e=>setForm({description:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}/>
               </div>
             </div>
           ):form.voucherType==="income"?(
