@@ -213,6 +213,69 @@ function AccDrop({value,onChange,accounts,onCreateAccount}){
   );
 }
 
+// Same typeable-combobox pattern as AccDrop, for VAT codes — matches
+// Tripletex's own real searchable VAT dropdown rather than a plain native
+// select. VAT lists are short (a handful of codes) so no grouping is
+// needed, just live filtering by code, rate, or name.
+function VatDrop({value,onChange,options,disabled=false}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const inputRef=React.useRef(null);
+  const containerRef=React.useRef(null);
+  const sel=options.find(o=>o.code===value);
+  const displayValue=sel?`${sel.code}: (${sel.rate}%) ${sel.name}`:"";
+
+  const filtered=useMemo(()=>{
+    if(!q)return options;
+    const ql=q.toLowerCase();
+    return options.filter(o=>o.code.toLowerCase().includes(ql)||o.name.toLowerCase().includes(ql)||String(o.rate).includes(ql));
+  },[options,q]);
+
+  const openAndSearch=()=>{if(disabled)return;setOpen(true);setQ("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");};
+  const handleBlur=e=>{
+    const next=e.relatedTarget;
+    if(next&&containerRef.current&&containerRef.current.contains(next))return;
+    if(!next){setTimeout(()=>{if(containerRef.current&&!containerRef.current.contains(document.activeElement))closeAndRevert();},0);return;}
+    closeAndRevert();
+  };
+
+  return(
+    <div ref={containerRef} style={{position:"relative",opacity:disabled?0.6:1}}>
+      <input
+        ref={inputRef}
+        value={open?q:displayValue}
+        placeholder="— Select VAT code —"
+        disabled={disabled}
+        onFocus={openAndSearch}
+        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);}}
+        onBlur={handleBlur}
+        onKeyDown={e=>{
+          if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
+        }}
+        style={{...selSm,minHeight:36,cursor:disabled?"default":"text",paddingRight:22}}
+      />
+      {!disabled&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>}
+      {open&&!disabled&&(
+        <>
+          <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:230}}>
+            <div style={{overflowY:"auto",maxHeight:230}}>
+              {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No VAT codes found</div>}
+              {filtered.map((o,i)=>(
+                <div key={o.code} onMouseDown={e=>{e.preventDefault();onChange(o.code);closeAndRevert();}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:o.code===value?"#EBF4FF":"#fff",fontWeight:o.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none"}}>
+                  <span style={{fontWeight:700,color:T.accent}}>{o.code}</span>: ({o.rate}%) {o.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Flexible date input — type raw digits (021526 or 02152026, both parsed as
 // MM/DD) or click the calendar icon for a native picker. Always stores/reads
 // standard YYYY-MM-DD underneath so nothing else in the app needs to change.
@@ -2108,4 +2171,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, NewContactModal };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, NewContactModal, VatDrop };

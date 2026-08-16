@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal, VatDrop } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
@@ -1438,9 +1438,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                           </div>
                           <div>
                             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code{lineLocked&&<span title="Locked on this account" style={{marginLeft:4,color:T.muted}}><i className="ti ti-lock" style={{fontSize:10}}/></span>}</div>
-                            <select value={l.vatCode} disabled={lineLocked} onChange={e=>updateIncomeLine(l.lid,{vatCode:e.target.value})} style={{...inp,opacity:lineLocked?0.6:1}}>
-                              {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                            </select>
+                            <VatDrop value={l.vatCode} disabled={lineLocked} onChange={code=>updateIncomeLine(l.lid,{vatCode:code})} options={vatCodeOptions("output")}/>
                           </div>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
@@ -1538,15 +1536,11 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     {displayOpts.showDescription&&<input placeholder="Line description" value={l.description} onChange={e=>updateGeneralLine(l.lid,{description:e.target.value})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>}
                     <AccDrop value={l.debitCode} onChange={v=>updateGeneralLine(l.lid,{debitCode:v})} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
                     {displayOpts.showVat&&(
-                      <select value={l.debitVatCode} onChange={e=>updateGeneralLine(l.lid,{debitVatCode:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px"}}>
-                        {vatCodeOptions("input").map(c=><option key={c.code} value={c.code}>{c.code}: {c.rate}%</option>)}
-                      </select>
+                      <VatDrop value={l.debitVatCode} onChange={code=>updateGeneralLine(l.lid,{debitVatCode:code})} options={vatCodeOptions("input")}/>
                     )}
                     <AccDrop value={l.creditCode} onChange={v=>updateGeneralLine(l.lid,{creditCode:v})} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
                     {displayOpts.showVat&&(
-                      <select value={l.creditVatCode} onChange={e=>updateGeneralLine(l.lid,{creditVatCode:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px"}}>
-                        {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: {c.rate}%</option>)}
-                      </select>
+                      <VatDrop value={l.creditVatCode} onChange={code=>updateGeneralLine(l.lid,{creditVatCode:code})} options={vatCodeOptions("output")}/>
                     )}
                     <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"&&i===generalLines.length-1){e.preventDefault();addGeneralLine();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
                     <div style={{display:"flex",gap:4,justifyContent:"center"}}>
@@ -3269,13 +3263,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                   lines[li]={...lines[li],debitCode:v};
                   setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
-                <select value={line.debitVatCode||"0"} onChange={e=>{
+                <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],debitVatCode:e.target.value};
+                  lines[li]={...lines[li],debitVatCode:code};
                   setForm(p=>({...p,lines}));
-                }} style={{...inpSm,fontSize:10,padding:"4px 6px",marginTop:3}}>
-                  {vatCodeOptions("input").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                </select>
+                }} options={vatCodeOptions("input")}/>
               </div>
               <div style={{flex:"0 0 40%",minWidth:0}}>
                 {li===0&&<div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>}
@@ -3284,13 +3276,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
                   lines[li]={...lines[li],creditCode:v};
                   setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
-                <select value={line.creditVatCode||"0"} onChange={e=>{
+                <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],creditVatCode:e.target.value};
+                  lines[li]={...lines[li],creditVatCode:code};
                   setForm(p=>({...p,lines}));
-                }} style={{...inpSm,fontSize:10,padding:"4px 6px",marginTop:3}}>
-                  {vatCodeOptions("output").map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                </select>
+                }} options={vatCodeOptions("output")}/>
               </div>
               <div style={{flex:"0 0 20%",minWidth:0}}>
                 {li===0&&<div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>}

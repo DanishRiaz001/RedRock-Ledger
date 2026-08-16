@@ -216,6 +216,23 @@ function AppShell({user}){
     return{count:affectedIds.length};
   };
 
+  // Same idea as mergeContacts, but for the chart of accounts. Reuses
+  // setAccounts' existing deletedCode/newCode migration path (already
+  // proven for account renames) rather than duplicating that logic here —
+  // a merge and a rename are really the same operation: move every
+  // transaction referencing the old code onto the new one, then remove
+  // the old account.
+  const mergeAccounts=async(keepCode,removeCode)=>{
+    if(!canEdit||keepCode===removeCode)return{error:"Nothing to merge."};
+    const keep=accounts.find(a=>a.code===keepCode);
+    const remove=accounts.find(a=>a.code===removeCode);
+    if(!keep||!remove)return{error:"Account not found."};
+    const count=transactions.filter(t=>t.debitCode===removeCode||t.creditCode===removeCode).length;
+    const newList=accounts.filter(a=>a.code!==removeCode);
+    await setAccounts(newList,removeCode,keepCode);
+    return{count};
+  };
+
   // Real period lock — company-wide (via company_profile), not per-device
   // like the old localStorage version. This actually blocks the mutation
   // rather than just logging a warning.
@@ -1228,7 +1245,7 @@ function AppShell({user}){
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
         nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
-        fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} mergeContacts={mergeContacts} postBankStatementLinesBulk={postBankStatementLinesBulk} getInvoicePaid={getInvoicePaid}
+        fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} mergeContacts={mergeContacts} mergeAccounts={mergeAccounts} postBankStatementLinesBulk={postBankStatementLinesBulk} getInvoicePaid={getInvoicePaid}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPan
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
-function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate}){
+function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:""});
@@ -14,6 +14,24 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
   const[acctImporting,setAcctImporting]=useState(false);
   const[search,setSearch]=useState("");
   const[highlightCode,setHighlightCode]=useState(null); // briefly flash a just-created account so it's obvious it landed
+  const[showDupes,setShowDupes]=useState(false);
+  const[merging,setMerging]=useState(null);
+
+  // Duplicate detection — real duplicates in a live chart of accounts almost
+  // never share the exact same code (the system usually prevents that); they
+  // show up as the SAME account name under two different codes, created by
+  // repeated imports/onboarding attempts. Normalize names (lowercase, strip
+  // punctuation/whitespace) and group by that instead of by code.
+  const duplicateGroups=useMemo(()=>{
+    const norm=n=>(n||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const byName={};
+    accounts.forEach(a=>{
+      const key=norm(a.name);
+      if(!key)return;
+      (byName[key]=byName[key]||[]).push(a);
+    });
+    return Object.values(byName).filter(g=>g.length>1);
+  },[accounts]);
 
   // Keep the local list in sync with the accounts prop. Without this, if the
   // screen is opened before accounts finish loading (e.g. right after login),
@@ -148,6 +166,11 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
             <input type="checkbox" checked={allowEditing} onChange={e=>setAllowEditing(e.target.checked)}/> Allow editing
           </label>
+          {mergeAccounts&&duplicateGroups.length>0&&(
+            <button onClick={()=>setShowDupes(s=>!s)} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              <i className="ti ti-alert-triangle" style={{fontSize:13,marginRight:5}}/>{duplicateGroups.length} possible duplicate{duplicateGroups.length>1?"s":""}
+            </button>
+          )}
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
             <input type="checkbox" checked={showCustomOnly} onChange={e=>setShowCustomOnly(e.target.checked)}/> Show only custom accounts
           </label>
@@ -155,6 +178,41 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
             <input type="checkbox" checked={showActiveOnly} onChange={e=>setShowActiveOnly(e.target.checked)}/> Show only active accounts
           </label>
         </div>
+
+        {showDupes&&duplicateGroups.length>0&&(
+          <div style={{background:"#fff",border:`1px solid ${T.redMid||T.border}`,borderRadius:12,padding:16,marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Accounts with the same name under different codes</div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Pick which one to keep — every transaction on the others moves onto it, then the duplicates are removed.</div>
+            {duplicateGroups.map((group,gi)=>(
+              <div key={gi} style={{border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:10}}>
+                {group.map(a=>{
+                  const count=transactions.filter(t=>t.debitCode===a.code||t.creditCode===a.code).length;
+                  return(
+                    <div key={a.code} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0"}}>
+                      <span style={{fontSize:12,fontWeight:700,color:T.accent,background:T.accentLight,borderRadius:6,padding:"2px 8px",minWidth:50,textAlign:"center"}}>{a.code}</span>
+                      <span style={{fontSize:13,flex:1,color:T.text}}>{a.name}</span>
+                      <span style={{fontSize:11,color:T.muted}}>{count} entr{count===1?"y":"ies"}</span>
+                      <button
+                        disabled={merging===gi}
+                        onClick={async()=>{
+                          const others=group.filter(x=>x.code!==a.code);
+                          if(!confirm(`Keep ${a.code} and merge ${others.map(o=>o.code).join(", ")} into it? This moves every transaction and can't be undone.`))return;
+                          setMerging(gi);
+                          for(const o of others){
+                            const r=await mergeAccounts(a.code,o.code);
+                            if(r&&r.error){alert(r.error);break;}
+                          }
+                          setMerging(null);
+                        }}
+                        style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:merging===gi?"wait":"pointer",fontFamily:"inherit"}}
+                      >{merging===gi?"Merging…":"Keep this one"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
 
         {orphanCodes.length>0&&(
           <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
