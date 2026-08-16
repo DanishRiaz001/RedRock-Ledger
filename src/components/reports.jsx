@@ -4633,6 +4633,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const code=type==="customer"?"1500":"2400";
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
+  const periodEnd=`${year}-${String(monthIdx+1).padStart(2,"0")}-${String(new Date(year,monthIdx+1,0).getDate()).padStart(2,"0")}`;
   const periodLabel=new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
   const stepMonth=(dir)=>{
     let m=monthIdx+dir,y=year;
@@ -4651,9 +4652,17 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       .map(c=>{
         let txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
         const isMatched=(t)=>!!(t.matchedWith&&t.matchedAccount===code);
-        if(entriesView==="open")txns=txns.filter(t=>!isMatched(t));
-        else if(entriesView==="closed")txns=txns.filter(t=>isMatched(t));
-        // "all" — no filter, shows both matched and unmatched
+        // "Open" means "still outstanding as of this period" — an unpaid
+        // June invoice must still show when viewing August, so this filters
+        // to everything dated on/before the period's end, not just entries
+        // that happened within that one month. "Closed"/"all" are looking
+        // at history instead, so those DO scope to the specific month —
+        // this is the actual bug fix: previously viewMonth changed the
+        // label but never touched this filter at all, so the period
+        // selector had zero effect on what data appeared.
+        if(entriesView==="open")txns=txns.filter(t=>!isMatched(t)&&t.date<=periodEnd);
+        else if(entriesView==="closed")txns=txns.filter(t=>isMatched(t)&&t.date.slice(0,7)===viewMonth);
+        else txns=txns.filter(t=>t.date.slice(0,7)===viewMonth);
         if(search){
           const q=search.toLowerCase();
           txns=txns.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q));
@@ -4665,7 +4674,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         return{contact:c,txns,total};
       })
       .filter(g=>g.txns.length>0);
-  },[relevantContacts,contactFilter,transactions,code,entriesView,search,minAmount,maxAmount]);
+  },[relevantContacts,contactFilter,transactions,code,entriesView,search,minAmount,maxAmount,periodEnd,viewMonth]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -4862,7 +4871,17 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                 </React.Fragment>
               );
             })}
-            {!groups.length&&<tr><td colSpan="7" style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {type==="customer"?"customers":"suppliers"} with entries match these filters.</td></tr>}
+            {!groups.length&&(
+              <tr><td colSpan="7" style={{textAlign:"center",color:T.muted,padding:30,fontSize:12}}>
+                {!relevantContacts.length?(
+                  <>No {type==="customer"?"customers":"suppliers"} yet — add one first.</>
+                ):transactions.filter(t=>t.debitCode===code||t.creditCode===code).some(t=>t.debitCode===code||t.creditCode===code)&&transactions.filter(t=>t.debitCode===code||t.creditCode===code).every(t=>!t.contactId)?(
+                  <>There are entries on this account, but none are linked to a {type}. Entries need a {type} selected when they're posted to show up here.</>
+                ):(
+                  <>No entries match these filters for {periodLabel}. Try "All" instead of "Open" if you're looking for older activity.</>
+                )}
+              </td></tr>
+            )}
             {groups.length>0&&(
               <tr style={{borderTop:`2px solid ${T.border}`}}>
                 <td colSpan="6" style={{padding:"12px 14px",fontWeight:800,color:T.text}}>Total — Closing balance</td>
