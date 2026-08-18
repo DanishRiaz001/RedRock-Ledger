@@ -110,7 +110,7 @@ function BackHeader({title,sub,onBack}){
   );
 }
 
-const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"9px 10px",width:"100%",fontSize:9,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"6px 8px",width:"100%",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
 function AccDrop({value,onChange,accounts,onCreateAccount}){
@@ -181,27 +181,35 @@ function AccDrop({value,onChange,accounts,onCreateAccount}){
           // through a whole voucher without touching the mouse.
           if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
         }}
-        style={{...selSm,minHeight:36,cursor:"text",paddingRight:24}}
+        style={{...selSm,minHeight:28,cursor:"text",paddingRight:22}}
       />
       <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
       {open&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280}}>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280,minWidth:320}}>
+            {filtered.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"6px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Type</div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Number</div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Name</div>
+              </div>
+            )}
             <div style={{overflowY:"auto",maxHeight:230}}>
-              {filtered.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No accounts found</div>}
+              {filtered.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {filtered.map((a,i)=>(
-                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
-                  <span style={{color:(SERIES[a.groupKey]?SERIES[a.groupKey].color:undefined)||T.muted,fontWeight:700,minWidth:32,flexShrink:0}}>{a.code}</span>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
+                  <span style={{fontSize:11,color:T.muted}}>Account</span>
+                  <span style={{fontSize:11,fontWeight:700,color:(SERIES[a.groupKey]?SERIES[a.groupKey].color:undefined)||T.accent}}>{a.code}</span>
+                  <span style={{fontSize:11,color:T.text,fontWeight:a.code===value?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
                 </div>
               ))}
             </div>
             {onCreateAccount&&(creating?(
               <div style={{padding:"10px",borderTop:`1px solid ${T.border}`,background:T.bg,display:"flex",gap:6}}>
-                <input autoFocus placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,width:60,fontSize:9}}/>
-                <input placeholder="Account name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,flex:1,fontSize:9}}/>
-                <button onMouseDown={e=>{e.preventDefault();submitCreate();}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"0 10px",fontSize:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
+                <input autoFocus placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,width:60,fontSize:11}}/>
+                <input placeholder="Account name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,flex:1,fontSize:11}}/>
+                <button onMouseDown={e=>{e.preventDefault();submitCreate();}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"0 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
               </div>
             ):(
               <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
@@ -254,7 +262,7 @@ function VatDrop({value,onChange,options,disabled=false}){
           if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
           if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
         }}
-        style={{...selSm,minHeight:36,cursor:disabled?"default":"text",paddingRight:22}}
+        style={{...selSm,minHeight:28,cursor:disabled?"default":"text",paddingRight:20}}
       />
       {!disabled&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>}
       {open&&!disabled&&(
@@ -343,7 +351,7 @@ function AccDropFlat({value,onChange,accounts}){
   const filtered=sorted.filter(a=>!q||a.code.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()));
   return(
     <div style={{position:"relative"}}>
-      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:36}}>
+      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
         {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {sel.name}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
         <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
       </div>

@@ -24,6 +24,55 @@ function AppShell({user}){
   const[viewingUserId,setViewingUserId]=useState(user.id);
   const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel}]
   const currentAccessLevel=viewingUserId===user.id?"full":((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).accessLevel||"readonly");
+
+  // Multi-company — one login can own several separate, fully isolated
+  // companies (real client books, or just test entities). activeCompanyId
+  // layers on top of viewingUserId: viewingUserId picks WHOSE data you're
+  // looking at (yours, or a client's you've been granted access to);
+  // activeCompanyId picks WHICH of that person's companies. Persisted so a
+  // page refresh doesn't silently drop you back to a different company.
+  const[companies,setCompanies]=useState([]);
+  const[activeCompanyId,setActiveCompanyIdState]=useState(()=>{
+    // Guarded — some environments (privacy mode, sandboxed iframes, blocked
+    // storage) throw on localStorage access. Without this, that single
+    // call failing would crash the entire app blank on first render.
+    try{return localStorage.getItem("rr_active_company")||null;}catch(e){return null;}
+  });
+  const[companiesLoading,setCompaniesLoading]=useState(true);
+  const setActiveCompanyId=id=>{setActiveCompanyIdState(id);if(id){try{localStorage.setItem("rr_active_company",id);}catch(e){/* storage blocked — company switch still works for this session */}}};
+
+  useEffect(()=>{
+    setCompaniesLoading(true);
+    sb.from("companies").select("*").eq("owner_user_id",viewingUserId).order("created_at").then(async({data,error})=>{
+      let list=data||[];
+      if(!error&&!list.length){
+        // First time this person has ever loaded the app under the new
+        // multi-company model — give them a company automatically rather
+        // than showing an empty "no companies" screen on login. Their
+        // existing data was already backfilled onto a matching row by the
+        // SQL migration, so this only fires for genuinely brand-new users.
+        const{data:created}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:"My Company"}).select().single();
+        if(created)list=[created];
+      }
+      setCompanies(list);
+      const stillValid=activeCompanyId&&list.some(c=>c.id===activeCompanyId);
+      if(!stillValid&&list.length)setActiveCompanyId(list[0].id);
+      setCompaniesLoading(false);
+    });
+  },[viewingUserId]);
+
+  const createCompany=async(name)=>{
+    const{data,error}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:name||"New Company"}).select().single();
+    if(error){alert("Couldn't create company: "+error.message);return null;}
+    setCompanies(p=>[...p,data]);
+    setActiveCompanyId(data.id);
+    return data;
+  };
+  const renameCompany=async(id,name)=>{
+    setCompanies(p=>p.map(c=>c.id===id?{...c,name}:c));
+    const{error}=await sb.from("companies").update({name}).eq("id",id);
+    if(error){alert("Couldn't rename — check your connection and try again.");}
+  };
   useEffect(()=>{
     sb.from("client_access").select("*").eq("employee_user_id",user.id).then(async({data,error})=>{
       if(error||!data||!data.length){setMyClientAccess([]);return;}
@@ -73,28 +122,29 @@ function AppShell({user}){
   },[user.id]);
 
   useEffect(()=>{
+    if(!activeCompanyId)return; // don't fetch until we know which company's data to load
     setLoading(true);
     Promise.all([
-      sb.from("accounts").select("*").eq("user_id",viewingUserId).order("code"),
-      sb.from("contacts").select("*").eq("user_id",viewingUserId).order("contact_id"),
-      sb.from("transactions").select("*").eq("user_id",viewingUserId).order("bilag"),
-      sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).order("fund_id"),
-      sb.from("budgets").select("*").eq("user_id",viewingUserId),
-      sb.from("inbox_files").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}),
-      sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId),
-      sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId).order("date"),
-      sb.from("invoices").select("*").eq("user_id",viewingUserId).order("invoice_no",{ascending:false}),
-      sb.from("company_profile").select("*").eq("user_id",viewingUserId).maybeSingle(),
-      sb.from("recurring_invoices").select("*").eq("user_id",viewingUserId).order("id"),
-      sb.from("employees").select("*").eq("user_id",viewingUserId).order("name"),
-      sb.from("quotes").select("*").eq("user_id",viewingUserId).order("quote_no",{ascending:false}),
-      sb.from("audit_log").select("*").eq("user_id",viewingUserId).order("created_at",{ascending:false}).limit(500),
-      sb.from("pos_products").select("*").eq("user_id",viewingUserId).order("name"),
-      sb.from("payroll_runs").select("*, payroll_lines(*)").eq("user_id",viewingUserId).order("run_date",{ascending:false}),
-      sb.from("money_sources").select("*").eq("user_id",viewingUserId).order("created_at"),
-      sb.from("projects").select("*").eq("user_id",viewingUserId).order("created_at"),
-      sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId),
-      sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId),
+      sb.from("accounts").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("code"),
+      sb.from("contacts").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("contact_id"),
+      sb.from("transactions").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("bilag"),
+      sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("fund_id"),
+      sb.from("budgets").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
+      sb.from("inbox_files").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at",{ascending:false}),
+      sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
+      sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("date"),
+      sb.from("invoices").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("invoice_no",{ascending:false}),
+      sb.from("company_profile").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).maybeSingle(),
+      sb.from("recurring_invoices").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("id"),
+      sb.from("employees").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("name"),
+      sb.from("quotes").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("quote_no",{ascending:false}),
+      sb.from("audit_log").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at",{ascending:false}).limit(500),
+      sb.from("pos_products").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("name"),
+      sb.from("payroll_runs").select("*, payroll_lines(*)").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("run_date",{ascending:false}),
+      sb.from("money_sources").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at"),
+      sb.from("projects").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at"),
+      sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
+      sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
     ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR])=>{
       const accs=aR.data||[];
       if(accs.length){
@@ -109,12 +159,12 @@ function AppShell({user}){
         // Silently upsert any new defaults to Supabase
         const newDefaults=DEFAULT_ACCOUNTS.filter(d=>!existingCodes.has(d.code));
         if(newDefaults.length){
-          newDefaults.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
+          newDefaults.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,company_id,code"}));
         }
       } else {
         // New user — load full default chart of accounts into Supabase
         setAccountsState(DEFAULT_ACCOUNTS);
-        DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,code"}));
+        DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,company_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
@@ -150,7 +200,7 @@ function AppShell({user}){
       setNextQuoteNo(startQuoteNo);
       setLoading(false);
     });
-  },[viewingUserId]);
+  },[viewingUserId,activeCompanyId]);
 
   const canEdit=!!(profile&&profile.is_active!==false);
 
@@ -183,7 +233,7 @@ function AppShell({user}){
     // reload. Now any failure surfaces immediately instead of silently.
     const failures=[];
     for(const a of list){
-      const{error}=await sb.from("accounts").upsert({user_id:user.id,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:"user_id,code"});
+      const{error}=await sb.from("accounts").upsert({user_id:user.id,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:"user_id,company_id,code"});
       if(error){console.error(`Account save error (${a.code}):`,error);failures.push(`${a.code}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} account${failures.length===1?"":"s"} didn't save to the database — they'll disappear on reload until this is fixed:\n\n${failures.join("\n")}`);
@@ -193,7 +243,7 @@ function AppShell({user}){
     setContactsState(list);
     if(!canEdit)return;
     await sb.from("contacts").delete().eq("user_id",user.id);
-    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
+    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,company_id:activeCompanyId,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
   };
 
   // Merge two contacts — every transaction pointing at the duplicate gets
@@ -247,14 +297,14 @@ function AppShell({user}){
   // logging itself fails, since the money-move mattering more than the log.
   const logAudit=(entityType,entityId,bilag,action,oldValues,newValues)=>{
     if(!canEdit)return;
-    sb.from("audit_log").insert([{user_id:user.id,changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
+    sb.from("audit_log").insert([{user_id:user.id,company_id:activeCompanyId,changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
       .then(({data,error})=>{if(!error)setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);});
   };
 
   // Usage analytics — lightweight page-view logging, fire-and-forget, never
   // blocks anything. Tells admins what's actually used, not a full platform.
   const logUsageEvent=(tabName)=>{
-    sb.from("usage_events").insert([{user_id:user.id,tab_name:tabName}]).then(({error})=>{
+    sb.from("usage_events").insert([{user_id:user.id,company_id:activeCompanyId,tab_name:tabName}]).then(({error})=>{
       if(error)console.error("Usage log failed:",error);
     });
   };
@@ -278,7 +328,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -350,7 +400,7 @@ function AppShell({user}){
   // whole import can be undone as one action if it turns out to be wrong.
   const commitBankStatementRows=async(accountCode,rows)=>{
     if(!canEdit)return{error:"No permission to edit."};
-    const dbRows=rows.map(r=>({user_id:user.id,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+    const dbRows=rows.map(r=>({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
     const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
     if(error)return{error:"Upload failed: "+error.message};
     const mapped=(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}));
@@ -425,7 +475,7 @@ function AppShell({user}){
       rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
       if(!rows.length){alert("Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.");return;}
 
-      const dbRows=rows.map(r=>({user_id:user.id,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+      const dbRows=rows.map(r=>({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
       const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
       if(error){alert("Upload failed: "+error.message);return;}
       setBankStatementLines(p=>[...p,...(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}))]);
@@ -440,7 +490,7 @@ function AppShell({user}){
     const isOutflow=line.amount<0;
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
     setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount:Math.abs(line.amount),contactId:null}]);
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
@@ -518,11 +568,11 @@ function AppShell({user}){
     const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
     const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
 
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
     if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:form.total,contactId:form.customerId}]);
 
-    const row={user_id:user.id,invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
+    const row={user_id:user.id,company_id:activeCompanyId,invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Invoice posted to ledger but couldn't be saved as an invoice record: "+invErr.message);return null;}
     const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"sent",txnId:txnData.id};
@@ -546,7 +596,7 @@ function AppShell({user}){
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Payment · Invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
     if(error){alert("Payment posting failed: "+error.message);return;}
     const newTxn={id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)};
     setTransactionsState(p=>[...p,newTxn]);
@@ -580,11 +630,11 @@ function AppShell({user}){
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Credit note ${cnNo} for invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
     if(txnErr){alert("Credit note posting failed: "+txnErr.message);return;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,contactId:invoice.customerId,invoiceNo:String(cnNo)}]);
     logAudit("transaction",txnData.id,nb,"create",null,{date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,note:"credit note"});
-    const row={user_id:user.id,invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
+    const row={user_id:user.id,company_id:activeCompanyId,invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Credit note entry posted but record failed: "+invErr.message);return;}
     setInvoices(p=>[{id:invData.id,invoiceNo:cnNo,customerId:invoice.customerId,date:today,dueDate:null,periodFrom:invoice.periodFrom,periodTo:invoice.periodTo,saleAccount:invoice.saleAccount,lines:row.lines,vatPct:invoice.vatPct,subtotal:-invoice.subtotal,vatAmount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txnId:txnData.id},...p]);
@@ -601,7 +651,7 @@ function AppShell({user}){
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    await sb.from("company_profile").upsert({user_id:user.id,company_id:activeCompanyId,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,updated_at:new Date().toISOString()},{onConflict:"user_id,company_id"});
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
@@ -609,7 +659,7 @@ function AppShell({user}){
   // manual "Generate this month" action — honest given the deployment model.
   const createRecurringInvoice=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
+    const row={user_id:user.id,company_id:activeCompanyId,customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
     const{data,error}=await sb.from("recurring_invoices").insert([row]).select().single();
     if(error){alert("Couldn't save recurring invoice: "+error.message);return;}
     setRecurringInvoices(p=>[...p,{id:data.id,customerId:form.customerId,saleAccount:form.saleAccount,monthlyRate:form.monthlyRate,description:form.description,vatPct:form.vatPct,active:true,lastGeneratedPeriod:null}]);
@@ -656,7 +706,7 @@ function AppShell({user}){
   // filing) — see roadmap for why that's a separate, jurisdiction-specific project.
   const createEmployee=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
+    const row={user_id:user.id,company_id:activeCompanyId,name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
     const{data,error}=await sb.from("employees").insert([row]).select().single();
     if(error){alert("Couldn't save employee: "+error.message);return;}
     setEmployees(p=>[...p,{id:data.id,name:form.name,role:form.role,email:form.email,phone:form.phone,startDate:form.startDate,salary:form.salary,active:true,notes:form.notes}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -686,7 +736,7 @@ function AppShell({user}){
   // payment, post to the ledger — one real transaction per sale account used.
   const createPosProduct=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,name:form.name,price:form.price,sale_account:form.saleAccount};
+    const row={user_id:user.id,company_id:activeCompanyId,name:form.name,price:form.price,sale_account:form.saleAccount};
     const{data,error}=await sb.from("pos_products").insert([row]).select().single();
     if(error){alert("Couldn't save product: "+error.message);return;}
     setPosProducts(p=>[...p,{id:data.id,name:form.name,price:form.price,saleAccount:form.saleAccount,active:true}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -737,10 +787,10 @@ function AppShell({user}){
     const totalGross=lines.reduce((s,l)=>s+l.grossPay,0);
     const totalDeductions=lines.reduce((s,l)=>s+l.deductions,0);
     const totalNet=lines.reduce((s,l)=>s+l.netPay,0);
-    const runRow={user_id:user.id,period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
+    const runRow={user_id:user.id,company_id:activeCompanyId,period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
     const{data:runData,error:runErr}=await sb.from("payroll_runs").insert([runRow]).select().single();
     if(runErr){alert("Couldn't save payroll run: "+runErr.message);return null;}
-    const lineRows=lines.map(l=>({run_id:runData.id,user_id:user.id,employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
+    const lineRows=lines.map(l=>({run_id:runData.id,user_id:user.id,company_id:activeCompanyId,employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
     const{data:lineData,error:lineErr}=await sb.from("payroll_lines").insert(lineRows).select();
     if(lineErr){alert("Payroll run saved but lines failed: "+lineErr.message);return null;}
     for(const l of lines){
@@ -766,7 +816,7 @@ function AppShell({user}){
     const qNo=quoteNoRef.current;
     quoteNoRef.current=qNo+1;
     setNextQuoteNo(quoteNoRef.current);
-    const row={user_id:user.id,quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
+    const row={user_id:user.id,company_id:activeCompanyId,quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
     const{data,error}=await sb.from("quotes").insert([row]).select().single();
     if(error){alert("Couldn't save quote: "+error.message);return null;}
     const newQuote={id:data.id,quoteNo:qNo,customerId:form.customerId,date:form.date,validUntil:form.validUntil,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"draft",convertedInvoiceId:null};
@@ -831,7 +881,7 @@ function AppShell({user}){
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
     const desc="Reversal of "+fmtB(t.bilag)+" — "+t.description;
-    const{data}=await sb.from("transactions").insert([{user_id:user.id,bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
+    const{data}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
     await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
     if(data){
       setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
@@ -857,10 +907,10 @@ function AppShell({user}){
     setSFState(list);
     if(!canEdit)return;
     // Delete all then re-insert
-    const {error:delErr}=await sb.from("sinking_funds").delete().eq("user_id",user.id);
+    const {error:delErr}=await sb.from("sinking_funds").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
     if(delErr){console.error("SF delete error:",delErr);alert("Sinking Funds save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(f=>({user_id:user.id,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
+      const rows=list.map(f=>({user_id:user.id,company_id:activeCompanyId,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
       console.log("SF inserting:",rows);
       const {error:insErr}=await sb.from("sinking_funds").insert(rows);
       if(insErr){console.error("SF insert error:",insErr);alert("Sinking Funds save failed (insert): "+insErr.message);}
