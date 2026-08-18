@@ -3593,6 +3593,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[search,setSearch]=useState("");
+  const[entriesView,setEntriesView]=useState("all"); // "all" | "open" — open means not yet reconciled/matched
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
   const lastDay=new Date(year,monthIdx+1,0).getDate();
@@ -3606,14 +3607,20 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
       .filter(a=>!search||a.code.includes(search)||a.name.toLowerCase().includes(search.toLowerCase())||transactions.some(t=>(t.debitCode===a.code||t.creditCode===a.code)&&t.description&&t.description.toLowerCase().includes(search.toLowerCase())))
       .map(a=>{
         const opening=transactions.filter(t=>t.date<from).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
-        const entries=transactions.filter(t=>t.date>=from&&t.date<=to&&(t.debitCode===a.code||t.creditCode===a.code)).sort((x,y)=>x.date.localeCompare(y.date));
+        let entries=transactions.filter(t=>t.date>=from&&t.date<=to&&(t.debitCode===a.code||t.creditCode===a.code)).sort((x,y)=>x.date.localeCompare(y.date));
         if(!entries.length&&opening===0)return null;
         let running=opening;
-        const rows=entries.map(t=>{const mv=t.debitCode===a.code?t.amount:-t.amount;running+=mv;return{...t,mv,running};});
+        let rows=entries.map(t=>{const mv=t.debitCode===a.code?t.amount:-t.amount;running+=mv;return{...t,mv,running};});
         const periodChange=rows.reduce((s,r)=>s+r.mv,0);
-        return{account:a,opening,rows,closing:running,periodChange};
+        // "Open" filters the DISPLAYED rows only — running balance and
+        // period totals are computed from the full set above first, so
+        // filtering afterward never throws off the actual account balance,
+        // just which rows are visible.
+        const displayRows=entriesView==="open"?rows.filter(r=>!r.matchedWith):rows;
+        return{account:a,opening,rows:displayRows,closing:running,periodChange};
       }).filter(Boolean);
-  },[accounts,transactions,from,to,search]);
+  },[accounts,transactions,from,to,search,entriesView]);
+
 
   const exportXlsx=()=>{
     const aoa=[["Account","Date","Bilag","Description","Movement","Balance"]];
@@ -3651,6 +3658,11 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+        <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
+          {[["all","All entries"],["open","Open entries"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setEntriesView(id)} style={{background:entriesView===id?T.accent:"#fff",color:entriesView===id?"#fff":T.sub,border:"none",padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ))}
+        </div>
         <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
 
@@ -3664,23 +3676,26 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
             <tbody>
               {rows.map((r,i)=>{
                 const hasAttachment=attachedTxnIds.includes(r.id);
+                const isClosed=!!r.matchedWith;
                 return(
                 <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
                   <td style={{padding:"7px 14px",color:T.text,width:80}}>{r.date}</td>
                   <td style={{width:20,padding:0}}>{hasAttachment&&<i className="ti ti-paperclip" title="Has attachment" style={{fontSize:12,color:T.muted}}/>}</td>
+                  <td style={{width:52,fontSize:10,fontWeight:700,color:isClosed?T.accent:T.muted}}>{isClosed?"Closed":""}</td>
                   <td onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{color:T.accent,fontWeight:600,width:60,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</td>
                   <td style={{color:T.text}}>{r.description}</td>
+                  <td style={{textAlign:"center",width:50,color:T.muted,fontSize:11}}>{r.vatCode||""}</td>
                   <td style={{textAlign:"right",fontWeight:600,width:100,color:T.text}}>{sign(r.mv)}</td>
                   <td style={{textAlign:"right",color:T.muted,width:100,padding:"7px 14px"}}>{fmt(r.running)}</td>
                 </tr>
               );})}
               <tr style={{background:T.bg}}>
-                <td colSpan="4" style={{padding:"7px 14px",color:T.sub,fontSize:11}}>Change in period</td>
+                <td colSpan="6" style={{padding:"7px 14px",color:T.sub,fontSize:11}}>Change in period</td>
                 <td></td>
                 <td style={{textAlign:"right",padding:"7px 14px",color:periodChange>=0?T.green:T.red,fontSize:11,fontWeight:700}}>{sign(periodChange)}</td>
               </tr>
               <tr style={{borderTop:`2px solid ${T.border}`,fontWeight:800,background:"#fff"}}>
-                <td colSpan="4" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
+                <td colSpan="6" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
                 <td></td>
                 <td style={{textAlign:"right",padding:"9px 14px",color:T.text}}>{fmt(closing)}</td>
               </tr>
