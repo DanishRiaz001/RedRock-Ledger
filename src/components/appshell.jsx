@@ -41,12 +41,33 @@ function AppShell({user}){
   const[companiesLoading,setCompaniesLoading]=useState(true);
   const setActiveCompanyId=id=>{setActiveCompanyIdState(id);if(id){try{localStorage.setItem("rr_active_company",id);}catch(e){/* storage blocked — company switch still works for this session */}}};
   useEffect(()=>{setCurrentCompanyId(activeCompanyId);},[activeCompanyId]);
+  // Real UUID once the migration has run and a company row exists; the
+  // sentinel (or null) otherwise — meaning the app is running against a
+  // database that doesn't have the company_id column yet. Every query below
+  // uses this instead of activeCompanyId directly, so referencing a column
+  // that may not exist yet never blocks the app from loading.
+  const cid=(activeCompanyId&&activeCompanyId!=="__no_company_scoping__")?activeCompanyId:null;
+  const scoped=q=>cid?q.eq("company_id",cid):q;
 
   useEffect(()=>{
     setCompaniesLoading(true);
     sb.from("companies").select("*").eq("owner_user_id",viewingUserId).order("created_at").then(async({data,error})=>{
       let list=data||[];
-      if(!error&&!list.length){
+      if(error){
+        // The companies table doesn't exist yet (SQL migration not run) or
+        // some other real failure — either way, the app must still work.
+        // Falling back to "no company scoping" here reproduces the exact
+        // pre-migration behavior (every query just filters by user_id, like
+        // it always did), rather than hanging forever waiting for a table
+        // that isn't there. Once the migration actually runs, this whole
+        // branch stops firing and real company data takes over.
+        console.warn("Companies table not available yet — falling back to single-company mode:",error.message);
+        setCompanies([]);
+        setActiveCompanyId("__no_company_scoping__");
+        setCompaniesLoading(false);
+        return;
+      }
+      if(!list.length){
         // First time this person has ever loaded the app under the new
         // multi-company model — give them a company automatically rather
         // than showing an empty "no companies" screen on login. Their
@@ -126,26 +147,26 @@ function AppShell({user}){
     if(!activeCompanyId)return; // don't fetch until we know which company's data to load
     setLoading(true);
     Promise.all([
-      sb.from("accounts").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("code"),
-      sb.from("contacts").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("contact_id"),
-      sb.from("transactions").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("bilag"),
-      sb.from("sinking_funds").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("fund_id"),
-      sb.from("budgets").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
-      sb.from("inbox_files").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at",{ascending:false}),
-      sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
-      sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("date"),
-      sb.from("invoices").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("invoice_no",{ascending:false}),
-      sb.from("company_profile").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).maybeSingle(),
-      sb.from("recurring_invoices").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("id"),
-      sb.from("employees").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("name"),
-      sb.from("quotes").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("quote_no",{ascending:false}),
-      sb.from("audit_log").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at",{ascending:false}).limit(500),
-      sb.from("pos_products").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("name"),
-      sb.from("payroll_runs").select("*, payroll_lines(*)").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("run_date",{ascending:false}),
-      sb.from("money_sources").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at"),
-      sb.from("projects").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId).order("created_at"),
-      sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
-      sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId).eq("company_id",activeCompanyId),
+      scoped(sb.from("accounts").select("*").eq("user_id",viewingUserId)).order("code"),
+      scoped(sb.from("contacts").select("*").eq("user_id",viewingUserId)).order("contact_id"),
+      scoped(sb.from("transactions").select("*").eq("user_id",viewingUserId)).order("bilag"),
+      scoped(sb.from("sinking_funds").select("*").eq("user_id",viewingUserId)).order("fund_id"),
+      scoped(sb.from("budgets").select("*").eq("user_id",viewingUserId)),
+      scoped(sb.from("inbox_files").select("*").eq("user_id",viewingUserId)).order("created_at",{ascending:false}),
+      scoped(sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId)),
+      scoped(sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId)).order("date"),
+      scoped(sb.from("invoices").select("*").eq("user_id",viewingUserId)).order("invoice_no",{ascending:false}),
+      scoped(sb.from("company_profile").select("*").eq("user_id",viewingUserId)).maybeSingle(),
+      scoped(sb.from("recurring_invoices").select("*").eq("user_id",viewingUserId)).order("id"),
+      scoped(sb.from("employees").select("*").eq("user_id",viewingUserId)).order("name"),
+      scoped(sb.from("quotes").select("*").eq("user_id",viewingUserId)).order("quote_no",{ascending:false}),
+      scoped(sb.from("audit_log").select("*").eq("user_id",viewingUserId)).order("created_at",{ascending:false}).limit(500),
+      scoped(sb.from("pos_products").select("*").eq("user_id",viewingUserId)).order("name"),
+      scoped(sb.from("payroll_runs").select("*, payroll_lines(*)").eq("user_id",viewingUserId)).order("run_date",{ascending:false}),
+      scoped(sb.from("money_sources").select("*").eq("user_id",viewingUserId)).order("created_at"),
+      scoped(sb.from("projects").select("*").eq("user_id",viewingUserId)).order("created_at"),
+      scoped(sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId)),
+      scoped(sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId)),
     ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR])=>{
       const accs=aR.data||[];
       if(accs.length){
@@ -160,12 +181,12 @@ function AppShell({user}){
         // Silently upsert any new defaults to Supabase
         const newDefaults=DEFAULT_ACCOUNTS.filter(d=>!existingCodes.has(d.code));
         if(newDefaults.length){
-          newDefaults.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,company_id,code"}));
+          newDefaults.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"}));
         }
       } else {
         // New user — load full default chart of accounts into Supabase
         setAccountsState(DEFAULT_ACCOUNTS);
-        DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:"user_id,company_id,code"}));
+        DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"}));
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
@@ -234,7 +255,7 @@ function AppShell({user}){
     // reload. Now any failure surfaces immediately instead of silently.
     const failures=[];
     for(const a of list){
-      const{error}=await sb.from("accounts").upsert({user_id:user.id,company_id:activeCompanyId,code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:"user_id,company_id,code"});
+      const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
       if(error){console.error(`Account save error (${a.code}):`,error);failures.push(`${a.code}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} account${failures.length===1?"":"s"} didn't save to the database — they'll disappear on reload until this is fixed:\n\n${failures.join("\n")}`);
@@ -243,8 +264,8 @@ function AppShell({user}){
   const setContacts=async(list)=>{
     setContactsState(list);
     if(!canEdit)return;
-    await sb.from("contacts").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
-    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,company_id:activeCompanyId,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
+    await scoped(sb.from("contacts").delete().eq("user_id",user.id));
+    if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
   };
 
   // Merge two contacts — every transaction pointing at the duplicate gets
@@ -298,14 +319,14 @@ function AppShell({user}){
   // logging itself fails, since the money-move mattering more than the log.
   const logAudit=(entityType,entityId,bilag,action,oldValues,newValues)=>{
     if(!canEdit)return;
-    sb.from("audit_log").insert([{user_id:user.id,company_id:activeCompanyId,changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
+    sb.from("audit_log").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
       .then(({data,error})=>{if(!error)setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);});
   };
 
   // Usage analytics — lightweight page-view logging, fire-and-forget, never
   // blocks anything. Tells admins what's actually used, not a full platform.
   const logUsageEvent=(tabName)=>{
-    sb.from("usage_events").insert([{user_id:user.id,company_id:activeCompanyId,tab_name:tabName}]).then(({error})=>{
+    sb.from("usage_events").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),tab_name:tabName}]).then(({error})=>{
       if(error)console.error("Usage log failed:",error);
     });
   };
@@ -329,7 +350,7 @@ function AppShell({user}){
     const nb=bilagRef.current;
     bilagRef.current=nb+1;
     setNextBilag(bilagRef.current);
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return;
@@ -401,7 +422,7 @@ function AppShell({user}){
   // whole import can be undone as one action if it turns out to be wrong.
   const commitBankStatementRows=async(accountCode,rows)=>{
     if(!canEdit)return{error:"No permission to edit."};
-    const dbRows=rows.map(r=>({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+    const dbRows=rows.map(r=>({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
     const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
     if(error)return{error:"Upload failed: "+error.message};
     const mapped=(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}));
@@ -476,7 +497,7 @@ function AppShell({user}){
       rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
       if(!rows.length){alert("Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.");return;}
 
-      const dbRows=rows.map(r=>({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+      const dbRows=rows.map(r=>({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
       const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
       if(error){alert("Upload failed: "+error.message);return;}
       setBankStatementLines(p=>[...p,...(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}))]);
@@ -491,7 +512,7 @@ function AppShell({user}){
     const isOutflow=line.amount<0;
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
     setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount:Math.abs(line.amount),contactId:null}]);
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
@@ -569,11 +590,11 @@ function AppShell({user}){
     const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
     const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
 
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
     if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:form.total,contactId:form.customerId}]);
 
-    const row={user_id:user.id,company_id:activeCompanyId,invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Invoice posted to ledger but couldn't be saved as an invoice record: "+invErr.message);return null;}
     const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"sent",txnId:txnData.id};
@@ -597,7 +618,7 @@ function AppShell({user}){
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Payment · Invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
     if(error){alert("Payment posting failed: "+error.message);return;}
     const newTxn={id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)};
     setTransactionsState(p=>[...p,newTxn]);
@@ -631,11 +652,11 @@ function AppShell({user}){
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Credit note ${cnNo} for invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
     if(txnErr){alert("Credit note posting failed: "+txnErr.message);return;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,contactId:invoice.customerId,invoiceNo:String(cnNo)}]);
     logAudit("transaction",txnData.id,nb,"create",null,{date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,note:"credit note"});
-    const row={user_id:user.id,company_id:activeCompanyId,invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Credit note entry posted but record failed: "+invErr.message);return;}
     setInvoices(p=>[{id:invData.id,invoiceNo:cnNo,customerId:invoice.customerId,date:today,dueDate:null,periodFrom:invoice.periodFrom,periodTo:invoice.periodTo,saleAccount:invoice.saleAccount,lines:row.lines,vatPct:invoice.vatPct,subtotal:-invoice.subtotal,vatAmount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txnId:txnData.id},...p]);
@@ -652,7 +673,7 @@ function AppShell({user}){
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,company_id:activeCompanyId,company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,updated_at:new Date().toISOString()},{onConflict:"user_id,company_id"});
+    await sb.from("company_profile").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
@@ -660,7 +681,7 @@ function AppShell({user}){
   // manual "Generate this month" action — honest given the deployment model.
   const createRecurringInvoice=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,company_id:activeCompanyId,customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
     const{data,error}=await sb.from("recurring_invoices").insert([row]).select().single();
     if(error){alert("Couldn't save recurring invoice: "+error.message);return;}
     setRecurringInvoices(p=>[...p,{id:data.id,customerId:form.customerId,saleAccount:form.saleAccount,monthlyRate:form.monthlyRate,description:form.description,vatPct:form.vatPct,active:true,lastGeneratedPeriod:null}]);
@@ -707,7 +728,7 @@ function AppShell({user}){
   // filing) — see roadmap for why that's a separate, jurisdiction-specific project.
   const createEmployee=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,company_id:activeCompanyId,name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
     const{data,error}=await sb.from("employees").insert([row]).select().single();
     if(error){alert("Couldn't save employee: "+error.message);return;}
     setEmployees(p=>[...p,{id:data.id,name:form.name,role:form.role,email:form.email,phone:form.phone,startDate:form.startDate,salary:form.salary,active:true,notes:form.notes}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -737,7 +758,7 @@ function AppShell({user}){
   // payment, post to the ledger — one real transaction per sale account used.
   const createPosProduct=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,company_id:activeCompanyId,name:form.name,price:form.price,sale_account:form.saleAccount};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),name:form.name,price:form.price,sale_account:form.saleAccount};
     const{data,error}=await sb.from("pos_products").insert([row]).select().single();
     if(error){alert("Couldn't save product: "+error.message);return;}
     setPosProducts(p=>[...p,{id:data.id,name:form.name,price:form.price,saleAccount:form.saleAccount,active:true}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -788,10 +809,10 @@ function AppShell({user}){
     const totalGross=lines.reduce((s,l)=>s+l.grossPay,0);
     const totalDeductions=lines.reduce((s,l)=>s+l.deductions,0);
     const totalNet=lines.reduce((s,l)=>s+l.netPay,0);
-    const runRow={user_id:user.id,company_id:activeCompanyId,period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
+    const runRow={user_id:user.id,...(cid?{company_id:cid}:{}),period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
     const{data:runData,error:runErr}=await sb.from("payroll_runs").insert([runRow]).select().single();
     if(runErr){alert("Couldn't save payroll run: "+runErr.message);return null;}
-    const lineRows=lines.map(l=>({run_id:runData.id,user_id:user.id,company_id:activeCompanyId,employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
+    const lineRows=lines.map(l=>({run_id:runData.id,user_id:user.id,...(cid?{company_id:cid}:{}),employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
     const{data:lineData,error:lineErr}=await sb.from("payroll_lines").insert(lineRows).select();
     if(lineErr){alert("Payroll run saved but lines failed: "+lineErr.message);return null;}
     for(const l of lines){
@@ -817,7 +838,7 @@ function AppShell({user}){
     const qNo=quoteNoRef.current;
     quoteNoRef.current=qNo+1;
     setNextQuoteNo(quoteNoRef.current);
-    const row={user_id:user.id,company_id:activeCompanyId,quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
+    const row={user_id:user.id,...(cid?{company_id:cid}:{}),quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
     const{data,error}=await sb.from("quotes").insert([row]).select().single();
     if(error){alert("Couldn't save quote: "+error.message);return null;}
     const newQuote={id:data.id,quoteNo:qNo,customerId:form.customerId,date:form.date,validUntil:form.validUntil,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"draft",convertedInvoiceId:null};
@@ -882,7 +903,7 @@ function AppShell({user}){
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
     const desc="Reversal of "+fmtB(t.bilag)+" — "+t.description;
-    const{data}=await sb.from("transactions").insert([{user_id:user.id,company_id:activeCompanyId,bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
+    const{data}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
     await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
     if(data){
       setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
@@ -908,10 +929,10 @@ function AppShell({user}){
     setSFState(list);
     if(!canEdit)return;
     // Delete all then re-insert
-    const {error:delErr}=await sb.from("sinking_funds").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
+    const {error:delErr}=await scoped(sb.from("sinking_funds").delete().eq("user_id",user.id));
     if(delErr){console.error("SF delete error:",delErr);alert("Sinking Funds save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(f=>({user_id:user.id,company_id:activeCompanyId,fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
+      const rows=list.map(f=>({user_id:user.id,...(cid?{company_id:cid}:{}),fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
       console.log("SF inserting:",rows);
       const {error:insErr}=await sb.from("sinking_funds").insert(rows);
       if(insErr){console.error("SF insert error:",insErr);alert("Sinking Funds save failed (insert): "+insErr.message);}
@@ -927,10 +948,10 @@ function AppShell({user}){
   const saveMoneySources=async(list)=>{
     setMoneySourcesState(list);
     if(!canEdit)return;
-    const {error:delErr}=await sb.from("money_sources").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
+    const {error:delErr}=await scoped(sb.from("money_sources").delete().eq("user_id",user.id));
     if(delErr){console.error("Money sources delete error:",delErr);alert("Money sources save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(m=>({id:m.id,user_id:user.id,company_id:activeCompanyId,name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
+      const rows=list.map(m=>({id:m.id,user_id:user.id,...(cid?{company_id:cid}:{}),name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
       const {error:insErr}=await sb.from("money_sources").insert(rows);
       if(insErr){console.error("Money sources insert error:",insErr);alert("Money sources save failed (insert): "+insErr.message);}
     }
@@ -952,10 +973,10 @@ function AppShell({user}){
   const saveProjects=async(list)=>{
     setProjectsState(list);
     if(!canEdit)return;
-    const {error:delErr}=await sb.from("projects").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
+    const {error:delErr}=await scoped(sb.from("projects").delete().eq("user_id",user.id));
     if(delErr){console.error("Projects delete error:",delErr);alert("Project save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(p=>({id:p.id,user_id:user.id,company_id:activeCompanyId,name:p.name,inactive:p.inactive||false}));
+      const rows=list.map(p=>({id:p.id,user_id:user.id,...(cid?{company_id:cid}:{}),name:p.name,inactive:p.inactive||false}));
       const {error:insErr}=await sb.from("projects").insert(rows);
       if(insErr){console.error("Projects insert error:",insErr);alert("Project save failed (insert): "+insErr.message);}
     }
@@ -979,7 +1000,7 @@ function AppShell({user}){
       return[...p,merged];
     });
     if(!canEdit)return true;
-    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:"user_id,company_id,account_code,period"});
+    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id,account_code,period":"user_id,account_code,period"});
     if(error){
       // Same silent-loss risk as attachments — a status flip or a comment
       // someone just typed would otherwise look saved and then quietly
@@ -1001,7 +1022,7 @@ function AppShell({user}){
     const row={id:"rf_"+Date.now().toString(36),accountCode,period,inboxFileId};
     setReconciliationFilesState(p=>[...p,row]);
     if(!canEdit)return true;
-    const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
+    const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
     if(error){
       // Real save failed — the optimistic add above would otherwise make it
       // LOOK attached until the next page refresh silently drops it. Roll
@@ -1043,9 +1064,9 @@ function AppShell({user}){
     // the DB column defaults (or lack thereof) can silently diverge from what
     // local state assumes ("rollover", not swept), until the next full reload.
     const payload=isNew
-      ?{user_id:user.id,company_id:activeCompanyId,year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
-      :{user_id:user.id,company_id:activeCompanyId,year,month,code,amount};
-    const{error}=await sb.from("budgets").upsert(payload,{onConflict:"user_id,company_id,year,month,code"});
+      ?{user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
+      :{user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,amount};
+    const{error}=await sb.from("budgets").upsert(payload,{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
   };
   // What should happen to THIS month's leftover once it closes: roll over into next
@@ -1057,7 +1078,7 @@ function AppShell({user}){
       const n=[...p];n[idx]={...n[idx],surplusAction,surplusFundId};return n;
     });
     if(!canEdit)return;
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,company_id:activeCompanyId,year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:"user_id,company_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error){console.error("Budget surplus-setting save error:",error);alert("Save failed: "+error.message);}
   };
   // Actually transfers a month's unspent leftover into the chosen sinking fund and
@@ -1074,17 +1095,17 @@ function AppShell({user}){
       if(idx===-1)return p;
       const n=[...p];n[idx]={...n[idx],swept:true};return n;
     });
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,company_id:activeCompanyId,year,month,code,swept:true},{onConflict:"user_id,company_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,swept:true},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error)console.error("Budget sweep flag save error:",error);
   };
   // Bulk replace (used by Backup Restore) — delete all budget rows then re-insert.
   const restoreBudgets=async(list)=>{
     setBudgetsState(list);
     if(!canEdit)return;
-    const{error:delErr}=await sb.from("budgets").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
+    const{error:delErr}=await scoped(sb.from("budgets").delete().eq("user_id",user.id));
     if(delErr){console.error("Budget restore delete error:",delErr);return;}
     if(list.length){
-      const rows=list.map(b=>({user_id:user.id,company_id:activeCompanyId,year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
+      const rows=list.map(b=>({user_id:user.id,...(cid?{company_id:cid}:{}),year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
       const{error:insErr}=await sb.from("budgets").insert(rows);
       if(insErr)console.error("Budget restore insert error:",insErr);
     }
@@ -1098,7 +1119,7 @@ function AppShell({user}){
     try{
       const storagePath=await uploadFileToStorage(file);
       const now=new Date();
-      const row={user_id:user.id,company_id:activeCompanyId,storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
+      const row={user_id:user.id,...(cid?{company_id:cid}:{}),storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
       const{data,error}=await sb.from("inbox_files").insert([row]).select().single();
       if(error){console.error("Inbox file insert error:",error);alert("Upload failed: "+error.message);return null;}
       const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
@@ -1149,7 +1170,7 @@ function AppShell({user}){
     const newPath=`${user.id}/${Date.now()}_${f.name}`;
     const{error:copyError}=await sb.storage.from("attachments").copy(f.storagePath,newPath);
     if(copyError){console.error("Storage copy error:",copyError);return null;}
-    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,company_id:activeCompanyId,name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
+    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,...(cid?{company_id:cid}:{}),name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
     if(error){console.error("Inbox file copy error:",error);return null;}
     const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
     setInboxFilesState(p=>[newFile,...p]);
@@ -1493,25 +1514,35 @@ const getSK=(code)=>{
 };
 
 // NS 4102 income/expense series helpers — used in reports, dashboard, budget
+// Same sentinel-normalization as AppShell's own cid/scoped(), but for these
+// standalone functions which can't reach that component-scoped value —
+// getCurrentCompanyId() might return a real id, the "__no_company_scoping__"
+// sentinel, or null, so every use here normalizes through this first.
+const getCid=()=>{
+  const raw=getCurrentCompanyId();
+  return(raw&&raw!=="__no_company_scoping__")?raw:null;
+};
+const scopedHelper=q=>{const c=getCid();return c?q.eq("company_id",c):q;};
 const fetchInboxFiles=async()=>{
-  const{data,error}=await sb.from("inbox_files").select("*").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId()).order("created_at",{ascending:false});
+  const{data,error}=await scopedHelper(sb.from("inbox_files").select("*").eq("user_id",getCurrentUserId())).order("created_at",{ascending:false});
   if(error){console.error("Inbox fetch error:",error);return[];}
   return(data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path}));
 };
 const fetchAttachedTxnIds=async()=>{
-  const{data,error}=await sb.from("txn_attachments").select("txn_id").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId());
+  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("txn_id").eq("user_id",getCurrentUserId()));
   if(error){console.error("Fetch attached txn ids error:",error);return new Set();}
   return new Set((data||[]).map(r=>r.txn_id));
 };
 const attachFilesToTxn=async(txnId,fileIds)=>{
   const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
   if(!ids.length)return;
-  const rows=ids.map(fileId=>({user_id:getCurrentUserId(),company_id:getCurrentCompanyId(),txn_id:txnId,file_id:fileId}));
-  const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:"user_id,company_id,txn_id,file_id",ignoreDuplicates:true});
+  const c=getCid();
+  const rows=ids.map(fileId=>({user_id:getCurrentUserId(),...(c?{company_id:c}:{}),txn_id:txnId,file_id:fileId}));
+  const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:c?"user_id,company_id,txn_id,file_id":"user_id,txn_id,file_id",ignoreDuplicates:true});
   if(error)console.error("Attach file to txn error:",error);
 };
 const fetchTxnAttachments=async(txnId)=>{
-  const{data,error}=await sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId()).eq("txn_id",txnId);
+  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId())).eq("txn_id",txnId);
   if(error){console.error("Fetch txn attachments error:",error);return[];}
   return(data||[]).filter(r=>r.inbox_files).map(r=>({id:r.inbox_files.id,name:r.inbox_files.name,type:r.inbox_files.type,storagePath:r.inbox_files.storage_path}));
 };
@@ -1525,7 +1556,8 @@ const fetchEntryComments=async(txnId)=>{
 };
 const addEntryComment=async(txnId,body,booksUserId)=>{
   if(!body||!body.trim())return null;
-  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),company_id:getCurrentCompanyId(),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
+  const c=getCid();
+  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),...(c?{company_id:c}:{}),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
   if(error){console.error("Add comment error:",error);return null;}
   return{id:data.id,authorId:data.author_id,body:data.body,createdAt:data.created_at};
 };
