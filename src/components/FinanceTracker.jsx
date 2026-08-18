@@ -130,6 +130,7 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   const[toasts,setToasts]=useState([]);
   const[toastPanelOpen,setToastPanelOpen]=useState(false);
   const[clientSwitcherOpen,setClientSwitcherOpen]=useState(false);
+  const[companySwitcherOpen,setCompanySwitcherOpen]=useState(false);
   const[clientSwitcherSearch,setClientSwitcherSearch]=useState("");
   const[showInviteClient,setShowInviteClient]=useState(false);
   const pushToast=(message)=>{
@@ -410,6 +411,38 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
             </div>
           </>)}
         </div>
+        {/* Company switcher — every company under the current account, with
+            a live count so a mismatch (data under a company you're not
+            currently viewing) is immediately visible instead of silently
+            looking like missing data. */}
+        {companies.length>0&&(()=>{
+          const active=companies.find(c=>c.id===activeCompanyId);
+          return(
+            <div style={{position:"relative",marginLeft:10}}>
+              <button onClick={()=>setCompanySwitcherOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff"}}>
+                <i className="ti ti-building-store" style={{fontSize:14}}/>
+                <span style={{fontSize:12,fontWeight:700}}>{active?active.name:"Select company"}</span>
+                {companies.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.2)",borderRadius:10,padding:"1px 6px",fontWeight:700}}>{companies.length}</span>}
+                <i className="ti ti-chevron-down" style={{fontSize:12}}/>
+              </button>
+              {companySwitcherOpen&&(<>
+                <div onClick={()=>setCompanySwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:498}}/>
+                <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:499,minWidth:240,boxShadow:"0 10px 32px rgba(0,0,0,0.18)",overflow:"hidden"}}>
+                  <div style={{padding:"9px 14px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",borderBottom:`1px solid ${T.border}`}}>Your companies</div>
+                  {companies.map(c=>(
+                    <div key={c.id} onClick={()=>{setActiveCompanyId(c.id);setCompanySwitcherOpen(false);}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",cursor:"pointer",background:c.id===activeCompanyId?T.accentLight:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                      <span style={{fontSize:13,fontWeight:c.id===activeCompanyId?700:500,color:c.id===activeCompanyId?T.accent:T.text}}>{c.name}</span>
+                      {c.id===activeCompanyId&&<i className="ti ti-check" style={{fontSize:14,color:T.accent}}/>}
+                    </div>
+                  ))}
+                  <div onClick={()=>{const name=prompt("New company name:");if(name&&name.trim()&&createCompany){createCompany(name.trim());setCompanySwitcherOpen(false);}}} style={{display:"flex",alignItems:"center",gap:6,padding:"11px 14px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
+                    <i className="ti ti-plus" style={{fontSize:14}}/>Add company
+                  </div>
+                </div>
+              </>)}
+            </div>
+          );
+        })()}
         <div style={{flex:1}}/>
         {showInviteClient&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInviteClient(false)}>
