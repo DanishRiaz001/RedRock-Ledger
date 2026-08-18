@@ -917,10 +917,10 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
         {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts} onSaveAccounts={setAccounts}/>}
         {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
         {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}
-        {tab==="ReportsHub"&&<ReportsHubScreen onNavigate={setTab}/>}
-        {tab==="SalesPerCustomer"&&<SalesPerCustomerScreen transactions={transactions} contacts={contacts}/>}
-        {tab==="AgedReskontro"&&(feat.reskontro?<AgedReskontroScreen contacts={contacts} transactions={transactions}/>:<DisabledScreen title="Aged Reskontro" onBack={()=>setTab("Dashboard")}/>)}
-        {tab==="BalanceLists"&&<BalanceListsScreen contacts={contacts} transactions={transactions} employees={employees}/>}
+        {tab==="ReportsHub"&&<ScreenErrorBoundary name="Reports"><ReportsHubScreen onNavigate={setTab}/></ScreenErrorBoundary>}
+        {tab==="SalesPerCustomer"&&<ScreenErrorBoundary name="Sales per Customer"><SalesPerCustomerScreen transactions={transactions} contacts={contacts}/></ScreenErrorBoundary>}
+        {tab==="AgedReskontro"&&(feat.reskontro?<ScreenErrorBoundary name="Aged Reskontro"><AgedReskontroScreen contacts={contacts} transactions={transactions}/></ScreenErrorBoundary>:<DisabledScreen title="Aged Reskontro" onBack={()=>setTab("Dashboard")}/>)}
+        {tab==="BalanceLists"&&<ScreenErrorBoundary name="Balance Lists"><BalanceListsScreen contacts={contacts} transactions={transactions} employees={employees}/></ScreenErrorBoundary>}
 
         {tab==="Reskontro"&&(
           feat.reskontro
@@ -946,48 +946,60 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
 
         {tab==="GeneralLedger"&&(
           <div style={{maxWidth:1000}}>
-            <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} attachedTxnIds={attachedTxnIds}/>
+            <ScreenErrorBoundary name="General Ledger">
+              <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} attachedTxnIds={attachedTxnIds}/>
+            </ScreenErrorBoundary>
           </div>
         )}
 
         {tab==="VATReport"&&(
           <div style={{maxWidth:1000}}>
-            {feat.vat?<VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/>:<DisabledScreen title="VAT report" onBack={()=>setTab("Dashboard")}/>}
+            {feat.vat?<ScreenErrorBoundary name="VAT Report"><VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/></ScreenErrorBoundary>:<DisabledScreen title="VAT report" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
 
         {tab==="VATTermin"&&(
           !feat.vat?<DisabledScreen title="Mva-meldinger" onBack={()=>setTab("Dashboard")}/>
-          :vatTerminView
-            ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} detailModalProps={{
-                auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,tagTransaction,
-                fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
-                onEdit:saveEdit,onDelete:deleteTxnWithUndo,onReverse:reverseTransaction,onDuplicate:duplicateTransaction,
-              }}/>
-            :<VATTerminScreen transactions={transactions} accounts={accounts} contacts={contacts} onOpenTermin={setVatTerminView}/>
+          :<ScreenErrorBoundary name="Mva-meldinger">
+            {vatTerminView
+              ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} detailModalProps={{
+                  auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,tagTransaction,
+                  fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
+                  onEdit:saveEdit,onDelete:deleteTxnWithUndo,onReverse:reverseTransaction,onDuplicate:duplicateTransaction,
+                }}/>
+              :<VATTerminScreen transactions={transactions} accounts={accounts} contacts={contacts} onOpenTermin={setVatTerminView}/>}
+          </ScreenErrorBoundary>
         )}
 
         {tab==="MonthlyOverview"&&(
           <div style={{maxWidth:1000}}>
-            <MonthlyOverviewScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} budgets={budgets} moneySources={effectiveMoneySources}/>
+            <ScreenErrorBoundary name="Monthly Overview">
+              <MonthlyOverviewScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} budgets={budgets} moneySources={effectiveMoneySources}/>
+            </ScreenErrorBoundary>
           </div>
         )}
 
         {tab==="Resultat"&&(
           <div style={{maxWidth:1000}}>
-            <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop} projects={projects}/>
+            <ScreenErrorBoundary name="Income Statement">
+              <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop} projects={projects}/>
+            </ScreenErrorBoundary>
           </div>
         )}
 
         {tab==="BalanceSheet"&&(
           <div style={{maxWidth:1000}}>
-            <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop}/>
+            <ScreenErrorBoundary name="Balance Sheet">
+              <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop}/>
+            </ScreenErrorBoundary>
           </div>
         )}
 
         {tab==="TrialBalance"&&(
           <div style={{maxWidth:1000}}>
-            <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} isDesktop={isDesktop}/>
+            <ScreenErrorBoundary name="Trial Balance">
+              <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} isDesktop={isDesktop}/>
+            </ScreenErrorBoundary>
           </div>
         )}
 

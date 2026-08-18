@@ -1062,7 +1062,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
 // Register voucher queue — the real batch flow: step through every selected
 // file with Previous/Next, "Remove from queue" (skips without deleting), and
 // per-item Create. Each file keeps its own draft as you navigate away and back.
-function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone,renameInboxFileEntry,setAccounts}){
+function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone,renameInboxFileEntry,setAccounts,projects=[],trackProjects=false,saveProjects}){
   const[queue,setQueue]=useState(fileIds);
   const[idx,setIdx]=useState(0);
   const[formsByFile,setFormsByFile]=useState({});
@@ -1134,7 +1134,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
     setDisplayOpts(next);
     try{localStorage.setItem("rr_voucher_display_opts",JSON.stringify(next));}catch{}
   };
-  const lineGridCols=[displayOpts.showDescription?"1.3fr":null,"1fr",displayOpts.showVat?"0.8fr":null,"1fr",displayOpts.showVat?"0.8fr":null,"0.9fr","56px"].filter(Boolean).join(" ");
+  const lineGridCols=[displayOpts.showDescription?"1.3fr":null,"1fr",displayOpts.showVat?"0.8fr":null,"1fr",displayOpts.showVat?"0.8fr":null,"0.9fr",trackProjects?"1fr":null,"56px"].filter(Boolean).join(" ");
   // Per-line VAT split (excl./VAT/incl.), grouped by MVA code for the
   // breakdown table under the lines — same shape as the reference dialog.
   const incomeLineCalc=(l)=>{
@@ -1527,7 +1527,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               </div>
               <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
                 <div style={{display:"grid",gridTemplateColumns:lineGridCols,gap:8,padding:"8px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-                  {[displayOpts.showDescription?"Description":null,"Debit account",displayOpts.showVat?"VAT (debit)":null,"Credit account",displayOpts.showVat?"VAT (credit)":null,"Amount",""].filter(h=>h!==null).map(h=>(
+                  {[displayOpts.showDescription?"Description":null,"Debit account",displayOpts.showVat?"VAT (debit)":null,"Credit account",displayOpts.showVat?"VAT (credit)":null,"Amount",trackProjects?"Dimension":null,""].filter(h=>h!==null).map(h=>(
                     <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
                   ))}
                 </div>
@@ -1543,6 +1543,26 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                       <VatDrop value={l.creditVatCode} onChange={code=>updateGeneralLine(l.lid,{creditVatCode:code})} options={vatCodeOptions("output")}/>
                     )}
                     <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"&&i===generalLines.length-1){e.preventDefault();addGeneralLine();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+                    {trackProjects&&(
+                      <select value={l.projectId||""} onChange={e=>{
+                        if(e.target.value==="__new__"){
+                          const name=prompt("New project or department name:");
+                          if(name&&name.trim()&&saveProjects){
+                            const nums=projects.map(p=>parseInt(p.number)||0);
+                            const number=String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+                            const newProj={id:"proj_"+Date.now().toString(36),number,name:name.trim(),inactive:false};
+                            saveProjects([...projects,newProj]);
+                            updateGeneralLine(l.lid,{projectId:newProj.id});
+                          }
+                          return;
+                        }
+                        updateGeneralLine(l.lid,{projectId:e.target.value});
+                      }} style={{...inp,fontSize:11,padding:"7px 8px"}}>
+                        <option value="">— None —</option>
+                        {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
+                        {saveProjects&&<option value="__new__">+ New…</option>}
+                      </select>
+                    )}
                     <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                       <button onClick={()=>copyGeneralLine(l.lid)} title="Copy this line" style={{background:"none",border:"none",color:T.sub,cursor:"pointer",padding:4}}><i className="ti ti-copy" style={{fontSize:14}}/></button>
                       <button onClick={()=>removeGeneralLine(l.lid)} disabled={generalLines.length<=1} title="Remove this line" style={{background:"none",border:"none",color:generalLines.length<=1?T.muted:T.red,cursor:generalLines.length<=1?"default":"pointer",padding:4,opacity:generalLines.length<=1?0.4:1}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
