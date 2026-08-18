@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { fmt, fmtB, fmtRs, callClaudeAPI } from "../lib/utils.js";
-import { sb } from "../lib/supabaseClient.js";
+import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
 
@@ -1114,15 +1114,39 @@ if(typeof window!=="undefined"){
 }
 const USER_FEATS_KEY="rr_user_features"; // {userId: {featureId: bool}}
 
-const getAdminFeatures=()=>{try{return JSON.parse(localStorage.getItem(ADMIN_KEY)||"{}")}catch{return{};}};
-const getUserFeatures=(userId)=>{try{const all=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");return all[userId]||{};}catch{return{};}};
+// Reads from the in-memory cache (populated once from Supabase on load —
+// see loadFeatureFlagsFromDb below), with localStorage as a one-time
+// migration source: if the cache is empty but localStorage has old data,
+// that's a pre-upgrade account, and the data gets uploaded to the database
+// the first time it's touched rather than silently lost.
+const getAdminFeatures=()=>{
+  const cached=getAdminFeaturesCache();
+  if(Object.keys(cached).length)return cached;
+  try{return JSON.parse(localStorage.getItem(ADMIN_KEY)||"{}")}catch{return{};}
+};
+const getUserFeatures=(userId)=>{
+  const cached=getUserFeaturesCache();
+  if(cached[userId])return cached[userId];
+  try{const all=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");return all[userId]||{};}catch{return{};}
+};
 const setUserFeature=(userId,featureId,val)=>{
+  // Optimistic cache update so isFeatureOn() reflects the change immediately,
+  // matching the pattern used everywhere else this session for writes.
+  const cache=getUserFeaturesCache();
+  const updated={...cache,[userId]:{...(cache[userId]||{}),[featureId]:val}};
+  setUserFeaturesCache(updated);
+  // Also keep localStorage in sync during the transition period, and
+  // persist to the real database — profiles.feature_overrides — so this
+  // survives a different browser or a cleared cache.
   try{
     const all=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");
     if(!all[userId])all[userId]={};
     all[userId][featureId]=val;
     localStorage.setItem(USER_FEATS_KEY,JSON.stringify(all));
   }catch{}
+  sb.from("profiles").update({feature_overrides:updated[userId]}).eq("id",userId).then(({error})=>{
+    if(error)console.error("Feature override save failed:",error);
+  });
 };
 // Feature is on if admin has enabled it globally AND user has it enabled (or user setting not set, defaults to admin setting)
 const isFeatureOn=(featureId,userId)=>{

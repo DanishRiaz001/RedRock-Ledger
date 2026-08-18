@@ -31,3 +31,23 @@ export function getCurrentCompanyId() {
 export function setCurrentCompanyId(id) {
   _currentCompanyId = id;
 }
+
+// Same pattern again, for the feature-flag system — previously read straight
+// from localStorage on every call (per-browser, resets if storage is
+// cleared). Now populated once from Supabase on load and cached here, so
+// isFeatureOn() etc. can stay synchronous (used throughout render code)
+// while the real source of truth lives in the database.
+let _adminFeaturesCache = {};
+export function getAdminFeaturesCache() {
+  return _adminFeaturesCache;
+}
+export function setAdminFeaturesCache(obj) {
+  _adminFeaturesCache = obj || {};
+}
+let _userFeaturesCache = {}; // {userId: {featureId: bool}}
+export function getUserFeaturesCache() {
+  return _userFeaturesCache;
+}
+export function setUserFeaturesCache(obj) {
+  _userFeaturesCache = obj || {};
+}

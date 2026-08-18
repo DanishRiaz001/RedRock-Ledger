@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { sb, setCurrentUserId, getCurrentUserId, setCurrentCompanyId, getCurrentCompanyId } from "../lib/supabaseClient.js";
+import { sb, setCurrentUserId, getCurrentUserId, setCurrentCompanyId, getCurrentCompanyId, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import {
   isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,
   vatCodeOptions, findVatCode, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE,
   getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr,
   bankToNum, buildBankRows, fmtB,
 } from "../lib/utils.js";
-import { logBug } from "./ledger.jsx";
+import { logBug, ADMIN_KEY, USER_FEATS_KEY } from "./ledger.jsx";
 import { uploadFileToStorage, deleteFileFromStorage, getSignedUrl } from "../lib/storage.js";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { Spinner, LoginScreen, PendingAccessScreen } from "./shell.jsx";
@@ -138,8 +138,56 @@ function AppShell({user}){
   useEffect(()=>{
     sb.from("profiles").select("*").eq("id",user.id).single().then(({data})=>{
       setProfile(data||null); // no row yet (e.g. not provisioned) => treated as pending/no-access below
-      if(data&&data.is_admin){sb.from("profiles").select("*").then(({data:all})=>{if(all)setProfiles(all);});}
+      if(data){
+        // Seed the feature-flag cache from this profile's real database
+        // column, then handle one-time migration: if the database has
+        // nothing yet but localStorage does (a pre-upgrade browser), that's
+        // this account's existing settings — upload them once so nothing
+        // gets silently reset back to defaults by the database being empty.
+        const dbOverrides=data.feature_overrides||{};
+        if(Object.keys(dbOverrides).length){
+          setUserFeaturesCache({...getUserFeaturesCache(),[user.id]:dbOverrides});
+        }else{
+          try{
+            const localAll=JSON.parse(localStorage.getItem(USER_FEATS_KEY)||"{}");
+            const localMine=localAll[user.id];
+            if(localMine&&Object.keys(localMine).length){
+              setUserFeaturesCache({...getUserFeaturesCache(),[user.id]:localMine});
+              sb.from("profiles").update({feature_overrides:localMine}).eq("id",user.id).then(({error})=>{
+                if(error)console.error("Feature migration to DB failed:",error);
+              });
+            }
+          }catch(e){/* ignore — falls back to defaults, same as before this system existed */}
+        }
+      }
+      if(data&&data.is_admin){
+        sb.from("profiles").select("*").then(({data:all})=>{
+          if(!all)return;
+          setProfiles(all);
+          const merged={...getUserFeaturesCache()};
+          all.forEach(p=>{if(p.feature_overrides&&Object.keys(p.feature_overrides).length)merged[p.id]=p.feature_overrides;});
+          setUserFeaturesCache(merged);
+        });
+      }
       setProfileLoading(false);
+    });
+    // Global admin toggles — one row, same migration pattern as above.
+    sb.from("app_settings").select("admin_features").eq("id",1).maybeSingle().then(({data,error})=>{
+      if(error){console.warn("app_settings not available yet:",error.message);return;}
+      const dbFeatures=(data&&data.admin_features)||{};
+      if(Object.keys(dbFeatures).length){
+        setAdminFeaturesCache(dbFeatures);
+      }else{
+        try{
+          const local=JSON.parse(localStorage.getItem(ADMIN_KEY)||"{}");
+          if(Object.keys(local).length){
+            setAdminFeaturesCache(local);
+            sb.from("app_settings").upsert({id:1,admin_features:local}).then(({error})=>{
+              if(error)console.error("Admin features migration to DB failed:",error);
+            });
+          }
+        }catch(e){/* ignore */}
+      }
     });
   },[user.id]);
 

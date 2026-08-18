@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { T, inp, btnRed, btnGhost } from "../lib/theme.js";
 import { callClaudeAPI } from "../lib/utils.js";
-import { sb } from "../lib/supabaseClient.js";
+import { sb, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop } from "./ledger.jsx";
 import { ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages } from "./settings2.jsx";
 import { Dashboard } from "./reports.jsx";
@@ -58,6 +58,10 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     const n={...userFeats,[userId]:updated};
     setUserFeatsState(n);
     localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
+    setUserFeaturesCache({...getUserFeaturesCache(),[userId]:updated});
+    sb.from("profiles").update({feature_overrides:updated,package_tier:tierId}).eq("id",userId).then(({error})=>{
+      if(error)console.error("Package assignment save failed:",error);
+    });
     const np={...userPackages,[userId]:tierId};
     setUserPackagesState(np);
     localStorage.setItem(USER_PACKAGE_KEY,JSON.stringify(np));
@@ -67,6 +71,10 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     const n={...features,[id]:features[id]===false?true:false};
     setFeaturesState(n);
     localStorage.setItem(ADMIN_KEY,JSON.stringify(n));
+    setAdminFeaturesCache(n);
+    sb.from("app_settings").upsert({id:1,admin_features:n}).then(({error})=>{
+      if(error)console.error("Global feature toggle save failed:",error);
+    });
   };
   const toggleUser=(userId,featureId)=>{
     const cur=(userFeats[userId]||{});
@@ -74,6 +82,10 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     const n={...userFeats,[userId]:{...cur,[featureId]:newVal}};
     setUserFeatsState(n);
     localStorage.setItem(USER_FEATS_KEY,JSON.stringify(n));
+    setUserFeaturesCache({...getUserFeaturesCache(),[userId]:n[userId]});
+    sb.from("profiles").update({feature_overrides:n[userId]}).eq("id",userId).then(({error})=>{
+      if(error)console.error("Feature toggle save failed:",error);
+    });
   };
   // Real, server-side activate/deactivate — is_active also gates RLS on every
   // other table, so this is what actually locks a user out, not just the UI.
