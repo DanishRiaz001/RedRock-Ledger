@@ -252,10 +252,18 @@ function LoginScreen({onLogin}){
       const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
       if(error)setErr(error.message); else onLogin(data.user);
     } else if(mode==="signup"){
-      const{error}=await sb.auth.signUp({email,password:pass});
+      // Explicit emailRedirectTo — this is a real safeguard, not just
+      // belt-and-suspenders: without it, Supabase falls back entirely to
+      // whatever "Site URL" is configured in the dashboard, and if that's
+      // ever wrong (like it currently is, still pointing at a local dev
+      // address), every new signup's confirmation email silently sends
+      // people to a dead link. window.location.origin is always wherever
+      // this page is actually being served from, so it's correct whether
+      // that's the live app, a preview deploy, or local development.
+      const{error}=await sb.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.origin}});
       if(error)setErr(error.message); else setDone(true);
     } else {
-      const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+      const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
       if(error)setErr(error.message); else setDone(true);
     }
     setLoading(false);
