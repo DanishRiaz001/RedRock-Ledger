@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { sb, setCurrentUserId, getCurrentUserId } from "../lib/supabaseClient.js";
+import { sb, setCurrentUserId, getCurrentUserId, setCurrentCompanyId, getCurrentCompanyId } from "../lib/supabaseClient.js";
 import {
   isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,
   vatCodeOptions, findVatCode, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE,
@@ -40,6 +40,7 @@ function AppShell({user}){
   });
   const[companiesLoading,setCompaniesLoading]=useState(true);
   const setActiveCompanyId=id=>{setActiveCompanyIdState(id);if(id){try{localStorage.setItem("rr_active_company",id);}catch(e){/* storage blocked — company switch still works for this session */}}};
+  useEffect(()=>{setCurrentCompanyId(activeCompanyId);},[activeCompanyId]);
 
   useEffect(()=>{
     setCompaniesLoading(true);
@@ -242,7 +243,7 @@ function AppShell({user}){
   const setContacts=async(list)=>{
     setContactsState(list);
     if(!canEdit)return;
-    await sb.from("contacts").delete().eq("user_id",user.id);
+    await sb.from("contacts").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
     if(list.length)await sb.from("contacts").insert(list.map(c=>({user_id:user.id,company_id:activeCompanyId,contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null})));
   };
 
@@ -926,10 +927,10 @@ function AppShell({user}){
   const saveMoneySources=async(list)=>{
     setMoneySourcesState(list);
     if(!canEdit)return;
-    const {error:delErr}=await sb.from("money_sources").delete().eq("user_id",user.id);
+    const {error:delErr}=await sb.from("money_sources").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
     if(delErr){console.error("Money sources delete error:",delErr);alert("Money sources save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(m=>({id:m.id,user_id:user.id,name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
+      const rows=list.map(m=>({id:m.id,user_id:user.id,company_id:activeCompanyId,name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
       const {error:insErr}=await sb.from("money_sources").insert(rows);
       if(insErr){console.error("Money sources insert error:",insErr);alert("Money sources save failed (insert): "+insErr.message);}
     }
@@ -951,10 +952,10 @@ function AppShell({user}){
   const saveProjects=async(list)=>{
     setProjectsState(list);
     if(!canEdit)return;
-    const {error:delErr}=await sb.from("projects").delete().eq("user_id",user.id);
+    const {error:delErr}=await sb.from("projects").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
     if(delErr){console.error("Projects delete error:",delErr);alert("Project save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(p=>({id:p.id,user_id:user.id,name:p.name,inactive:p.inactive||false}));
+      const rows=list.map(p=>({id:p.id,user_id:user.id,company_id:activeCompanyId,name:p.name,inactive:p.inactive||false}));
       const {error:insErr}=await sb.from("projects").insert(rows);
       if(insErr){console.error("Projects insert error:",insErr);alert("Project save failed (insert): "+insErr.message);}
     }
@@ -978,7 +979,7 @@ function AppShell({user}){
       return[...p,merged];
     });
     if(!canEdit)return true;
-    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:"user_id,account_code,period"});
+    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:"user_id,company_id,account_code,period"});
     if(error){
       // Same silent-loss risk as attachments — a status flip or a comment
       // someone just typed would otherwise look saved and then quietly
@@ -1000,7 +1001,7 @@ function AppShell({user}){
     const row={id:"rf_"+Date.now().toString(36),accountCode,period,inboxFileId};
     setReconciliationFilesState(p=>[...p,row]);
     if(!canEdit)return true;
-    const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
+    const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,company_id:activeCompanyId,account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
     if(error){
       // Real save failed — the optimistic add above would otherwise make it
       // LOOK attached until the next page refresh silently drops it. Roll
@@ -1042,9 +1043,9 @@ function AppShell({user}){
     // the DB column defaults (or lack thereof) can silently diverge from what
     // local state assumes ("rollover", not swept), until the next full reload.
     const payload=isNew
-      ?{user_id:user.id,year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
-      :{user_id:user.id,year,month,code,amount};
-    const{error}=await sb.from("budgets").upsert(payload,{onConflict:"user_id,year,month,code"});
+      ?{user_id:user.id,company_id:activeCompanyId,year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
+      :{user_id:user.id,company_id:activeCompanyId,year,month,code,amount};
+    const{error}=await sb.from("budgets").upsert(payload,{onConflict:"user_id,company_id,year,month,code"});
     if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
   };
   // What should happen to THIS month's leftover once it closes: roll over into next
@@ -1056,7 +1057,7 @@ function AppShell({user}){
       const n=[...p];n[idx]={...n[idx],surplusAction,surplusFundId};return n;
     });
     if(!canEdit)return;
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:"user_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,company_id:activeCompanyId,year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:"user_id,company_id,year,month,code"});
     if(error){console.error("Budget surplus-setting save error:",error);alert("Save failed: "+error.message);}
   };
   // Actually transfers a month's unspent leftover into the chosen sinking fund and
@@ -1073,17 +1074,17 @@ function AppShell({user}){
       if(idx===-1)return p;
       const n=[...p];n[idx]={...n[idx],swept:true};return n;
     });
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,year,month,code,swept:true},{onConflict:"user_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:user.id,company_id:activeCompanyId,year,month,code,swept:true},{onConflict:"user_id,company_id,year,month,code"});
     if(error)console.error("Budget sweep flag save error:",error);
   };
   // Bulk replace (used by Backup Restore) — delete all budget rows then re-insert.
   const restoreBudgets=async(list)=>{
     setBudgetsState(list);
     if(!canEdit)return;
-    const{error:delErr}=await sb.from("budgets").delete().eq("user_id",user.id);
+    const{error:delErr}=await sb.from("budgets").delete().eq("user_id",user.id).eq("company_id",activeCompanyId);
     if(delErr){console.error("Budget restore delete error:",delErr);return;}
     if(list.length){
-      const rows=list.map(b=>({user_id:user.id,year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
+      const rows=list.map(b=>({user_id:user.id,company_id:activeCompanyId,year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
       const{error:insErr}=await sb.from("budgets").insert(rows);
       if(insErr)console.error("Budget restore insert error:",insErr);
     }
@@ -1097,7 +1098,7 @@ function AppShell({user}){
     try{
       const storagePath=await uploadFileToStorage(file);
       const now=new Date();
-      const row={user_id:user.id,storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
+      const row={user_id:user.id,company_id:activeCompanyId,storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
       const{data,error}=await sb.from("inbox_files").insert([row]).select().single();
       if(error){console.error("Inbox file insert error:",error);alert("Upload failed: "+error.message);return null;}
       const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
@@ -1148,7 +1149,7 @@ function AppShell({user}){
     const newPath=`${user.id}/${Date.now()}_${f.name}`;
     const{error:copyError}=await sb.storage.from("attachments").copy(f.storagePath,newPath);
     if(copyError){console.error("Storage copy error:",copyError);return null;}
-    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
+    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,company_id:activeCompanyId,name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
     if(error){console.error("Inbox file copy error:",error);return null;}
     const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
     setInboxFilesState(p=>[newFile,...p]);
@@ -1272,11 +1273,19 @@ function AppShell({user}){
     </div>
   );
 
+  if(companiesLoading)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif"}}>
+      <img src={LOGO_FULL_B64} style={{width:220,objectFit:"contain",marginBottom:20}}/>
+      <Spinner/>
+    </div>
+  );
+
   return(
     <div>
       <FinanceTracker
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
         viewingUserId={viewingUserId} setViewingUserId={setViewingUserId} myClientAccess={myClientAccess} currentAccessLevel={currentAccessLevel} profile={profile} user={user}
+        companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} createCompany={createCompany} renameCompany={renameCompany}
         accounts={accounts} setAccounts={setAccounts}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
@@ -1485,24 +1494,24 @@ const getSK=(code)=>{
 
 // NS 4102 income/expense series helpers — used in reports, dashboard, budget
 const fetchInboxFiles=async()=>{
-  const{data,error}=await sb.from("inbox_files").select("*").eq("user_id",getCurrentUserId()).order("created_at",{ascending:false});
+  const{data,error}=await sb.from("inbox_files").select("*").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId()).order("created_at",{ascending:false});
   if(error){console.error("Inbox fetch error:",error);return[];}
   return(data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path}));
 };
 const fetchAttachedTxnIds=async()=>{
-  const{data,error}=await sb.from("txn_attachments").select("txn_id").eq("user_id",getCurrentUserId());
+  const{data,error}=await sb.from("txn_attachments").select("txn_id").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId());
   if(error){console.error("Fetch attached txn ids error:",error);return new Set();}
   return new Set((data||[]).map(r=>r.txn_id));
 };
 const attachFilesToTxn=async(txnId,fileIds)=>{
   const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
   if(!ids.length)return;
-  const rows=ids.map(fileId=>({user_id:getCurrentUserId(),txn_id:txnId,file_id:fileId}));
-  const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:"user_id,txn_id,file_id",ignoreDuplicates:true});
+  const rows=ids.map(fileId=>({user_id:getCurrentUserId(),company_id:getCurrentCompanyId(),txn_id:txnId,file_id:fileId}));
+  const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:"user_id,company_id,txn_id,file_id",ignoreDuplicates:true});
   if(error)console.error("Attach file to txn error:",error);
 };
 const fetchTxnAttachments=async(txnId)=>{
-  const{data,error}=await sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId()).eq("txn_id",txnId);
+  const{data,error}=await sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId()).eq("company_id",getCurrentCompanyId()).eq("txn_id",txnId);
   if(error){console.error("Fetch txn attachments error:",error);return[];}
   return(data||[]).filter(r=>r.inbox_files).map(r=>({id:r.inbox_files.id,name:r.inbox_files.name,type:r.inbox_files.type,storagePath:r.inbox_files.storage_path}));
 };
@@ -1516,7 +1525,7 @@ const fetchEntryComments=async(txnId)=>{
 };
 const addEntryComment=async(txnId,body,booksUserId)=>{
   if(!body||!body.trim())return null;
-  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
+  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),company_id:getCurrentCompanyId(),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
   if(error){console.error("Add comment error:",error);return null;}
   return{id:data.id,authorId:data.author_id,body:data.body,createdAt:data.created_at};
 };

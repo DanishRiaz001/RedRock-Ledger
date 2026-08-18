@@ -20,3 +20,14 @@ export function getCurrentUserId() {
 export function setCurrentUserId(id) {
   _currentUserId = id;
 }
+
+// Same pattern, for the active company — standalone helper functions (Inbox
+// attachments, entry comments) that can't reach AppShell's activeCompanyId
+// through React closures need a live value too, for the same reason.
+let _currentCompanyId = null;
+export function getCurrentCompanyId() {
+  return _currentCompanyId;
+}
+export function setCurrentCompanyId(id) {
+  _currentCompanyId = id;
+}

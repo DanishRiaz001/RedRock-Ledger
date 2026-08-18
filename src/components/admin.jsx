@@ -385,7 +385,13 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
                       <td onClick={()=>setSelUser(p)} style={{color:T.sub}}>{p.email}</td>
                       <td onClick={()=>setSelUser(p)} style={{color:T.muted,fontSize:12}}>{p.created_at?p.created_at.slice(0,10):"—"}</td>
                       <td onClick={()=>setSelUser(p)}>{isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}</td>
-                      <td onClick={()=>setSelUser(p)} style={{textAlign:"right",color:T.muted}}>›</td>
+                      <td style={{textAlign:"right"}} onClick={e=>e.stopPropagation()}>
+                        {isDeact?(
+                          <button onClick={()=>toggleDeactivate(p.id,true)} title="Activate this account" style={{background:T.green,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Activate</button>
+                        ):(
+                          <span onClick={()=>setSelUser(p)} style={{color:T.muted,cursor:"pointer"}}>›</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -497,7 +503,11 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
                           <div style={{fontSize:10,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.email}</div>
                         </div>
                         {p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,flexShrink:0}}>ADMIN</span>}
-                        <span style={{fontSize:16,color:T.muted}}>›</span>
+                        {isDeact?(
+                          <button onClick={e=>{e.stopPropagation();toggleDeactivate(p.id,true);}} style={{background:T.green,color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Activate</button>
+                        ):(
+                          <span style={{fontSize:16,color:T.muted}}>›</span>
+                        )}
                       </div>
                     );
                   })}
