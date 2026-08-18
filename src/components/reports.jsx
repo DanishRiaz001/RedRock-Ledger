@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, SaveFlashButton } from "./ledger.jsx";
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -3675,7 +3675,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
           <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <tbody>
               {rows.map((r,i)=>{
-                const hasAttachment=attachedTxnIds.includes(r.id);
+                const hasAttachment=hasId(attachedTxnIds,r.id);
                 const isClosed=!!r.matchedWith;
                 return(
                 <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>

@@ -1,5 +1,20 @@
 import { getSK } from "./theme.js";
 
+// Membership checks against either a Set or an Array, safely, regardless of
+// which one the caller actually holds. Built after a real bug: attachedTxnIds
+// is a Set everywhere in this app except one screen that called .includes()
+// on it as if it were an array — Set doesn't have .includes(), Array
+// doesn't have .has(), and nothing caught the mismatch until it crashed in
+// production. Using this instead of raw .has()/.includes() calls makes
+// that specific class of bug structurally impossible to repeat, since the
+// check works correctly no matter which collection type shows up.
+export function hasId(collection, id) {
+  if (!collection) return false;
+  if (typeof collection.has === "function") return collection.has(id);
+  if (typeof collection.includes === "function") return collection.includes(id);
+  return false;
+}
+
 const INCOME_SK=new Set(["3000","3900","8000","8400"]);
 const EXPENSE_SK=new Set(["4000","5000","6000","6100","6200","6300","6400","6500","6600","6700","6800","6900","7000","7100","7200","7300","7400","7500","7600","7700","7800","7900","8100","8200","8300","8500","8600"]);
 

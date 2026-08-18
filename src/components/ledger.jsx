@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
@@ -1029,7 +1029,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
             <BilagPill txnId={t.id} bilag={t.bilag} color={isReversal?T.red:T.blue} bg={isReversal?T.redLight:T.blueBg}/>
-            {attachedTxnIds&&attachedTxnIds.has(t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
+            {hasId(attachedTxnIds,t.id)&&<span title="Has attachment" style={{fontSize:12}}>📎</span>}
             {(()=>{const g=getGroupForTxn(t.id);return g&&g.lines.length>1?<span title={`Linked entry · ${g.lines.length} lines`} style={{fontSize:12}}>🔗</span>:null;})()}
             <div style={{fontSize:13,fontWeight:600,flex:1,color:isReversed?T.muted:T.text}}>
               {t.description}
