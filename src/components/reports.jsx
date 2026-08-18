@@ -2700,6 +2700,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,projects=[]}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
+  const[monthlyView,setMonthlyView]=useState(false); // whole year, broken into 12 month columns instead of one lump total
   const[projectFilter,setProjectFilter]=useState("");
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
@@ -2762,6 +2763,75 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
     </React.Fragment>
   ));
 
+  // Monthly breakdown — same underlying movement() and account grouping as
+  // the normal 2-column view, just computed once per month (Jan-Dec) of
+  // the selected year instead of once for the whole period. Only computed
+  // when actually needed, since it's 12x the work of the normal view.
+  const monthlyGroups=useMemo(()=>{
+    if(!fullYear||!monthlyView)return null;
+    const monthRanges=Array.from({length:12},(_,m)=>({
+      from:`${year}-${String(m+1).padStart(2,"0")}-01`,
+      to:`${year}-${String(m+1).padStart(2,"0")}-${String(new Date(year,m+1,0).getDate()).padStart(2,"0")}`,
+    }));
+    const build=(sks,flip)=>sks.map(sk=>{
+      const grpAccounts=accountsForSK(accounts,transactions,sk);
+      if(!grpAccounts.length)return null;
+      const rows=grpAccounts.map(a=>{
+        const months=monthRanges.map(r=>movement(a.code,r.from,r.to)*(flip?-1:1));
+        const total=months.reduce((s,v)=>s+v,0);
+        return{code:a.code,name:a.name,months,total};
+      }).filter(r=>r.total!==0||r.months.some(v=>v!==0));
+      if(!rows.length)return null;
+      const monthTotals=Array.from({length:12},(_,m)=>rows.reduce((s,r)=>s+r.months[m],0));
+      return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,rows,monthTotals,total:rows.reduce((s,r)=>s+r.total,0)};
+    }).filter(Boolean);
+    return{income:build(incomeSKs,true),expense:build(expenseSKs,false)};
+  },[fullYear,monthlyView,year,accounts,transactions,projectFilter]);
+
+  const MONTH_LABELS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const MonthlyTable=({groups,label})=>{
+    if(!groups.length)return null;
+    const grandTotals=Array.from({length:12},(_,m)=>groups.reduce((s,g)=>s+g.monthTotals[m],0));
+    const grandTotal=groups.reduce((s,g)=>s+g.total,0);
+    return(
+      <div style={{overflowX:"auto",marginBottom:20}}>
+        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>{label}</div>
+        <table style={{borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${T.border}`}}>
+              <td style={{padding:"6px 10px",fontWeight:700,color:T.muted,position:"sticky",left:0,background:T.bg,minWidth:160}}>Account</td>
+              {MONTH_LABELS.map(m=><td key={m} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:T.muted,minWidth:78}}>{m}</td>)}
+              <td style={{padding:"6px 10px",textAlign:"right",fontWeight:700,color:T.text,minWidth:90}}>Total</td>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map(g=>(
+              <React.Fragment key={g.sk}>
+                <tr style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"6px 10px",fontWeight:800,position:"sticky",left:0,background:"#fff"}}>{g.label}</td>
+                  {g.monthTotals.map((v,i)=><td key={i} style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>{v===0?"\u2014":fmt(v)}</td>)}
+                  <td style={{textAlign:"right",padding:"6px 10px",fontWeight:800}}>{fmt(g.total)}</td>
+                </tr>
+                {g.rows.map(r=>(
+                  <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},`${year}-01-01`,`${year}-12-31`)} style={{cursor:"pointer"}}>
+                    <td style={{padding:"5px 10px 5px 22px",color:T.accent,position:"sticky",left:0,background:"#fff"}}>{r.code} {r.name}</td>
+                    {r.months.map((v,i)=><td key={i} style={{textAlign:"right",padding:"5px 8px",color:T.sub}}>{v===0?"\u2014":fmt(v)}</td>)}
+                    <td style={{textAlign:"right",padding:"5px 10px",color:T.text}}>{fmt(r.total)}</td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+            <tr style={{borderTop:`2px solid ${T.border}`,fontWeight:900}}>
+              <td style={{padding:"7px 10px",position:"sticky",left:0,background:T.bg}}>Total {label}</td>
+              {grandTotals.map((v,i)=><td key={i} style={{textAlign:"right",padding:"7px 8px"}}>{fmt(v)}</td>)}
+              <td style={{textAlign:"right",padding:"7px 10px"}}>{fmt(grandTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const exportPdf=()=>{
     const el=document.getElementById("resultat-print-area");
     const periodEl=el&&el.querySelector(".print-only-period");
@@ -2794,6 +2864,9 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
             <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
           </div>
           <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
+          {fullYear&&(
+            <button onClick={()=>setMonthlyView(m=>!m)} title="Show each month of the year side by side, instead of one total" style={{background:monthlyView?T.accent:"none",color:monthlyView?"#fff":T.sub,border:`1px solid ${monthlyView?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
+          )}
           {projects.length>0&&(
             <select value={projectFilter} onChange={e=>setProjectFilter(e.target.value)} style={{border:`1px solid ${projectFilter?T.accent:T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:600,color:projectFilter?T.accent:T.sub,background:projectFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
               <option value="">All projects</option>
@@ -2815,6 +2888,12 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           since the sticky bar above already shows it) — so the period is
           never lost once the report is viewed or filed on its own. */}
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Period: {periodLabel}{fullYear?"":` (${from} to ${to})`}</div>
+      {fullYear&&monthlyView&&monthlyGroups?(
+        <>
+          <MonthlyTable groups={monthlyGroups.income} label="Income"/>
+          <MonthlyTable groups={monthlyGroups.expense} label="Expenses"/>
+        </>
+      ):(
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px"}}>
         <colgroup><col style={{width:"55%"}}/><col style={{width:"22.5%"}}/><col style={{width:"22.5%"}}/></colgroup>
         <tbody style={{padding:"0 10px"}}>
@@ -2833,6 +2912,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           </tr>
         </tbody>
       </table>
+      )}
       </div>
     </div>
   );
