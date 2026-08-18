@@ -3983,12 +3983,6 @@ function ReportsHubScreen({onNavigate}){
       {label:"Sales per customer",tab:"SalesPerCustomer"},
       {label:"Balance lists",tab:"BalanceLists"},
     ]},
-    {label:"Accounting",icon:"ti-book",items:[
-      {label:"Trial balance",tab:"TrialBalance"},
-      {label:"General ledger",tab:"GeneralLedger"},
-      {label:"Balance sheet",tab:"BalanceSheet"},
-      {label:"Chart of accounts",tab:"Accounts"},
-    ]},
     {label:"Customer/Supplier Ledger",icon:"ti-list-details",items:[
       {label:"Customer ledger",tab:"Reskontro"},
       {label:"Aged receivables/payables",tab:"AgedReskontro"},

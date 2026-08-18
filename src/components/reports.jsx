@@ -1739,10 +1739,22 @@ function AssistantPanel({onClose}){
 function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,onSkip}){
   const[step,setStep]=useState(0);
   const[name,setName]=useState(companyProfile.companyName||"");
+  const[country,setCountry]=useState(companyProfile.country||"PK");
   const[currency,setCurrency]=useState(companyProfile.currency||"PKR");
 
+  // Country drives which currency makes sense by default, and gates
+  // Norway-specific features (VAT reports, Mva-meldinger) elsewhere in the
+  // app — capturing it here means those features are correctly available
+  // or hidden from the very first session, instead of a new user having to
+  // discover a Country field buried in Company Settings later.
+  const onCountryChange=c=>{
+    setCountry(c);
+    if(c==="NO")setCurrency("NOK");
+    else if(c==="PK")setCurrency("PKR");
+  };
+
   const saveAndNext=()=>{
-    saveCompanyProfile({...companyProfile,companyName:name,currency});
+    saveCompanyProfile({...companyProfile,companyName:name,country,currency});
     setStep(1);
   };
 
@@ -1754,6 +1766,13 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
           <div>
             <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Company name</div>
             <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your business name" style={{...inp}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Country</div>
+            <select value={country} onChange={e=>onCountryChange(e.target.value)} style={{...inp}}>
+              <option value="PK">Pakistan</option>
+              <option value="NO">Norway</option>
+            </select>
           </div>
           <div>
             <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Currency</div>
@@ -2924,6 +2943,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
   const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
   const[compareOn,setCompareOn]=useState(false);
   const[compareDate,setCompareDate]=useState(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10);});
+  const[monthlyView,setMonthlyView]=useState(false);
   const balAt=(code,d)=>transactions.filter(t=>t.date<=d).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
 
   const assetSKs=["1000","1100","1200","1300","1400","1500","1600","1700","1800","1900"];
@@ -2942,6 +2962,29 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
   const totalAssets=assetGroups.reduce((s,g)=>s+g.total,0);
   const totalEqLiab=eqLiabGroups.reduce((s,g)=>s+g.total,0);
   const diff=totalAssets-totalEqLiab;
+
+  // Monthly snapshot view — a balance sheet is a cumulative, point-in-time
+  // figure (not a flow like income/expenses), so "by month" here means the
+  // balance AS OF the end of each month, not what moved during that month.
+  // Reuses balAt/buildGroup exactly as the single-date view does, just
+  // called once per month-end instead of once for the chosen "as of" date.
+  const monthlySnapshot=useMemo(()=>{
+    if(!monthlyView)return null;
+    const year=parseInt(asOf.slice(0,4));
+    const monthEnds=Array.from({length:12},(_,m)=>`${year}-${String(m+1).padStart(2,"0")}-${String(new Date(year,m+1,0).getDate()).padStart(2,"0")}`);
+    const buildMonthly=(sks,flip)=>sks.map(sk=>{
+      const grpAccounts=accountsForSK(accounts,transactions,sk);
+      if(!grpAccounts.length)return null;
+      const rows=grpAccounts.map(a=>{
+        const months=monthEnds.map(d=>balAt(a.code,d)*(flip?-1:1));
+        return{code:a.code,name:a.name,months};
+      }).filter(r=>r.months.some(v=>v!==0));
+      if(!rows.length)return null;
+      const monthTotals=Array.from({length:12},(_,m)=>rows.reduce((s,r)=>s+r.months[m],0));
+      return{sk,label:(SERIES[sk]&&SERIES[sk].name)||sk,rows,monthTotals};
+    }).filter(Boolean);
+    return{assets:buildMonthly(assetSKs,false),eqLiab:buildMonthly(eqLiabSKs,true),year};
+  },[monthlyView,asOf,accounts,transactions]);
 
   // Comparison — same groups as of a second date, matched by series key so
   // totals line up even if a group has activity on one date but not the other.
@@ -2972,6 +3015,45 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
     </React.Fragment>
   ));
 
+  const MONTH_LABELS_BS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const MonthlySnapshotTable=({groups,label,year})=>{
+    if(!groups.length)return null;
+    const grandTotals=Array.from({length:12},(_,m)=>groups.reduce((s,g)=>s+g.monthTotals[m],0));
+    return(
+      <div style={{overflowX:"auto",marginBottom:20}}>
+        <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:8}}>{label} — {year}, as of each month-end</div>
+        <table style={{borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${T.border}`}}>
+              <td style={{padding:"6px 10px",fontWeight:700,color:T.muted,position:"sticky",left:0,background:T.bg,minWidth:160}}>Account</td>
+              {MONTH_LABELS_BS.map(m=><td key={m} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:T.muted,minWidth:78}}>{m}</td>)}
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map(g=>(
+              <React.Fragment key={g.sk}>
+                <tr style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"6px 10px",fontWeight:800,position:"sticky",left:0,background:"#fff"}}>{g.label}</td>
+                  {g.monthTotals.map((v,i)=><td key={i} style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>{v===0?"—":fmt(v)}</td>)}
+                </tr>
+                {g.rows.map(r=>(
+                  <tr key={r.code} onClick={()=>onOpenLedger&&onOpenLedger({code:r.code,name:r.name},`${year}-01-01`,`${year}-12-31`)} style={{cursor:"pointer"}}>
+                    <td style={{padding:"5px 10px 5px 22px",color:T.accent,position:"sticky",left:0,background:"#fff"}}>{r.code} {r.name}</td>
+                    {r.months.map((v,i)=><td key={i} style={{textAlign:"right",padding:"5px 8px",color:T.sub}}>{v===0?"—":fmt(v)}</td>)}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+            <tr style={{borderTop:`2px solid ${T.text}`,fontWeight:900}}>
+              <td style={{padding:"7px 10px",position:"sticky",left:0,background:T.bg}}>Total {label}</td>
+              {grandTotals.map((v,i)=><td key={i} style={{textAlign:"right",padding:"7px 8px"}}>{fmt(v)}</td>)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const exportPdf=()=>{
     const el=document.getElementById("balancesheet-print-area");
     const periodEl=el&&el.querySelector(".print-only-period");
@@ -2998,15 +3080,22 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
-            <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)}/>Compare to another date
+            <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)} disabled={monthlyView}/>Compare to another date
           </label>
-          {compareOn&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
+          {compareOn&&!monthlyView&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
+          <button onClick={()=>setMonthlyView(m=>!m)} title="Show a snapshot as of the end of every month this year, side by side" style={{background:monthlyView?T.accent:"none",color:monthlyView?"#fff":T.sub,border:`1px solid ${monthlyView?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
         </div>
       </div>
       {isDesktop&&<div style={{height:fixedBarHeight,marginBottom:8}}/>}
       {!isDesktop&&<div style={{height:8}}/>}
       <div id="balancesheet-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
+      {monthlyView&&monthlySnapshot?(
+        <>
+          <MonthlySnapshotTable groups={monthlySnapshot.assets} label="Assets" year={monthlySnapshot.year}/>
+          <MonthlySnapshotTable groups={monthlySnapshot.eqLiab} label="Equity and liabilities" year={monthlySnapshot.year}/>
+        </>
+      ):(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))",gap:24}}>
         <div>
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
@@ -3039,10 +3128,13 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
           </table>
         </div>
       </div>
+      )}
+      {!monthlyView&&(
       <div style={{marginTop:20,padding:"12px 16px",borderRadius:10,background:Math.abs(diff)<1?T.greenBg:T.redLight,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span style={{fontSize:13,fontWeight:700,color:Math.abs(diff)<1?T.green:T.red}}>{Math.abs(diff)<1?"✓ Balanced":"⚠ Out of balance"}</span>
         {Math.abs(diff)>=1&&<span style={{fontSize:13,fontWeight:700,color:T.red}}>Difference: {fmt(diff)}</span>}
       </div>
+      )}
       </div>
     </div>
   );
