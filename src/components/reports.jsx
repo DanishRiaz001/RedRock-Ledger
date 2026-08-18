@@ -5061,7 +5061,17 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             {!groups.length&&(
               <tr><td colSpan="7" style={{textAlign:"center",color:T.muted,padding:30,fontSize:12}}>
                 {!relevantContacts.length?(
-                  <>No {type==="customer"?"customers":"suppliers"} yet — add one first.</>
+                  <div>
+                    <div>No {type==="customer"?"customers":"suppliers"} yet — add one first.</div>
+                    {contacts.length>0&&(
+                      <div style={{marginTop:10,fontSize:11,color:T.sub,background:T.bg,borderRadius:8,padding:"10px 14px",display:"inline-block",textAlign:"left"}}>
+                        <div style={{fontWeight:700,marginBottom:4}}>Diagnostic — you have {contacts.length} contact{contacts.length===1?"":"s"} total:</div>
+                        {Object.entries(contacts.reduce((m,c)=>{const k=JSON.stringify(c.type);m[k]=(m[k]||0)+1;return m;},{})).map(([typeVal,count])=>(
+                          <div key={typeVal}>type = {typeVal} → {count} contact{count===1?"":"s"}{typeVal!=='"'+type+'"'&&<span style={{color:T.red,fontWeight:700}}> (doesn't match "{type}" — this is likely why they're not showing)</span>}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ):transactions.filter(t=>t.debitCode===code||t.creditCode===code).some(t=>t.debitCode===code||t.creditCode===code)&&transactions.filter(t=>t.debitCode===code||t.creditCode===code).every(t=>!t.contactId)?(
                   <>There are entries on this account, but none are linked to a {type}. Entries need a {type} selected when they're posted to show up here.</>
                 ):(
