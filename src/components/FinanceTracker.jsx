@@ -156,6 +156,13 @@ function FinanceTracker({accounts,setAccounts,contacts,setContacts,transactions,
   };
   const[assistantOpen,setAssistantOpen]=useState(false);
   const[registrationQueue,setRegistrationQueue]=useState(null);
+  // Register Bilag and the ledger drill-down are both "override" screens —
+  // they sit on top of whatever tab is active without changing it, so a
+  // sidebar click while either is open correctly updates `tab` but the
+  // override just kept showing regardless, since nothing ever told it to
+  // close. Closing both whenever tab actually changes means every sidebar
+  // click genuinely navigates, no matter what was open before it.
+  useEffect(()=>{setRegistrationQueue(null);setLedgerAcc(null);},[tab]);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
   const[entriesDisplayCols,setEntriesDisplayCols]=useState({date:true,accounts:true,invoiceRef:true});
   const[entriesSortKey,setEntriesSortKey]=useState("bilag");
