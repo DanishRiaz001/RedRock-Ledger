@@ -5,7 +5,7 @@ import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPan
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
-function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
+function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
@@ -108,10 +108,24 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isD
     if(codeChanged&&list.some((a,i)=>i!==editingIdx&&a.code===newCode)){
       alert("Account code "+newCode+" already exists.");return;
     }
-    const updated=list.map((a,i)=>i===editingIdx?{...editForm,code:newCode,name:editForm.name.trim(),customCategory:(editForm.customCategory||"").trim(),defaultVatPct:(editForm.defaultVatPct===""||editForm.defaultVatPct==null)?null:parseFloat(editForm.defaultVatPct)}:a);
+    // Base on the original account, not just editForm — openEdit only seeds
+    // editForm with the fields shown as inputs in this modal. Any field the
+    // account has that isn't one of those (e.g. defaultVatCode/vatLocked,
+    // set only via the "New account" flow) would otherwise be silently
+    // wiped to null every time an unrelated field gets edited and saved.
+    const savedAcc={...list[editingIdx],...editForm,code:newCode,name:editForm.name.trim(),customCategory:(editForm.customCategory||"").trim(),defaultVatPct:(editForm.defaultVatPct===""||editForm.defaultVatPct==null)?null:parseFloat(editForm.defaultVatPct)};
+    const updated=list.map((a,i)=>i===editingIdx?savedAcc:a);
     setList(updated);
-    // Pass oldCode + newCode so transactions get migrated when code changes
-    onSave(updated,codeChanged?origCode:null,codeChanged?newCode:null);
+    if(codeChanged||!onUpdateAccount){
+      // A code rename needs the full-list path — setAccounts migrates every
+      // transaction referencing the old code onto the new one, which a
+      // single-row upsert can't do.
+      onSave(updated,codeChanged?origCode:null,codeChanged?newCode:null);
+    } else {
+      // Same single-row reliability fix as adding an account — editing one
+      // account (e.g. toggling Inactive) shouldn't re-save the whole chart.
+      onUpdateAccount(savedAcc);
+    }
     setEditingIdx(null);
     setEditForm({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
     setOrigCode("");
@@ -237,7 +251,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isD
             <div style={{fontSize:15,fontWeight:800,color:T.text}}>Chart of accounts</div>
             <div style={{display:"flex",gap:18}}>
               <span onClick={()=>{
-                const aoa=[["Code","Name","Type","Internal Category","Description","Default VAT","Matchable","Inactive"],...list.map(a=>[a.code,a.name,(SERIES[getSK(a.code)]||{}).name||"",a.customCategory||"",a.notes||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
+                const aoa=[["Code","Name","Type","Balance group","Description","SAF-T (v1.3)","SAF-T (v1.2)","Default VAT","Currency","Show at posting","Matchable","Inactive"],...list.map(a=>[a.code,a.name,parseInt(getSK(a.code))<3000?"Balance sheet":"Income statement",(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.saftCode13||"",a.saftCode12||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.currency||"PKR",a.showAtPosting!==false?"yes":"no",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
                 const wb=XLSX.utils.book_new();
                 const ws=XLSX.utils.aoa_to_sheet(aoa);
                 XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
@@ -276,12 +290,17 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isD
           </div>
           <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
             <thead><tr style={{background:T.bg,color:T.sub}}>
-              <td style={{padding:"10px 18px",fontWeight:700}}>Account number</td>
+              <td style={{padding:"10px 14px",fontWeight:700}}>Account number</td>
               <td style={{fontWeight:700}}>Name</td>
-              <td style={{fontWeight:700}}>Category</td>
-              <td style={{textAlign:"center",fontWeight:700}}>VAT</td>
-              <td style={{fontWeight:700}}>Depreciation code</td>
-              <td style={{fontWeight:700,padding:"10px 18px"}}>Balance sheet category</td>
+              <td style={{fontWeight:700}}>Account type</td>
+              <td style={{fontWeight:700}}>Balance group</td>
+              <td style={{fontWeight:700}}>Description</td>
+              <td style={{fontWeight:700}}>SAF-T (v1.3)</td>
+              <td style={{fontWeight:700}}>SAF-T (v1.2)</td>
+              <td style={{textAlign:"center",fontWeight:700}}>VAT code</td>
+              <td style={{textAlign:"center",fontWeight:700}}>Currency</td>
+              <td style={{textAlign:"center",fontWeight:700}}>Show at<br/>posting</td>
+              <td style={{textAlign:"center",fontWeight:700,padding:"10px 14px"}}>Inactive</td>
             </tr></thead>
             <tbody>
               {Object.entries(SERIES).map(([key,s])=>{
@@ -289,15 +308,24 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isD
                 if(!grp.length)return null;
                 return(
                   <React.Fragment key={key}>
-                    <tr style={{background:T.bg}}><td colSpan="6" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="11" style={{padding:"8px 14px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
                     {grp.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer",background:a.code===highlightCode?T.accentLight:undefined,transition:"background 0.4s"}}>
-                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}{a.inactive&&<span style={{marginLeft:6,fontSize:9,color:T.red,fontWeight:700}}>INACTIVE</span>}</td>
+                        <td style={{padding:"9px 14px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.customCategory||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{parseInt(key)<3000?"Balance sheet":"Income statement"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode13||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode12||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.depreciationCode||"—"}</td>
-                        <td style={{color:T.muted,fontSize:12,padding:"9px 18px"}}>{s.name}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
+                        <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+                          <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
+                        </td>
+                        <td style={{textAlign:"center",padding:"9px 14px"}} onClick={e=>e.stopPropagation()}>
+                          <input type="checkbox" checked={!!a.inactive} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,inactive:e.target.checked})}/>
+                        </td>
                       </tr>
                     ))}
                   </React.Fragment>
@@ -313,21 +341,30 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isD
                 if(!other.length)return null;
                 return(
                   <React.Fragment key="other">
-                    <tr style={{background:T.bg}}><td colSpan="6" style={{padding:"8px 18px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="11" style={{padding:"8px 14px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
                     {other.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
-                        <td style={{padding:"9px 18px",color:T.text}}>{a.code}{a.inactive&&<span style={{marginLeft:6,fontSize:9,color:T.red,fontWeight:700}}>INACTIVE</span>}</td>
+                        <td style={{padding:"9px 14px",color:T.text}}>{a.code}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.customCategory||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>—</td>
+                        <td style={{color:T.muted,fontSize:12}}>—</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode13||"—"}</td>
+                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode12||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.depreciationCode||"—"}</td>
-                        <td style={{color:T.muted,fontSize:12,padding:"9px 18px"}}>—</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
+                        <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+                          <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
+                        </td>
+                        <td style={{textAlign:"center",padding:"9px 14px"}} onClick={e=>e.stopPropagation()}>
+                          <input type="checkbox" checked={!!a.inactive} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,inactive:e.target.checked})}/>
+                        </td>
                       </tr>
                     ))}
                   </React.Fragment>
                 );
               })()}
-              {!tableFiltered.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
+              {!tableFiltered.length&&<tr><td colSpan="11" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No accounts match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -457,6 +494,12 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
   const[currency,setCurrency]=useState("PKR");
   const[vatCode,setVatCode]=useState("");
   const[vatLocked,setVatLocked]=useState(false);
+  const[notes,setNotes]=useState("");
+  const[saftCode13,setSaftCode13]=useState("");
+  const[saftCode12,setSaftCode12]=useState("");
+  const[showAtPosting,setShowAtPosting]=useState(true);
+  const[matchable,setMatchable]=useState(false);
+  const[inactive,setInactive]=useState(false);
   const[error,setError]=useState("");
 
   const sk=code?getSK(code.trim()):null;
@@ -481,7 +524,9 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
     if(existingCodes.has(trimmedCode)){setError(`Account ${trimmedCode} already exists.`);return;}
     const selectedVat=vatOptions.find(c=>c.code===vatCode);
     onCreate({
-      code:trimmedCode,name:name.trim(),matchable:false,currency,
+      code:trimmedCode,name:name.trim(),matchable,currency,
+      notes:notes.trim(),saftCode13:saftCode13.trim(),saftCode12:saftCode12.trim(),
+      showAtPosting,inactive,
       defaultVatCode:selectedVat?selectedVat.code:null,
       defaultVatPct:selectedVat?selectedVat.rate:null,
       vatLocked:!!(selectedVat&&vatLocked),
@@ -514,10 +559,24 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
             <input value={name} onChange={e=>{setName(e.target.value);setError("");}} placeholder="e.g. Office Rent" style={inp}/>
           </div>
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Category (auto-detected from number)</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (auto-detected from number)</div>
             <div style={{...inp,background:T.bg,color:T.sub,display:"flex",flexDirection:"column",gap:1,lineHeight:1.3}}>
               <span>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</span>
               <span style={{fontSize:10,color:T.muted}}>{reportLabel}</span>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional note" rows={2} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
+              <input value={saftCode13} onChange={e=>setSaftCode13(e.target.value)} placeholder="Optional" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.2)</div>
+              <input value={saftCode12} onChange={e=>setSaftCode12(e.target.value)} placeholder="Optional" style={inp}/>
             </div>
           </div>
           {vatDirection?(
@@ -535,6 +594,20 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
           ):(
             <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px"}}>Balance-sheet accounts don't carry a VAT code.</div>
           )}
+          <div style={{display:"flex",flexDirection:"column",gap:8,paddingTop:2}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={showAtPosting} onChange={e=>setShowAtPosting(e.target.checked)}/>
+              Show at posting
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={matchable} onChange={e=>setMatchable(e.target.checked)}/>
+              Open items (matchable in Reskontro)
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/>
+              Inactive
+            </label>
+          </div>
         </div>
         <div style={{padding:"14px 20px",borderTop:`1px solid ${T.border}`,display:"flex",gap:8}}>
           <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
@@ -614,6 +687,14 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
               <input value={val("depreciationCode",account.depreciationCode||"")} onChange={set("depreciationCode")} placeholder="e.g. 5yr straight-line, or leave blank" style={inp}/>
             </div>
             <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
+              <input value={val("saftCode13",account.saftCode13||"")} onChange={set("saftCode13")} placeholder="Optional" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.2)</div>
+              <input value={val("saftCode12",account.saftCode12||"")} onChange={set("saftCode12")} placeholder="Optional" style={inp}/>
+            </div>
+            <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
               <select value={val("defaultVatCode",account.defaultVatCode||"")} disabled={val("vatLocked",!!account.vatLocked)&&!!val("defaultVatCode",account.defaultVatCode)} onChange={e=>{
                 const vc=e.target.value?findVatCode(e.target.value,vatDirection):null;
@@ -635,7 +716,11 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
                 </select>
               </div>
             )}
-            <div style={{gridColumn:"1/-1",display:"flex",gap:20,paddingTop:4}}>
+            <div style={{gridColumn:"1/-1",display:"flex",gap:20,paddingTop:4,flexWrap:"wrap"}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+                <input type="checkbox" checked={val("showAtPosting",account.showAtPosting!==false)} onChange={set("showAtPosting")}/>
+                Show at posting
+              </label>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
                 <input type="checkbox" checked={val("matchable",account.matchable||false)} onChange={set("matchable")}/>
                 Open items (matchable in Reskontro)
@@ -667,7 +752,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
   );
 }
 
-function SettingsMenu({accounts,onSave,onAddAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
+function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -1024,7 +1109,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,contacts,setContacts,transac
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");

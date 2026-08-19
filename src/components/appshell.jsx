@@ -219,7 +219,7 @@ function AppShell({user}){
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
-        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,defaultVatCode:a.default_vat_code||null,vatLocked:!!a.vat_locked,inactive:!!a.inactive,currency:a.currency||"PKR"}));
+        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,defaultVatCode:a.default_vat_code||null,vatLocked:!!a.vat_locked,inactive:!!a.inactive,currency:a.currency||"PKR",customCategory:a.custom_category||"",depreciationCode:a.depreciation_code||"",showAtPosting:a.show_at_posting!==false,saftCode13:a.saft_code_13||"",saftCode12:a.saft_code_12||""}));
         const existingCodes=new Set(existing.map(a=>a.code));
         // Add default accounts that don't exist yet (new standard accounts)
         const merged=[...existing];
@@ -274,6 +274,11 @@ function AppShell({user}){
 
   const canEdit=!!(profile&&profile.is_active!==false);
 
+  // Single source of truth for the account row shape sent to Supabase —
+  // used by every account save path (full-list, single-add, single-update)
+  // so a field added here never has to be remembered in three places.
+  const accountRow=a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR",custom_category:a.customCategory||null,depreciation_code:a.depreciationCode||null,show_at_posting:a.showAtPosting!==false,saft_code_13:a.saftCode13||null,saft_code_12:a.saftCode12||null});
+
   const setAccounts=async(list,deletedCode=null,newCode=null)=>{
     setAccountsState(list);
     if(!canEdit)return;
@@ -303,7 +308,7 @@ function AppShell({user}){
     // reload. Now any failure surfaces immediately instead of silently.
     const failures=[];
     for(const a of list){
-      const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR"},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+      const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(a)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
       if(error){console.error(`Account save error (${a.code}):`,error);failures.push(`${a.code}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} account${failures.length===1?"":"s"} didn't save to the database — they'll disappear on reload until this is fixed:\n\n${failures.join("\n")}`);
@@ -323,8 +328,18 @@ function AppShell({user}){
   const addAccount=async(acc)=>{
     setAccountsState(prev=>[...prev,acc]);
     if(!canEdit)return;
-    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),code:acc.code,name:acc.name,matchable:acc.matchable||false,notes:acc.notes||"",default_vat_pct:acc.defaultVatPct!=null?acc.defaultVatPct:null,default_vat_code:acc.defaultVatCode||null,vat_locked:acc.vatLocked||false,inactive:acc.inactive||false,currency:acc.currency||"PKR"},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
     if(error){console.error(`Account save error (${acc.code}):`,error);alert(`"${acc.code}" didn't save to the database — it'll disappear on reload until this is fixed:\n\n${error.message}`);}
+  };
+
+  // Same single-row reliability fix as addAccount, for editing one existing
+  // account in place (e.g. toggling "Inactive" or "Show at posting" right
+  // in the Chart of Accounts table) instead of resaving every account.
+  const updateAccount=async(acc)=>{
+    setAccountsState(prev=>prev.map(a=>a.code===acc.code?{...a,...acc}:a));
+    if(!canEdit)return;
+    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+    if(error){console.error(`Account save error (${acc.code}):`,error);alert(`"${acc.code}" didn't save to the database:\n\n${error.message}`);}
   };
 
   const setContacts=async(list)=>{
@@ -1373,7 +1388,7 @@ function AppShell({user}){
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
         viewingUserId={viewingUserId} setViewingUserId={setViewingUserId} myClientAccess={myClientAccess} currentAccessLevel={currentAccessLevel} profile={profile} user={user}
         companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} createCompany={createCompany} renameCompany={renameCompany}
-        accounts={accounts} setAccounts={setAccounts} addAccount={addAccount}
+        accounts={accounts} setAccounts={setAccounts} addAccount={addAccount} updateAccount={updateAccount}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
         saveEdit={saveEdit} deleteTxn={deleteTxn}
