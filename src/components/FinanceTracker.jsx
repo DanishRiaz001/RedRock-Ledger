@@ -32,6 +32,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
+  const[settingsWide,setSettingsWide]=useState(false);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
   const[lastDeleted,setLastDeleted]=useState(null);
   // Desktop gets a persistent sidebar + reflowed Dashboard; mobile keeps the
@@ -320,8 +321,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       aoa=[["Contact","Type","Bilag","Date","Description","Amount"]];
       contacts.forEach(c=>{
         const code=c.type==="customer"?"1500":"2400";
-        transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)).forEach(t=>{
-          const mv=t.debitCode===code?t.amount:-t.amount;
+        const inBucket=cc=>getSK(cc)===code;
+        transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode))).forEach(t=>{
+          const mv=inBucket(t.debitCode)?t.amount:-t.amount;
           aoa.push([c.name,c.type,fmtB(t.bilag),t.date,t.description,mv]);
         });
       });
@@ -1126,7 +1128,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           </div>
         )}
 
-        {tab==="Settings"&&(canWriteFull?<div style={{maxWidth:900}}><SettingsMenu accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted}}>Your access level for these books doesn't include Settings.</div></div>)}
+        {tab==="Settings"&&(canWriteFull?<div style={{maxWidth:settingsWide?"100%":900}}><SettingsMenu accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true} onWideChange={setSettingsWide}/></div>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted}}>Your access level for these books doesn't include Settings.</div></div>)}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 

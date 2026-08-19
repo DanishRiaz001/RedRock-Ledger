@@ -1689,7 +1689,10 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const customers=contacts.filter(c=>c.type==="customer"&&!c.inactive);
   const suppliers=contacts.filter(c=>c.type==="supplier"&&!c.inactive);
 
-  const mv=(t,code)=>t.debitCode===code?t.amount:t.creditCode===code?-t.amount:0;
+  // Bucket-matched, not exact-code — see the inBucket fix below; a
+  // transaction posted to a sibling account (e.g. 1510) must still count
+  // toward the 1500 series total instead of silently contributing 0.
+  const mv=(t,code)=>getSK(t.debitCode)===code?t.amount:getSK(t.creditCode)===code?-t.amount:0;
   const doMatchTxns=(ids,grpId,accountCode)=>matchTxns(ids,grpId,accountCode);
   const doUnmatchGroup=(grpId)=>{if(unmatchTxns)unmatchTxns(grpId);};
 
@@ -1701,7 +1704,12 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   if(view){
     const list=view==="customer"?customers:suppliers;
     const isCustomer=view==="customer";
+    // "code" is the series bucket, not one literal account — a manual entry
+    // posted to a sibling account in the same range (e.g. 1510 Trade
+    // Receivables instead of 1500 Accounts Receivable) must still count as
+    // AR/AP here, same fix as ReskontroDesktopScreen in reports.jsx.
     const code=isCustomer?"1500":"2400";
+    const inBucket=c=>getSK(c)===code;
     const accentColor=isCustomer?T.blue:T.red;
     const accentBg=isCustomer?T.blueBg:T.redLight;
     const contactDatalistId=`reskontro-contact-filter-${view}`;
@@ -1720,7 +1728,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         const c=contacts.find(x=>x.id===t.contactId);
         if(!c||c.type!==view||c.inactive)return false;
         if(contactId&&contactId!=="all"&&t.contactId!==contactId)return false;
-        if(!(t.debitCode===code||t.creditCode===code))return false;
+        if(!(inBucket(t.debitCode)||inBucket(t.creditCode)))return false;
         if(mode==="open"){
           if(filterContact!=="all"&&t.contactId!==filterContact)return false;
           if((t.matchedWith&&t.matchedAccount===code)||t.reversedBy||t.reversalOf)return false;
@@ -1968,7 +1976,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
           {/* ── Grouped by contact with sub-totals ── */}
           {byContact.map(({contact:c,txns:ctxns})=>{
             const subTotal=ctxns.reduce((s,t)=>s+mv(t,code),0);
-            const incomingBalance=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&t.date<periodFrom&&!t.reversedBy&&!t.reversalOf).reduce((s,t)=>s+mv(t,code),0);
+            const incomingBalance=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode))&&t.date<periodFrom&&!t.reversedBy&&!t.reversalOf).reduce((s,t)=>s+mv(t,code),0);
             const outgoingBalance=incomingBalance+subTotal;
             const contactSummaryRows=mode==="period"
               ?[
@@ -2109,9 +2117,10 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
   const today=new Date().toISOString().split("T")[0];
   const agingBuckets=(contactType)=>{
     const code=contactType==="customer"?"1500":"2400";
+    const inBucket=cc=>getSK(cc)===code;
     return contacts.filter(c=>c.type===contactType&&!c.inactive).map(c=>{
-      const txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
-      const bal=txns.reduce((s,t)=>t.debitCode===code?s+t.amount:s-t.amount,0);
+      const txns=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode)));
+      const bal=txns.reduce((s,t)=>inBucket(t.debitCode)?s+t.amount:s-t.amount,0);
       if(Math.abs(bal)<1)return null;
       const unmatched=txns.filter(t=>!(t.matchedWith&&t.matchedAccount===code)).sort((a,b)=>a.date.localeCompare(b.date));
       const oldest=(unmatched[0]?unmatched[0].date:undefined)||today;

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId } from "../lib/utils.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, SaveFlashButton } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, SaveFlashButton } from "./ledger.jsx";
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
@@ -173,7 +173,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
       .filter(a=>!showActiveOnly||!a.inactive);
 
     return(
-      <div style={{maxWidth:1500}}>
+      <div style={{maxWidth:"100%"}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Chart of accounts</h1>
         <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",marginBottom:20}}>
           <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}}/>
@@ -488,6 +488,73 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
 // accounts, purchase codes for expense accounts, none for balance-sheet
 // accounts), and a "lock" toggle — once locked, entry screens can't override
 // the VAT code for this account; unchecking it here is the only way back.
+// Searchable "Account group" picker — same interaction pattern as VatDrop
+// (ledger.jsx), for browsing the NS4102 account series by name instead of
+// needing to already know the numeric ranges. Deliberately does NOT store a
+// separate "group" field on the account — every report/VAT-direction/
+// balance-vs-income calculation in this app derives an account's group from
+// its number via getSK(), so a second, independently-editable group field
+// could silently drift out of sync with the number and corrupt those
+// calculations. Instead, picking a group here sets the account number to
+// that group's starting code, keeping the number as the single source of
+// truth while still letting someone browse/select by name.
+function AccountGroupDrop({value,onChange,options}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const containerRef=React.useRef(null);
+  const inputRef=React.useRef(null);
+  const sel=options.find(o=>o.code===value);
+  const displayValue=sel?`${sel.icon} ${sel.code} — ${sel.name}`:"";
+
+  const filtered=useMemo(()=>{
+    if(!q)return options;
+    const ql=q.toLowerCase();
+    return options.filter(o=>o.code.includes(ql)||o.name.toLowerCase().includes(ql));
+  },[options,q]);
+
+  const openAndSearch=()=>{setOpen(true);setQ("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");};
+  const handleBlur=e=>{
+    const next=e.relatedTarget;
+    if(next&&containerRef.current&&containerRef.current.contains(next))return;
+    closeAndRevert();
+  };
+
+  return(
+    <div ref={containerRef} style={{position:"relative"}}>
+      <input
+        ref={inputRef}
+        value={open?q:displayValue}
+        placeholder="— Select account group —"
+        onFocus={openAndSearch}
+        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);}}
+        onBlur={handleBlur}
+        onKeyDown={e=>{
+          if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
+        }}
+        style={{...inp,cursor:"text",paddingRight:20}}
+      />
+      <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:9,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
+      {open&&(
+        <>
+          <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:260}}>
+            <div style={{overflowY:"auto",maxHeight:260}}>
+              {filtered.length===0&&<div style={{padding:"12px",fontSize:11,color:T.muted,textAlign:"center"}}>No account groups found</div>}
+              {filtered.map((o,i)=>(
+                <div key={o.code} onMouseDown={e=>{e.preventDefault();onChange(o.code);closeAndRevert();}} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:o.code===value?T.accentLight:"#fff",fontWeight:o.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none"}}>
+                  {o.icon} <span style={{fontWeight:700,color:T.accent}}>{o.code}</span> — {o.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
   const[code,setCode]=useState(initialCode||"");
   const[name,setName]=useState("");
@@ -542,6 +609,11 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
           {error&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600}}>{error}</div>}
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account group</div>
+            <AccountGroupDrop value={sk||""} onChange={k=>{setCode(k);setError("");}} options={Object.entries(SERIES).map(([k,s])=>({code:k,name:s.name,icon:s.icon}))}/>
+            <div style={{fontSize:10,color:T.muted,marginTop:4}}>Picking a group jumps the number below to its range — you can still type any specific number in that range.</div>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
@@ -559,7 +631,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
             <input value={name} onChange={e=>{setName(e.target.value);setError("");}} placeholder="e.g. Office Rent" style={inp}/>
           </div>
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (auto-detected from number)</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (detected from number)</div>
             <div style={{...inp,background:T.bg,color:T.sub,display:"flex",flexDirection:"column",gap:1,lineHeight:1.3}}>
               <span>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</span>
               <span style={{fontSize:10,color:T.muted}}>{reportLabel}</span>
@@ -582,10 +654,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
           {vatDirection?(
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
-              <select value={vatCode} onChange={e=>setVatCode(e.target.value)} style={inp}>
-                <option value="">No default — ask each time</option>
-                {vatOptions.map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
-              </select>
+              <VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/>
               <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,fontSize:12,color:vatCode?T.text:T.muted,cursor:vatCode?"pointer":"not-allowed"}}>
                 <input type="checkbox" checked={vatLocked} disabled={!vatCode} onChange={e=>setVatLocked(e.target.checked)}/>
                 Lock this VAT code — entries against this account can't use a different one
@@ -658,6 +727,12 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
         <div style={{padding:20}}>
           {hasT&&<div style={{fontSize:11,color:"#0369A1",background:"#EFF6FF",borderRadius:7,padding:"8px 12px",marginBottom:14}}>ℹ️ This account has transactions. Changing the number moves all of them automatically — name changes are always safe.</div>}
 
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account group</div>
+            <AccountGroupDrop value={getSK(val("code",account.code))||""} onChange={k=>setEditForm(f=>({...f,code:k}))} options={Object.entries(SERIES).map(([k,s])=>({code:k,name:s.name,icon:s.icon}))}/>
+            {hasT&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>This account has transactions — changing the group moves the account number, which migrates every entry to the new number automatically.</div>}
+          </div>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px 14px",marginBottom:16}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account number *</div>
@@ -696,13 +771,15 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
-              <select value={val("defaultVatCode",account.defaultVatCode||"")} disabled={val("vatLocked",!!account.vatLocked)&&!!val("defaultVatCode",account.defaultVatCode)} onChange={e=>{
-                const vc=e.target.value?findVatCode(e.target.value,vatDirection):null;
-                setEditForm(f=>({...f,defaultVatCode:e.target.value,defaultVatPct:vc?vc.rate:null}));
-              }} style={{...inp,opacity:(val("vatLocked",!!account.vatLocked)&&!!val("defaultVatCode",account.defaultVatCode))?0.6:1}}>
-                <option value="">No default — ask each time</option>
-                {vatDirection&&vatCodeOptions(vatDirection).map(c=><option key={c.code} value={c.code}>{c.code}: ({c.rate}%) {c.name}</option>)}
-              </select>
+              <VatDrop
+                value={val("defaultVatCode",account.defaultVatCode||"")}
+                disabled={val("vatLocked",!!account.vatLocked)&&!!val("defaultVatCode",account.defaultVatCode)}
+                options={vatDirection?vatCodeOptions(vatDirection):[]}
+                onChange={code=>{
+                  const vc=code?findVatCode(code,vatDirection):null;
+                  setEditForm(f=>({...f,defaultVatCode:code,defaultVatPct:vc?vc.rate:null}));
+                }}
+              />
               <label style={{display:"flex",alignItems:"center",gap:8,marginTop:6,fontSize:11,color:val("defaultVatCode",account.defaultVatCode)?T.text:T.muted,cursor:val("defaultVatCode",account.defaultVatCode)?"pointer":"not-allowed"}}>
                 <input type="checkbox" checked={val("vatLocked",!!account.vatLocked)} disabled={!val("defaultVatCode",account.defaultVatCode)} onChange={set("vatLocked")}/>
                 Lock this VAT code — entries can't use a different one while locked
@@ -752,11 +829,22 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
   );
 }
 
-function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
+function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
   const[showNew,setShowNew]=useState(false);
+
+  // The Chart of Accounts table has too many columns to be usable inside
+  // Settings' normal narrow max-width — it needs the full screen. Every
+  // other Settings sub-screen (company info, contacts, budgets, etc.) is
+  // fine at the narrower width, so this reports up to FinanceTracker only
+  // when "plan" is the active screen, letting it lift the outer wrapper's
+  // max-width just for that one screen instead of widening all of Settings.
+  useEffect(()=>{
+    if(onWideChange)onWideChange(screen==="plan");
+    return()=>{if(onWideChange)onWideChange(false);};
+  },[screen]);
 
   const CURRENCIES=[
     {code:"PKR",name:"Pakistani Rupee",symbol:"Rs"},
@@ -2678,15 +2766,26 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
           {rows.map(r=>(
             <div key={r.code} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,alignItems:"center",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 8px"}}>
-              <div onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:11,fontWeight:700,color:onSaveAccounts?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:onSaveAccounts?"pointer":"default"}}>{r.code} {r.name}</div>
+              <div style={{display:"flex",alignItems:"center",gap:5,overflow:"hidden"}}>
+                <div
+                  onClick={()=>{
+                    if(!onOpenLedger)return;
+                    const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
+                    onOpenLedger(acct,filterFrom,filterTo);
+                  }}
+                  title={onOpenLedger?"Open general ledger for this account":undefined}
+                  style={{fontSize:11,fontWeight:700,color:onOpenLedger?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:onOpenLedger?"pointer":"default",flex:1}}
+                >{r.code} {r.name}</div>
+                {onSaveAccounts&&<i className="ti ti-pencil" title="Edit account" onClick={()=>setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
+              </div>
               <div style={{fontSize:11,textAlign:"right",color:T.text}}>{fmtBal(r.opening)}</div>
               <div
                 onClick={()=>{
-                  if(!r.diff||!onOpenLedger)return;
+                  if(!onOpenLedger)return;
                   const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
                   onOpenLedger(acct,filterFrom,filterTo);
                 }}
-                style={{fontSize:11,textAlign:"right",color:r.diff?T.accent:T.muted,fontWeight:r.diff?700:400,cursor:r.diff?"pointer":"default"}}
+                style={{fontSize:11,textAlign:"right",color:r.diff?T.accent:T.muted,fontWeight:r.diff?700:400,cursor:onOpenLedger?"pointer":"default"}}
               >{r.diff?fmtBal(r.diff):"—"}</div>
               <div style={{fontSize:11,fontWeight:800,textAlign:"right",color:T.text}}>{fmtBal(r.closing)}</div>
             </div>
@@ -2783,16 +2882,24 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <tbody>
           {rows.map(r=>(
             <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-              <td onClick={()=>onSaveAccounts&&setEditingAccount(accounts.find(a=>a.code===r.code))} title={`${r.code} ${r.name}`} style={{padding:"11px 14px",color:onSaveAccounts?T.accent:T.text,fontWeight:600,cursor:onSaveAccounts?"pointer":"default",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
+              <td title={onOpenLedger?`Open general ledger for ${r.code} ${r.name}`:`${r.code} ${r.name}`} style={{padding:"11px 14px",maxWidth:280}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,overflow:"hidden"}}>
+                  <span
+                    onClick={()=>{if(!onOpenLedger)return;const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};onOpenLedger(acct,filterFrom,filterTo);}}
+                    style={{color:onOpenLedger?T.accent:T.text,fontWeight:600,cursor:onOpenLedger?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                  >{r.code} {r.name}</span>
+                  {onSaveAccounts&&<i className="ti ti-pencil" title="Edit account" onClick={()=>setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
+                </div>
+              </td>
               <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmtBal(r.opening)}</td>
               <td
                 onClick={()=>{
-                  if(!r.diff||!onOpenLedger)return;
+                  if(!onOpenLedger)return;
                   const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
                   onOpenLedger(acct,filterFrom,filterTo);
                 }}
-                title={r.diff?"View ledger for this account and period":undefined}
-                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:r.diff?"pointer":"default"}}
+                title={onOpenLedger?"View ledger for this account and period":undefined}
+                style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:onOpenLedger?"pointer":"default"}}
               >{r.diff?fmtBal(r.diff):"—"}</td>
               <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmtBal(r.closing)}</td>
             </tr>
@@ -4909,7 +5016,16 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const[collapsedIds,setCollapsedIds]=useState(new Set());
   const toggleCollapse=(id)=>setCollapsedIds(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
 
+  // "code" is the series bucket ("1500" or "2400"), not one literal
+  // account — a company can have several accounts in that range (1500
+  // Accounts Receivable, 1510 Trade Receivables, 1520 Receivables from
+  // Group Companies, etc.), and any manually-posted entry against one of
+  // those siblings instead of the exact top-level code used to be
+  // completely invisible here, even though the AR/AP dashboard totals
+  // elsewhere already aggregate the whole bucket via getSK(). Matching by
+  // series instead of exact code is what actually fixes "no data shows".
   const code=type==="customer"?"1500":"2400";
+  const inBucket=c=>getSK(c)===code;
   const year=parseInt(viewMonth.slice(0,4));
   const monthIdx=parseInt(viewMonth.slice(5,7))-1;
   const periodEnd=`${year}-${String(monthIdx+1).padStart(2,"0")}-${String(new Date(year,monthIdx+1,0).getDate()).padStart(2,"0")}`;
@@ -4921,7 +5037,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   };
 
   const relevantContacts=useMemo(()=>contacts.filter(c=>c.type===type),[contacts,type]);
-  const mv=(t)=>t.debitCode===code?t.amount:-t.amount;
+  const mv=(t)=>inBucket(t.debitCode)?t.amount:-t.amount;
   const[minAmount,setMinAmount]=useState("");
   const[maxAmount,setMaxAmount]=useState("");
 
@@ -4929,7 +5045,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
     return relevantContacts
       .filter(c=>!contactFilter||c.id===contactFilter)
       .map(c=>{
-        let txns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code));
+        let txns=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode)));
         const isMatched=(t)=>!!(t.matchedWith&&t.matchedAccount===code);
         // "Open" means "still outstanding as of this period" — an unpaid
         // June invoice must still show when viewing August, so this filters
@@ -5164,7 +5280,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                       </div>
                     )}
                   </div>
-                ):transactions.filter(t=>t.debitCode===code||t.creditCode===code).some(t=>t.debitCode===code||t.creditCode===code)&&transactions.filter(t=>t.debitCode===code||t.creditCode===code).every(t=>!t.contactId)?(
+                ):transactions.some(t=>inBucket(t.debitCode)||inBucket(t.creditCode))&&transactions.filter(t=>inBucket(t.debitCode)||inBucket(t.creditCode)).every(t=>!t.contactId)?(
                   <>There are entries on this account, but none are linked to a {type}. Entries need a {type} selected when they're posted to show up here.</>
                 ):(
                   <>No entries match these filters for {periodLabel}. Try "All" instead of "Open" if you're looking for older activity.</>

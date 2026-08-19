@@ -4273,12 +4273,13 @@ function AgedReskontroScreen({contacts,transactions}){
 
   const rows=useMemo(()=>{
     const code=type==="customer"?"1500":"2400";
+    const inBucket=cc=>getSK(cc)===code;
     const relevant=contacts.filter(c=>c.type===type);
     return relevant.map(c=>{
-      const openTxns=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code));
+      const openTxns=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode))&&!(t.matchedWith&&t.matchedAccount===code));
       const buckets=BUCKETS.map(()=>0);
       openTxns.forEach(t=>{
-        const mv=t.debitCode===code?t.amount:-t.amount;
+        const mv=inBucket(t.debitCode)?t.amount:-t.amount;
         if(!t.dueDate){buckets[0]+=mv;return;}
         const overdue=daysBetween(today,t.dueDate);
         if(overdue<=0)buckets[0]+=mv;

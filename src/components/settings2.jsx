@@ -10,8 +10,9 @@ function BalanceListsScreen({contacts,transactions,employees=[]}){
   const rows=useMemo(()=>{
     if(type==="employee")return employees.map(e=>({name:e.name,detail:e.role||"",balance:null}));
     const code=type==="customer"?"1500":"2400";
+    const inBucket=cc=>getSK(cc)===code;
     return contacts.filter(c=>c.type===type).map(c=>{
-      const bal=transactions.filter(t=>t.contactId===c.id&&(t.debitCode===code||t.creditCode===code)&&!(t.matchedWith&&t.matchedAccount===code)).reduce((s,t)=>s+(t.debitCode===code?t.amount:-t.amount),0);
+      const bal=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode))&&!(t.matchedWith&&t.matchedAccount===code)).reduce((s,t)=>s+(inBucket(t.debitCode)?t.amount:-t.amount),0);
       return{name:c.name,detail:c.email||c.phone||"",balance:bal};
     }).filter(r=>Math.abs(r.balance)>=1).sort((a,b)=>b.balance-a.balance);
   },[contacts,transactions,employees,type]);
