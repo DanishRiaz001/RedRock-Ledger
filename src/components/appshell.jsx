@@ -309,6 +309,24 @@ function AppShell({user}){
     if(failures.length)alert(`${failures.length} account${failures.length===1?"":"s"} didn't save to the database — they'll disappear on reload until this is fixed:\n\n${failures.join("\n")}`);
   };
 
+  // Adding a single account (via "+ Add <orphan code>" or "+ New Account")
+  // used to go through setAccounts with the FULL accounts array, which
+  // re-upserts every existing account one request at a time just to add
+  // one new row — for a chart of accounts with ~200+ rows that's 200+
+  // sequential network round-trips per click. Under real-world conditions
+  // (slow connection, mobile, Supabase free-tier limits) some of those
+  // requests can fail or the browser can be closed/navigated away before
+  // the loop finishes, and only the accounts that happened to be upserted
+  // before that point actually persist — this is what caused accounts
+  // added weeks ago on mobile to silently vanish. This does exactly one
+  // upsert for exactly the new row.
+  const addAccount=async(acc)=>{
+    setAccountsState(prev=>[...prev,acc]);
+    if(!canEdit)return;
+    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),code:acc.code,name:acc.name,matchable:acc.matchable||false,notes:acc.notes||"",default_vat_pct:acc.defaultVatPct!=null?acc.defaultVatPct:null,default_vat_code:acc.defaultVatCode||null,vat_locked:acc.vatLocked||false,inactive:acc.inactive||false,currency:acc.currency||"PKR"},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+    if(error){console.error(`Account save error (${acc.code}):`,error);alert(`"${acc.code}" didn't save to the database — it'll disappear on reload until this is fixed:\n\n${error.message}`);}
+  };
+
   const setContacts=async(list)=>{
     setContactsState(list);
     if(!canEdit)return;
@@ -1355,7 +1373,7 @@ function AppShell({user}){
         isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
         viewingUserId={viewingUserId} setViewingUserId={setViewingUserId} myClientAccess={myClientAccess} currentAccessLevel={currentAccessLevel} profile={profile} user={user}
         companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} createCompany={createCompany} renameCompany={renameCompany}
-        accounts={accounts} setAccounts={setAccounts}
+        accounts={accounts} setAccounts={setAccounts} addAccount={addAccount}
         contacts={contacts} setContacts={setContacts}
         transactions={transactions} addTransaction={addTransaction}
         saveEdit={saveEdit} deleteTxn={deleteTxn}

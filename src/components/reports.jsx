@@ -5,7 +5,7 @@ import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPan
 import { MONTH_NAMES } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
-function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
+function AccountPlanScreen({accounts,onSave,onAddAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
@@ -80,7 +80,7 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
   const createAccount=(acc)=>{
     const updated=[...list,acc];
     setList(updated);
-    onSave(updated,null);
+    if(onAddAccount)onAddAccount(acc);else onSave(updated,null);
     setShowNew(false);
     setOrphanPrefill(null);
     setHighlightCode(acc.code);
@@ -667,7 +667,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
   );
 }
 
-function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
+function SettingsMenu({accounts,onSave,onAddAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -1024,7 +1024,7 @@ function SettingsMenu({accounts,onSave,contacts,setContacts,transactions,sinking
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
