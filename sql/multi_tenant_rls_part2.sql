@@ -54,9 +54,20 @@ create policy payroll_lines_write on payroll_lines for all
 
 -- entry_comments — special case: has BOTH `user_id` (the books owner, set
 -- via booksUserId||getCurrentUserId() in the app) and `author_id` (whoever
--- actually wrote the comment). Read/write both gated on the books owner's
+-- actually wrote the comment). Created here if it doesn't exist yet
+-- (confirmed exact schema from appshell.jsx's fetchEntryComments/
+-- addEntryComment calls). Read/write both gated on the books owner's
 -- access grant, same as everything else — an entries-level user should be
 -- able to leave and read comments same as they can post entries.
+create table if not exists entry_comments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  transaction_id bigint not null,
+  author_id uuid,
+  body text not null,
+  created_at timestamptz default now()
+);
+
 alter table entry_comments enable row level security;
 drop policy if exists entry_comments_select on entry_comments;
 create policy entry_comments_select on entry_comments for select

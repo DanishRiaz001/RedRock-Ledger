@@ -137,10 +137,22 @@ create policy sinking_funds_write on sinking_funds for all
   with check (rr_can_write(user_id));
 
 -- ----------------------------------------------------------------------------
--- client_access — the grant table itself. A client can see who has access
--- to THEIR books (transparency). An employee can see their own grants.
--- Only an admin can create/revoke grants.
+-- client_access — the grant table itself. Created here if it doesn't exist
+-- yet (confirmed exact schema from the actual app code: appshell.jsx's
+-- fetchClientAccessFor/grantClientAccess/revokeClientAccess calls). A client
+-- can see who has access to THEIR books (transparency). An employee can see
+-- their own grants. Only an admin can create/revoke grants.
 -- ----------------------------------------------------------------------------
+create table if not exists client_access (
+  id uuid primary key default gen_random_uuid(),
+  employee_user_id uuid not null,
+  client_user_id uuid not null,
+  access_level text not null default 'readonly',
+  granted_by uuid,
+  created_at timestamptz default now(),
+  unique(client_user_id, employee_user_id)
+);
+
 alter table client_access enable row level security;
 
 drop policy if exists client_access_select on client_access;
@@ -157,9 +169,22 @@ create policy client_access_admin_write on client_access for all
   with check (rr_is_admin());
 
 -- ----------------------------------------------------------------------------
--- access_requests — a client can create their own request and see its
--- status. Only an admin can list/resolve all pending requests.
+-- access_requests — created here if it doesn't exist yet (confirmed exact
+-- schema from the actual app code: appshell.jsx's requestRedrockAccess/
+-- fetchAccessRequests/dismissAccessRequest/resolveAccessRequestAsGranted
+-- calls). A client can create their own request and see its status. Only
+-- an admin can list/resolve all pending requests.
 -- ----------------------------------------------------------------------------
+create table if not exists access_requests (
+  id uuid primary key default gen_random_uuid(),
+  client_user_id uuid not null,
+  note text default '',
+  status text not null default 'pending',
+  created_at timestamptz default now(),
+  resolved_at timestamptz,
+  resolved_by uuid
+);
+
 alter table access_requests enable row level security;
 
 drop policy if exists access_requests_select on access_requests;

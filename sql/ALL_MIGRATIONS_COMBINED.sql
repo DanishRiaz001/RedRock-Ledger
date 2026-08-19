@@ -1,11 +1,11 @@
 -- ============================================================================
 -- RedRock Ledger — Complete Supabase migration (run once, top to bottom)
 -- ============================================================================
--- All 4 SQL files combined in the correct order:
---   1. Country field (Norway/Pakistan)
---   2. RLS for accounts/contacts/transactions/sinking_funds/client_access/access_requests/profiles
---   3. RLS for invoices/employees/quotes/payroll/pos_products/audit_log/inbox_files/bank_statement_lines/txn_attachments/entry_comments
---   4. RLS for budgets/money_sources/usage_events
+-- All 5 SQL files combined in the correct order. Fixed in this version:
+--   client_access, access_requests, and entry_comments tables are now
+--   created here (CREATE TABLE IF NOT EXISTS) instead of assumed to already
+--   exist — matches your project notes flagging client_access_requests.sql
+--   and entry_comments.sql as pending migrations from before this session.
 -- Safe to re-run — every statement uses IF NOT EXISTS / DROP...IF EXISTS / OR REPLACE.
 -- ============================================================================
 
@@ -164,10 +164,22 @@ create policy sinking_funds_write on sinking_funds for all
   with check (rr_can_write(user_id));
 
 -- ----------------------------------------------------------------------------
--- client_access — the grant table itself. A client can see who has access
--- to THEIR books (transparency). An employee can see their own grants.
--- Only an admin can create/revoke grants.
+-- client_access — the grant table itself. Created here if it doesn't exist
+-- yet (confirmed exact schema from the actual app code: appshell.jsx's
+-- fetchClientAccessFor/grantClientAccess/revokeClientAccess calls). A client
+-- can see who has access to THEIR books (transparency). An employee can see
+-- their own grants. Only an admin can create/revoke grants.
 -- ----------------------------------------------------------------------------
+create table if not exists client_access (
+  id uuid primary key default gen_random_uuid(),
+  employee_user_id uuid not null,
+  client_user_id uuid not null,
+  access_level text not null default 'readonly',
+  granted_by uuid,
+  created_at timestamptz default now(),
+  unique(client_user_id, employee_user_id)
+);
+
 alter table client_access enable row level security;
 
 drop policy if exists client_access_select on client_access;
@@ -184,9 +196,22 @@ create policy client_access_admin_write on client_access for all
   with check (rr_is_admin());
 
 -- ----------------------------------------------------------------------------
--- access_requests — a client can create their own request and see its
--- status. Only an admin can list/resolve all pending requests.
+-- access_requests — created here if it doesn't exist yet (confirmed exact
+-- schema from the actual app code: appshell.jsx's requestRedrockAccess/
+-- fetchAccessRequests/dismissAccessRequest/resolveAccessRequestAsGranted
+-- calls). A client can create their own request and see its status. Only
+-- an admin can list/resolve all pending requests.
 -- ----------------------------------------------------------------------------
+create table if not exists access_requests (
+  id uuid primary key default gen_random_uuid(),
+  client_user_id uuid not null,
+  note text default '',
+  status text not null default 'pending',
+  created_at timestamptz default now(),
+  resolved_at timestamptz,
+  resolved_by uuid
+);
+
 alter table access_requests enable row level security;
 
 drop policy if exists access_requests_select on access_requests;
@@ -268,9 +293,20 @@ create policy payroll_lines_write on payroll_lines for all
 
 -- entry_comments — special case: has BOTH `user_id` (the books owner, set
 -- via booksUserId||getCurrentUserId() in the app) and `author_id` (whoever
--- actually wrote the comment). Read/write both gated on the books owner's
+-- actually wrote the comment). Created here if it doesn't exist yet
+-- (confirmed exact schema from appshell.jsx's fetchEntryComments/
+-- addEntryComment calls). Read/write both gated on the books owner's
 -- access grant, same as everything else — an entries-level user should be
 -- able to leave and read comments same as they can post entries.
+create table if not exists entry_comments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  transaction_id bigint not null,
+  author_id uuid,
+  body text not null,
+  created_at timestamptz default now()
+);
+
 alter table entry_comments enable row level security;
 drop policy if exists entry_comments_select on entry_comments;
 create policy entry_comments_select on entry_comments for select
@@ -335,3 +371,29 @@ create policy usage_events_insert on usage_events for insert
 -- pattern above) or a cross-account admin table (use the usage_events
 -- pattern) before assuming the default.
 -- ============================================================================
+
+-- ============================================================================
+-- ============================================================================
+-- Project/department tracking — same pattern as money_sources
+-- ============================================================================
+create table if not exists projects (
+  id text primary key,
+  user_id uuid not null,
+  name text not null,
+  inactive boolean default false,
+  created_at timestamptz default now()
+);
+
+alter table transactions add column if not exists project_id text;
+
+-- RLS — same books-owner pattern as everything else. Run AFTER the main
+-- multi_tenant_rls.sql files so rr_can_read/rr_can_write already exist.
+alter table projects enable row level security;
+drop policy if exists projects_select on projects;
+create policy projects_select on projects for select using (rr_can_read(user_id));
+drop policy if exists projects_write on projects;
+create policy projects_write on projects for all
+  using (rr_can_write(user_id)) with check (rr_can_write(user_id));
+
+-- Also add the tracking toggle to company_profile, alongside country.
+alter table company_profile add column if not exists track_projects boolean default false;
