@@ -62,10 +62,17 @@ function AccountPlanScreen({accounts,onSave,transactions,onBack,isDesktop=false,
     });
     return[...seen].sort();
   },[transactions,list]);
-  const[orphanPrefill,setOrphanPrefill]=useState(null); // code to prefill NewAccountModal from the ⚠ banner
+  const[orphanPrefill,setOrphanPrefill]=useState(null); // still used by the general "+ New Account" button to prefill NewAccountModal
+  // "+ Add CODE" needs to be a genuine one-click save — it opened a
+  // pre-filled modal before, silently requiring a second click inside it
+  // to actually finish. Someone reasonably expects a button labeled "+ Add
+  // CODE" to just add it; if they didn't notice the second step, the
+  // account was never actually created, and the same "missing from chart"
+  // warning would come right back after a refresh. This creates it
+  // immediately, using the same verified save path as every other account
+  // creation flow, with a sensible default name they can rename any time.
   const addOrphanToChart=(code)=>{
-    setOrphanPrefill(code);
-    setShowNew(true);
+    createAccount({code,name:"(Not in chart of accounts)"});
   };
   // Single creation path for all three entry points (desktop link, mobile
   // card, orphan-fix banner) — appends, saves, and flashes the new row so
