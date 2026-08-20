@@ -2839,7 +2839,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
       {/* Sticky, not fixed — see the table header below for why this is now
           a single-table structure instead of a duplicated shadow header. */}
-      <div ref={fixedBarRef} style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px",willChange:"transform",transform:"translateZ(0)"}}>
+      <div ref={fixedBarRef} style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2891,7 +2891,11 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           ways a single table structurally cannot. */}
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
+      {/* border-collapse:separate (not collapse) — sticky positioning on
+          table cells has known, inconsistent stacking behavior in Chrome
+          when combined with collapsed borders; separate is the standard
+          fix. borderSpacing:0 keeps it visually identical to collapsed. */}
+      <table style={{width:"100%",fontSize:13,borderCollapse:"separate",borderSpacing:0,tableLayout:"fixed"}}>
         <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
         <thead><tr style={{color:T.sub,background:T.bg}}>
           <td style={{padding:"11px 14px",fontWeight:700,position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Account<ResizeHandle idx={0}/></td>
@@ -3081,7 +3085,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           width context (ignoring the scrollbar gutter) than the real table
           below it, causing column drift. Sticky keeps everything in one
           consistent flow, and needs no measured spacer div. */}
-      <div style={{position:"sticky",top:0,zIndex:isDesktop?50:20,background:T.bg,padding:isDesktop?"16px 0 8px":"0 0 8px",willChange:"transform",transform:"translateZ(0)"}}>
+      <div style={{position:"sticky",top:0,zIndex:isDesktop?50:20,background:T.bg,padding:isDesktop?"16px 0 8px":"0 0 8px"}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -3271,7 +3275,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
       {/* Sticky, not fixed — see TrialBalanceScreen for why: fixed puts
           this header in a different width context than the real table
           below (ignoring the scrollbar gutter), causing column drift. */}
-      <div style={isDesktop?{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px",willChange:"transform",transform:"translateZ(0)"}:{}}>
+      <div style={isDesktop?{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px"}:{}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:10}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -5161,7 +5165,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           header in a different width context than the real table below it
           (ignoring the scrollbar gutter), which is exactly the kind of gap
           reported here. Sticky needs no measured spacer div either. */}
-      <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px",willChange:"transform",transform:"translateZ(0)"}}>
+      <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{maxWidth:1000}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
           <div style={{display:"flex",gap:6}}>
