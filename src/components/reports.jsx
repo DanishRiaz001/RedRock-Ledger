@@ -2885,31 +2885,29 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         </div>
       </div>
 
-      {/* One table, one colgroup, header row pinned with sticky td's whose
-          top offset is this filter bar's own measured height — the earlier
-          "shadow header in a second table" trick could never fully
-          guarantee zero gap, since two separate tables can drift apart in
-          ways a single table structurally cannot. */}
+      {/* Div/grid "table" instead of a real <table> — Chrome has a known,
+          long-standing bug where position:sticky on individual <td> elements
+          intermittently fails to paint (the header just goes blank) once a
+          border-collapse/box-shadow/zoom combination triggers it, no matter
+          how the borders or offsets are tuned. A single sticky row built
+          from CSS Grid divs (same column widths, same resize handles)
+          sidesteps that bug entirely — it's the same row-div pattern
+          already used for Bank Reconciliation and Reskontro, where this
+          gap/blank-header issue never shows up. */}
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      {/* border-collapse:separate (not collapse) — sticky positioning on
-          table cells has known, inconsistent stacking behavior in Chrome
-          when combined with collapsed borders; separate is the standard
-          fix. borderSpacing:0 keeps it visually identical to collapsed. */}
-      <table style={{width:"100%",fontSize:13,borderCollapse:"separate",borderSpacing:0,tableLayout:"fixed"}}>
-        <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
-        <thead><tr style={{color:T.sub,background:T.bg}}>
-          <td style={{padding:"11px 14px",fontWeight:700,position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Account<ResizeHandle idx={0}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Opening balance<ResizeHandle idx={1}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Difference<ResizeHandle idx={2}/></td>
-          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Closing balance</td>
-        </tr></thead>
-        <tbody>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:13}}>
+        <div style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),color:T.sub,background:T.bg,position:"sticky",top:fixedBarHeight,zIndex:40}}>
+          <div style={{position:"relative",padding:"11px 14px",fontWeight:700}}>Account<ResizeHandle idx={0}/></div>
+          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance<ResizeHandle idx={1}/></div>
+          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Difference<ResizeHandle idx={2}/></div>
+          <div style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</div>
+        </div>
+        <div>
           {rows.map(r=>(
-            <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-              <td title={`${r.code} ${r.name}`} style={{padding:"11px 14px",maxWidth:280,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
-              <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmtBal(r.opening)}</td>
-              <td
+            <div key={r.code} className="rr-table-row" style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),background:"#fff",borderBottom:`1px solid ${T.border}`}}>
+              <div title={`${r.code} ${r.name}`} style={{padding:"11px 14px",color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</div>
+              <div style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmtBal(r.opening)}</div>
+              <div
                 onClick={()=>{
                   if(!onOpenLedger)return;
                   const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
@@ -2917,13 +2915,12 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
                 }}
                 title={onOpenLedger?"View ledger for this account and period":undefined}
                 style={{textAlign:"right",padding:"11px 14px",color:r.diff?T.accent:T.muted,fontWeight:r.diff?600:400,cursor:onOpenLedger?"pointer":"default"}}
-              >{r.diff?fmtBal(r.diff):"—"}</td>
-              <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmtBal(r.closing)}</td>
-            </tr>
+              >{r.diff?fmtBal(r.diff):"—"}</div>
+              <div style={{textAlign:"right",fontWeight:700,padding:"11px 14px",color:T.text}}>{fmtBal(r.closing)}</div>
+            </div>
           ))}
-          {!rows.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</td></tr>}
-        </tbody>
-      </table>
+          {!rows.length&&<div style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</div>}
+        </div>
       </div>
       </div>
     </div>
