@@ -549,7 +549,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             </>
           )}
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
           {feat.bank&&(()=>{
@@ -564,7 +564,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             return(
               <div>
                 <div onClick={()=>setExpandedCat(e=>e==="bank"?null:"bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:bankActive&&!bankExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:bankActive&&!bankExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:bankActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:bankActive?"#fff":T.sub}}/></div>
+                  <div style={{width:24,height:24,borderRadius:8,background:bankActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:bankActive?"#fff":T.sub}}/></div>
                   <span style={{fontSize:12,fontWeight:bankActive?700:400,color:bankActive?T.accent:T.sub,flex:1}}>Bank</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:bankExpanded?"rotate(180deg)":"none"}}/>
                 </div>
@@ -594,7 +594,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             return(
               <div>
                 <div onClick={()=>setExpandedCat(e=>e==="customers"?null:"customers")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:custActive&&!custExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:custActive&&!custExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
+                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
                   <span style={{fontSize:12,fontWeight:custActive?700:400,color:custActive?T.accent:T.sub,flex:1}}>Customers</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:custExpanded?"rotate(180deg)":"none"}}/>
                 </div>
@@ -689,7 +689,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   // just goes to the wrong place."
                   if(opening&&!containsActive&&visibleItems[0]&&!visibleItems[0].subItems)setTab(visibleItems[0].tab);
                 }} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                     <i className={`ti ${cat.icon}`} style={{fontSize:13,color:containsActive?"#fff":T.sub}}/>
                   </div>
                   <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>

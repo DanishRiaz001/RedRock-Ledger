@@ -1,21 +1,25 @@
 const T = {
-  // --- COLOR PALETTE — "Watery Glass & Ocean Blue" ---
-  bg:"#F3FAFC",              // soft, pale aqua-white background
-  bgGradient:"radial-gradient(900px 500px at 85% -10%, rgba(56,189,196,0.16), transparent 60%), radial-gradient(700px 500px at -5% 30%, rgba(47,111,237,0.10), transparent 60%), linear-gradient(160deg,#F3FAFC 0%,#F7FBFD 45%,#FCFEFF 100%)",
+  // --- COLOR PALETTE — "Watery Glass, Teal & Coral" ---
+  bg:"#F3FAF9",              // soft, pale aqua-white background
+  bgGradient:"radial-gradient(900px 500px at 85% -10%, rgba(45,212,191,0.16), transparent 60%), radial-gradient(700px 500px at -5% 30%, rgba(13,148,136,0.10), transparent 60%), linear-gradient(160deg,#F3FAF9 0%,#F8FBFB 45%,#FCFEFE 100%)",
   card:"#FFFFFF",            // pure white for cards
   cardBg:"#FFFFFF",          // alias, matches spec naming
   cardBgGlass:"rgba(255,255,255,0.72)", // translucent glass layer — pair with backdrop-filter:blur(16px)
-  border:"#E1EAF0",          // crisp, ultra-light water-grey border
-  borderGlass:"rgba(19,38,53,0.08)", // for glass panels sitting over the gradient background
-  borderActive:"#B9D6E0",    // slightly deeper border for active/focus states
+  border:"#E1EEEB",          // crisp, ultra-light water-grey border
+  borderGlass:"rgba(19,44,40,0.08)", // for glass panels sitting over the gradient background
+  borderActive:"#B9E0D6",    // slightly deeper border for active/focus states
   // Brand
   header:"#0D7377",
   sidebar:"#0A5C60",
-  accent:"#2F6FED",          // ocean blue — primary brand color
-  accentHover:"#2559C4",     // deeper blue for hover/active
-  accentLight:"#EAF1FE",     // super-soft blue tint for highlights/badges (accentSubtle)
-  accentMid:"#BFD4FB",
-  accentGradient:"linear-gradient(135deg,#2F6FED,#22B8C4)", // blue → teal, used for active chips/avatars
+  accent:"#0D9488",          // teal — primary brand color
+  accentHover:"#0B7A70",     // deeper teal for hover/active
+  accentLight:"#E6F5F3",     // super-soft teal tint for highlights/badges (accentSubtle)
+  accentMid:"#99DED4",
+  accentGradient:"linear-gradient(135deg,#0D9488,#2DD4BF)", // teal gradient, used for active chips/avatars
+  // Coral — secondary accent, used sparingly (a few chips/badges) to keep a
+  // nod to the original brand orange without it being the primary color
+  coral:"#FF6B4A",
+  coralLight:"#FFEDE7",
   // Aquatic teal — used for positive/success indicators
   waterTeal:"#14B8A6",
   waterTealSubtle:"#E6F4F1", // light glassy teal, used for alternating row tint
