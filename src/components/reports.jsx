@@ -2742,8 +2742,8 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           </div>
           {(fromAcct||toAcct)&&(
             <div style={{display:"flex",gap:6,marginTop:6}}>
-              <input placeholder="Fra konto" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
-              <input placeholder="Til konto" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
+              <input placeholder="From account" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
+              <input placeholder="To account" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,flex:1,background:"#fff"}}/>
             </div>
           )}
           {!(fromAcct||toAcct)&&(
@@ -2781,12 +2781,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     );
   }
 
-  const[fixedBarHeight,setFixedBarHeight]=useState(160);
-  const fixedBarRef=React.useRef(null);
-  useLayoutEffect(()=>{
-    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
-  });
-
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
       {periodPickerOpen&&(
@@ -2794,7 +2788,16 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       )}
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
+      {/* Sticky, not fixed. position:fixed ignores the page's normal document
+          flow (and thus the vertical scrollbar's width, which varies by
+          OS/browser), while this shadow header table and the real data
+          table below both live in that flow — that width mismatch is why
+          "Closing balance" drifted further right the wider the table got.
+          Sticky keeps both tables in the exact same width context, so a
+          matching colgroup can never disagree between them, and it needs
+          no measured spacer div since sticky content reserves its own
+          space in flow even while not stuck. */}
+      <div style={{position:"sticky",top:60,zIndex:50,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2826,8 +2829,8 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <span onClick={()=>setPeriodPickerOpen(true)} style={{fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",minWidth:80,textAlign:"center"}}>{periodLabel}</span>
             <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
           </div>
-          <input placeholder="Fra konto" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
-          <input placeholder="Til konto" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
+          <input placeholder="From account" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
+          <input placeholder="To account" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
           <div style={{position:"relative",flex:"1 1 200px",minWidth:180}}>
             <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
             <input placeholder="Search within report…" value={reportSearch} onChange={e=>setReportSearch(e.target.value)} style={{...inp,paddingLeft:32,background:"#fff"}}/>
@@ -2853,7 +2856,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         </table>
         </div>
       </div>
-      <div style={{height:fixedBarHeight}}/>
 
       <div id="trialbalance-print-area">
       <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
@@ -3032,12 +3034,6 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
-  const[fixedBarHeight,setFixedBarHeight]=useState(140);
-  const fixedBarRef=React.useRef(null);
-  useLayoutEffect(()=>{
-    if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
-  });
-
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -3045,11 +3041,12 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
         <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>⬇ PDF</button>
       </div>
 
-      {/* Desktop: fixed to the viewport (not sticky) — same technique as
-          Reskontro, anchored directly under the sidebar/global header instead
-          of relying on position:sticky math against the content container's
-          own padding. Mobile keeps the simpler sticky-top-0 behavior. */}
-      <div ref={fixedBarRef} style={isDesktop?{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}:{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8}}>
+      {/* Sticky on both desktop and mobile now — position:fixed used to
+          anchor this to the viewport directly, which put it in a different
+          width context (ignoring the scrollbar gutter) than the real table
+          below it, causing column drift. Sticky keeps everything in one
+          consistent flow, and needs no measured spacer div. */}
+      <div style={{position:"sticky",top:isDesktop?60:0,zIndex:isDesktop?50:20,background:T.bg,padding:isDesktop?"16px 0 8px":"0 0 8px"}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -3074,7 +3071,6 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           </tr></tbody>
         </table>
       </div>
-      {isDesktop&&<div style={{height:fixedBarHeight}}/>}
 
       <div id="resultat-print-area">
       {/* This line only shows up in the PDF/print export (hidden on screen
@@ -3235,15 +3231,12 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`BalanceSheet_${asOf}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
   };
 
-  const[fixedBarHeight,setFixedBarHeight]=useState(120);
-  const fixedBarRef=React.useRef(null);
-  useLayoutEffect(()=>{
-    if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
-  });
-
   return(
     <div>
-      <div ref={fixedBarRef} style={isDesktop?{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}:{}}>
+      {/* Sticky, not fixed — see TrialBalanceScreen for why: fixed puts
+          this header in a different width context than the real table
+          below (ignoring the scrollbar gutter), causing column drift. */}
+      <div style={isDesktop?{position:"sticky",top:60,zIndex:50,background:T.bg,padding:"16px 0 8px"}:{}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:10}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -3260,8 +3253,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
           <button onClick={()=>setMonthlyView(m=>!m)} title="Show a snapshot as of the end of every month this year, side by side" style={{background:monthlyView?T.accent:"none",color:monthlyView?"#fff":T.sub,border:`1px solid ${monthlyView?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
         </div>
       </div>
-      {isDesktop&&<div style={{height:fixedBarHeight,marginBottom:8}}/>}
-      {!isDesktop&&<div style={{height:8}}/>}
+      <div style={{height:8}}/>
       <div id="balancesheet-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       {monthlyView&&monthlySnapshot?(
@@ -5118,12 +5110,6 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const selAnySum=activeSelContactId?(groups.find(g=>g.contact.id===activeSelContactId)||{txns:[]}).txns.filter(t=>(selected[activeSelContactId]||[]).includes(t.id)).reduce((s,t)=>s+mv(t),0):0;
   const doMatchAny=()=>{if(activeSelContactId)doMatch(activeSelContactId);};
 
-  const[fixedBarHeight,setFixedBarHeight]=useState(160);
-  const fixedBarRef=React.useRef(null);
-  useLayoutEffect(()=>{
-    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
-  });
-
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -5136,13 +5122,11 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         )}
       </div>
 
-      {/* Fixed to the viewport (not sticky) — anchored to the sidebar's right
-          edge and the global header's bottom edge directly, so there is no
-          scrolling-container math involved at all and nothing for the
-          browser to recompute or lag behind on scroll. The content below
-          gets paddingTop equal to this bar's actual measured height, so nothing
-          is hidden underneath it and nothing shifts when that height changes. */}
-      <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
+      {/* Sticky, not fixed — see TrialBalanceScreen for why: fixed put this
+          header in a different width context than the real table below it
+          (ignoring the scrollbar gutter), which is exactly the kind of gap
+          reported here. Sticky needs no measured spacer div either. */}
+      <div style={{position:"sticky",top:60,zIndex:50,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{maxWidth:1000}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
           <div style={{display:"flex",gap:6}}>
@@ -5196,7 +5180,6 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         </table>
         </div>
       </div>
-      <div style={{height:fixedBarHeight}}/>
 
       <div id="reskontro-print-area">
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>
