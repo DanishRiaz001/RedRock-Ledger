@@ -1,18 +1,21 @@
 const T = {
-  // --- COLOR PALETTE — "Watery White & Coral Orange" ---
-  bg:"#F5F9FA",              // soft, pale aqua-white background
+  // --- COLOR PALETTE — "Watery Glass & Ocean Blue" ---
+  bg:"#F3FAFC",              // soft, pale aqua-white background
+  bgGradient:"radial-gradient(900px 500px at 85% -10%, rgba(56,189,196,0.16), transparent 60%), radial-gradient(700px 500px at -5% 30%, rgba(47,111,237,0.10), transparent 60%), linear-gradient(160deg,#F3FAFC 0%,#F7FBFD 45%,#FCFEFF 100%)",
   card:"#FFFFFF",            // pure white for cards
   cardBg:"#FFFFFF",          // alias, matches spec naming
-  cardBgGlass:"rgba(255,255,255,0.75)", // translucent glass layer — pair with backdrop-filter:blur(12px)
-  border:"#E4EDED",          // crisp, ultra-light water-grey border
-  borderActive:"#D1E2E2",    // slightly deeper border for active/focus states
+  cardBgGlass:"rgba(255,255,255,0.72)", // translucent glass layer — pair with backdrop-filter:blur(16px)
+  border:"#E1EAF0",          // crisp, ultra-light water-grey border
+  borderGlass:"rgba(19,38,53,0.08)", // for glass panels sitting over the gradient background
+  borderActive:"#B9D6E0",    // slightly deeper border for active/focus states
   // Brand
   header:"#0D7377",
   sidebar:"#0A5C60",
-  accent:"#FF5A1F",          // vibrant coral/watery-sun orange — primary brand color
-  accentHover:"#E04810",     // deeper orange for hover/active
-  accentLight:"#FFF0EA",     // super-soft orange tint for highlights/badges (accentSubtle)
-  accentMid:"#FFD2BC",
+  accent:"#2F6FED",          // ocean blue — primary brand color
+  accentHover:"#2559C4",     // deeper blue for hover/active
+  accentLight:"#EAF1FE",     // super-soft blue tint for highlights/badges (accentSubtle)
+  accentMid:"#BFD4FB",
+  accentGradient:"linear-gradient(135deg,#2F6FED,#22B8C4)", // blue → teal, used for active chips/avatars
   // Aquatic teal — used for positive/success indicators
   waterTeal:"#14B8A6",
   waterTealSubtle:"#E6F4F1", // light glassy teal, used for alternating row tint

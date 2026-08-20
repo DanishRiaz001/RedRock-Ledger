@@ -15,9 +15,23 @@
     <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
       *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-      body{margin:0;padding:0;background:#F5F9FA;font-family:system-ui,-apple-system,sans-serif;}
+      /* Keep this gradient in sync with T.bgGradient in src/lib/theme.js —
+         it's duplicated here (not read from JS) purely so the very first
+         paint, before React mounts, already matches instead of flashing a
+         flat color first. */
+      body{
+        margin:0;padding:0;font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+        background:
+          radial-gradient(900px 500px at 85% -10%, rgba(56,189,196,0.16), transparent 60%),
+          radial-gradient(700px 500px at -5% 30%, rgba(47,111,237,0.10), transparent 60%),
+          linear-gradient(160deg,#F3FAFC 0%,#F7FBFD 45%,#FCFEFF 100%);
+        background-attachment:fixed;
+      }
       input,select,button{font-family:inherit;}
       ::-webkit-scrollbar{display:none;}
       .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}

@@ -2107,10 +2107,13 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         {widgets.kpis&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
           {kpis.map(k=>{
             const positive=k.delta>=0;
+            const KPI_CHIP={"Cash and bank":{bg:"rgba(47,111,237,0.14)",fg:"#2F6FED",icon:"ti-droplet"},"Receivable":{bg:"rgba(14,159,110,0.14)",fg:"#0E9F6E",icon:"ti-arrow-down-right"},"Payable":{bg:"rgba(225,72,72,0.12)",fg:"#E14848",icon:"ti-arrow-up-right"},"Net profit":{bg:"rgba(34,184,196,0.16)",fg:"#0E8A9C",icon:"ti-chart-line"}};
+            const chip=KPI_CHIP[k.label]||{bg:T.accentLight,fg:T.accent,icon:"ti-report-money"};
             return(
-              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",cursor:k.goTo?"pointer":"default"}} className={k.goTo?"rr-sidebar-item":""}>
-                <div style={{fontSize:12,color:T.sub,marginBottom:8}}>{k.label}</div>
-                <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:6}}>{fmt(k.value)}</div>
+              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:20,padding:"18px 20px",cursor:k.goTo?"pointer":"default",boxShadow:"0 10px 30px rgba(20,60,90,0.06)"}} className={k.goTo?"rr-sidebar-item":""}>
+                <div style={{width:34,height:34,borderRadius:11,background:chip.bg,color:chip.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}><i className={`ti ${chip.icon}`} style={{fontSize:16}}/></div>
+                <div style={{fontSize:11.5,color:T.sub,marginBottom:8,fontWeight:600}}>{k.label}</div>
+                <div style={{fontSize:22,fontWeight:800,color:T.text,marginBottom:8}}>{fmt(k.value)}</div>
                 <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:positive?T.greenBg:T.redLight,color:positive?T.green:T.red}}>{positive?"+":"−"}{fmt(Math.abs(k.delta))}</span>
                 <span style={{fontSize:10,color:T.muted,marginLeft:6}}>vs last month</span>
               </div>

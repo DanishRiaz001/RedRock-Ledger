@@ -363,11 +363,11 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts"||!!screenExcelExport;
 
   if(isDesktop)return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",display:"flex",flexDirection:"column",height:"100vh"}}>
+    <div style={{background:"transparent",minHeight:"100vh",fontFamily:"'Plus Jakarta Sans',system-ui,-apple-system,sans-serif",display:"flex",flexDirection:"column",height:"100vh"}}>
       {/* Full-width top header — same height and color everywhere, sits above
           both the sidebar and the content area (not just to the right of the
           sidebar like before). The sidebar below it is visually distinct. */}
-      <div style={{height:60,flexShrink:0,background:"#fff",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:100}}>
+      <div style={{height:60,flexShrink:0,background:"rgba(255,255,255,0.7)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:`1px solid ${T.borderGlass}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:100}}>
         <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:220-18}}>
           <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
           <div>
@@ -531,7 +531,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           the remaining vertical space. */}
       <div style={{display:"flex",flex:1,minHeight:0}}>
       {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
-      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.border}`,background:"#fff",display:"flex",flexDirection:"column",height:"100%",overflowY:"auto"}}>
+      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.borderGlass}`,background:"rgba(255,255,255,0.55)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",display:"flex",flexDirection:"column",height:"100%",overflowY:"auto"}}>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           {pinnedTabs.length>0&&(
             <>
@@ -549,7 +549,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             </>
           )}
           <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
-            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </div>
           {feat.bank&&(()=>{
@@ -564,7 +564,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             return(
               <div>
                 <div onClick={()=>setExpandedCat(e=>e==="bank"?null:"bank")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:bankActive&&!bankExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:bankActive&&!bankExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:bankActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:bankActive?"#fff":T.sub}}/></div>
+                  <div style={{width:24,height:24,borderRadius:8,background:bankActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-bank" style={{fontSize:13,color:bankActive?"#fff":T.sub}}/></div>
                   <span style={{fontSize:12,fontWeight:bankActive?700:400,color:bankActive?T.accent:T.sub,flex:1}}>Bank</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:bankExpanded?"rotate(180deg)":"none"}}/>
                 </div>
@@ -594,7 +594,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             return(
               <div>
                 <div onClick={()=>setExpandedCat(e=>e==="customers"?null:"customers")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:custActive&&!custExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:custActive&&!custExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
+                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
                   <span style={{fontSize:12,fontWeight:custActive?700:400,color:custActive?T.accent:T.sub,flex:1}}>Customers</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:custExpanded?"rotate(180deg)":"none"}}/>
                 </div>
@@ -689,7 +689,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   // just goes to the wrong place."
                   if(opening&&!containsActive&&visibleItems[0]&&!visibleItems[0].subItems)setTab(visibleItems[0].tab);
                 }} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:containsActive&&!isExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:containsActive&&!isExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #FF5A1F 0%, #E04810 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:containsActive?"linear-gradient(135deg, #2F6FED 0%, #22B8C4 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                     <i className={`ti ${cat.icon}`} style={{fontSize:13,color:containsActive?"#fff":T.sub}}/>
                   </div>
                   <span style={{fontSize:12,fontWeight:containsActive?700:400,color:containsActive?T.accent:T.sub,flex:1}}>{cat.label}</span>
