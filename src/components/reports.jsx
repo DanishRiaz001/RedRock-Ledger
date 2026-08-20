@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, SaveFlashButton } from "./ledger.jsx";
+import { ResizableSplit } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
@@ -4695,46 +4696,6 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         </div>
       </div>
 
-      {/* Attachment panel — the account statement/PDF for this account+month.
-          It's permanent (stays attached regardless of when you look at it),
-          but can always be replaced or removed if the wrong file landed on
-          the wrong month. This is also what gets used as "proof" when
-          posting straight from the statement below (Bokfør). */}
-      {showAttachPanel&&(
-        // Docked to the right edge of the screen, no dimming backdrop — the
-        // reconciliation table underneath stays fully visible and usable,
-        // matching Tripletex's non-modal side panel exactly (a dark overlay
-        // that blocked the rest of the screen was the wrong pattern here).
-        // The vertical "Hide attachment" tab matches the same collapse
-        // affordance already used for the Voucher Inbox preview panel.
-        <div style={{position:"fixed",top:60,right:0,bottom:0,width:460,maxWidth:"92vw",background:"#fff",borderLeft:`1px solid ${T.border}`,boxShadow:"-8px 0 24px rgba(0,0,0,0.12)",zIndex:55,display:"flex",flexDirection:"column"}}>
-          <div onClick={()=>setShowAttachPanel(false)} title="Hide attachment" style={{position:"absolute",left:-1,top:16,transform:"translateX(-100%)",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",writingMode:"vertical-rl",display:"flex",alignItems:"center",gap:6,userSelect:"none",whiteSpace:"nowrap"}}>
-            <i className="ti ti-chevron-right" style={{fontSize:12,transform:"rotate(90deg)"}}/>Hide attachment
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-            <div style={{fontSize:12,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
-          </div>
-          <div style={{display:"flex",gap:8,padding:"10px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-            <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
-              {currentAttachment?"Replace":"Attach file"}
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttachStatement(e.target.files[0]);}}/>
-            </label>
-            {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
-          </div>
-          <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>
-            {currentAttachment?(
-              currentAttachment.type&&currentAttachment.type.startsWith("image")?(
-                <img src={currentAttachment.data} style={{width:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
-              ):(
-                <iframe src={currentAttachment.data} style={{width:"100%",height:"100%",minHeight:500,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>
-              )
-            ):(
-              <div style={{fontSize:11,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Send or download modal — mirrors the reference "Send eller last ned
           fil" dialog: choose which posts, pick a format, then either
           download directly or fire off an email with the list attached. */}
@@ -4881,132 +4842,169 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.orange,fontWeight:600}}>Narrow one side to a single entry — a match can be several lines to one ledger entry, or one line to several entries, but not many on both sides at once.</div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        {/* Left: Entered in ledger */}
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
-            <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
-          </div>
-          {/* Column header — select-all + sortable Date/Amount, so both sides
-              read like a real table instead of a plain stacked list. */}
-          <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
-            <input type="checkbox" checked={allLeftSelected} disabled={isApproved||!displayLeftRows.length} onChange={toggleSelectAllLeft} title="Select all"/>
-            <div onClick={()=>toggleSort(setSortLeft,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-              Date{sortLeft.key==="date"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-            </div>
-            <div onClick={()=>toggleSort(setSortLeft,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
-              Amount{sortLeft.key==="amount"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-            </div>
-          </div>
-          <div style={{maxHeight:440,overflowY:"auto"}}>
-            {displayLeftRows.map(t=>{
-              const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
-              const selected=selectedTxnIds.has(t.id);
-              return(
-                <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
-                  <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                      <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
-                      <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
-                    </div>
-                    <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
-                      <span>{t.date}</span>
-                      {!!t.reconciled&&<span style={{color:T.green,fontWeight:700}}>· reconciled</span>}
-                    </div>
-                  </div>
-                  <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+      {(()=>{
+        // The two matching columns live together as one unit — when the
+        // attachment panel opens it's this whole grid that shrinks to make
+        // room (both columns staying fully visible), never a floating panel
+        // covering data underneath. "From bank statement" is the column you
+        // cross-reference against the attachment, so it's kept on the far
+        // side, away from the split — "Entered in ledger" sits next to the
+        // divider and is the one that yields if you drag the attachment
+        // wide enough to overlap.
+        const matchingGrid=(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            {/* From bank statement */}
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text}}>From bank statement</div>
+                <div style={{fontSize:11,color:T.muted}}>{matchedLines.length} matched</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                {filterMode!=="matched"?<input type="checkbox" checked={allRightSelected} disabled={isApproved||!displayRightRows.length} onChange={toggleSelectAllRight} title="Select all"/>:<span style={{width:13}}/>}
+                <div onClick={()=>toggleSort(setSortRight,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                  Date{sortRight.key==="date"&&<i className={sortRight.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
                 </div>
-              );
-            })}
-            {!displayLeftRows.length&&(
-              <div style={{padding:"36px 20px",textAlign:"center",color:T.muted,fontSize:11}}>
-                {ledgerEntries.length?"Everything here is matched — see the Matched tab.":(
-                  <>
-                    <div style={{marginBottom:10}}>No ledger entries this month. Check another period, or register new vouchers from the Inbox.</div>
-                    <button onClick={()=>onNavigate&&onNavigate("Files")} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to Inbox →</button>
-                  </>
-                )}
+                <div onClick={()=>toggleSort(setSortRight,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+                  Amount{sortRight.key==="amount"&&<i className={sortRight.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
+                </div>
               </div>
-            )}
-          </div>
-          {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
-            <button onClick={()=>setShowMatched(true)} style={{width:"100%",background:T.bg,border:"none",borderTop:`1px solid ${T.border}`,padding:"9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>
-              {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length} reconciled without a direct match →
-            </button>
-          )}
-        </div>
 
-        {/* Right: From bank statement */}
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.text}}>From bank statement</div>
-            <div style={{fontSize:11,color:T.muted}}>{matchedLines.length} matched</div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
-            {filterMode!=="matched"?<input type="checkbox" checked={allRightSelected} disabled={isApproved||!displayRightRows.length} onChange={toggleSelectAllRight} title="Select all"/>:<span style={{width:13}}/>}
-            <div onClick={()=>toggleSort(setSortRight,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-              Date{sortRight.key==="date"&&<i className={sortRight.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-            </div>
-            <div onClick={()=>toggleSort(setSortRight,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
-              Amount{sortRight.key==="amount"&&<i className={sortRight.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-            </div>
-          </div>
-
-          {postMenu&&(
-            <>
-              <div onClick={()=>setPostMenu(null)} style={{position:"fixed",inset:0,zIndex:900}}/>
-              {/* Clamped to the viewport — right-clicking near the right or
-                  bottom edge used to render this menu partly off-screen,
-                  cut off by the browser window. */}
-              <div style={{position:"fixed",left:Math.min(postMenu.x,window.innerWidth-190),top:Math.min(postMenu.y,window.innerHeight-60),background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.18)",zIndex:901,padding:4,minWidth:170}}>
-                <button onClick={()=>{setBulkPostOpen(true);setPostMenu(null);}} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"9px 12px",fontSize:11,fontWeight:600,color:T.text,cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>Select account…</button>
-              </div>
-            </>
-          )}
-
-          <div style={{maxHeight:440,overflowY:"auto"}}>
-            {displayRightRows.map(l=>{
-              const isSuggested=filterMode!=="matched"&&topSuggestion&&topSuggestion.line.id===l.id;
-              const selected=selectedLineIds.has(l.id);
-              const isMatchedMode=filterMode==="matched";
-              const linkedTxn=isMatchedMode&&l.postedTxnId?transactions.find(t=>t.id===l.postedTxnId):null;
-              return(
-                <div key={l.id}
-                  className="rr-table-row"
-                  onClick={()=>!isMatchedMode&&toggleLineSel(l.id)}
-                  onContextMenu={e=>{if(isMatchedMode)return;e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
-                  {!isMatchedMode&&<input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/>}
-                  {isMatchedMode&&<span style={{width:13}}/>}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                      {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
-                      <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
-                    </div>
-                    <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
+              {postMenu&&(
+                <>
+                  <div onClick={()=>setPostMenu(null)} style={{position:"fixed",inset:0,zIndex:900}}/>
+                  <div style={{position:"fixed",left:Math.min(postMenu.x,window.innerWidth-190),top:Math.min(postMenu.y,window.innerHeight-60),background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.18)",zIndex:901,padding:4,minWidth:170}}>
+                    <button onClick={()=>{setBulkPostOpen(true);setPostMenu(null);}} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"9px 12px",fontSize:11,fontWeight:600,color:T.text,cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>Select account…</button>
                   </div>
-                  <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(l.amount)}</div>
-                  <div style={{flexShrink:0,display:"flex",gap:4}}>
-                    {isMatchedMode?(
-                      <button onClick={e=>{e.stopPropagation();doUnmatch(l);}} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button>
-                    ):isSuggested?(
+                </>
+              )}
+
+              <div style={{maxHeight:440,overflowY:"auto"}}>
+                {displayRightRows.map(l=>{
+                  const isSuggested=filterMode!=="matched"&&topSuggestion&&topSuggestion.line.id===l.id;
+                  const selected=selectedLineIds.has(l.id);
+                  const isMatchedMode=filterMode==="matched";
+                  const linkedTxn=isMatchedMode&&l.postedTxnId?transactions.find(t=>t.id===l.postedTxnId):null;
+                  return(
+                    <div key={l.id}
+                      className="rr-table-row"
+                      onClick={()=>!isMatchedMode&&toggleLineSel(l.id)}
+                      onContextMenu={e=>{if(isMatchedMode)return;e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
+                      {!isMatchedMode&&<input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/>}
+                      {isMatchedMode&&<span style={{width:13}}/>}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
+                          <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                        </div>
+                        <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
+                      </div>
+                      <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(l.amount)}</div>
+                      <div style={{flexShrink:0,display:"flex",gap:4}}>
+                        {isMatchedMode?(
+                          <button onClick={e=>{e.stopPropagation();doUnmatch(l);}} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button>
+                        ):isSuggested?(
+                          <>
+                            <button onClick={e=>{e.stopPropagation();confirmSuggestion(l,topSuggestion.txn);}} style={{background:T.orange,border:"none",borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Confirm</button>
+                            <button onClick={e=>{e.stopPropagation();dismissSuggestion(l.id);}} style={{background:"none",border:`1px solid ${T.orange}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                          </>
+                        ):(
+                          <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}><i className="ti ti-note"/></button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!displayRightRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:11}}>{filterMode==="matched"?"Nothing matched yet this month.":"No unposted lines. Upload a statement to get started."}</div>}
+              </div>
+            </div>
+
+            {/* Entered in ledger */}
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
+                <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                <input type="checkbox" checked={allLeftSelected} disabled={isApproved||!displayLeftRows.length} onChange={toggleSelectAllLeft} title="Select all"/>
+                <div onClick={()=>toggleSort(setSortLeft,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                  Date{sortLeft.key==="date"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
+                </div>
+                <div onClick={()=>toggleSort(setSortLeft,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+                  Amount{sortLeft.key==="amount"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
+                </div>
+              </div>
+              <div style={{maxHeight:440,overflowY:"auto"}}>
+                {displayLeftRows.map(t=>{
+                  const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
+                  const selected=selectedTxnIds.has(t.id);
+                  return(
+                    <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
+                      <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
+                          <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                        </div>
+                        <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
+                          <span>{t.date}</span>
+                          {!!t.reconciled&&<span style={{color:T.green,fontWeight:700}}>· reconciled</span>}
+                        </div>
+                      </div>
+                      <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+                    </div>
+                  );
+                })}
+                {!displayLeftRows.length&&(
+                  <div style={{padding:"36px 20px",textAlign:"center",color:T.muted,fontSize:11}}>
+                    {ledgerEntries.length?"Everything here is matched — see the Matched tab.":(
                       <>
-                        <button onClick={e=>{e.stopPropagation();confirmSuggestion(l,topSuggestion.txn);}} style={{background:T.orange,border:"none",borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Confirm</button>
-                        <button onClick={e=>{e.stopPropagation();dismissSuggestion(l.id);}} style={{background:"none",border:`1px solid ${T.orange}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                        <div style={{marginBottom:10}}>No ledger entries this month. Check another period, or register new vouchers from the Inbox.</div>
+                        <button onClick={()=>onNavigate&&onNavigate("Files")} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to Inbox →</button>
                       </>
-                    ):(
-                      <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}><i className="ti ti-note"/></button>
                     )}
                   </div>
-                </div>
-              );
-            })}
-            {!displayRightRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:11}}>{filterMode==="matched"?"Nothing matched yet this month.":"No unposted lines. Upload a statement to get started."}</div>}
+                )}
+              </div>
+              {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
+                <button onClick={()=>setShowMatched(true)} style={{width:"100%",background:T.bg,border:"none",borderTop:`1px solid ${T.border}`,padding:"9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>
+                  {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length} reconciled without a direct match →
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        );
+
+        if(!showAttachPanel)return matchingGrid;
+
+        const attachmentPanel=(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,height:"100%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
+            </div>
+            <div style={{display:"flex",gap:8,padding:"10px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+              <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
+                {currentAttachment?"Replace":"Attach file"}
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttachStatement(e.target.files[0]);}}/>
+              </label>
+              {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
+            </div>
+            <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>
+              {currentAttachment?(
+                currentAttachment.type&&currentAttachment.type.startsWith("image")?(
+                  <img src={currentAttachment.data} style={{width:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
+                ):(
+                  <iframe src={currentAttachment.data} style={{width:"100%",height:"100%",minHeight:400,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>
+                )
+              ):(
+                <div style={{fontSize:11,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
+              )}
+            </div>
+          </div>
+        );
+
+        return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900}/>;
+      })()}
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
