@@ -2821,6 +2821,15 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     );
   }
 
+  // Feeds the table header's own sticky offset (below) — this is the ONLY
+  // thing this measurement drives now, not a layout spacer, so an
+  // off-by-a-frame value here is at worst a 1px header nudge, never a gap.
+  const[fixedBarHeight,setFixedBarHeight]=useState(64);
+  const fixedBarRef=React.useRef(null);
+  useLayoutEffect(()=>{
+    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
+  });
+
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
       {periodPickerOpen&&(
@@ -2828,16 +2837,9 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       )}
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      {/* Sticky, not fixed. position:fixed ignores the page's normal document
-          flow (and thus the vertical scrollbar's width, which varies by
-          OS/browser), while this shadow header table and the real data
-          table below both live in that flow — that width mismatch is why
-          "Closing balance" drifted further right the wider the table got.
-          Sticky keeps both tables in the exact same width context, so a
-          matching colgroup can never disagree between them, and it needs
-          no measured spacer div since sticky content reserves its own
-          space in flow even while not stuck. */}
-      <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px",willChange:"transform",transform:"translateZ(0)"}}>
+      {/* Sticky, not fixed — see the table header below for why this is now
+          a single-table structure instead of a duplicated shadow header. */}
+      <div ref={fixedBarRef} style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px",willChange:"transform",transform:"translateZ(0)"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2880,29 +2882,22 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <i className="ti ti-settings" style={{fontSize:16}}/>
           </button>
         </div>
-        {/* Shadow header — same colgroup widths as the real table below, but
-            rendered right here so it's physically attached to the filter bar
-            with zero gap, instead of being a second sticky element guessing
-            a pixel offset to line up underneath. */}
-        <div style={{marginTop:8,background:"#fff",borderRadius:"12px 12px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
-          <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
-          <tbody><tr style={{color:T.sub,background:T.bg}}>
-            <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
-            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Opening balance<ResizeHandle idx={1}/></td>
-            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"relative"}}>Difference<ResizeHandle idx={2}/></td>
-            <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
-          </tr></tbody>
-        </table>
-        </div>
       </div>
 
+      {/* One table, one colgroup, header row pinned with sticky td's whose
+          top offset is this filter bar's own measured height — the earlier
+          "shadow header in a second table" trick could never fully
+          guarantee zero gap, since two separate tables can drift apart in
+          ways a single table structurally cannot. */}
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:"0 0 12px 12px",border:`1px solid ${T.border}`,borderTop:"none",marginTop:-1}}>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
-        <thead><tr style={{display:"none"}}>
-          <td/><td/><td/><td/>
+        <thead><tr style={{color:T.sub,background:T.bg}}>
+          <td style={{padding:"11px 14px",fontWeight:700,position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Account<ResizeHandle idx={0}/></td>
+          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Opening balance<ResizeHandle idx={1}/></td>
+          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Difference<ResizeHandle idx={2}/></td>
+          <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px",position:"sticky",top:fixedBarHeight,zIndex:40,background:T.bg}}>Closing balance</td>
         </tr></thead>
         <tbody>
           {rows.map(r=>(
