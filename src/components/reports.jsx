@@ -4700,29 +4700,37 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           but can always be replaced or removed if the wrong file landed on
           the wrong month. This is also what gets used as "proof" when
           posting straight from the statement below (Bokfør). */}
-      {showAttachPanel&&(
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:currentAttachment?10:0}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
-            <div style={{display:"flex",gap:8}}>
-              <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
-                {currentAttachment?"Replace":"Attach file"}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttachStatement(e.target.files[0]);}}/>
-              </label>
-              {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
-            </div>
+      {showAttachPanel&&(<>
+        {/* Docked to the right edge of the screen (Tripletex's layout),
+            not stacked above the reconciliation table — it used to render
+            as a normal block in the document flow, pushing everything
+            below it down the page instead of sitting alongside it. */}
+        <div onClick={()=>setShowAttachPanel(false)} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.25)",zIndex:69}}/>
+        <div style={{position:"fixed",top:60,right:0,bottom:0,width:460,maxWidth:"92vw",background:"#fff",borderLeft:`1px solid ${T.border}`,boxShadow:"-8px 0 24px rgba(0,0,0,0.14)",zIndex:70,display:"flex",flexDirection:"column"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
+            <button onClick={()=>setShowAttachPanel(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
-          {currentAttachment?(
-            currentAttachment.type&&currentAttachment.type.startsWith("image")?(
-              <img src={currentAttachment.data} style={{maxHeight:220,borderRadius:8,border:`1px solid ${T.border}`}}/>
+          <div style={{display:"flex",gap:8,padding:"10px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+            <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
+              {currentAttachment?"Replace":"Attach file"}
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttachStatement(e.target.files[0]);}}/>
+            </label>
+            {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
+          </div>
+          <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>
+            {currentAttachment?(
+              currentAttachment.type&&currentAttachment.type.startsWith("image")?(
+                <img src={currentAttachment.data} style={{width:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
+              ):(
+                <iframe src={currentAttachment.data} style={{width:"100%",height:"100%",minHeight:500,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>
+              )
             ):(
-              <iframe src={currentAttachment.data} style={{width:"100%",height:320,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>
-            )
-          ):(
-            <div style={{fontSize:11,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
-          )}
+              <div style={{fontSize:11,color:T.muted}}>No statement attached for this account/month yet — attach the bank's PDF or image export here so it's kept alongside this period permanently.</div>
+            )}
+          </div>
         </div>
-      )}
+      </>)}
 
       {/* Send or download modal — mirrors the reference "Send eller last ned
           fil" dialog: choose which posts, pick a format, then either
