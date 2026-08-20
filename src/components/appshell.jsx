@@ -95,6 +95,14 @@ function AppShell({user}){
     const{error}=await sb.from("companies").update({name}).eq("id",id);
     if(error){alert("Couldn't rename — check your connection and try again.");}
   };
+  // Used by Admin Panel's grant-access UI — an admin picking which of a
+  // client's companies to grant an employee access to needs that client's
+  // company list, not their own.
+  const fetchCompaniesFor=async(ownerUserId)=>{
+    const{data,error}=await sb.from("companies").select("id,name").eq("owner_user_id",ownerUserId).order("created_at");
+    if(error)return[];
+    return data||[];
+  };
   useEffect(()=>{
     sb.from("client_access").select("*").eq("employee_user_id",user.id).then(async({data,error})=>{
       if(error||!data||!data.length){setMyClientAccess([]);return;}
@@ -284,10 +292,12 @@ function AppShell({user}){
     if(!canEdit)return;
     if(deletedCode){
       if(newCode){
-        // Code was RENAMED — migrate all transactions referencing old code to new code
-        // Update in Supabase
-        await sb.from("transactions").update({debit_code:newCode}).eq("user_id",user.id).eq("debit_code",deletedCode);
-        await sb.from("transactions").update({credit_code:newCode}).eq("user_id",user.id).eq("credit_code",deletedCode);
+        // Code was RENAMED — migrate all transactions referencing old code to new code.
+        // Scoped by company_id (not just user_id) — every company starts from the
+        // same NS 4102 codes, so without this a rename in one company would
+        // silently rename the same code across every other company too.
+        await scoped(sb.from("transactions").update({debit_code:newCode}).eq("user_id",user.id).eq("debit_code",deletedCode));
+        await scoped(sb.from("transactions").update({credit_code:newCode}).eq("user_id",user.id).eq("credit_code",deletedCode));
         // Update in local state immediately so UI reflects change
         setTransactionsState(p=>p.map(t=>({
           ...t,
@@ -295,10 +305,10 @@ function AppShell({user}){
           creditCode:t.creditCode===deletedCode?newCode:t.creditCode,
         })));
         // Delete old account row, new one will be upserted below
-        await sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode);
+        await scoped(sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode));
       } else {
         // Account was DELETED (no newCode) — only delete if no transactions (guard)
-        await sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode);
+        await scoped(sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode));
       }
     }
     // Upsert all current accounts. This was previously fire-and-forget —
@@ -1381,12 +1391,27 @@ If you genuinely cannot read useful information from this file, return {"supplie
     if(!clientIds.length)return[];
     const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
     const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
-    return data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):r.client_user_id,accessLevel:r.access_level}));
+    // company_id may not exist yet on databases that haven't run
+    // sql/company_scoped_rls.sql — every grant just reads as "whole login"
+    // until then, matching how it always behaved.
+    const companyIds=[...new Set(data.map(r=>r.company_id).filter(Boolean))];
+    let companyMap={};
+    if(companyIds.length){
+      const{data:comps}=await sb.from("companies").select("id,name").in("id",companyIds);
+      (comps||[]).forEach(c=>{companyMap[c.id]=c.name;});
+    }
+    return data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):r.client_user_id,accessLevel:r.access_level,companyId:r.company_id||null,companyName:r.company_id?(companyMap[r.company_id]||"Unknown company"):"Whole login (all companies)"}));
   };
-  const grantClientAccess=async(employeeUserId,clientUserId,accessLevel)=>{
+  // companyId is required — every grant now names exactly one client company,
+  // so an accountant given access to Client A's "Acme AS" never also sees
+  // Client A's other companies unless separately granted. Old grants made
+  // before this (company_id NULL) still work as "whole login" — this just
+  // stops creating any new ones like that.
+  const grantClientAccess=async(employeeUserId,clientUserId,accessLevel,companyId)=>{
     if(!isAdmin)return{error:"Only an admin can grant access."};
     if(employeeUserId===clientUserId)return{error:"Can't grant a user access to their own books — that's already automatic."};
-    const{error}=await sb.from("client_access").upsert({employee_user_id:employeeUserId,client_user_id:clientUserId,access_level:accessLevel,granted_by:user.id},{onConflict:"client_user_id,employee_user_id"});
+    if(!companyId)return{error:"Pick which company this grant is for."};
+    const{error}=await sb.from("client_access").upsert({employee_user_id:employeeUserId,client_user_id:clientUserId,access_level:accessLevel,company_id:companyId,granted_by:user.id},{onConflict:"employee_user_id,client_user_id,company_id"});
     if(error)return{error:error.message};
     return{ok:true};
   };
@@ -1474,7 +1499,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
         attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
         bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine}
         invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
-        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
+        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
         fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} mergeContacts={mergeContacts} mergeAccounts={mergeAccounts} postBankStatementLinesBulk={postBankStatementLinesBulk} getInvoicePaid={getInvoicePaid}
       />
     </div>

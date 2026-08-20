@@ -28,7 +28,7 @@ import {
 import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
 
-function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany}){
+function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany}){
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
@@ -142,6 +142,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[companySwitcherOpen,setCompanySwitcherOpen]=useState(false);
   const[clientSwitcherSearch,setClientSwitcherSearch]=useState("");
   const[showInviteClient,setShowInviteClient]=useState(false);
+  const[showAddClient,setShowAddClient]=useState(false);
+  const[newClientName,setNewClientName]=useState("");
+  const[creatingClient,setCreatingClient]=useState(false);
   const pushToast=(message)=>{
     const id=Date.now()+Math.random();
     setToasts(prev=>[{id,message,at:new Date().toISOString(),read:false},...prev].slice(0,20));
@@ -271,7 +274,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>);
   }
 
-  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
+  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}/>):null;
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
@@ -439,8 +442,8 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       {c.id===activeCompanyId&&<i className="ti ti-check" style={{fontSize:14,color:T.accent}}/>}
                     </div>
                   ))}
-                  <div onClick={()=>{const name=prompt("New company name:");if(name&&name.trim()&&createCompany){createCompany(name.trim());setCompanySwitcherOpen(false);}}} style={{display:"flex",alignItems:"center",gap:6,padding:"11px 14px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
-                    <i className="ti ti-plus" style={{fontSize:14}}/>Add company
+                  <div onClick={()=>{setCompanySwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:6,padding:"11px 14px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
+                    <i className="ti ti-plus" style={{fontSize:14}}/>Add client
                   </div>
                 </div>
               </>)}
@@ -448,6 +451,35 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           );
         })()}
         <div style={{flex:1}}/>
+        {showAddClient&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!creatingClient&&setShowAddClient(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Add a new client</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:16,lineHeight:1.5}}>Creates a separate, fully isolated set of books — nothing here is visible from any other client's company.</div>
+              <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>COMPANY NAME *</div>
+              {(()=>{
+                const submitNewClient=async()=>{
+                  if(!newClientName.trim()||!createCompany||creatingClient)return;
+                  setCreatingClient(true);
+                  const created=await createCompany(newClientName.trim());
+                  setCreatingClient(false);
+                  if(created){setShowAddClient(false);setNewClientName("");}
+                };
+                return(<>
+                  <input autoFocus placeholder="e.g. Ventilasjonsspesialisten AS" value={newClientName} onChange={e=>setNewClientName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitNewClient();}} style={{...inp,marginBottom:14}}/>
+                  <div style={{display:"flex",gap:8,alignItems:"flex-start",background:T.accentLight,borderRadius:10,padding:"10px 12px",marginBottom:18}}>
+                    <i className="ti ti-list-check" style={{fontSize:14,color:T.accent,marginTop:1,flexShrink:0}}/>
+                    <div style={{fontSize:11.5,color:T.accentHover,lineHeight:1.5}}>Starts pre-loaded with the standard Norwegian NS 4102 chart of accounts — every new client gets the same starting point, and any account can be renamed, added, or removed afterward from Accounting → Chart of accounts.</div>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button disabled={!newClientName.trim()||creatingClient} onClick={submitNewClient} style={{flex:1,background:newClientName.trim()?T.accent:T.border,color:newClientName.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:newClientName.trim()&&!creatingClient?"pointer":"default",fontFamily:"inherit"}}>{creatingClient?"Creating…":"Create client"}</button>
+                    <button onClick={()=>setShowAddClient(false)} disabled={creatingClient} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  </div>
+                </>);
+              })()}
+            </div>
+          </div>
+        )}
         {showInviteClient&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInviteClient(false)}>
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
@@ -1068,7 +1100,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} requestRedrockAccess={requestRedrockAccess} isViewingOwnBooks={viewingUserId===user.id}/>}
 
-        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} isDesktop={true}/>:null)}
+        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} isDesktop={true}/>:null)}
 
         {(tab==="Employees"||tab==="EmployeeNew")&&(
           <div style={{maxWidth:900}}>
