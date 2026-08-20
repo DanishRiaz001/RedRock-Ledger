@@ -2375,6 +2375,185 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
   );
 }
 
+// Tripletex-style draggable timeline range picker — Year/Quarter/Month/Week
+// rows to scale, two draggable handles spanning all rows at once, click any
+// cell to jump straight to that unit. Renders as an anchored dropdown (not
+// a centered modal) below whatever trigger opens it.
+const MONTH_SHORT=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const daysInMonth=(y,m)=>new Date(y,m,0).getDate(); // m is 1-12
+const isoWeek=(d)=>{
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=(dt.getUTCDay()+6)%7; // Mon=0
+  dt.setUTCDate(dt.getUTCDate()-day+3);
+  const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  const diff=(dt-firstThursday)/86400000;
+  return 1+Math.round(diff/7);
+};
+function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
+  const[from,setFrom]=useState(initialFrom);
+  const[to,setTo]=useState(initialTo);
+  const[windowStartYear,setWindowStartYear]=useState(parseInt(initialFrom.slice(0,4))||new Date().getFullYear());
+  const todayStr=new Date().toISOString().slice(0,10);
+  const trackRef=useRef(null);
+  const draggingRef=useRef(null);
+
+  // 18-month window: Jan of windowStartYear through June of the next year —
+  // matches the reference's ~5-quarter span, shiftable via the arrows.
+  const months=useMemo(()=>{
+    const arr=[];
+    let y=windowStartYear,m=1,offset=0;
+    for(let i=0;i<18;i++){
+      const dim=daysInMonth(y,m);
+      arr.push({year:y,month:m,days:dim,offset});
+      offset+=dim;
+      m++;if(m>12){m=1;y++;}
+    }
+    return arr;
+  },[windowStartYear]);
+  const totalDays=months.reduce((s,m)=>s+m.days,0);
+  const windowStart=new Date(windowStartYear,0,1);
+
+  const dateToIndex=(dateStr)=>Math.round((new Date(dateStr+"T00:00:00")-windowStart)/86400000);
+  const indexToDate=(idx)=>{const d=new Date(windowStart);d.setDate(d.getDate()+idx);return d.toISOString().slice(0,10);};
+
+  const TRACK_W=1000;
+  const pxPerDay=TRACK_W/totalDays;
+  const fromIdx=Math.min(Math.max(dateToIndex(from),0),totalDays-1);
+  const toIdx=Math.min(Math.max(dateToIndex(to),0),totalDays-1);
+  const xOf=(idx)=>idx*pxPerDay;
+
+  const startDrag=(which)=>(e)=>{
+    e.preventDefault();e.stopPropagation();
+    draggingRef.current=which;
+    const onMove=(ev)=>{
+      if(!draggingRef.current||!trackRef.current)return;
+      const rect=trackRef.current.getBoundingClientRect();
+      const raw=Math.round((ev.clientX-rect.left)/pxPerDay);
+      const idx=Math.min(Math.max(raw,0),totalDays-1);
+      const dateStr=indexToDate(idx);
+      if(draggingRef.current==="from")setFrom(dateStr<=to?dateStr:to);
+      else setTo(dateStr>=from?dateStr:from);
+    };
+    const onUp=()=>{draggingRef.current=null;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+    window.addEventListener("mousemove",onMove);
+    window.addEventListener("mouseup",onUp);
+  };
+
+  const applyAndClose=()=>{onApply(from,to);onClose();};
+  const pickRange=(nf,nt)=>{onApply(nf,nt);onClose();};
+
+  const presets=[
+    {label:"Today",apply:()=>pickRange(todayStr,todayStr)},
+    {label:"This month",apply:()=>{const d=new Date();const y=d.getFullYear(),m=d.getMonth();pickRange(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));}},
+    {label:"So far this year",apply:()=>{const d=new Date();pickRange(`${d.getFullYear()}-01-01`,todayStr);}},
+    {label:"Full year",apply:()=>pickRange(`${windowStartYear}-01-01`,`${windowStartYear}-12-31`)},
+  ];
+
+  // Quarter groups: chunks of 3 consecutive months from the window
+  const quarters=useMemo(()=>{
+    const arr=[];
+    for(let i=0;i<months.length;i+=3){
+      const chunk=months.slice(i,i+3);
+      const days=chunk.reduce((s,m)=>s+m.days,0);
+      const q=Math.floor((chunk[0].month-1)/3)+1;
+      arr.push({year:chunk[0].year,q,offset:chunk[0].offset,days});
+    }
+    return arr;
+  },[months]);
+  // Year groups
+  const years=useMemo(()=>{
+    const map=new Map();
+    months.forEach(m=>{
+      if(!map.has(m.year))map.set(m.year,{year:m.year,offset:m.offset,days:0});
+      map.get(m.year).days+=m.days;
+    });
+    return[...map.values()];
+  },[months]);
+  // Week ticks: 7-day chunks across the window
+  const weeks=useMemo(()=>{
+    const arr=[];
+    for(let off=0;off<totalDays;off+=7){
+      const d=indexToDate(off);
+      arr.push({offset:off,days:Math.min(7,totalDays-off),label:isoWeek(new Date(d+"T00:00:00"))});
+    }
+    return arr;
+  },[totalDays,windowStartYear]);
+
+  const rowStyle={display:"flex",alignItems:"stretch",height:30,borderBottom:`1px solid ${T.border}`};
+  const cellBase={display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:T.sub,fontWeight:600,borderRight:`1px solid ${T.border}`,cursor:"pointer",flexShrink:0,boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap"};
+
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,boxShadow:"0 16px 40px rgba(20,60,50,0.14)",padding:16,width:TRACK_W+120,maxWidth:"92vw"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:13,fontWeight:800,color:T.text}}>Choose period</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setWindowStartYear(y=>y-1)} title="Shift window back a year" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>‹</button>
+          <span style={{fontSize:12,color:T.muted,minWidth:80,textAlign:"center"}}>{windowStartYear}–{windowStartYear+1}</span>
+          <button onClick={()=>setWindowStartYear(y=>y+1)} title="Shift window forward a year" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>›</button>
+        </div>
+      </div>
+
+      <div style={{display:"flex"}}>
+        <div style={{width:70,flexShrink:0}}>
+          <div style={{height:30,display:"flex",alignItems:"center",fontSize:10,color:T.muted,fontWeight:700}}>Year</div>
+          <div style={{height:30,display:"flex",alignItems:"center",fontSize:10,color:T.muted,fontWeight:700}}>Quarter</div>
+          <div style={{height:30,display:"flex",alignItems:"center",fontSize:10,color:T.muted,fontWeight:700}}>Month</div>
+          <div style={{height:22,display:"flex",alignItems:"center",fontSize:10,color:T.muted,fontWeight:700}}>Week</div>
+        </div>
+        <div style={{position:"relative"}}>
+          {/* Drag handles + connecting highlight band, spanning all rows */}
+          <div style={{position:"absolute",left:xOf(fromIdx),top:0,width:xOf(toIdx)-xOf(fromIdx)+pxPerDay,height:30+30+30+22,background:T.accentLight,opacity:0.55,zIndex:1,pointerEvents:"none"}}/>
+          {/* Actual mousedown target is this 14px-wide invisible strip
+              centered on the line (matching the grab-strip width used by
+              ResizableSplit in shell.jsx) — a bare 2px line is nearly
+              impossible to grab precisely. */}
+          <div onMouseDown={startDrag("from")} title={from} style={{position:"absolute",left:xOf(fromIdx)-7,top:-28,width:14,height:28+30+30+30+22,cursor:"col-resize",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center"}}>
+            <div style={{background:T.accent,color:"#fff",fontSize:10,fontWeight:700,padding:"3px 7px",borderRadius:6,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4,marginBottom:2,flexShrink:0}}><i className="ti ti-grip-vertical" style={{fontSize:10}}/>{from}</div>
+            <div style={{width:2,flex:1,background:T.accent}}/>
+          </div>
+          <div onMouseDown={startDrag("to")} title={to} style={{position:"absolute",left:xOf(toIdx)-7,top:-28,width:14,height:28+30+30+30+22,cursor:"col-resize",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center"}}>
+            <div style={{background:T.accent,color:"#fff",fontSize:10,fontWeight:700,padding:"3px 7px",borderRadius:6,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4,marginBottom:2,flexShrink:0}}><i className="ti ti-grip-vertical" style={{fontSize:10}}/>{to}</div>
+            <div style={{width:2,flex:1,background:T.accent}}/>
+          </div>
+
+          <div ref={trackRef} style={{width:TRACK_W,position:"relative",zIndex:2}}>
+            <div style={rowStyle}>
+              {years.map(y=>(
+                <div key={y.year} onClick={()=>pickRange(`${y.year}-01-01`,`${y.year}-12-31`)} style={{...cellBase,width:y.days*pxPerDay,background:"#fff",fontWeight:800,color:T.text}}>{y.year}</div>
+              ))}
+            </div>
+            <div style={rowStyle}>
+              {quarters.map((q,i)=>(
+                <div key={i} onClick={()=>{const startM=(q.q-1)*3+1;const nf=`${q.year}-${String(startM).padStart(2,"0")}-01`;const nt=new Date(q.year,startM+2,0).toISOString().slice(0,10);pickRange(nf,nt);}} style={{...cellBase,width:q.days*pxPerDay,background:T.bg}}>Q{q.q} {q.year}</div>
+              ))}
+            </div>
+            <div style={rowStyle}>
+              {months.map((m,i)=>(
+                <div key={i} onClick={()=>{const nf=`${m.year}-${String(m.month).padStart(2,"0")}-01`;const nt=new Date(m.year,m.month,0).toISOString().slice(0,10);pickRange(nf,nt);}} style={{...cellBase,width:m.days*pxPerDay,background:"#fff"}}>{MONTH_SHORT[m.month-1]}</div>
+              ))}
+            </div>
+            <div style={{...rowStyle,height:22,borderBottom:"none"}}>
+              {weeks.map((w,i)=>(
+                <div key={i} style={{...cellBase,width:w.days*pxPerDay,background:T.bg,fontSize:8.5,color:T.muted,fontWeight:500,cursor:"default"}}>{w.label}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"16px 0"}}>
+        {presets.map(p=>(
+          <button key={p.label} onClick={p.apply} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>{p.label}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        <button onClick={applyAndClose} disabled={to<from} style={{background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,fontSize:12,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
+      </div>
+    </div>
+  );
+}
+
 // Click-to-jump month/year popover — pairs with a plain "‹ label ›" stepper
 // so someone going from January to August doesn't have to click "›" seven
 // times. Deliberately lighter than PeriodPickerModal (no exact-date-range
@@ -2836,9 +3015,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
-      {periodPickerOpen&&(
-        <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
-      )}
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
       {/* Sticky, not fixed — see the table header below for why this is now
@@ -2870,10 +3046,18 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
               </div>
             </>)}
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
-            <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
-            <span onClick={()=>setPeriodPickerOpen(true)} style={{fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",minWidth:80,textAlign:"center"}}>{periodLabel}</span>
-            <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
+          <div style={{position:"relative"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
+              <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
+              <span onClick={()=>setPeriodPickerOpen(true)} style={{fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",minWidth:80,textAlign:"center"}}>{periodLabel}</span>
+              <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
+            </div>
+            {periodPickerOpen&&(<>
+              <div onClick={()=>setPeriodPickerOpen(false)} style={{position:"fixed",inset:0,zIndex:748}}/>
+              <div style={{position:"absolute",left:0,top:44,zIndex:749}}>
+                <TimelineRangePicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+              </div>
+            </>)}
           </div>
           <input placeholder="From account" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
           <input placeholder="To account" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
