@@ -1,0 +1,16 @@
+-- Fix: contacts (customers/suppliers) could be silently, permanently lost.
+--
+-- appshell.jsx's setContacts() used to DELETE every contact for the user,
+-- then INSERT the full list back — with no error checking on either step.
+-- If the insert failed for any reason after the delete already succeeded
+-- (a bad value, a dropped connection, the browser closing mid-save), every
+-- contact was gone from the database with zero warning shown. The
+-- accompanying code change replaces this with per-contact upsert (never a
+-- blind delete-all) plus real error surfacing, matching the same fix
+-- already applied to accounts.
+--
+-- This migration just adds the "inactive" column the app already reads
+-- and writes for contacts (via the Reskontro/invoicing screens) but which
+-- was never actually in the table, so toggling a contact inactive never
+-- persisted either.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS inactive boolean DEFAULT false;
