@@ -38,7 +38,15 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // Desktop gets a persistent sidebar + reflowed Dashboard; mobile keeps the
   // existing app-style layout untouched. One codebase, no separate app build —
   // this is just a width check, re-evaluated on resize.
-  const[isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=1024);
+  // Always the desktop layout now — the app used to switch to a separate,
+  // less-complete mobile UI below 1024px (including whenever DevTools was
+  // open, since that shrinks the viewport too), which was confusing and
+  // inconsistent with the desktop experience this app is actually built
+  // and tested against. isDesktop is kept as a variable (not deleted
+  // outright) since dozens of screens still branch on it internally, but
+  // it's now permanently true — the resize listener that used to flip it
+  // is also removed below.
+  const[isDesktop]=useState(true);
   const[onboardingDismissed,setOnboardingDismissedState]=useState(()=>{try{return localStorage.getItem("rr_onboarding_done")==="1";}catch{return false;}});
   const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem("rr_onboarding_done","1");}catch{}};
   // Same as addTransaction, but also raises a save notification on the bell
@@ -177,12 +185,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   useEffect(()=>{
     if(entriesFixedBarRef.current)setEntriesFixedBarHeight(entriesFixedBarRef.current.offsetHeight);
   });
-  useEffect(()=>{
-    const onResize=()=>setIsDesktop(window.innerWidth>=1024);
-    window.addEventListener("resize",onResize);
-    return()=>window.removeEventListener("resize",onResize);
-  },[]);
-
   const deleteTxnWithUndo=(id)=>{
     const txn=transactions.find(t=>t.id===id);
     if(txn)setLastDeleted(txn);
