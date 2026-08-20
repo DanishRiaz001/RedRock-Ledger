@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB } from "../lib/utils.js";
+import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey } from "../lib/utils.js";
 import { sb } from "../lib/supabaseClient.js";
 import { Card, BackHeader, Menu3, AccDropFlat, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
@@ -1604,16 +1604,34 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
     startInlineRename(f);
   };
   const registerEntry=(fileId)=>{
-    try{if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");}catch{}
+    try{
+      if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");
+      // Carry the AI suggestion (if any) alongside the attachment id so the
+      // New Entry form can pre-fill amount/description — otherwise "Post
+      // voucher" is no faster than "Register" was, since you'd still have
+      // to retype everything the AI already read off the document.
+      const f=files.find(x=>x.id===fileId);
+      if(f&&hasSuggestion(f)){
+        localStorage.setItem("rr_pending_attachment_suggestion",JSON.stringify({amount:f.aiAmount,supplier:f.aiSupplier,invoiceNo:f.aiInvoiceNo}));
+      }else{
+        localStorage.removeItem("rr_pending_attachment_suggestion");
+      }
+    }catch{}
     if(onNavigate)onNavigate(isDesktop?"NewVoucher":"Transactions");
   };
   const[viewing,setViewing]=useState(null);
   const[inlinePreview,setInlinePreview]=useState(null);
+  // A file "has a suggestion" once AI analysis has actually run on it AND
+  // found something usable — aiAnalyzed alone isn't enough, since a run
+  // that came back empty (unreadable scan) shouldn't count as a suggestion.
+  const hasSuggestion=f=>f.aiAnalyzed&&(f.aiSupplier||f.aiAmount!=null);
+  const[suggestionFilter,setSuggestionFilter]=useState(""); // "" | "with" | "without"
   const filtered=files
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
-    .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
     .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
-    .filter(f=>!folderFilter||(f.folder||"General")===folderFilter);
+    .filter(f=>!folderFilter||(f.folder||"General")===folderFilter)
+    .filter(f=>!suggestionFilter||(suggestionFilter==="with"?hasSuggestion(f):!hasSuggestion(f)));
   // Default to previewing the first file in the current list — an empty
   // preview pane on open just wastes a click most of the time. Re-syncs
   // whenever the visible list changes (filters, folder switch, deletions)
@@ -1666,6 +1684,24 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               </label>
             </div>
             <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":""}</p>
+
+            {viewMode==="active"&&(()=>{
+              // Counts computed from everything except the suggestion filter
+              // itself, so switching tabs doesn't change the other tabs' own counts.
+              const base=files.filter(f=>!f.deletedAt)
+                .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
+                .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
+                .filter(f=>!folderFilter||(f.folder||"General")===folderFilter);
+              const withCount=base.filter(hasSuggestion).length;
+              const withoutCount=base.length-withCount;
+              return(
+                <div style={{display:"flex",gap:6,marginBottom:12,flexShrink:0}}>
+                  {[["","All",base.length],["with","With suggestions",withCount],["without","Without suggestions",withoutCount]].map(([id,label,count])=>(
+                    <button key={id} onClick={()=>setSuggestionFilter(id)} style={{background:suggestionFilter===id?T.accent:"none",color:suggestionFilter===id?"#fff":T.sub,border:`1px solid ${suggestionFilter===id?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label} ({count})</button>
+                  ))}
+                </div>
+              );
+            })()}
 
             <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
               <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
@@ -1748,12 +1784,21 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                           style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
                         />
                       ):(
-                        <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||f.name}</div>
                       )}
-                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+                      <div style={{fontSize:10,color:T.muted,marginTop:2,display:"flex",gap:6,alignItems:"center",overflow:"hidden"}}>
+                        {hasSuggestion(f)?(<>
+                          {f.aiAmount!=null&&<span style={{fontWeight:700,color:T.text}}>{fmt(f.aiAmount)}</span>}
+                          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                        </>):(
+                          <span>{f.month} {f.year} · {f.folder}</span>
+                        )}
+                        {f.aiAnalyzed&&!hasSuggestion(f)&&<span style={{color:T.muted}}>· no suggestion</span>}
+                        {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<span style={{color:T.accent}}>· analyzing…</span>}
+                      </div>
                     </div>
                     {viewMode!=="deleted"&&(
-                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>Register</button>
+                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}:{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post voucher":"Register"}</button>
                     )}
                     <Menu3 items={viewMode==="deleted"?[
                       {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},

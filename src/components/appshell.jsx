@@ -248,7 +248,7 @@ function AppShell({user}){
       setReconciliationStatusState((rsR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,period:r.period,status:r.status,statusComment:r.status_comment||"",accountComment:r.account_comment||"",updatedBy:r.updated_by,updatedAt:r.updated_at})));
       setReconciliationFilesState((rfR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,period:r.period,inboxFileId:r.inbox_file_id})));
       setBudgetsState((bR.data||[]).map(b=>({year:parseInt(b.year),month:parseInt(b.month),code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
-      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at})));
+      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at,aiSupplier:r.ai_supplier||null,aiAmount:r.ai_amount!=null?parseFloat(r.ai_amount):null,aiInvoiceNo:r.ai_invoice_no||null,aiDocType:r.ai_doc_type||null,aiAnalyzed:!!r.ai_analyzed})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
       setInvoices((invR.data||[]).map(r=>({id:r.id,invoiceNo:r.invoice_no,customerId:r.customer_id,date:r.date,dueDate:r.due_date,periodFrom:r.period_from,periodTo:r.period_to,saleAccount:r.sale_account,lines:r.lines||[],vatPct:parseFloat(r.vat_pct)||0,subtotal:parseFloat(r.subtotal),vatAmount:parseFloat(r.vat_amount),total:parseFloat(r.total),status:r.status,txnId:r.txn_id})));
@@ -1216,6 +1216,53 @@ function AppShell({user}){
   // Inbox files + transaction attachments — Supabase Storage bucket "attachments"
   // plus the inbox_files / txn_attachments tables. Every mutation here uploads
   // or removes the real file in Storage AND keeps the metadata row in sync.
+  // Best-effort AI enrichment — reads the same file just uploaded (before
+  // its raw bytes are gone, since after upload only the storage path
+  // remains) and asks Claude's vision API for supplier/amount/invoice
+  // number, matching the exact working pattern from AIBookkeepingScreen's
+  // receipt scanner (admin.jsx). Silent no-op if no Anthropic key is set,
+  // if the file type can't usefully be read this way (xlsx/csv/docx), or
+  // if the request fails — this is enrichment for the inbox list, never a
+  // required step, so it must never block or error the actual upload.
+  const analyzeInboxFile=async(file,fileId)=>{
+    if(!getAnthropicKey())return;
+    const isImage=(file.type||"").startsWith("image/");
+    const isPdf=file.type==="application/pdf";
+    if(!isImage&&!isPdf)return;
+    try{
+      const reader=new FileReader();
+      const base64=await new Promise((resolve,reject)=>{
+        reader.onload=()=>resolve(reader.result.split(",")[1]);
+        reader.onerror=reject;
+        reader.readAsDataURL(file);
+      });
+      const contentBlock=isImage
+        ?{type:"image",source:{type:"base64",media_type:file.type,data:base64}}
+        :{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}};
+      const prompt=`This file is a scanned invoice, receipt, or bill. Extract what you can identify from it. Return ONLY valid JSON, no markdown, no explanation:
+{"supplier":"vendor/supplier name, or null if not legible","amount":total amount as a plain number with no currency symbol or commas, or null,"invoiceNo":"invoice or receipt number, or null","docType":"one of exactly: simple_invoice, detailed_invoice, receipt, unclear"}
+If you genuinely cannot read useful information from this file, return {"supplier":null,"amount":null,"invoiceNo":null,"docType":"unclear"} — never guess or invent values.`;
+      const{data,error}=await callClaudeAPI({
+        model:"claude-sonnet-4-6",max_tokens:400,
+        messages:[{role:"user",content:[contentBlock,{type:"text",text:prompt}]}],
+      });
+      if(error)return;
+      const text=data.content.map(b=>b.text||"").join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      const patch={
+        ai_supplier:parsed.supplier||null,
+        ai_amount:parsed.amount!=null?parsed.amount:null,
+        ai_invoice_no:parsed.invoiceNo||null,
+        ai_doc_type:parsed.docType||"unclear",
+        ai_analyzed:true,
+      };
+      const{error:updErr}=await sb.from("inbox_files").update(patch).eq("id",fileId);
+      if(updErr){console.error("Inbox AI suggestion save failed:",updErr);return;}
+      setInboxFilesState(p=>p.map(f=>f.id===fileId?{...f,aiSupplier:patch.ai_supplier,aiAmount:patch.ai_amount,aiInvoiceNo:patch.ai_invoice_no,aiDocType:patch.ai_doc_type,aiAnalyzed:true}:f));
+    }catch(e){console.error("Inbox AI analysis failed:",e);}
+  };
+
   const uploadInboxFile=async(file,folder="General")=>{
     if(!canEdit)return null;
     try{
@@ -1226,6 +1273,7 @@ function AppShell({user}){
       if(error){console.error("Inbox file insert error:",error);alert("Upload failed: "+error.message);return null;}
       const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
       setInboxFilesState(p=>[newFile,...p]);
+      analyzeInboxFile(file,data.id); // fire-and-forget — never block the upload on this
       return newFile;
     }catch(e){console.error("Upload error:",e);alert("Upload failed: "+e.message);return null;}
   };

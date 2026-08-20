@@ -3032,7 +3032,23 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
-    if(pending){try{localStorage.removeItem("rr_pending_attachment");}catch{}return{...emptyTxn,attachmentId:parseInt(pending)};}
+    // File ids are UUIDs (e.g. "a1b2c3d4-...") — parseInt() used to silently
+    // truncate them to garbage (stops at the first non-digit character),
+    // breaking the attachment link without any visible error.
+    if(pending){
+      try{localStorage.removeItem("rr_pending_attachment");}catch{}
+      let suggestion=null;
+      try{
+        const raw=localStorage.getItem("rr_pending_attachment_suggestion");
+        if(raw){suggestion=JSON.parse(raw);localStorage.removeItem("rr_pending_attachment_suggestion");}
+      }catch{}
+      return{
+        ...emptyTxn,attachmentId:pending,
+        amount:suggestion&&suggestion.amount!=null?String(suggestion.amount):emptyTxn.amount,
+        description:suggestion&&suggestion.supplier?suggestion.supplier:emptyTxn.description,
+        invoiceNo:suggestion&&suggestion.invoiceNo?suggestion.invoiceNo:"",
+      };
+    }
     return emptyTxn;
   });
   const[showAddContact,setShowAddContact]=useState(false);
