@@ -418,7 +418,11 @@ function AppShell({user}){
   const logAudit=(entityType,entityId,bilag,action,oldValues,newValues)=>{
     if(!canEdit)return;
     sb.from("audit_log").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
-      .then(({data,error})=>{if(!error)setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);});
+      // Used to check `error` only to decide whether to update local state,
+      // never logging or surfacing it — every audit_log insert could have
+      // been failing (e.g. a column type mismatch) with zero indication,
+      // which is exactly why "Change log" showed no history for anything.
+      .then(({data,error})=>{if(error){console.error("Audit log insert failed:",error);}else{setAuditLog(p=>[{id:Date.now(),changedBy:user.id,entityType,entityId,bilag,action,oldValues,newValues,createdAt:new Date().toISOString()},...p]);}});
   };
 
   // Usage analytics — lightweight page-view logging, fire-and-forget, never
