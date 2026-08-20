@@ -4818,7 +4818,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
               <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:6}}>{selectedLines.length>0?<span style={{color:T.accent,fontWeight:700}}>Sum valgte · {selectedLines.length} selected</span>:"From bank statement"}</div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:6}}>{selectedLines.length>0?<span style={{color:T.accent,fontWeight:700}}>Selected · {selectedLines.length}</span>:"From bank statement"}</div>
                 <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmtBal(card2Value)}</div>
               </div>
               {hasSelection&&(
@@ -4830,11 +4830,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
             {readyToBokfor?(
               <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"18px 22px",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:8}}>
-                <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit",width:"100%"}}>Bokfør ({selectedLines.length})</button>
+                <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit",width:"100%"}}>Post ({selectedLines.length})</button>
               </div>
             ):(
               <div style={{background:Math.abs(diff)>0.01?T.redLight:T.greenBg,border:`1px solid ${Math.abs(diff)>0.01?T.red:T.green}`,borderRadius:10,padding:"18px 22px"}}>
-                <div style={{fontSize:11,color:Math.abs(diff)>0.01?T.red:T.green,marginBottom:6}}>Avvik</div>
+                <div style={{fontSize:11,color:Math.abs(diff)>0.01?T.red:T.green,marginBottom:6}}>Difference</div>
                 <div style={{fontSize:17,fontWeight:800,color:Math.abs(diff)>0.01?T.red:T.green}}>{fmtBal(diff)}</div>
               </div>
             )}
@@ -4845,7 +4845,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text}}>Bokfør transactions</div>
+              <div style={{fontSize:16,fontWeight:800,color:T.text}}>Post transactions</div>
               <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
             </div>
             <div style={{fontSize:11,color:T.sub,marginBottom:16,lineHeight:1.5}}>{selectedLines.length} line{selectedLines.length===1?"":"s"} selected · {fmtBal(selLinesTotal)} total. Each will post as its own entry against the account you choose{currentAttachment?", with the attached bank statement kept as proof.":"."}</div>
@@ -4854,7 +4854,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <AccDrop value={bulkOffsetCode} onChange={setBulkOffsetCode} accounts={offsetOptions} onCreateAccount={onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined}/>
             </div>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Bokfør"}</button>
+              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Post"}</button>
               <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
             </div>
           </div>
@@ -4887,7 +4887,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
               const selected=selectedTxnIds.has(t.id);
               return(
-                <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",minHeight:58,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
+                <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
                   <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -4940,7 +4940,10 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           {postMenu&&(
             <>
               <div onClick={()=>setPostMenu(null)} style={{position:"fixed",inset:0,zIndex:900}}/>
-              <div style={{position:"fixed",left:postMenu.x,top:postMenu.y,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.18)",zIndex:901,padding:4,minWidth:170}}>
+              {/* Clamped to the viewport — right-clicking near the right or
+                  bottom edge used to render this menu partly off-screen,
+                  cut off by the browser window. */}
+              <div style={{position:"fixed",left:Math.min(postMenu.x,window.innerWidth-190),top:Math.min(postMenu.y,window.innerHeight-60),background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.18)",zIndex:901,padding:4,minWidth:170}}>
                 <button onClick={()=>{setBulkPostOpen(true);setPostMenu(null);}} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"9px 12px",fontSize:11,fontWeight:600,color:T.text,cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>Select account…</button>
               </div>
             </>
@@ -4957,7 +4960,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   className="rr-table-row"
                   onClick={()=>!isMatchedMode&&toggleLineSel(l.id)}
                   onContextMenu={e=>{if(isMatchedMode)return;e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"13px 20px",minHeight:58,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
                   {!isMatchedMode&&<input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/>}
                   {isMatchedMode&&<span style={{width:13}}/>}
                   <div style={{flex:1,minWidth:0}}>
