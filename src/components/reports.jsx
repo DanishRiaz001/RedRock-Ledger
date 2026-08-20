@@ -2371,6 +2371,46 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
   );
 }
 
+// Click-to-jump month/year popover — pairs with a plain "‹ label ›" stepper
+// so someone going from January to August doesn't have to click "›" seven
+// times. Deliberately lighter than PeriodPickerModal (no exact-date-range
+// inputs or presets) since every screen that uses this already tracks a
+// single "viewMonth", not a from/to range — this just gives a fast way to
+// land on any month/year directly instead of only stepping one at a time.
+function MonthYearJump({year,month,onPick}){
+  const[open,setOpen]=useState(false);
+  const[gridYear,setGridYear]=useState(year);
+  useEffect(()=>{if(open)setGridYear(year);},[open,year]);
+  const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return(
+    <div style={{position:"relative"}}>
+      <span onClick={()=>setOpen(o=>!o)} style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4,justifyContent:"center"}}>
+        {MONTH_NAMES[month-1]} {year}
+        <i className="ti ti-chevron-down" style={{fontSize:11,color:T.muted}}/>
+      </span>
+      {open&&(<>
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:598}}/>
+        <div style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 12px 30px rgba(0,0,0,0.16)",zIndex:599,padding:14,width:230}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <button onClick={()=>setGridYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>‹</button>
+            <span style={{fontSize:13,fontWeight:800,color:T.text}}>{gridYear}</span>
+            <button onClick={()=>setGridYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>›</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+            {MONTH_NAMES.map((mName,i)=>{
+              const m=i+1;
+              const isSelected=gridYear===year&&m===month;
+              return(
+                <button key={mName} onClick={()=>{onPick(gridYear,m);setOpen(false);}} style={{background:isSelected?T.accent:T.bg,color:isSelected?"#fff":T.text,border:"none",borderRadius:7,padding:"8px 4px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{mName}</button>
+              );
+            })}
+          </div>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 // Ledger drill-down — matches the Tripletex General Ledger reference: search,
 // account switcher (jump between accounts without closing), All/Open entries
 // toggle, a period picker, and the grouped opening/entries/changes/closing
@@ -3050,7 +3090,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
-            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
+            <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
             <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
           </div>
           <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
@@ -3367,7 +3407,7 @@ function VATReportScreen({invoices,contacts,transactions}){
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
-          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
+          <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
@@ -3820,7 +3860,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
-          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center"}}>{periodLabel}</span>
+          <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
           <button onClick={()=>stepMonth(1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>›</button>
         </div>
         <button onClick={()=>setFullYear(f=>!f)} style={{background:fullYear?T.accent:"none",color:fullYear?"#fff":T.sub,border:`1px solid ${fullYear?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Full year</button>
@@ -5135,7 +5175,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           </div>
           <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
             <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
-            <span style={{fontSize:11,fontWeight:700,color:T.text,minWidth:66,textAlign:"center",whiteSpace:"nowrap"}}>{periodLabel}</span>
+            <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
             <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
           </div>
           <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}}>
@@ -5359,7 +5399,7 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
       <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
           <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>‹</button>
-          <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:110,textAlign:"center"}}>{periodLabel}</span>
+          <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setPeriod(`${y}-${String(m).padStart(2,"0")}`)}/>
           <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.sub}}>›</button>
         </div>
         <div style={{fontSize:12,color:T.sub}}>
