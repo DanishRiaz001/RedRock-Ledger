@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { Root } from "./components/appshell.jsx";
+import { initNativeApp } from "./lib/native.js";
 
 /**
  * This is the real app entry point -- every screen from the original
@@ -7,5 +9,6 @@ import { Root } from "./components/appshell.jsx";
  * (the full screen router) once a user is authenticated.
  */
 export default function App() {
+  useEffect(() => { initNativeApp(); }, []);
   return <Root />;
 }

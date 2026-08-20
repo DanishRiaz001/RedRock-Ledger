@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- user-scalable stays enabled (not "no") on purpose: the iOS app wraps
+         this same desktop-width layout verbatim (no separate mobile build),
+         so pinch-zoom is how a phone-sized screen actually reaches content
+         that's wider than the viewport. Harmless on desktop browsers, which
+         don't have a pinch/double-tap zoom gesture to begin with. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
