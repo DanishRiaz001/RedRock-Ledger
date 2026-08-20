@@ -822,8 +822,14 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
     if(!newComment.trim()||!addEntryComment)return;
     setPostingComment(true);
     const added=await addEntryComment(txn.id,newComment);
-    if(added)setComments(p=>[...p,added]);
-    setNewComment("");
+    if(added&&added.error){
+      alert("Couldn't save your comment:\n\n"+added.error);
+      // Keep the typed text — clearing it here would lose what they wrote
+      // on top of the save already having failed.
+    } else if(added){
+      setComments(p=>[...p,added]);
+      setNewComment("");
+    }
     setPostingComment(false);
   };
 

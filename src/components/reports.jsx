@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, SaveFlashButton } from "./ledger.jsx";
@@ -2623,7 +2623,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   const[filtersOpen,setFiltersOpen]=useState(false);
   const[activeCategories,setActiveCategories]=useState(null); // null = all; Set of SERIES keys otherwise
   const[reportSearch,setReportSearch]=useState("");
-  const[editingAccount,setEditingAccount]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isFullYear=filterFrom.slice(5)==="01-01"&&filterTo.slice(5)==="12-31"&&filterFrom.slice(0,4)===filterTo.slice(0,4);
   const isSingleMonth=filterFrom.slice(8)==="01"&&filterFrom.slice(0,7)===filterTo.slice(0,7)&&filterTo.slice(8)===String(new Date(parseInt(filterTo.slice(0,4)),parseInt(filterTo.slice(5,7)),0).getDate()).padStart(2,"0");
@@ -2696,9 +2695,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       <div style={{paddingBottom:24}}>
         {periodPickerOpen&&(
           <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
-        )}
-        {editingAccount&&onSaveAccounts&&(
-          <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
         )}
         <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 10px"}}>Trial balance</h1>
 
@@ -2776,7 +2772,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
                   title={onOpenLedger?"Open general ledger for this account":undefined}
                   style={{fontSize:11,fontWeight:700,color:onOpenLedger?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:onOpenLedger?"pointer":"default",flex:1}}
                 >{r.code} {r.name}</div>
-                {onSaveAccounts&&<i className="ti ti-pencil" title="Edit account" onClick={()=>setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
               </div>
               <div style={{fontSize:11,textAlign:"right",color:T.text}}>{fmtBal(r.opening)}</div>
               <div
@@ -2798,7 +2793,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
   const[fixedBarHeight,setFixedBarHeight]=useState(160);
   const fixedBarRef=React.useRef(null);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
   });
 
@@ -2807,10 +2802,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       {periodPickerOpen&&(
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
-      {editingAccount&&onSaveAccounts&&(
-        <AccountEditModal account={editingAccount} accounts={accounts} onSaveAccounts={onSaveAccounts} onClose={()=>setEditingAccount(null)}/>
-      )}
-
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
       <div ref={fixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
@@ -2888,7 +2879,6 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
                     onClick={()=>{if(!onOpenLedger)return;const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};onOpenLedger(acct,filterFrom,filterTo);}}
                     style={{color:onOpenLedger?T.accent:T.text,fontWeight:600,cursor:onOpenLedger?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
                   >{r.code} {r.name}</span>
-                  {onSaveAccounts&&<i className="ti ti-pencil" title="Edit account" onClick={()=>setEditingAccount(accounts.find(a=>a.code===r.code))} style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                 </div>
               </td>
               <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmtBal(r.opening)}</td>
@@ -3059,7 +3049,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
 
   const[fixedBarHeight,setFixedBarHeight]=useState(140);
   const fixedBarRef=React.useRef(null);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
   });
 
@@ -3262,7 +3252,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
 
   const[fixedBarHeight,setFixedBarHeight]=useState(120);
   const fixedBarRef=React.useRef(null);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(isDesktop&&fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
   });
 
@@ -4021,11 +4011,11 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:10}}>
             {bankAccounts.map(a=>{
               const details=bankDetailsFor(a);
               return(
-              <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",flex:"1 1 160px",position:"relative"}}>
+              <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",minHeight:76,display:"flex",flexDirection:"column",justifyContent:"center",position:"relative"}}>
                 <div onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{cursor:"pointer"}}>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
                   <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
@@ -5145,7 +5135,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   const[fixedBarHeight,setFixedBarHeight]=useState(160);
   const fixedBarRef=React.useRef(null);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
   });
 

@@ -1656,7 +1656,11 @@ const addEntryComment=async(txnId,body,booksUserId)=>{
   if(!body||!body.trim())return null;
   const c=getCid();
   const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),...(c?{company_id:c}:{}),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
-  if(error){console.error("Add comment error:",error);return null;}
+  // Used to swallow the error and just return null — the comment box would
+  // clear and look like it posted, with zero indication the save actually
+  // failed. Returning the error lets the caller keep the typed text and
+  // tell the user, instead of silently losing what they wrote.
+  if(error){console.error("Add comment error:",error);return{error:error.message};}
   return{id:data.id,authorId:data.author_id,body:data.body,createdAt:data.created_at};
 };
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
