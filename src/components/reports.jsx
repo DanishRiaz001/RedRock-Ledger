@@ -2762,17 +2762,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
           {rows.map(r=>(
             <div key={r.code} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,alignItems:"center",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 8px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:5,overflow:"hidden"}}>
-                <div
-                  onClick={()=>{
-                    if(!onOpenLedger)return;
-                    const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};
-                    onOpenLedger(acct,filterFrom,filterTo);
-                  }}
-                  title={onOpenLedger?"Open general ledger for this account":undefined}
-                  style={{fontSize:11,fontWeight:700,color:onOpenLedger?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:onOpenLedger?"pointer":"default",flex:1}}
-                >{r.code} {r.name}</div>
-              </div>
+              <div title={`${r.code} ${r.name}`} style={{fontSize:11,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</div>
               <div style={{fontSize:11,textAlign:"right",color:T.text}}>{fmtBal(r.opening)}</div>
               <div
                 onClick={()=>{
@@ -2851,7 +2841,8 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             rendered right here so it's physically attached to the filter bar
             with zero gap, instead of being a second sticky element guessing
             a pixel offset to line up underneath. */}
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed",marginTop:8,background:"#fff",borderRadius:"12px 12px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+        <div style={{marginTop:8,background:"#fff",borderRadius:"12px 12px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
           <colgroup>{colWidthsPct.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
           <tbody><tr style={{color:T.sub,background:T.bg}}>
             <td style={{padding:"11px 14px",fontWeight:700,position:"relative"}}>Account<ResizeHandle idx={0}/></td>
@@ -2860,6 +2851,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <td style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</td>
           </tr></tbody>
         </table>
+        </div>
       </div>
       <div style={{height:fixedBarHeight}}/>
 
@@ -2873,14 +2865,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <tbody>
           {rows.map(r=>(
             <tr key={r.code} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-              <td title={onOpenLedger?`Open general ledger for ${r.code} ${r.name}`:`${r.code} ${r.name}`} style={{padding:"11px 14px",maxWidth:280}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,overflow:"hidden"}}>
-                  <span
-                    onClick={()=>{if(!onOpenLedger)return;const acct=accounts.find(a=>a.code===r.code)||{code:r.code,name:r.name};onOpenLedger(acct,filterFrom,filterTo);}}
-                    style={{color:onOpenLedger?T.accent:T.text,fontWeight:600,cursor:onOpenLedger?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
-                  >{r.code} {r.name}</span>
-                </div>
-              </td>
+              <td title={`${r.code} ${r.name}`} style={{padding:"11px 14px",maxWidth:280,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.code} {r.name}</td>
               <td style={{textAlign:"right",padding:"11px 14px",color:T.text}}>{fmtBal(r.opening)}</td>
               <td
                 onClick={()=>{
