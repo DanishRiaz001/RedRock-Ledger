@@ -213,8 +213,16 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
           <i className="ti ti-chevron-left" style={{fontSize:12,transform:"rotate(90deg)"}}/>{expandLabel}
         </div>
       ):(<>
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:8,alignSelf:"stretch",cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:overlapping?61:"auto"}}>
-          <div style={{width:3,height:40,borderRadius:2,background:overlapping?"#FF5A1F":"#E4EDED"}}/>
+        {/* Widened from 8px and given a permanently-visible (not just
+            hover) grip strip — it used to be thin and easy to miss
+            entirely, which meant a drag attempt often landed on the
+            "Hide attachment" tab instead (they used to overlap the same
+            few pixels at the seam), instantly collapsing the panel to the
+            screen edge instead of resizing it. The tab below is now offset
+            clear of this handle's own width so the two can't compete for
+            the same click. */}
+        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,alignSelf:"stretch",cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:overlapping?61:62,background:"#F5F9FA"}}>
+          <div style={{width:4,height:44,borderRadius:2,background:overlapping?"#FF5A1F":"#C9D6D6"}}/>
         </div>
         <div style={overlapping?{
           // Overlap mode: anchored to the actual right edge of the viewport
@@ -227,7 +235,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
         }:{width:rightWidth,flexShrink:0,minWidth:minRightWidth,position:"relative"}}>
           {right}
           {collapsible&&(
-            <div onClick={()=>setCollapsed(true)} title={collapseLabel} style={{position:"absolute",left:-1,top:16,transform:"translateX(-100%)",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",writingMode:"vertical-rl",display:"flex",alignItems:"center",gap:6,userSelect:"none",whiteSpace:"nowrap"}}>
+            <div onClick={()=>setCollapsed(true)} title={collapseLabel} style={{position:"absolute",left:-15,top:70,transform:"translateX(-100%)",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",writingMode:"vertical-rl",display:"flex",alignItems:"center",gap:6,userSelect:"none",whiteSpace:"nowrap",zIndex:59}}>
               <i className="ti ti-chevron-right" style={{fontSize:12,transform:"rotate(90deg)"}}/>{collapseLabel}
             </div>
           )}
