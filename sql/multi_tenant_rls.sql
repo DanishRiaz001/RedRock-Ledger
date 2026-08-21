@@ -56,8 +56,15 @@ returns boolean language sql stable as $$
   select rr_access_level(target_user_id) = 'full';
 $$;
 
+-- SECURITY DEFINER is required here (not just stylistic) — without it, this
+-- function's own query against `profiles` re-triggers profiles' RLS policies
+-- (which call rr_is_admin() to decide access), causing infinite recursion
+-- (Postgres 42P17). Learned this the hard way once already; if this file is
+-- ever re-run after that fix, plain `create or replace` would silently
+-- overwrite the corrected version with this buggy one again — hence the
+-- comment, not just the fix.
 create or replace function rr_is_admin()
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path to 'public' as $$
   select coalesce((select is_admin from profiles where id = auth.uid()), false);
 $$;
 
