@@ -5401,7 +5401,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           reported here. Sticky needs no measured spacer div either. */}
       <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{maxWidth:1000}}>
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap"}}>
+        <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
             <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
