@@ -5015,11 +5015,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const readyToBokfor=selectedLines.length>0&&!selectedTxnsArr.length;
         return(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:16}}>
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"18px 22px"}}>
+            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 22px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
               <div style={{fontSize:11,color:T.sub,marginBottom:6}}>Entered in ledger{selectedTxnsArr.length>0&&<span style={{color:T.accent,fontWeight:700}}> · {selectedTxnsArr.length} selected</span>}</div>
               <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmtBal(card1Value)}</div>
             </div>
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 22px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:6}}>{selectedLines.length>0?<span style={{color:T.accent,fontWeight:700}}>Selected · {selectedLines.length}</span>:"From bank statement"}</div>
                 <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmtBal(card2Value)}</div>
@@ -5079,7 +5079,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const matchingGrid=(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             {/* From bank statement */}
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
               <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontSize:11,fontWeight:700,color:T.text}}>From bank statement</div>
                 <div style={{fontSize:11,color:T.muted}}>{matchedLines.length} matched</div>
@@ -5145,7 +5145,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
 
             {/* Entered in ledger */}
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
               <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
                 <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
