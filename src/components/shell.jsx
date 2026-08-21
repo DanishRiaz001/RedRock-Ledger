@@ -146,12 +146,12 @@ function SignedFileViewer({storagePath,type,name,style}){
         <div style={{marginTop:8,background:"#F7F8FA",border:"1px solid #E8ECF0",borderRadius:8,padding:10,flexShrink:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
             <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,textTransform:"uppercase"}}>Extracted text</div>
-            <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:"#FF5A1F",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
+            <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
           </div>
           <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
         </div>
       ):(
-        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:"#FF5A1F",cursor:extracting?"wait":"pointer",fontFamily:"inherit",flexShrink:0}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
+        <button onClick={extractText} disabled={extracting} style={{marginTop:8,background:"none",border:"1px solid #E8ECF0",borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:extracting?"wait":"pointer",fontFamily:"inherit",flexShrink:0}}>{extracting?"Reading text…":"📋 Extract text from image"}</button>
       )}
     </div>
   );
@@ -222,7 +222,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             clear of this handle's own width so the two can't compete for
             the same click. */}
         <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,alignSelf:"stretch",cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:overlapping?61:62,background:"#F5F9FA"}}>
-          <div style={{width:4,height:44,borderRadius:2,background:overlapping?"#FF5A1F":"#C9D6D6"}}/>
+          <div style={{width:4,height:44,borderRadius:2,background:overlapping?T.accent:"#C9D6D6"}}/>
         </div>
         <div style={overlapping?{
           // Overlap mode: anchored to the actual right edge of the viewport
@@ -354,7 +354,7 @@ function LoginScreen({onLogin}){
         <img src={LOGO_FULL_B64} style={{width:220,marginBottom:24,objectFit:"contain"}}/>
         <div style={{fontSize:16,fontWeight:800,marginBottom:8,color:"#0F172A"}}>{mode==="signup"?"Check your email":"Reset link sent"}</div>
         <div style={{fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.6}}>{mode==="signup"?`We sent a confirmation link. Click it, then come back to sign in. This app is invite-only, so an admin still needs to approve your account before you'll see any data — contact ${SUPPORT_EMAIL} if you're in a hurry.`:"Check your email for a reset link."}</div>
-        <button style={{background:"linear-gradient(135deg,#FF5A1F,#E04810)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
+        <button style={{background:T.accentGradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:700,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit"}} onClick={()=>{setDone(false);setMode("login");}}>Back to Sign In</button>
       </div>
     </div>
   );
@@ -389,7 +389,7 @@ function LoginScreen({onLogin}){
           <button
             onClick={handle}
             disabled={loading}
-            style={{background:"linear-gradient(135deg,#FF5A1F,#E04810)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:800,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:14,opacity:loading?0.7:1}}
+            style={{background:T.accentGradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontWeight:800,fontSize:14,cursor:"pointer",width:"100%",fontFamily:"inherit",marginBottom:14,opacity:loading?0.7:1}}
           >
             {loading?"...":{login:"Sign In",signup:"Create Account",forgot:"Send Reset Link"}[mode]}
           </button>

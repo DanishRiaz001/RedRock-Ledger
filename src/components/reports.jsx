@@ -2691,7 +2691,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <thead><tr><th>Date</th><th>Closed</th><th>Voucher</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
     </body></html>`);
     w.document.close();
   };
@@ -5312,7 +5312,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <tbody>${rows}</tbody>
         <tfoot><tr class="total-row"><td colspan="4">Total outstanding</td><td style="text-align:right">${fmt(total)}</td></tr></tfoot>
       </table>
-      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
     </body></html>`);
     w.document.close();
   };

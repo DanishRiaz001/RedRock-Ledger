@@ -1266,11 +1266,11 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   const exportLedgerPDF=()=>{
     const w=window.open("","_blank");
     let rows=allRows.map(r=>`<tr><td>${r.date}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</td><td style="text-align:right">${sign(r.balance)}</td></tr>`).join("");
-    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:#FF5A1F;color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
+    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:${T.accent};color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
     <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Period: ${from} → ${to}</p>
     <table><thead><tr><th>Date</th><th>Ref No</th><th>Description</th><th style="text-align:right">Movement</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="foot"><div><div class="lbl">Opening</div><div class="val">${sign(openingBal)}</div></div><div><div class="lbl">Period</div><div class="val">${sign(periodMovement)}</div></div><div><div class="lbl">Closing</div><div class="val">${sign(closingBal)}</div></div></div>
-    <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#FF5A1F;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+    <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:${T.accent};color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
     </body></html>`);
     w.document.close();setTimeout(()=>w.print(),400);
   };
@@ -1285,7 +1285,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     const blocks=items.map((r,i)=>`
       <div style="border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px;${i>0?"page-break-inside:avoid;":""}">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-weight:bold;color:#FF5A1F">${fmtB(r.bilag)}</span>
+          <span style="font-weight:bold;color:${T.accent}">${fmtB(r.bilag)}</span>
           <span style="color:#888;font-size:11px">${r.date}</span>
         </div>
         <div style="font-size:13px;margin-bottom:6px">${r.description}</div>
@@ -1298,7 +1298,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
       <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Merged export of ${items.length} selected entries</p>
       ${blocks}
       <div style="display:flex;justify-content:space-between;padding:12px 16px;background:#f0f0f0;border-radius:8px;font-weight:bold"><span>Total</span><span>${sign(total)}</span></div>
-      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:#FF5A1F;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
+      <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:${T.accent};color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
       </body></html>`);
     w.document.close();setTimeout(()=>w.print(),400);
   };
@@ -1609,7 +1609,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
                 <div style={{background:"#fff",border:"1px solid #E8ECF0",borderRadius:8,padding:10}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                     <div style={{fontSize:10,color:"#9CA3AF",fontWeight:700,textTransform:"uppercase"}}>Extracted text</div>
-                    <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:"#FF5A1F",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
+                    <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(extractedText)} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Copy</button>
                   </div>
                   <textarea readOnly value={extractedText} onClick={e=>e.target.select()} style={{width:"100%",minHeight:80,maxHeight:160,fontSize:12,fontFamily:"inherit",border:"none",background:"transparent",resize:"vertical",color:"#111827"}}/>
                 </div>

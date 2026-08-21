@@ -2529,7 +2529,7 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
         <tr class="total-row"><td>Net pay</td><td style="text-align:right">${fmt(line.netPay)}</td></tr>
       </table>
       <p style="font-size:10px;color:#999;margin-top:20px;">No statutory tax withholding is calculated automatically — gross pay only.</p>
-      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:#FF5A1F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+      <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
     </body></html>`);
     w.document.close();
   };
