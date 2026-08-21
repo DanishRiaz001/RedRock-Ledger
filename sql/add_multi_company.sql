@@ -58,7 +58,16 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM companies WHERE owner_user_id = u) THEN
       INSERT INTO companies (owner_user_id, name) VALUES (u, 'Default Company') RETURNING id INTO new_company_id;
       FOREACH t IN ARRAY tables LOOP
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t) THEN
+        -- client_access doesn't have a user_id column (it has
+        -- employee_user_id/client_user_id instead) — without this check,
+        -- the dynamic UPDATE below throws "column user_id does not exist"
+        -- the first time this loop reaches it and aborts the whole
+        -- migration partway through, silently leaving later users
+        -- un-backfilled.
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = t AND column_name = 'user_id'
+        ) THEN
           EXECUTE format('UPDATE %I SET company_id = $1 WHERE user_id = $2 AND company_id IS NULL', t)
             USING new_company_id, u;
         END IF;
