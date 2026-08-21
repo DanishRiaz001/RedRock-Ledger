@@ -17,6 +17,30 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
   const[highlightCode,setHighlightCode]=useState(null); // briefly flash a just-created account so it's obvious it landed
   const[showDupes,setShowDupes]=useState(false);
   const[merging,setMerging]=useState(null);
+  const[showResetDefaults,setShowResetDefaults]=useState(false);
+  const[resettingDefaults,setResettingDefaults]=useState(false);
+
+  // Restores every standard NS 4102 account's name back to the canonical
+  // one (in case it was renamed or accidentally edited) and adds back any
+  // standard account that was deleted — without touching accounts that
+  // aren't part of the standard chart (a client's own custom additions
+  // stay exactly as they are) and without ever deleting anything, so no
+  // transaction ever loses the account it posted against.
+  const resetToNSDefaults=async()=>{
+    setResettingDefaults(true);
+    const defaultByCode=new Map(DEFAULT_ACCOUNTS.map(d=>[d.code,d]));
+    const currentCodes=new Set(list.map(a=>a.code));
+    const restored=list.map(a=>{
+      const d=defaultByCode.get(a.code);
+      return d?{...a,name:d.name}:a;
+    });
+    const missing=DEFAULT_ACCOUNTS.filter(d=>!currentCodes.has(d.code));
+    const merged=[...restored,...missing].sort((a,b)=>a.code.localeCompare(b.code));
+    setList(merged);
+    await onSave(merged);
+    setResettingDefaults(false);
+    setShowResetDefaults(false);
+  };
 
   // Duplicate detection — real duplicates in a live chart of accounts almost
   // never share the exact same code (the system usually prevents that); they
@@ -371,6 +395,22 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
         </div>
         {viewingCode&&<AccountModal key={viewingCode} account={list.find(a=>a.code===viewingCode)} filtered={filtered} editForm={editForm} setEditForm={setEditForm} saveEdit={saveEdit} onClose={closeAccount} onGoAdjacent={dir=>{const idx=filtered.findIndex(a=>a.code===viewingCode);const next=filtered[idx+dir];if(next)openAccount(next.code);}} hasTxns={hasTxns} deleteAcc={(code)=>{const ri=list.findIndex(a=>a.code===code);deleteAcc(ri);closeAccount();}} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>}
         {showNew&&<NewAccountModal existingCodes={new Set(list.map(a=>a.code))} initialCode={orphanPrefill} onCreate={createAccount} onClose={()=>{setShowNew(false);setOrphanPrefill(null);}}/>}
+        {showResetDefaults&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!resettingDefaults&&setShowResetDefaults(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Reset to NS 4102 defaults?</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:18,lineHeight:1.6}}>
+                This restores the standard name on every NS 4102 account (undoing any renames) and adds back any standard account that was removed.
+                <br/><br/>
+                It will <b>not</b> delete any account you added yourself, and it will never remove an account that has transactions posted against it.
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={resetToNSDefaults} disabled={resettingDefaults} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:resettingDefaults?"wait":"pointer",fontFamily:"inherit"}}>{resettingDefaults?"Resetting…":"Reset to defaults"}</button>
+                <button onClick={()=>setShowResetDefaults(false)} disabled={resettingDefaults} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -381,6 +421,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Account plan</h1>
           <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowResetDefaults(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>
             <button onClick={()=>{
               const aoa=[["Code","Name","Matchable"],...list.map(a=>[a.code,a.name,a.matchable?"yes":"no"])];
               const wb=XLSX.utils.book_new();
