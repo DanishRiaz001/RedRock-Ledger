@@ -181,7 +181,7 @@ function AccountingSettingsScreen({onNavigate}){
   return(
     <div style={{maxWidth:800}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Accounting settings</h1>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+      <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
         {[
           {icon:"ti-lock",label:"Period close",desc:"Lock past periods against further edits",action:()=>onNavigate&&onNavigate("Settings")},
           {icon:"ti-calendar",label:"Fiscal year",desc:"Set which month your fiscal year starts",action:()=>onNavigate&&onNavigate("CompanyInfo")},

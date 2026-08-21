@@ -3061,7 +3061,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       {/* Sticky, not fixed — see the table header below for why this is now
           a single-table structure instead of a duplicated shadow header. */}
       <div ref={fixedBarRef} style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:10,padding:"8px 10px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
               <i className="ti ti-filter" style={{fontSize:14,color:T.sub}}/>

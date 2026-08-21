@@ -4037,7 +4037,7 @@ function ReportsHubScreen({onNavigate}){
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 20px"}}>Reports</h1>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         {categories.map(cat=>(
-          <div key={cat.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+          <div key={cat.label} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:20,boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
               <i className={`ti ${cat.icon}`} style={{fontSize:16,color:T.accent}}/>
               <span style={{fontSize:14,fontWeight:800,color:T.text}}>{cat.label}</span>
