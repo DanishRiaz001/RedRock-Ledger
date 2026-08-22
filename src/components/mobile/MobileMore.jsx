@@ -37,7 +37,7 @@ export default function MobileMore(props){
 
   if(screen==="trialbalance"){
     if(tbLedger)return(
-      <MobileLedger account={tbLedger} transactions={transactions} onClose={()=>setTbLedger(null)}
+      <MobileLedger account={tbLedger} accounts={accounts} transactions={transactions} onClose={()=>setTbLedger(null)}
         onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile}/>
     );
     return(

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { T, getSK } from "../../lib/theme.js";
 import { sign, fmtBal } from "../ledger.jsx";
+import { BANK_COLORS } from "./mobileConstants.js";
 
 const QUICK_ACCESS=[
   {label:"Budget",icon:"ti-report-money",overlay:"Budget",bg:"rgba(180,116,14,0.12)",fg:"#B4740E"},
@@ -26,6 +27,9 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
     return income-expense;
   },[transactions]);
   const cashChangePct=cashPrev?Math.round(((cashNow-cashPrev)/Math.abs(cashPrev))*1000)/10:0;
+  const ringTotal=Math.abs(cashNow)+Math.abs(arNow)+Math.abs(apNow)||1;
+  const cashPct=Math.abs(cashNow)/ringTotal*100;
+  const arPct=Math.abs(arNow)/ringTotal*100;
 
   const banks=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const bankBal=(code)=>balAt(code,today);
@@ -56,14 +60,37 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
           <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Total cash & bank</div>
           <div style={{fontSize:36,fontWeight:800,color:"#fff",marginTop:4,letterSpacing:-0.5}}>{fmtBal(cashNow)}</div>
         </div>
-        {/* Floating glass stat strip */}
-        <div style={{position:"absolute",left:20,right:20,bottom:-34,zIndex:2,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:16,display:"flex",boxShadow:"0 20px 40px rgba(13,148,136,0.18)"}}>
-          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Receivable</div><div style={{fontSize:14.5,fontWeight:800,color:"#0F2A26",marginTop:3}}>{fmtBal(arNow)}</div></div>
-          <div style={{width:1,background:"rgba(13,148,136,0.15)"}}/>
-          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Payable</div><div style={{fontSize:14.5,fontWeight:800,color:"#0F2A26",marginTop:3}}>{fmtBal(apNow)}</div></div>
-          <div style={{width:1,background:"rgba(13,148,136,0.15)"}}/>
-          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Net profit</div><div style={{fontSize:14.5,fontWeight:800,color:netProfit>=0?"#0D9488":"#E14848",marginTop:3}}>{sign(netProfit)}</div></div>
+        {/* Floating glass breakdown card — a donut of Cash/Receivable/Payable
+            proportions next to a legend, replacing the old flat 3-column
+            stat row so the balance mix reads at a glance, not just as
+            three unrelated numbers. */}
+        <div style={{position:"absolute",left:20,right:20,bottom:-40,zIndex:2,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:16,display:"flex",alignItems:"center",gap:16,boxShadow:"0 20px 40px rgba(13,148,136,0.18)"}}>
+          <div style={{width:64,height:64,borderRadius:"50%",flexShrink:0,background:`conic-gradient(#0D9488 0% ${cashPct}%, #2461D9 ${cashPct}% ${cashPct+arPct}%, #FF6B4A ${cashPct+arPct}% 100%)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{width:42,height:42,borderRadius:"50%",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <i className="ti ti-wallet" style={{fontSize:16,color:"#0D9488"}}/>
+            </div>
+          </div>
+          <div style={{flex:1,display:"flex",flexDirection:"column",gap:7}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#0D9488"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Cash</span></div>
+              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(cashNow)}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#2461D9"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Receivable</span></div>
+              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(arNow)}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#FF6B4A"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Payable</span></div>
+              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(apNow)}</span>
+            </div>
+          </div>
         </div>
+      </div>
+      {/* Net profit callout — was folded into the stat strip above; now its
+          own small row so the breakdown card stays legible. */}
+      <div style={{padding:"0 20px",marginTop:44,marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:11.5,color:"#5C6B73",fontWeight:600}}>Net profit this year</span>
+        <span style={{fontSize:14,fontWeight:800,color:netProfit>=0?"#0D9488":"#E14848"}}>{sign(netProfit)}</span>
       </div>
 
       {/* Quick access grid */}
@@ -87,15 +114,17 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
             <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A"}}>Your accounts</div>
             <div onClick={()=>onNavigate("Bank")} style={{fontSize:11.5,color:T.accent,fontWeight:700}}>See all</div>
           </div>
-          <div style={{display:"flex",gap:12,overflowX:"auto",padding:"0 20px",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch"}}>
-            {banks.map(b=>{
+          <div style={{display:"flex",gap:10,overflowX:"auto",padding:"0 20px",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch"}}>
+            {banks.map((b,i)=>{
               const bal=bankBal(b.code);
+              const c=BANK_COLORS[i%BANK_COLORS.length];
               return(
-                <div key={b.code} onClick={()=>onOpenOverlay({type:"Ledger",account:b})} style={{scrollSnapAlign:"start",flexShrink:0,width:220,background:"linear-gradient(135deg,#0F2A26,#0D9488)",borderRadius:20,padding:18,color:"#fff"}}>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:700,letterSpacing:0.3,textTransform:"uppercase"}}>{b.code}</div>
-                  <div style={{fontSize:13,fontWeight:700,marginTop:2,marginBottom:20,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:600}}>Balance</div>
-                  <div style={{fontSize:19,fontWeight:800,marginTop:2}}>{fmtBal(bal)}</div>
+                <div key={b.code} onClick={()=>onOpenOverlay({type:"Ledger",account:b})} style={{scrollSnapAlign:"start",flexShrink:0,width:158,background:"#fff",borderRadius:17,padding:13,boxShadow:"0 2px 12px rgba(20,40,50,0.06)",border:`1px solid ${T.border}`}}>
+                  <div style={{width:28,height:28,borderRadius:9,background:c.bg,color:c.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:11}}><i className="ti ti-building-bank" style={{fontSize:13}}/></div>
+                  <div style={{fontSize:8.5,color:"#98A2B3",fontWeight:700,letterSpacing:0.3,textTransform:"uppercase"}}>{b.code}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#0F172A",marginTop:2,marginBottom:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
+                  <div style={{fontSize:8.5,color:"#98A2B3",fontWeight:600}}>Balance</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#0F172A",marginTop:2}}>{fmtBal(bal)}</div>
                 </div>
               );
             })}

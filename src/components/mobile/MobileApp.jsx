@@ -100,7 +100,7 @@ export default function MobileApp(props){
       )}
 
       {overlay&&overlay.type==="Ledger"&&(
-        <MobileLedger account={overlay.account} transactions={props.transactions}
+        <MobileLedger account={overlay.account} accounts={props.accounts} transactions={props.transactions}
           onClose={()=>setOverlay(null)} onDeleteTxn={props.deleteTxn} onReverseTxn={props.reverseTransaction}
           inboxFiles={props.inboxFiles} uploadInboxFile={props.uploadInboxFile}/>
       )}

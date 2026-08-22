@@ -20,9 +20,23 @@ export async function initNativeApp() {
     // Not fatal — some devices/OS versions restrict status bar color control.
   }
   try {
-    await Keyboard.setResizeMode({ mode: "body" });
+    // Must match capacitor.config.json's Keyboard.resize — "body" here
+    // fights the app's own position:fixed layout (and contentInset:"never"),
+    // producing a permanently mis-scaled/zoomed page after the keyboard is
+    // used once. "native" lets iOS handle keyboard avoidance without
+    // resizing the webview itself.
+    await Keyboard.setResizeMode({ mode: "native" });
   } catch {
     // Keyboard plugin may be unavailable on some platforms — safe to skip.
+  }
+  // The native mobile UI is a fixed single-column layout, not a pinch-zoom
+  // desktop-width one — a stray pinch/double-tap on a real device sends the
+  // whole page into a permanently zoomed state (content overflowing off
+  // both edges) since the shared viewport meta still allows scaling for the
+  // website's benefit. Lock it down only inside the native app.
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) {
+    viewport.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
   }
   // Give the first paint a moment before dropping the launch screen so the
   // user never sees a blank white flash between splash and real content.

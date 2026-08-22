@@ -32,18 +32,12 @@ export default function MobileAnalytics({accounts,transactions}){
   const totalIncome=income.reduce((s,r)=>s+r.amt,0);
   const totalExpense=expense.reduce((s,r)=>s+r.amt,0);
   const net=totalIncome-totalExpense;
-  const maxIncome=Math.max(1,...income.map(r=>r.amt));
-  const maxExpense=Math.max(1,...expense.map(r=>r.amt));
 
-  const Row=({r,max,color,bg})=>(
-    <div style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-        <div style={{fontSize:12.5,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:10}}>{r.name}</div>
-        <div style={{fontSize:12.5,fontWeight:800,color,flexShrink:0}}>{fmtBal(r.amt)}</div>
-      </div>
-      <div style={{height:5,background:bg,borderRadius:3,overflow:"hidden"}}>
-        <div style={{height:"100%",width:`${Math.max(4,(r.amt/max)*100)}%`,background:color,borderRadius:3}}/>
-      </div>
+  const Row=({r,color,dot})=>(
+    <div style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:13,padding:"12px 14px",marginBottom:7}}>
+      <div style={{width:8,height:8,borderRadius:"50%",background:dot,flexShrink:0}}/>
+      <div style={{flex:1,fontSize:12.5,fontWeight:600,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+      <div style={{fontSize:13,fontWeight:800,color,flexShrink:0}}>{fmtBal(r.amt)}</div>
     </div>
   );
 
@@ -70,13 +64,21 @@ export default function MobileAnalytics({accounts,transactions}){
         </div>
       </div>
 
-      <div style={{fontSize:13.5,fontWeight:800,color:"#0F172A",marginBottom:10}}>Income by account</div>
-      {income.map(r=><Row key={r.code} r={r} max={maxIncome} color="#0E9F6E" bg="rgba(14,159,110,0.12)"/>)}
-      {!income.length&&<div style={{textAlign:"center",padding:"16px 0",color:"#98A2B3",fontSize:12}}>No income this period.</div>}
+      <div style={{background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(20,40,50,0.05)",marginBottom:20}}>
+        <div style={{fontSize:11,fontWeight:800,color:"#8A93A3",textTransform:"uppercase",letterSpacing:0.4,padding:"14px 14px 6px"}}>Income by account</div>
+        <div style={{padding:"0 8px 8px"}}>
+          {income.map(r=><Row key={r.code} r={r} color="#0E9F6E" dot="#0E9F6E"/>)}
+          {!income.length&&<div style={{textAlign:"center",padding:"16px 0",color:"#98A2B3",fontSize:12}}>No income this period.</div>}
+        </div>
+      </div>
 
-      <div style={{fontSize:13.5,fontWeight:800,color:"#0F172A",margin:"20px 0 10px"}}>Expenses by account</div>
-      {expense.map(r=><Row key={r.code} r={r} max={maxExpense} color="#E14848" bg="rgba(225,72,72,0.1)"/>)}
-      {!expense.length&&<div style={{textAlign:"center",padding:"16px 0",color:"#98A2B3",fontSize:12}}>No expenses this period.</div>}
+      <div style={{background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
+        <div style={{fontSize:11,fontWeight:800,color:"#8A93A3",textTransform:"uppercase",letterSpacing:0.4,padding:"14px 14px 6px"}}>Expenses by account</div>
+        <div style={{padding:"0 8px 8px"}}>
+          {expense.map(r=><Row key={r.code} r={r} color="#E14848" dot="#E14848"/>)}
+          {!expense.length&&<div style={{textAlign:"center",padding:"16px 0",color:"#98A2B3",fontSize:12}}>No expenses this period.</div>}
+        </div>
+      </div>
     </div>
   );
 }

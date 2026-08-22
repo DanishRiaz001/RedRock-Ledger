@@ -5,7 +5,8 @@ import { fmtB } from "../../lib/utils.js";
 import { SignedFileViewer } from "../shell.jsx";
 import MobileScreen from "./MobileScreen.jsx";
 
-export default function MobileLedger({account,transactions,onClose,onDeleteTxn,onReverseTxn,inboxFiles=[],uploadInboxFile}){
+export default function MobileLedger({account,accounts=[],transactions,onClose,onDeleteTxn,onReverseTxn,inboxFiles=[],uploadInboxFile}){
+  const getName=code=>{const a=accounts.find(x=>x.code===code);return a?`${code} · ${a.name}`:code;};
   const now=new Date();
   const[year,setYear]=useState(now.getFullYear());
   const[month,setMonth]=useState(now.getMonth());
@@ -100,6 +101,14 @@ export default function MobileLedger({account,transactions,onClose,onDeleteTxn,o
             <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:`1px solid ${T.border}`}}>
               <div style={{fontSize:12,color:"#8A93A3"}}>Amount</div>
               <div style={{fontSize:13,fontWeight:800,color:"#0F172A"}}>{fmtBal(detail.amount)}</div>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:`1px solid ${T.border}`}}>
+              <div style={{fontSize:12,color:"#8A93A3"}}>Debit</div>
+              <div style={{fontSize:12.5,fontWeight:700,color:"#0F172A",textAlign:"right",marginLeft:16}}>{getName(detail.debitCode)}</div>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:`1px solid ${T.border}`}}>
+              <div style={{fontSize:12,color:"#8A93A3"}}>Credit</div>
+              <div style={{fontSize:12.5,fontWeight:700,color:"#0F172A",textAlign:"right",marginLeft:16}}>{getName(detail.creditCode)}</div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:16}}>
               <div onClick={()=>{onReverseTxn(detail);setDetail(null);}} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,border:`1px solid ${T.border}`,color:"#5C6B73",fontWeight:700,fontSize:13}}>Reverse</div>
