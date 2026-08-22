@@ -74,12 +74,35 @@ function AppShell({user}){
         // than showing an empty "no companies" screen on login. Their
         // existing data was already backfilled onto a matching row by the
         // SQL migration, so this only fires for genuinely brand-new users.
-        const{data:created}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:"My Company"}).select().single();
+        const{data:created,error:createErr}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:"My Company"}).select().single();
         if(created)list=[created];
+        else if(createErr){
+          // This used to fail silently — the insert's error was never even
+          // read. If it fails (an RLS denial, a constraint issue, anything),
+          // list stays empty, activeCompanyId never gets set, and the whole
+          // app hangs on the loading screen forever with zero indication
+          // why. Falling back to the same "no company scoping" sentinel
+          // used above means the app still loads (unscoped, matching
+          // pre-multi-company behavior) instead of hanging silently.
+          console.error("Couldn't auto-create a company for this user:",createErr.message);
+          setCompanies([]);
+          setActiveCompanyId("__no_company_scoping__");
+          setCompaniesLoading(false);
+          return;
+        }
       }
       setCompanies(list);
       const stillValid=activeCompanyId&&list.some(c=>c.id===activeCompanyId);
       if(!stillValid&&list.length)setActiveCompanyId(list[0].id);
+      else if(!list.length)setActiveCompanyId("__no_company_scoping__"); // never leave it null — that's what hangs the app
+      setCompaniesLoading(false);
+    }).catch(err=>{
+      // Same missing-.catch() gap as the main data effect — a genuine
+      // network failure here (not a Postgrest {error} field, an actual
+      // rejected promise) used to leave activeCompanyId null forever too.
+      console.error("Companies fetch failed:",err);
+      setCompanies([]);
+      setActiveCompanyId("__no_company_scoping__");
       setCompaniesLoading(false);
     });
   },[viewingUserId]);
@@ -143,6 +166,8 @@ function AppShell({user}){
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
   const[loading,setLoading]=useState(true);
+  const[loadError,setLoadError]=useState(null);
+  const[loadRetryCount,setLoadRetryCount]=useState(0);
 
   useEffect(()=>{
     sb.from("profiles").select("*").eq("id",user.id).single().then(({data})=>{
@@ -203,7 +228,14 @@ function AppShell({user}){
   useEffect(()=>{
     if(!activeCompanyId)return; // don't fetch until we know which company's data to load
     setLoading(true);
-    Promise.all([
+    setLoadError(null);
+    // A 25s timeout on top of the .catch() below — covers the other failure
+    // mode where a query never resolves OR rejects (a genuinely stuck
+    // connection), which .catch() alone can't catch since nothing ever
+    // fires. Without this, that specific case still hangs on "Welcome"
+    // forever with no way to know why.
+    const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("Loading timed out after 25 seconds — check your connection and try again.")),25000));
+    Promise.race([Promise.all([
       scoped(sb.from("accounts").select("*").eq("user_id",viewingUserId)).order("code"),
       scoped(sb.from("contacts").select("*").eq("user_id",viewingUserId)).order("contact_id"),
       scoped(sb.from("transactions").select("*").eq("user_id",viewingUserId)).order("bilag"),
@@ -224,7 +256,7 @@ function AppShell({user}){
       scoped(sb.from("projects").select("*").eq("user_id",viewingUserId)).order("created_at"),
       scoped(sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId)),
       scoped(sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId)),
-    ]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR])=>{
+    ]),timeoutPromise]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -278,8 +310,18 @@ function AppShell({user}){
       quoteNoRef.current=startQuoteNo;
       setNextQuoteNo(startQuoteNo);
       setLoading(false);
+    }).catch(err=>{
+      // This used to have no .catch() at all — if any single one of the ~20
+      // queries above rejected (a bad relationship, an RLS edge case, a
+      // dropped connection), the whole chain just silently stopped and
+      // setLoading(false) never ran, leaving the "Welcome" spinner up
+      // forever with zero visible error. Now it fails loudly instead, with
+      // an on-screen message and a retry button.
+      console.error("Startup data load failed:",err);
+      setLoadError(err&&err.message?err.message:"Something went wrong loading your data.");
+      setLoading(false);
     });
-  },[viewingUserId,activeCompanyId]);
+  },[viewingUserId,activeCompanyId,loadRetryCount]);
 
   const canEdit=!!(profile&&profile.is_active!==false);
 
@@ -1457,6 +1499,15 @@ If you genuinely cannot read useful information from this file, return {"supplie
   // don't even attempt to load the ledger. This is the "you need an invite / approval" wall.
   if(!profile||profile.is_active===false)return(
     <PendingAccessScreen reason={!profile?"pending":"deactivated"} onSignOut={signOut}/>
+  );
+
+  if(loadError)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",flexDirection:"column",fontFamily:"system-ui,sans-serif",padding:24,textAlign:"center"}}>
+      <img src={LOGO_FULL_B64} style={{width:180,objectFit:"contain",marginBottom:24}}/>
+      <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>Couldn't load your books</div>
+      <div style={{fontSize:12,color:T.sub,marginBottom:20,maxWidth:340,lineHeight:1.5}}>{loadError}</div>
+      <button onClick={()=>setLoadRetryCount(c=>c+1)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Try again</button>
+    </div>
   );
 
   if(loading)return(
