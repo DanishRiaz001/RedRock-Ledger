@@ -38,6 +38,11 @@ export default function MobileBudget({accounts,transactions,budgets,saveBudget})
   };
 
   const availableToAdd=expenseAccounts.filter(a=>!rows.some(r=>r.code===a.code));
+  const unassigned=useMemo(()=>availableToAdd
+    .map(a=>({code:a.code,name:a.name,actual:getActual(a.code)}))
+    .filter(u=>u.actual>0)
+    .sort((a,b)=>b.actual-a.actual),
+  [availableToAdd,transactions,from,to]);
 
   const openCopySheet=()=>{
     setCopyDraft(prevRows.map(r=>({code:r.code,name:getName(r.code),amount:r.amount,include:true})));
@@ -94,6 +99,23 @@ export default function MobileBudget({accounts,transactions,budgets,saveBudget})
         );
       })}
       {!rows.length&&!prevRows.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No budget set for {periodLabel} yet.</div>}
+
+      {unassigned.length>0&&(
+        <>
+          <div style={{display:"flex",alignItems:"center",gap:6,margin:"20px 0 10px"}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#0F172A"}}>Unassigned spending</div>
+            <span style={{fontSize:9,fontWeight:800,color:"#B4740E",background:"rgba(180,116,14,0.12)",borderRadius:8,padding:"2px 7px"}}>{unassigned.length}</span>
+          </div>
+          <div style={{fontSize:10.5,color:"#8A93A3",marginBottom:10}}>Spent this period with no budget line set.</div>
+          {unassigned.map(u=>(
+            <div key={u.code} onClick={()=>startEdit(u.code,0)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",borderRadius:14,padding:"12px 15px",marginBottom:8,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+              <div style={{fontSize:12.5,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:10}}>{u.name}</div>
+              <div style={{fontSize:11.5,fontWeight:700,color:"#B4740E",flexShrink:0}}>{fmtBal(u.actual)}</div>
+              <i className="ti ti-plus" style={{fontSize:13,color:T.accent,marginLeft:10,flexShrink:0}}/>
+            </div>
+          ))}
+        </>
+      )}
 
       <div onClick={()=>setShowAdd(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,padding:"12px",borderRadius:14,border:`1.5px dashed ${T.border}`,color:T.accent,fontSize:12.5,fontWeight:700}}>
         <i className="ti ti-plus" style={{fontSize:14}}/>Add budget line

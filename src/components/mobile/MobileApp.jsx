@@ -13,6 +13,8 @@ import MobileSinkingFunds from "./MobileSinkingFunds.jsx";
 import MobileAnalytics from "./MobileAnalytics.jsx";
 import MobileLedger from "./MobileLedger.jsx";
 import MobileTrialBalance from "./MobileTrialBalance.jsx";
+import MobileSettings from "./MobileSettings.jsx";
+import { TABBAR_H } from "./mobileConstants.js";
 
 const OVERLAY_META={
   Budget:{title:"Budget",subtitle:"Monthly spending vs. plan"},
@@ -57,8 +59,8 @@ export default function MobileApp(props){
   const effectiveMoneySources=feat.whose?props.moneySources:[];
 
   return(
-    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:T.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
-      <div style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+    <div style={{position:"fixed",inset:0,background:T.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:TABBAR_H}}>
         {tab==="Home"&&<MobileHome {...props} onNavigate={setTab} onOpenOverlay={setOverlay}/>}
         {tab==="Bank"&&<MobileBank {...props}/>}
         {tab==="Vouchers"&&<MobileVouchers {...props} feat={feat} moneySources={effectiveMoneySources} overlay={overlay} setOverlay={setOverlay}/>}
@@ -67,6 +69,7 @@ export default function MobileApp(props){
       </div>
 
       <div style={{
+        position:"fixed",left:0,right:0,bottom:0,zIndex:200,
         display:"flex",background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
         borderTop:`1px solid ${T.borderGlass||T.border}`,paddingBottom:"env(safe-area-inset-bottom)",flexShrink:0,
       }}>
@@ -80,6 +83,13 @@ export default function MobileApp(props){
           );
         })}
       </div>
+
+      {overlay&&overlay.type==="Settings"&&(
+        <MobileSettings accounts={props.accounts} setAccounts={props.setAccounts} addAccount={props.addAccount} updateAccount={props.updateAccount}
+          transactions={props.transactions} budgets={props.budgets} saveBudget={props.saveBudget} mergeAccounts={props.mergeAccounts}
+          companyProfile={props.companyProfile} saveCompanyProfile={props.saveCompanyProfile} requestRedrockAccess={props.requestRedrockAccess}
+          onClose={()=>setOverlay(null)}/>
+      )}
 
       {overlay&&OVERLAY_META[overlay.type]&&(
         <MobileScreen title={OVERLAY_META[overlay.type].title} subtitle={OVERLAY_META[overlay.type].subtitle} onClose={()=>setOverlay(null)}>

@@ -50,7 +50,7 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
             <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>Good {new Date().getHours()<12?"morning":new Date().getHours()<18?"afternoon":"evening"}, {firstName}</div>
             <div style={{fontSize:11.5,color:"rgba(255,255,255,0.75)",marginTop:2}}>Redrock Danria · {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
           </div>
-          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.22)",border:"1.5px solid rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>{firstName[0].toUpperCase()}</div>
+          <div onClick={()=>onOpenOverlay({type:"Settings"})} style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.22)",border:"1.5px solid rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>{firstName[0].toUpperCase()}</div>
         </div>
         <div style={{marginTop:22}}>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Total cash & bank</div>

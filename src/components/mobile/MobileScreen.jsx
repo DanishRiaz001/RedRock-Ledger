@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { T } from "../../lib/theme.js";
+import { TABBAR_H } from "./mobileConstants.js";
 
 // Full-screen mobile "page" with an iOS-style edge-swipe-to-go-back gesture
 // instead of a back button/icon — start the drag within ~28px of the left
@@ -34,7 +35,7 @@ export default function MobileScreen({title,subtitle,onClose,headerRight,childre
     <div
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       style={{
-        position:"fixed",inset:0,zIndex:100,background:T.bg,display:"flex",flexDirection:"column",
+        position:"fixed",top:0,left:0,right:0,bottom:TABBAR_H,zIndex:100,background:T.bg,display:"flex",flexDirection:"column",
         transform:`translateX(${dragX}px)`,transition:dragX?"none":"transform 0.25s ease",
         boxShadow:dragX?"-16px 0 30px rgba(15,42,38,0.12)":"none",
       }}>
