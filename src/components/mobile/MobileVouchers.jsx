@@ -43,7 +43,7 @@ export default function MobileVouchers(props){
         </div>
         <div style={{position:"relative",marginBottom:16}}>
           <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#98A2B3",fontSize:13}}/>
-          <input placeholder="Search vouchers…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",background:"#fff",border:"1px solid #E1EEEB",borderRadius:12,padding:"10px 12px 10px 34px",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+          <input placeholder="Search vouchers…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",background:"#fff",border:"1px solid #E1EEEB",borderRadius:12,padding:"10px 12px 10px 34px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box"}}/>
         </div>
       </div>
       <div style={{padding:"0 20px"}}>

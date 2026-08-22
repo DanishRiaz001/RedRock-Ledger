@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { T, getSK } from "../../lib/theme.js";
 import { sign, fmtBal } from "../ledger.jsx";
-import { fmtB } from "../../lib/utils.js";
 
 const QUICK_ACCESS=[
-  {label:"Budget",icon:"ti-report-money",tab:"Reports",bg:"rgba(180,116,14,0.12)",fg:"#B4740E"},
-  {label:"Sinking fund",icon:"ti-piggy-bank",tab:"Reports",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
-  {label:"Analytics",icon:"ti-chart-histogram",tab:"Reports",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
+  {label:"Budget",icon:"ti-report-money",overlay:"Budget",bg:"rgba(180,116,14,0.12)",fg:"#B4740E"},
+  {label:"Sinking fund",icon:"ti-piggy-bank",overlay:"SinkingFund",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
+  {label:"Analytics",icon:"ti-chart-histogram",overlay:"Analytics",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
+  {label:"Trial balance",icon:"ti-scale",overlay:"TrialBalance",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
   {label:"Bank overview",icon:"ti-building-bank",tab:"Bank",bg:"rgba(232,90,59,0.12)",fg:"#E85A3B"},
 ];
 
@@ -30,7 +30,12 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
   const banks=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const bankBal=(code)=>balAt(code,today);
 
-  const activity=useMemo(()=>[...transactions].sort((a,b)=>b.bilag-a.bilag).slice(0,6),[transactions]);
+  const monthFrom=today.slice(0,7)+"-01";
+  const monthIncome=useMemo(()=>transactions.filter(t=>t.date>=monthFrom&&t.date<=today&&(getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900")).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
+  const monthExpense=useMemo(()=>transactions.filter(t=>{const sk=getSK(t.debitCode);return t.date>=monthFrom&&t.date<=today&&sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
+  const monthMax=Math.max(1,monthIncome,monthExpense);
+  const monthLabel=new Date().toLocaleString("default",{month:"long"});
+
   const firstName=(profile&&(profile.display_name||profile.email)||"there").split(/[ @]/)[0];
 
   return(
@@ -63,11 +68,11 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
 
       {/* Quick access grid */}
       <div style={{padding:"0 20px",marginBottom:22}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
           {QUICK_ACCESS.map(q=>(
-            <div key={q.label} onClick={()=>onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"14px 8px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
-              <div style={{width:34,height:34,borderRadius:11,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}><i className={`ti ${q.icon}`} style={{fontSize:16}}/></div>
-              <div style={{fontSize:9.5,fontWeight:700,color:"#3A4750",lineHeight:1.25}}>{q.label}</div>
+            <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
+              <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>
+              <div style={{fontSize:8.5,fontWeight:700,color:"#3A4750",lineHeight:1.2}}>{q.label}</div>
             </div>
           ))}
         </div>
@@ -86,7 +91,7 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
             {banks.map(b=>{
               const bal=bankBal(b.code);
               return(
-                <div key={b.code} onClick={()=>onNavigate("Bank")} style={{scrollSnapAlign:"start",flexShrink:0,width:220,background:"linear-gradient(135deg,#0F2A26,#0D9488)",borderRadius:20,padding:18,color:"#fff"}}>
+                <div key={b.code} onClick={()=>onOpenOverlay({type:"Ledger",account:b})} style={{scrollSnapAlign:"start",flexShrink:0,width:220,background:"linear-gradient(135deg,#0F2A26,#0D9488)",borderRadius:20,padding:18,color:"#fff"}}>
                   <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:700,letterSpacing:0.3,textTransform:"uppercase"}}>{b.code}</div>
                   <div style={{fontSize:13,fontWeight:700,marginTop:2,marginBottom:20,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
                   <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:600}}>Balance</div>
@@ -98,27 +103,28 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
         </div>
       )}
 
-      {/* Recent activity */}
+      {/* This month at a glance */}
       <div style={{padding:"0 20px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A"}}>Recent activity</div>
-          <div onClick={()=>onNavigate("Vouchers")} style={{fontSize:11.5,color:T.accent,fontWeight:700}}>See all</div>
+          <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A"}}>{monthLabel} at a glance</div>
+          <div onClick={()=>onOpenOverlay({type:"Analytics"})} style={{fontSize:11.5,color:T.accent,fontWeight:700}}>Details</div>
         </div>
-        {activity.map(t=>{
-          const isExpense=getSK(t.debitCode)&&getSK(t.debitCode)>="4000"&&getSK(t.debitCode)<"8000";
-          const amt=isExpense?-Math.abs(t.amount):Math.abs(t.amount);
-          return(
-            <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-              <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,background:amt>=0?"rgba(14,159,110,0.12)":"rgba(225,72,72,0.1)",color:amt>=0?"#0E9F6E":"#E14848"}}>{fmtB(t.bilag).slice(0,2)}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
-                <div style={{fontSize:11,color:"#98A2B3",marginTop:1}}>{t.date}</div>
-              </div>
-              <div style={{fontSize:13,fontWeight:800,color:amt>=0?"#0E9F6E":"#E14848",flexShrink:0}}>{sign(amt)}</div>
-            </div>
-          );
-        })}
-        {!activity.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No entries yet.</div>}
+        <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#5C6B73"}}>Income</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#0E9F6E"}}>{fmtBal(monthIncome)}</div>
+          </div>
+          <div style={{height:7,background:"rgba(14,159,110,0.12)",borderRadius:4,marginBottom:14,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${Math.max(3,(monthIncome/monthMax)*100)}%`,background:"#0E9F6E",borderRadius:4}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#5C6B73"}}>Expenses</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#E14848"}}>{fmtBal(monthExpense)}</div>
+          </div>
+          <div style={{height:7,background:"rgba(225,72,72,0.1)",borderRadius:4,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${Math.max(3,(monthExpense/monthMax)*100)}%`,background:"#E14848",borderRadius:4}}/>
+          </div>
+        </div>
       </div>
 
       {/* New entry FAB */}

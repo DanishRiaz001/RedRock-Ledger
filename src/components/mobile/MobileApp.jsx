@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { T } from "../../lib/theme.js";
 import { isFeatureOn } from "../ledger.jsx";
 import MobileHome from "./MobileHome.jsx";
@@ -6,6 +7,18 @@ import MobileBank from "./MobileBank.jsx";
 import MobileVouchers from "./MobileVouchers.jsx";
 import MobileReports from "./MobileReports.jsx";
 import MobileMore from "./MobileMore.jsx";
+import MobileScreen from "./MobileScreen.jsx";
+import MobileBudget from "./MobileBudget.jsx";
+import MobileSinkingFunds from "./MobileSinkingFunds.jsx";
+import MobileAnalytics from "./MobileAnalytics.jsx";
+import MobileLedger from "./MobileLedger.jsx";
+import MobileTrialBalance from "./MobileTrialBalance.jsx";
+
+const OVERLAY_META={
+  Budget:{title:"Budget",subtitle:"Monthly spending vs. plan"},
+  SinkingFund:{title:"Sinking funds",subtitle:"Savings goals"},
+  Analytics:{title:"Analytics",subtitle:"Income & expenses by account"},
+};
 
 // Root of the entire native-app UI — a completely separate component tree
 // from FinanceTracker (the website/desktop router). appshell.jsx renders
@@ -27,6 +40,11 @@ export default function MobileApp(props){
   // actually switching tabs, so the tab bar's active state doesn't jump
   // around underneath a modal-like flow.
   const[overlay,setOverlay]=useState(null);
+
+  useEffect(()=>{
+    const light=tab==="Home"&&!overlay;
+    StatusBar.setStyle({style:light?Style.Light:Style.Dark}).catch(()=>{});
+  },[tab,overlay]);
 
   const getFeature=id=>isFeatureOn(id,props.viewingUserId);
   const isNorway=(props.companyProfile.country||"PK")==="NO";
@@ -62,6 +80,25 @@ export default function MobileApp(props){
           );
         })}
       </div>
+
+      {overlay&&OVERLAY_META[overlay.type]&&(
+        <MobileScreen title={OVERLAY_META[overlay.type].title} subtitle={OVERLAY_META[overlay.type].subtitle} onClose={()=>setOverlay(null)}>
+          {overlay.type==="Budget"&&<MobileBudget accounts={props.accounts} transactions={props.transactions} budgets={props.budgets} saveBudget={props.saveBudget}/>}
+          {overlay.type==="SinkingFund"&&<MobileSinkingFunds sinkingFunds={props.sinkingFunds} saveSinkingFunds={props.saveSinkingFunds}/>}
+          {overlay.type==="Analytics"&&<MobileAnalytics accounts={props.accounts} transactions={props.transactions}/>}
+        </MobileScreen>
+      )}
+
+      {overlay&&overlay.type==="Ledger"&&(
+        <MobileLedger account={overlay.account} transactions={props.transactions}
+          onClose={()=>setOverlay(null)} onDeleteTxn={props.deleteTxn} onReverseTxn={props.reverseTransaction}
+          inboxFiles={props.inboxFiles} uploadInboxFile={props.uploadInboxFile}/>
+      )}
+
+      {overlay&&overlay.type==="TrialBalance"&&(
+        <MobileTrialBalance accounts={props.accounts} transactions={props.transactions} setAccounts={props.setAccounts}
+          onClose={()=>setOverlay(null)} onOpenLedger={account=>setOverlay({type:"Ledger",account})}/>
+      )}
     </div>
   );
 }

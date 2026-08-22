@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { T } from "../../lib/theme.js";
-import { ReportsScreen, BudgetScreen } from "../settings2.jsx";
-import { SinkingFundsScreen, MonthlyOverviewScreen } from "../invoicing.jsx";
+import MobileAnalytics from "./MobileAnalytics.jsx";
+import MobileBudget from "./MobileBudget.jsx";
+import MobileSinkingFunds from "./MobileSinkingFunds.jsx";
+import MobileMonthly from "./MobileMonthly.jsx";
 
 const TABS=[
   {id:"analytics",label:"Analytics"},
@@ -11,12 +13,8 @@ const TABS=[
 ];
 
 export default function MobileReports(props){
-  const{accounts,transactions,sinkingFunds,budgets,saveBudget,saveBudgetSurplusSetting,sweepBudgetSurplus,saveSinkingFunds,moneySources}=props;
+  const{accounts,transactions,sinkingFunds,budgets,saveBudget,saveSinkingFunds}=props;
   const[sub,setSub]=useState("analytics");
-  const today=new Date().toISOString().slice(0,10);
-  const filterFrom=`${today.slice(0,7)}-01`;
-  const filterTo=today;
-  const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
 
   return(
     <div style={{paddingBottom:24}}>
@@ -31,11 +29,11 @@ export default function MobileReports(props){
           })}
         </div>
       </div>
-      <div style={{padding:"0 16px"}}>
-        {sub==="analytics"&&<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} onChangePeriod={()=>{}} sinkingFunds={sinkingFunds} budgets={budgets} isDesktop={false}/>}
-        {sub==="budget"&&<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>{}} isDesktop={false}/>}
-        {sub==="sinking"&&<SinkingFundsScreen onBack={()=>{}} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} isDesktop={false}/>}
-        {sub==="monthly"&&<MonthlyOverviewScreen accounts={accounts} transactions={transactions} budgets={budgets} moneySources={moneySources}/>}
+      <div style={{padding:"0 20px"}}>
+        {sub==="analytics"&&<MobileAnalytics accounts={accounts} transactions={transactions}/>}
+        {sub==="budget"&&<MobileBudget accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget}/>}
+        {sub==="sinking"&&<MobileSinkingFunds sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}/>}
+        {sub==="monthly"&&<MobileMonthly accounts={accounts} transactions={transactions}/>}
       </div>
     </div>
   );

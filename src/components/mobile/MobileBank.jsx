@@ -1,25 +1,21 @@
 import { useState, useMemo } from "react";
-import { T, getSK } from "../../lib/theme.js";
+import { getSK } from "../../lib/theme.js";
 import { fmtBal } from "../ledger.jsx";
-import { LedgerScreen } from "../ledger.jsx";
+import MobileLedger from "./MobileLedger.jsx";
 
 export default function MobileBank(props){
-  const{accounts,transactions,contacts,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,auditLog,profiles,user,moneySources,tagTransaction,fetchEntryComments,addEntryComment}=props;
+  const{accounts,transactions,deleteTxn,reverseTransaction,inboxFiles,uploadInboxFile}=props;
   const[openAccount,setOpenAccount]=useState(null);
   const today=new Date().toISOString().slice(0,10);
-  const filterFrom=`${today.slice(0,4)}-01-01`;
 
   const banks=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const balAt=(code,asOf)=>transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
   const totalCash=banks.reduce((s,b)=>s+balAt(b.code,today),0);
 
   if(openAccount)return(
-    <LedgerScreen account={openAccount} accounts={accounts} contacts={contacts} transactions={transactions}
-      onBack={()=>setOpenAccount(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction}
-      onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={today}
-      fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry}
-      inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null}
-      moneySources={moneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
+    <MobileLedger account={openAccount} transactions={transactions}
+      onClose={()=>setOpenAccount(null)} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction}
+      inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile}/>
   );
 
   return(
