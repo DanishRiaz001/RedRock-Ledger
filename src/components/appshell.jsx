@@ -13,6 +13,8 @@ import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { Spinner, LoginScreen, PendingAccessScreen } from "./shell.jsx";
 import { AccountPlanScreen, BankAccountDetailsModal } from "./reports.jsx";
 import FinanceTracker from "./FinanceTracker.jsx";
+import { isNativeApp } from "../lib/native.js";
+import MobileApp from "./mobile/MobileApp.jsx";
 
 function AppShell({user}){
   setCurrentUserId(user.id); // must be set before any child uploads/reads files via Supabase Storage below
@@ -1528,32 +1530,39 @@ If you genuinely cannot read useful information from this file, return {"supplie
     </div>
   );
 
+  // Same props, two possible trees. This is the ONLY fork point between the
+  // website and the native app — everything above this line (auth, all
+  // Supabase fetching, every save/mutation function) is shared and
+  // untouched either way. When running inside the native app, FinanceTracker
+  // (the desktop/website screen router) is never even constructed, so
+  // nothing built for the mobile UI can leak into or affect the website.
+  const appProps={
+    isAdmin,canEdit,profiles,
+    viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
+    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,
+    accounts,setAccounts,addAccount,updateAccount,
+    contacts,setContacts,
+    transactions,addTransaction,
+    saveEdit,deleteTxn,
+    reverseTransaction,matchTransactions,unmatchTransactions,
+    sinkingFunds,saveSinkingFunds,
+    moneySources,saveMoneySources,tagTransaction,
+    projects,saveProjects,tagTransactionProject,
+    reconciliationStatus,saveReconciliationStatus,reconciliationFiles,attachReconciliationFile,removeReconciliationFile,
+    budgets,saveBudget,restoreBudgets,
+    saveBudgetSurplusSetting,sweepBudgetSurplus,
+    inboxFiles,attachedTxnIds,
+    uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
+    renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
+    attachFilesToTxnEntry,fetchTxnAttachments,
+    bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
+    invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
+    nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
+    fetchEntryComments,addEntryComment,mergeContacts,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
+  };
   return(
     <div>
-      <FinanceTracker
-        isAdmin={isAdmin} canEdit={canEdit} profiles={profiles}
-        viewingUserId={viewingUserId} setViewingUserId={setViewingUserId} myClientAccess={myClientAccess} currentAccessLevel={currentAccessLevel} profile={profile} user={user}
-        companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} createCompany={createCompany} renameCompany={renameCompany}
-        accounts={accounts} setAccounts={setAccounts} addAccount={addAccount} updateAccount={updateAccount}
-        contacts={contacts} setContacts={setContacts}
-        transactions={transactions} addTransaction={addTransaction}
-        saveEdit={saveEdit} deleteTxn={deleteTxn}
-        reverseTransaction={reverseTransaction} matchTransactions={matchTransactions} unmatchTransactions={unmatchTransactions}
-        sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds}
-        moneySources={moneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}
-        projects={projects} saveProjects={saveProjects} tagTransactionProject={tagTransactionProject}
-        reconciliationStatus={reconciliationStatus} saveReconciliationStatus={saveReconciliationStatus} reconciliationFiles={reconciliationFiles} attachReconciliationFile={attachReconciliationFile} removeReconciliationFile={removeReconciliationFile}
-        budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets}
-        saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus}
-        inboxFiles={inboxFiles} attachedTxnIds={attachedTxnIds}
-        uploadInboxFile={uploadInboxFile} deleteInboxFileEntry={deleteInboxFileEntry} restoreInboxFileEntry={restoreInboxFileEntry} permanentlyDeleteInboxFileEntry={permanentlyDeleteInboxFileEntry}
-        renameInboxFileEntry={renameInboxFileEntry} mergeInboxFilesEntry={mergeInboxFilesEntry} moveInboxFileEntry={moveInboxFileEntry} copyInboxFileEntry={copyInboxFileEntry}
-        attachFilesToTxnEntry={attachFilesToTxnEntry} fetchTxnAttachments={fetchTxnAttachments}
-        bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine}
-        invoices={invoices} createInvoice={createInvoice} updateInvoiceStatus={updateInvoiceStatus} deleteInvoice={deleteInvoice} registerInvoicePayment={registerInvoicePayment} createCreditNote={createCreditNote} toggleReconciled={toggleReconciled} nextInvoiceNo={nextInvoiceNo} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} recurringInvoices={recurringInvoices} createRecurringInvoice={createRecurringInvoice} updateRecurringInvoice={updateRecurringInvoice} deleteRecurringInvoice={deleteRecurringInvoice} generateRecurringInvoicesForMonth={generateRecurringInvoicesForMonth} employees={employees} createEmployee={createEmployee} updateEmployee={updateEmployee} deleteEmployee={deleteEmployee} quotes={quotes} nextQuoteNo={nextQuoteNo} createQuote={createQuote} updateQuoteStatus={updateQuoteStatus} deleteQuote={deleteQuote} convertQuoteToInvoice={convertQuoteToInvoice} auditLog={auditLog} logUsageEvent={logUsageEvent} posProducts={posProducts} createPosProduct={createPosProduct} updatePosProduct={updatePosProduct} deletePosProduct={deletePosProduct} completeSale={completeSale} payrollRuns={payrollRuns} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun}
-        nextBilag={nextBilag} onSignOut={signOut} onToggleActive={toggleUserActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} requestRedrockAccess={requestRedrockAccess} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted}
-        fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} mergeContacts={mergeContacts} mergeAccounts={mergeAccounts} postBankStatementLinesBulk={postBankStatementLinesBulk} getInvoicePaid={getInvoicePaid}
-      />
+      {isNativeApp()?<MobileApp {...appProps}/>:<FinanceTracker {...appProps}/>}
     </div>
   );
 }
