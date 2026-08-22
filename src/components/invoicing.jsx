@@ -3025,10 +3025,10 @@ function ContactSearchInline({contacts,value,onChange,type}){
   );
 }
 
-function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects}){
+function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:"",projectId:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -3091,7 +3091,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
 
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
 
-  const save=()=>{
+  const save=async()=>{
     if(!valid)return;
     if(isDateClosed(form.date)){
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
@@ -3115,7 +3115,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
     const line0=lines[0]||{};
     const vc0=findVatCode(line0.debitVatCode,"input")||findVatCode(line0.creditVatCode,"output");
     // Save primary entry
-    onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
+    const primaryResult=await onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
+    // A comment is extra context on top of the required description — saved
+    // as an entry comment (same thread DetailModal shows later) instead of
+    // a new column, so it's visible wherever comments already render.
+    if(form.notes&&form.notes.trim()&&addEntryComment&&primaryResult&&primaryResult.id){
+      addEntryComment(primaryResult.id,form.notes.trim());
+    }
     // Save each extra line as its own entry, linked via groupRef
     extraLines.forEach(l=>{
       const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
@@ -3265,6 +3271,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,feat={},si
           <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{flex:"0 0 30%",minWidth:0}}/>
           <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inpSm,flex:"0 0 70%",minWidth:0}}/>
         </div>
+        <input placeholder="Comment (optional) — extra context for this entry" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{...inpSm}}/>
         {trackProjects&&(
           <select value={form.projectId||""} onChange={e=>{
             if(e.target.value==="__new__"){

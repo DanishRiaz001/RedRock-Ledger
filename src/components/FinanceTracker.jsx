@@ -32,6 +32,17 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
+  // Opening an account ledger (e.g. from Trial Balance) pushes a browser
+  // history entry, so the browser's own back button/gesture closes the
+  // ledger and returns to whatever screen was open underneath — instead of
+  // navigating the whole app away, which is what happened before this.
+  useEffect(()=>{
+    if(!ledgerAcc)return;
+    window.history.pushState({ledgerDrilldown:true},"");
+    const onPop=()=>setLedgerAcc(null);
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[ledgerAcc]);
   const[settingsWide,setSettingsWide]=useState(false);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
   const[lastDeleted,setLastDeleted]=useState(null);
@@ -110,8 +121,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const TAB_TO_CATEGORY={
     NewVoucher:"voucher",Files:"voucher",Transactions:"voucher",Entries:"voucher",AIBookkeeping:"voucher",Import:"voucher",VoucherSettings:"voucher",
     Accounts:"accounting",GeneralLedger:"accounting",TrialBalance:"accounting",Reskontro:"accounting",
-    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",VATTermin:"accounting",VATCodes:"accounting",Reports:"accounting",Budget:"accounting",SinkingFunds:"accounting",AccountingSettings:"accounting",
-    ReportsHub:"accounting",AgedReskontro:"accounting",SalesPerCustomer:"accounting",BalanceLists:"accounting",MonthlyOverview:"accounting",
+    Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",VATTermin:"accounting",VATCodes:"accounting",AccountingSettings:"accounting",
+    Reports:"reports",Budget:"reports",SinkingFunds:"reports",ReportsHub:"reports",SalesPerCustomer:"reports",BalanceLists:"reports",
+    AgedReskontro:"accounting",MonthlyOverview:"accounting",
     Bank:"bank",BankDashboard:"bank",BankWhose:"bank",Cheques:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
@@ -924,7 +936,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+            <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>{const r=await addTransactionNotified(form);setTab("Dashboard");return r;}} addEntryComment={addEntryComment}/>
           </div>
         )}
 
@@ -1303,7 +1315,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={(form)=>{addTransactionNotified(form);setTab("Dashboard");}}/>
+          <NewEntryForm accounts={accounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>{const r=await addTransactionNotified(form);setTab("Dashboard");return r;}} addEntryComment={addEntryComment}/>
         )}
 
         {tab==="Accounts"&&(

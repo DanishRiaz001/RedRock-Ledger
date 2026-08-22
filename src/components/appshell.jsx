@@ -1078,7 +1078,13 @@ function AppShell({user}){
     const affected=transactions.filter(t=>t.matchedWith===grpId).map(t=>t.id);
     setTransactionsState(p=>p.map(t=>t.matchedWith===grpId?{...t,matchedWith:null,matchedAccount:null}:t));
     if(!canEdit)return;
-    await sb.from("transactions").update({matched_with:null,matched_account:null}).eq("matched_with",grpId);
+    const{error}=await sb.from("transactions").update({matched_with:null,matched_account:null}).eq("matched_with",grpId);
+    if(error){
+      console.error("Unmatch failed:",error);
+      alert("Unmatch didn't save — it'll look matched again after reload until this is fixed:\n\n"+error.message);
+      setTransactionsState(p=>p.map(t=>affected.includes(t.id)?{...t,matchedWith:grpId}:t));
+      return;
+    }
     logAudit("match_group",null,null,"unmatch",{txnIds:affected,groupId:grpId},null);
   };
 

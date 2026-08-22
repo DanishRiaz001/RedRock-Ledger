@@ -5,7 +5,7 @@ import { fmtB } from "../../lib/utils.js";
 import { NewEntryForm } from "../invoicing.jsx";
 
 export default function MobileVouchers(props){
-  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction}=props;
+  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment}=props;
   const[showNew,setShowNew]=useState(false);
   const[search,setSearch]=useState("");
 
@@ -27,7 +27,8 @@ export default function MobileVouchers(props){
           sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile}
           transactions={transactions} moneySources={moneySources} tagTransaction={tagTransaction} isDesktop={false}
           projects={projects} trackProjects={!!(companyProfile&&companyProfile.trackProjects)} saveProjects={saveProjects}
-          onSave={(form)=>{addTransaction(form);setShowNew(false);}}/>
+          addEntryComment={addEntryComment}
+          onSave={async(form)=>{const r=await addTransaction(form);setShowNew(false);return r;}}/>
       </div>
     </div>
   );

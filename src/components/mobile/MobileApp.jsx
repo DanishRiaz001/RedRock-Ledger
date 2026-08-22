@@ -14,6 +14,7 @@ import MobileAnalytics from "./MobileAnalytics.jsx";
 import MobileLedger from "./MobileLedger.jsx";
 import MobileTrialBalance from "./MobileTrialBalance.jsx";
 import MobileSettings from "./MobileSettings.jsx";
+import MobileWhose from "./MobileWhose.jsx";
 import { TABBAR_H } from "./mobileConstants.js";
 
 const OVERLAY_META={
@@ -61,7 +62,7 @@ export default function MobileApp(props){
   return(
     <div style={{position:"fixed",inset:0,background:T.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
       <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:TABBAR_H}}>
-        {tab==="Home"&&<MobileHome {...props} onNavigate={setTab} onOpenOverlay={setOverlay}/>}
+        {tab==="Home"&&<MobileHome {...props} feat={feat} onNavigate={setTab} onOpenOverlay={setOverlay}/>}
         {tab==="Bank"&&<MobileBank {...props}/>}
         {tab==="Vouchers"&&<MobileVouchers {...props} feat={feat} moneySources={effectiveMoneySources} overlay={overlay} setOverlay={setOverlay}/>}
         {tab==="Reports"&&<MobileReports {...props} feat={feat}/>}
@@ -108,6 +109,12 @@ export default function MobileApp(props){
       {overlay&&overlay.type==="TrialBalance"&&(
         <MobileTrialBalance accounts={props.accounts} transactions={props.transactions} setAccounts={props.setAccounts}
           onClose={()=>setOverlay(null)} onOpenLedger={account=>setOverlay({type:"Ledger",account})}/>
+      )}
+
+      {overlay&&overlay.type==="Whose"&&(
+        <MobileWhose moneySources={effectiveMoneySources} saveMoneySources={props.saveMoneySources}
+          transactions={props.transactions} accounts={props.accounts} tagTransaction={props.tagTransaction}
+          onClose={()=>setOverlay(null)}/>
       )}
     </div>
   );

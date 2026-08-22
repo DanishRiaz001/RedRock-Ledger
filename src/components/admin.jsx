@@ -6,6 +6,30 @@ import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccD
 import { ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages } from "./settings2.jsx";
 import { Dashboard } from "./reports.jsx";
 
+function AccessRequestsPanel({accessRequests,requestsLoading,onApprove,onDismiss}){
+  if(requestsLoading)return<div style={{textAlign:"center",padding:"30px 0",color:T.muted,fontSize:12}}>Loading…</div>;
+  if(!accessRequests.length)return<div style={{textAlign:"center",padding:"30px 0",color:T.muted,fontSize:12}}>No pending access requests.</div>;
+  return(
+    <div>
+      {accessRequests.map(r=>(
+        <div key={r.id} style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,padding:14,marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:r.note?8:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>{r.clientEmail}</div>
+              <div style={{fontSize:11,color:T.muted,marginTop:1}}>{r.createdAt?new Date(r.createdAt).toLocaleDateString():""}</div>
+            </div>
+          </div>
+          {r.note&&<div style={{fontSize:12,color:T.sub,background:T.bg,borderRadius:8,padding:"8px 10px",marginBottom:12}}>{r.note}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>onApprove(r)} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Set up access →</button>
+            <button onClick={()=>onDismiss(r)} style={{flex:1,background:"none",border:`1px solid ${T.border}`,color:T.sub,borderRadius:8,padding:"9px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Dismiss</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,isDesktop=false}){
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
@@ -42,6 +66,33 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     if(!revokeClientAccess)return;
     await revokeClientAccess(grantId);
     setClientGrants(prev=>prev.filter(g=>g.id!==grantId));
+  };
+
+  // Pending client self-service access requests. These props were already
+  // being threaded all the way down from appshell.jsx but this panel never
+  // actually rendered anything with them — the whole approval flow was a
+  // dead end (a client could request access, but no admin UI ever showed it).
+  const[accessRequests,setAccessRequests]=useState([]);
+  const[requestsLoading,setRequestsLoading]=useState(false);
+  const loadAccessRequests=()=>{
+    if(!fetchAccessRequests)return;
+    setRequestsLoading(true);
+    fetchAccessRequests().then(list=>{setAccessRequests(list);setRequestsLoading(false);});
+  };
+  useEffect(()=>{if(tab==="requests")loadAccessRequests();},[tab]);
+  const approveRequest=(req)=>{
+    // "Approve" hands off to the existing Per-user grant flow (company +
+    // access level still need picking there) rather than guessing — then
+    // marks the request resolved so it drops off this list.
+    setSelUser({id:req.clientUserId,email:req.clientEmail,display_name:req.clientEmail});
+    setTab("users");
+    if(resolveAccessRequestAsGranted)resolveAccessRequestAsGranted(req.id);
+    setAccessRequests(prev=>prev.filter(r=>r.id!==req.id));
+  };
+  const dismissRequest=(req)=>{
+    if(!window.confirm(`Dismiss ${req.clientEmail}'s access request?`))return;
+    if(dismissAccessRequest)dismissAccessRequest(req.id);
+    setAccessRequests(prev=>prev.filter(r=>r.id!==req.id));
   };
   const[search,setSearch]=useState("");
   const[userStatusTab,setUserStatusTab]=useState("active");
@@ -311,10 +362,12 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
       <div style={{maxWidth:1000}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Admin panel</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
-          {[["global","Global"],["users","Per user"],["analytics","Analytics"],["revenue","Revenue"]].map(([id,label])=>(
+          {[["global","Global"],["users","Per user"],["requests",`Access requests${accessRequests.length?` (${accessRequests.length})`:""}`],["analytics","Analytics"],["revenue","Revenue"]].map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?T.accent:"none",color:tab===id?"#fff":T.sub,border:`1px solid ${tab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
+
+        {tab==="requests"&&<AccessRequestsPanel accessRequests={accessRequests} requestsLoading={requestsLoading} onApprove={approveRequest} onDismiss={dismissRequest}/>}
 
         {tab==="revenue"&&(()=>{
           const userPkgs=getUserPackages();
@@ -485,11 +538,12 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
       <BackHeader title="Admin Panel" sub="ADMIN ONLY · FEATURE CONTROL" onBack={onBack}/>
       {/* Tab switcher */}
       <div style={{display:"flex",gap:4,padding:"10px 16px 0",background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-        {[["global","🌐 Global"],["users","👤 Per User"]].map(([id,label])=>(
+        {[["global","🌐 Global"],["users","👤 Per User"],["requests",`📋 Requests${accessRequests.length?` (${accessRequests.length})`:""}`]].map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",border:"none",background:"none",fontSize:12,fontWeight:tab===id?700:500,color:tab===id?T.accent:T.muted,borderBottom:tab===id?`2px solid ${T.accent}`:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>{label}</button>
         ))}
       </div>
       <div style={{padding:16}}>
+        {tab==="requests"&&<AccessRequestsPanel accessRequests={accessRequests} requestsLoading={requestsLoading} onApprove={approveRequest} onDismiss={dismissRequest}/>}
         {tab==="global"&&(
           <>
             <div style={{background:T.accentLight,borderRadius:12,padding:"10px 14px",marginBottom:16,border:`1px solid ${T.accentMid}`}}>

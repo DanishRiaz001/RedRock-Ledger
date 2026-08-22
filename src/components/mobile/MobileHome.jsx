@@ -7,11 +7,11 @@ const QUICK_ACCESS=[
   {label:"Budget",icon:"ti-report-money",overlay:"Budget",bg:"rgba(180,116,14,0.12)",fg:"#B4740E"},
   {label:"Sinking fund",icon:"ti-piggy-bank",overlay:"SinkingFund",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
   {label:"Analytics",icon:"ti-chart-histogram",overlay:"Analytics",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
-  {label:"Trial balance",icon:"ti-scale",overlay:"TrialBalance",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
+  {label:"Whose",icon:"ti-users",overlay:"Whose",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
   {label:"Bank overview",icon:"ti-building-bank",tab:"Bank",bg:"rgba(232,90,59,0.12)",fg:"#E85A3B"},
 ];
 
-export default function MobileHome({accounts,transactions,profile,onNavigate,onOpenOverlay}){
+export default function MobileHome({accounts,transactions,profile,moneySources=[],feat={},onNavigate,onOpenOverlay}){
   const today=new Date().toISOString().slice(0,10);
   const oneMonthAgo=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,10);})();
 
@@ -27,12 +27,27 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
     return income-expense;
   },[transactions]);
   const cashChangePct=cashPrev?Math.round(((cashNow-cashPrev)/Math.abs(cashPrev))*1000)/10:0;
-  const ringTotal=Math.abs(cashNow)+Math.abs(arNow)+Math.abs(apNow)||1;
-  const cashPct=Math.abs(cashNow)/ringTotal*100;
-  const arPct=Math.abs(arNow)/ringTotal*100;
 
-  const banks=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const bankBal=(code)=>balAt(code,today);
+  // Hide accounts sitting at zero with no activity — an empty bank card
+  // tells the user nothing useful and just wastes carousel space.
+  const banks=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"&&(bankBal(a.code)!==0||transactions.some(t=>t.debitCode===a.code||t.creditCode===a.code))),[accounts,transactions]);
+
+  const bankCodesForWhose=useMemo(()=>new Set(accounts.filter(a=>getSK(a.code)==="1900"&&a.code!=="1900").map(a=>a.code)),[accounts]);
+  const effectiveMoneySources=feat.whose?moneySources:[];
+  const whoseTotals=useMemo(()=>{
+    if(!effectiveMoneySources.length)return{remaining:0,deficits:0};
+    let remaining=0,deficits=0;
+    effectiveMoneySources.filter(m=>!m.inactive).forEach(m=>{
+      const tagged=transactions.filter(t=>t.moneySourceId===m.id&&(bankCodesForWhose.has(t.debitCode)||bankCodesForWhose.has(t.creditCode)));
+      const received=(m.openingReceived||0)+tagged.filter(t=>bankCodesForWhose.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+      const used=(m.openingUsed||0)+tagged.filter(t=>bankCodesForWhose.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+      const r=received-used;
+      remaining+=r;
+      if(r<0)deficits++;
+    });
+    return{remaining,deficits};
+  },[effectiveMoneySources,transactions,bankCodesForWhose]);
 
   const monthFrom=today.slice(0,7)+"-01";
   const monthIncome=useMemo(()=>transactions.filter(t=>t.date>=monthFrom&&t.date<=today&&(getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900")).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
@@ -60,37 +75,14 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
           <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Total cash & bank</div>
           <div style={{fontSize:36,fontWeight:800,color:"#fff",marginTop:4,letterSpacing:-0.5}}>{fmtBal(cashNow)}</div>
         </div>
-        {/* Floating glass breakdown card — a donut of Cash/Receivable/Payable
-            proportions next to a legend, replacing the old flat 3-column
-            stat row so the balance mix reads at a glance, not just as
-            three unrelated numbers. */}
-        <div style={{position:"absolute",left:20,right:20,bottom:-40,zIndex:2,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:16,display:"flex",alignItems:"center",gap:16,boxShadow:"0 20px 40px rgba(13,148,136,0.18)"}}>
-          <div style={{width:64,height:64,borderRadius:"50%",flexShrink:0,background:`conic-gradient(#0D9488 0% ${cashPct}%, #2461D9 ${cashPct}% ${cashPct+arPct}%, #FF6B4A ${cashPct+arPct}% 100%)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <div style={{width:42,height:42,borderRadius:"50%",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <i className="ti ti-wallet" style={{fontSize:16,color:"#0D9488"}}/>
-            </div>
-          </div>
-          <div style={{flex:1,display:"flex",flexDirection:"column",gap:7}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#0D9488"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Cash</span></div>
-              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(cashNow)}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#2461D9"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Receivable</span></div>
-              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(arNow)}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:"#FF6B4A"}}/><span style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Payable</span></div>
-              <span style={{fontSize:12,fontWeight:800,color:"#0F2A26"}}>{fmtBal(apNow)}</span>
-            </div>
-          </div>
+        {/* Floating glass stat strip */}
+        <div style={{position:"absolute",left:20,right:20,bottom:-34,zIndex:2,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:16,display:"flex",boxShadow:"0 20px 40px rgba(13,148,136,0.18)"}}>
+          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Receivable</div><div style={{fontSize:14.5,fontWeight:800,color:"#0F2A26",marginTop:3}}>{fmtBal(arNow)}</div></div>
+          <div style={{width:1,background:"rgba(13,148,136,0.15)"}}/>
+          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Payable</div><div style={{fontSize:14.5,fontWeight:800,color:"#0F2A26",marginTop:3}}>{fmtBal(apNow)}</div></div>
+          <div style={{width:1,background:"rgba(13,148,136,0.15)"}}/>
+          <div style={{flex:1,textAlign:"center"}}><div style={{fontSize:10.5,color:"#5C7A76",fontWeight:600}}>Net profit</div><div style={{fontSize:14.5,fontWeight:800,color:netProfit>=0?"#0D9488":"#E14848",marginTop:3}}>{sign(netProfit)}</div></div>
         </div>
-      </div>
-      {/* Net profit callout — was folded into the stat strip above; now its
-          own small row so the breakdown card stays legible. */}
-      <div style={{padding:"0 20px",marginTop:44,marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:11.5,color:"#5C6B73",fontWeight:600}}>Net profit this year</span>
-        <span style={{fontSize:14,fontWeight:800,color:netProfit>=0?"#0D9488":"#E14848"}}>{sign(netProfit)}</span>
       </div>
 
       {/* Quick access grid */}
@@ -132,29 +124,37 @@ export default function MobileHome({accounts,transactions,profile,onNavigate,onO
         </div>
       )}
 
-      {/* This month at a glance */}
-      <div style={{padding:"0 20px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A"}}>{monthLabel} at a glance</div>
-          <div onClick={()=>onOpenOverlay({type:"Analytics"})} style={{fontSize:11.5,color:T.accent,fontWeight:700}}>Details</div>
-        </div>
-        <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-            <div style={{fontSize:12,fontWeight:600,color:"#5C6B73"}}>Income</div>
-            <div style={{fontSize:13,fontWeight:800,color:"#0E9F6E"}}>{fmtBal(monthIncome)}</div>
+      {/* This month — compact single-line net instead of two big bars, to
+          leave room for the Whose summary below (the more actionable of
+          the two once money sources are in use). */}
+      <div style={{padding:"0 20px",marginBottom:22}}>
+        <div onClick={()=>onOpenOverlay({type:"Analytics"})} style={{display:"flex",alignItems:"center",background:"#fff",borderRadius:16,padding:"14px 16px",boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{monthLabel}</div>
+            <div style={{fontSize:10.5,color:"#8A93A3",marginTop:1}}>{fmtBal(monthIncome)} in · {fmtBal(monthExpense)} out</div>
           </div>
-          <div style={{height:7,background:"rgba(14,159,110,0.12)",borderRadius:4,marginBottom:14,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${Math.max(3,(monthIncome/monthMax)*100)}%`,background:"#0E9F6E",borderRadius:4}}/>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-            <div style={{fontSize:12,fontWeight:600,color:"#5C6B73"}}>Expenses</div>
-            <div style={{fontSize:13,fontWeight:800,color:"#E14848"}}>{fmtBal(monthExpense)}</div>
-          </div>
-          <div style={{height:7,background:"rgba(225,72,72,0.1)",borderRadius:4,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${Math.max(3,(monthExpense/monthMax)*100)}%`,background:"#E14848",borderRadius:4}}/>
-          </div>
+          <div style={{fontSize:15,fontWeight:800,color:monthIncome-monthExpense>=0?"#0E9F6E":"#E14848"}}>{sign(monthIncome-monthExpense)}</div>
+          <i className="ti ti-chevron-right" style={{fontSize:15,color:"#B0BAC3",marginLeft:10}}/>
         </div>
       </div>
+
+      {/* Whose summary — surfaces the money-sources feature (and any
+          deficit that needs settling from the next salary) right on Home,
+          instead of it being buried a tap away. */}
+      {feat.whose&&effectiveMoneySources.filter(m=>!m.inactive).length>0&&(
+        <div style={{padding:"0 20px",marginBottom:22}}>
+          <div onClick={()=>onOpenOverlay({type:"Whose"})} style={{background:whoseTotals.deficits>0?"linear-gradient(135deg,#5A1F1F,#8A2E2E)":"linear-gradient(135deg,#2E1F5A,#4B2E8A)",borderRadius:16,padding:16,color:"#fff"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.75)",fontWeight:600}}>Whose · total remaining</div>
+                <div style={{fontSize:19,fontWeight:800,marginTop:3}}>{fmtBal(whoseTotals.remaining)}</div>
+              </div>
+              <i className="ti ti-chevron-right" style={{fontSize:16,color:"rgba(255,255,255,0.75)"}}/>
+            </div>
+            {whoseTotals.deficits>0&&<div style={{fontSize:11,color:"rgba(255,255,255,0.9)",marginTop:8}}>⚠ {whoseTotals.deficits} source{whoseTotals.deficits===1?"":"s"} overspent — settle from your next salary</div>}
+          </div>
+        </div>
+      )}
 
       {/* New entry FAB */}
       <div onClick={()=>onNavigate("Vouchers")} style={{position:"fixed",right:20,bottom:96,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#FF6B4A,#FF8266)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 20px rgba(255,107,74,0.4)",zIndex:5}}>

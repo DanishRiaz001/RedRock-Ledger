@@ -1442,7 +1442,12 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
 
-  const bankCodes=useMemo(()=>new Set(accounts.filter(a=>getSK(a.code)==="1900").map(a=>a.code)),[accounts]);
+  // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
+  // transfer (e.g. Dr 1900 / Cr 1901, withdrawing bank cash) only counts on
+  // the real bank side (as "used", since money left the bank), instead of
+  // also registering as "received" on the cash side and double-counting a
+  // single transfer as both money in and money out.
+  const bankCodes=useMemo(()=>new Set(accounts.filter(a=>getSK(a.code)==="1900"&&a.code!=="1900").map(a=>a.code)),[accounts]);
   const bankTxns=useMemo(()=>transactions.filter(t=>bankCodes.has(t.debitCode)||bankCodes.has(t.creditCode)).sort((a,b)=>b.date.localeCompare(a.date)),[transactions,bankCodes]);
 
   const totalsFor=(id)=>{
@@ -1474,8 +1479,20 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
     if(!window.confirm("Delete this money source?"))return;
     saveMoneySources(moneySources.filter(m=>m.id!==id));
   };
+  // Settling records that a deficit was covered from your own funds (e.g.
+  // the next salary) by raising this source's "received" baseline — no
+  // real bank transaction needed for what is really just a bookkeeping fix.
+  const settleDeficit=(id)=>{
+    const t=totalsFor(id);
+    if(t.remaining>=0)return;
+    const input=window.prompt(`Settle how much for this source? (owed: ${fmt(Math.abs(t.remaining))})`,String(Math.abs(t.remaining)));
+    const amt=parseFloat(input);
+    if(!amt||amt<=0)return;
+    saveMoneySources(moneySources.map(m=>m.id===id?{...m,openingReceived:(m.openingReceived||0)+amt}:m));
+  };
 
   const grandRemaining=moneySources.reduce((s,m)=>s+totalsFor(m.id).remaining,0);
+  const deficitCount=moneySources.filter(m=>!m.inactive&&totalsFor(m.id).remaining<0).length;
 
   return(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18,marginBottom:16}}>
@@ -1483,6 +1500,11 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
         <div style={{fontSize:14,fontWeight:800,color:T.text}}>💰 Whose</div>
         <button style={{...btnSm}} onClick={()=>{if(showAdd){resetForm();}setShowAdd(s=>!s);}}>{showAdd?"Cancel":"+ Add source"}</button>
       </div>
+      {deficitCount>0&&(
+        <div style={{background:"#FEF2F2",border:`1px solid #F5C6C6`,borderRadius:8,padding:"9px 12px",marginBottom:14,fontSize:12,color:T.red,fontWeight:600}}>
+          {deficitCount} source{deficitCount===1?"":"s"} overspent — use "Settle" below to record covering it from your next salary.
+        </div>
+      )}
 
       {showAdd&&(
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:8,marginBottom:14,alignItems:"end"}}>
@@ -1512,6 +1534,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                   <td style={{textAlign:"right",color:T.red}}>{fmt(t.used)}</td>
                   <td style={{textAlign:"right",padding:"8px 12px",fontWeight:800,color:t.remaining>=0?T.text:T.red}}>{fmt(t.remaining)}</td>
                   <td style={{textAlign:"right",padding:"8px 12px",whiteSpace:"nowrap"}}>
+                    {t.remaining<0&&<span onClick={()=>settleDeficit(m.id)} title="Settle from next salary" style={{cursor:"pointer",marginRight:8}}>💵</span>}
                     <span onClick={()=>startEdit(m)} title="Edit" style={{cursor:"pointer",marginRight:8}}>✏️</span>
                     <span onClick={()=>removeSource(m.id)} title="Delete" style={{cursor:"pointer"}}>🗑</span>
                   </td>
