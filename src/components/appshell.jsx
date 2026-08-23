@@ -171,6 +171,25 @@ function AppShell({user}){
   const[loadError,setLoadError]=useState(null);
   const[loadRetryCount,setLoadRetryCount]=useState(0);
 
+  // There's no live/realtime sync between devices (website and the native
+  // app are both just reading Supabase on load) — so without this, editing
+  // on one device leaves the other showing stale numbers until it's fully
+  // reloaded. This at least refetches everything whenever the app/tab comes
+  // back into view, so switching back to it after using the other device
+  // never leaves you looking at old data for long. Skipped if the last
+  // fetch was very recent, so quick tab-switches don't hammer the DB.
+  const lastFetchRef=React.useRef(Date.now());
+  useEffect(()=>{
+    const onVisible=()=>{
+      if(document.visibilityState!=="visible")return;
+      if(Date.now()-lastFetchRef.current<15000)return;
+      lastFetchRef.current=Date.now();
+      setLoadRetryCount(c=>c+1);
+    };
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>document.removeEventListener("visibilitychange",onVisible);
+  },[]);
+
   useEffect(()=>{
     sb.from("profiles").select("*").eq("id",user.id).single().then(({data})=>{
       setProfile(data||null); // no row yet (e.g. not provisioned) => treated as pending/no-access below
