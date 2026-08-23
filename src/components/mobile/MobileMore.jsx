@@ -6,6 +6,7 @@ import MobileSettings from "./MobileSettings.jsx";
 import MobileInvoices from "./MobileInvoices.jsx";
 import MobileTrialBalance from "./MobileTrialBalance.jsx";
 import MobileLedger from "./MobileLedger.jsx";
+import MobileCompanySwitcher from "./MobileCompanySwitcher.jsx";
 
 const MENU=[
   {id:"customers",label:"Customers & Suppliers",sub:"AR/AP contacts & ledgers",icon:"ti-users-group",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
@@ -15,13 +16,20 @@ const MENU=[
 ];
 
 export default function MobileMore(props){
-  const{contacts,setContacts,transactions,matchTransactions,unmatchTransactions,saveEdit,deleteTxn,accounts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,auditLog,profiles,user,moneySources,tagTransaction,fetchEntryComments,addEntryComment,isAdmin,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,onSignOut,setAccounts,addAccount,updateAccount,budgets,saveBudget,mergeAccounts,companyProfile,saveCompanyProfile,requestRedrockAccess,invoices,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,getInvoicePaid,nextInvoiceNo,createInvoice,reverseTransaction}=props;
+  const{contacts,setContacts,transactions,matchTransactions,unmatchTransactions,saveEdit,deleteTxn,accounts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,auditLog,profiles,user,moneySources,tagTransaction,fetchEntryComments,addEntryComment,isAdmin,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,onSignOut,setAccounts,addAccount,updateAccount,budgets,saveBudget,mergeAccounts,companyProfile,saveCompanyProfile,requestRedrockAccess,invoices,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,getInvoicePaid,nextInvoiceNo,createInvoice,reverseTransaction,viewingUserId,setViewingUserId,myClientAccess,companies,activeCompanyId,setActiveCompanyId,createCompany}=props;
   const[screen,setScreen]=useState(null);
   const[showAdmin,setShowAdmin]=useState(false);
+  const[showSwitcher,setShowSwitcher]=useState(false);
   const[tbLedger,setTbLedger]=useState(null);
 
   if(showAdmin)return(
     <AdminPanel onBack={()=>setShowAdmin(false)} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} isDesktop={false}/>
+  );
+
+  if(showSwitcher)return(
+    <MobileCompanySwitcher user={user} isAdmin={isAdmin} viewingUserId={viewingUserId} setViewingUserId={setViewingUserId}
+      myClientAccess={myClientAccess} companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId}
+      createCompany={createCompany} onClose={()=>setShowSwitcher(false)}/>
   );
 
   if(screen==="customers")return(
@@ -71,6 +79,17 @@ export default function MobileMore(props){
             </div>
           ))}
         </div>
+
+        {(isAdmin||(myClientAccess&&myClientAccess.length>0)||(companies&&companies.length>1))&&(
+          <div onClick={()=>setShowSwitcher(true)} style={{display:"flex",alignItems:"center",gap:12,background:viewingUserId!==user.id?T.accentLight:"#fff",borderRadius:16,padding:"14px 16px",marginBottom:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)",cursor:"pointer"}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(124,58,237,0.12)",color:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-building-store" style={{fontSize:16}}/></div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13.5,fontWeight:700,color:"#0F172A"}}>Switch books</div>
+              <div style={{fontSize:10.5,color:"#8A93A3",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewingUserId===user.id?"Your books":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</div>
+            </div>
+            <i className="ti ti-chevron-right" style={{fontSize:14,color:"#C7C7CC"}}/>
+          </div>
+        )}
 
         {isAdmin&&(
           <div onClick={()=>setShowAdmin(true)} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:16,padding:"14px 16px",marginBottom:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)",cursor:"pointer"}}>
