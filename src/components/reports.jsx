@@ -3087,6 +3087,21 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   useLayoutEffect(()=>{
     if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
   });
+  // A plain layout-effect only remeasures when THIS component re-renders —
+  // but the toolbar's actual height can change from things that don't
+  // (window resize wrapping the filter row onto two lines, fonts finishing
+  // load). Without catching those, the sticky header sticks at a stale
+  // offset and a data row is left peeking through the gap above it. A
+  // ResizeObserver catches every real height change directly.
+  useEffect(()=>{
+    if(!fixedBarRef.current||typeof ResizeObserver==="undefined")return;
+    const ro=new ResizeObserver(entries=>{
+      const h=entries[0]&&entries[0].target.offsetHeight;
+      if(h)setFixedBarHeight(h);
+    });
+    ro.observe(fixedBarRef.current);
+    return()=>ro.disconnect();
+  },[]);
 
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
@@ -4131,44 +4146,73 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
         <input placeholder="Search account code or name" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
 
-      {accountLedgers.map(({account,opening,rows,closing,periodChange})=>(
-        <div key={account.code} style={{marginBottom:22,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"9px 14px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.text}}>{account.code} {account.name}</div>
-            <div style={{fontSize:12,color:T.text}}>Opening {fmt(opening)}</div>
+      {/* One continuous ledger, not a stack of separate boxed cards — a
+          single sticky column header up top, then every account's opening
+          balance / entries / change / closing balance flow underneath it
+          as plain rows, the way a real general ledger reads. Built from
+          grid divs rather than a <table> for the same reason as Trial
+          Balance's header: Chrome's position:sticky on <td> intermittently
+          fails to paint. */}
+      {(()=>{
+        const cols="84px 22px 64px 64px minmax(0,1fr) 54px 110px 120px";
+        return(
+        <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:12}}>
+          <div style={{display:"grid",gridTemplateColumns:cols,color:T.sub,background:T.bg,position:"sticky",top:0,zIndex:30,borderBottom:`1px solid ${T.border}`}}>
+            <div style={{padding:"9px 10px",fontWeight:700,fontSize:11}}>Date</div>
+            <div/>
+            <div style={{padding:"9px 6px",fontWeight:700,fontSize:11}}>Status</div>
+            <div style={{padding:"9px 6px",fontWeight:700,fontSize:11}}>Bilag</div>
+            <div style={{padding:"9px 6px",fontWeight:700,fontSize:11}}>Description</div>
+            <div style={{padding:"9px 6px",fontWeight:700,fontSize:11,textAlign:"center"}}>VAT</div>
+            <div style={{padding:"9px 10px",fontWeight:700,fontSize:11,textAlign:"right"}}>Amount</div>
+            <div style={{padding:"9px 14px",fontWeight:700,fontSize:11,textAlign:"right"}}>Balance</div>
           </div>
-          <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
-            <tbody>
-              {rows.map((r,i)=>{
+          {accountLedgers.map(({account,opening,rows,closing,periodChange})=>(
+            <div key={account.code}>
+              <div style={{display:"grid",gridTemplateColumns:cols,background:T.waterTealSubtle,borderTop:`1px solid ${T.border}`}}>
+                <div onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{gridColumn:"1 / 6",padding:"9px 10px",fontWeight:800,color:T.accentHover,cursor:onOpenLedger?"pointer":"default"}}>{account.code} {account.name}</div>
+                <div/>
+                <div/>
+                <div/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:cols,borderBottom:`1px solid ${T.border}`}}>
+                <div style={{gridColumn:"1 / 6",padding:"6px 10px",color:T.muted,fontSize:11}}>Opening balance</div>
+                <div/>
+                <div/>
+                <div style={{padding:"6px 14px",textAlign:"right",color:T.text,fontWeight:600}}>{fmt(opening)}</div>
+              </div>
+              {rows.map(r=>{
                 const hasAttachment=hasId(attachedTxnIds,r.id);
                 const isClosed=!!r.matchedWith;
                 return(
-                <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                  <td style={{padding:"7px 14px",color:T.text,width:80}}>{r.date}</td>
-                  <td style={{width:20,padding:0}}>{hasAttachment&&<i className="ti ti-paperclip" title="Has attachment" style={{fontSize:12,color:T.muted}}/>}</td>
-                  <td style={{width:52,fontSize:10,fontWeight:700,color:isClosed?T.accent:T.muted}}>{isClosed?"Closed":""}</td>
-                  <td onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{color:T.accent,fontWeight:600,width:60,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</td>
-                  <td style={{color:T.text}}>{r.description}</td>
-                  <td style={{textAlign:"center",width:50,color:T.muted,fontSize:11}}>{r.vatCode||""}</td>
-                  <td style={{textAlign:"right",fontWeight:600,width:100,color:T.text}}>{sign(r.mv)}</td>
-                  <td style={{textAlign:"right",color:T.muted,width:100,padding:"7px 14px"}}>{fmt(r.running)}</td>
-                </tr>
-              );})}
-              <tr style={{background:T.bg}}>
-                <td colSpan="6" style={{padding:"7px 14px",color:T.sub,fontSize:11}}>Change in period</td>
-                <td></td>
-                <td style={{textAlign:"right",padding:"7px 14px",color:periodChange>=0?T.green:T.red,fontSize:11,fontWeight:700}}>{sign(periodChange)}</td>
-              </tr>
-              <tr style={{borderTop:`2px solid ${T.border}`,fontWeight:800,background:"#fff"}}>
-                <td colSpan="6" style={{padding:"9px 14px",color:T.text}}>Closing balance</td>
-                <td></td>
-                <td style={{textAlign:"right",padding:"9px 14px",color:T.text}}>{fmt(closing)}</td>
-              </tr>
-            </tbody>
-          </table>
+                  <div key={r.id} className="rr-table-row" style={{display:"grid",gridTemplateColumns:cols,background:"#fff",borderBottom:`1px solid ${T.border}`,alignItems:"center"}}>
+                    <div style={{padding:"7px 10px",color:T.text}}>{r.date}</div>
+                    <div>{hasAttachment&&<i className="ti ti-paperclip" title="Has attachment" style={{fontSize:12,color:T.muted}}/>}</div>
+                    <div style={{padding:"7px 6px",fontSize:10,fontWeight:700,color:isClosed?T.accent:T.muted}}>{isClosed?"Closed":""}</div>
+                    <div onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{padding:"7px 6px",color:T.accent,fontWeight:600,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</div>
+                    <div title={r.description} style={{padding:"7px 6px",color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</div>
+                    <div style={{padding:"7px 6px",textAlign:"center",color:T.muted,fontSize:11}}>{r.vatCode||""}</div>
+                    <div style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.mv)}</div>
+                    <div style={{padding:"7px 14px",textAlign:"right",color:T.muted}}>{fmt(r.running)}</div>
+                  </div>
+                );
+              })}
+              <div style={{display:"grid",gridTemplateColumns:cols,background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+                <div style={{gridColumn:"1 / 6",padding:"6px 10px",color:T.sub,fontSize:11}}>Change in period</div>
+                <div/><div/>
+                <div style={{padding:"6px 14px",textAlign:"right",color:periodChange>=0?T.green:T.red,fontSize:11,fontWeight:700}}>{sign(periodChange)}</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:cols,background:"#fff",borderBottom:`2px solid ${T.border}`,fontWeight:800}}>
+                <div style={{gridColumn:"1 / 6",padding:"8px 10px",color:T.text}}>Closing balance</div>
+                <div/><div/>
+                <div style={{padding:"8px 14px",textAlign:"right",color:T.text}}>{fmt(closing)}</div>
+              </div>
+            </div>
+          ))}
+          {!accountLedgers.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No account activity in this range.</div>}
         </div>
-      ))}
-      {!accountLedgers.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No account activity in this range.</div>}
+        );
+      })()}
       </div>
     </div>
   );

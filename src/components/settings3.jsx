@@ -34,7 +34,7 @@ function CustomerImportScreen({contacts,setContacts}){
         });
       });
       if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}.`);setImporting(false);return;}
-      setContacts(p=>[...p,...newContacts]);
+      setContacts([...contacts,...newContacts]);
       setImportResult({count:newContacts.length,skipped});
     }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
     setImporting(false);
@@ -330,7 +330,7 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
     const existing=contacts.filter(c=>c.type===type);
     const nums=existing.map(c=>parseInt((c.id||"").slice(1))||0);
     const id=`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
-    setContacts(p=>[...p,{id,type,name,notes:""}]);
+    setContacts([...contacts,{id,type,name,notes:""}]);
     return id;
   };
 

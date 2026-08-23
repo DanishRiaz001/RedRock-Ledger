@@ -22,6 +22,14 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
   const[settleId,setSettleId]=useState(null);
   const[settleAmt,setSettleAmt]=useState("");
   const[selectedBank,setSelectedBank]=useState(null);
+  // Per-bank manual adjustment — a correction layered on top of real tagged
+  // transactions (never replacing them), keyed by bank code so it can't
+  // bleed into a different bank's total. Tapping a person's amount in the
+  // by-bank Overview opens this, pre-filled with whatever adjustment
+  // already exists for that exact (person, bank) pair.
+  const[adjustCtx,setAdjustCtx]=useState(null); // {sourceId,bankCode,name,bankName,taggedIn,taggedOut}
+  const[adjIn,setAdjIn]=useState("");
+  const[adjOut,setAdjOut]=useState("");
 
   // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
   // transfer only counts on the real bank side, matching the desktop fix.
@@ -95,6 +103,27 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
     saveMoneySources(moneySources.map(m=>m.id===settleId?{...m,openingReceived:(m.openingReceived||0)+amt}:m));
     setSettleAmt("");setSettleId(null);
   };
+  const openAdjust=(sourceId,bankCode,name,bankName,taggedIn,taggedOut)=>{
+    const src=moneySources.find(m=>m.id===sourceId);
+    const existing=(src&&src.bankAdjustments&&src.bankAdjustments[bankCode])||{};
+    setAdjIn(existing.received?String(existing.received):"");
+    setAdjOut(existing.used?String(existing.used):"");
+    setAdjustCtx({sourceId,bankCode,name,bankName,taggedIn,taggedOut});
+  };
+  const saveAdjust=()=>{
+    if(!adjustCtx)return;
+    const{sourceId,bankCode}=adjustCtx;
+    const received=parseFloat(adjIn)||0;
+    const used=parseFloat(adjOut)||0;
+    saveMoneySources(moneySources.map(m=>{
+      if(m.id!==sourceId)return m;
+      const bankAdjustments={...(m.bankAdjustments||{})};
+      if(received||used)bankAdjustments[bankCode]={received,used};
+      else delete bankAdjustments[bankCode];
+      return{...m,bankAdjustments};
+    }));
+    setAdjustCtx(null);
+  };
 
   return(
     <MobileScreen title="Whose" subtitle="Money others gave you to spend" onClose={onClose}
@@ -128,62 +157,41 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
             const bankTotalNet=b.txns.reduce((s,t)=>t.debitCode===b.code?s+t.amount:s-t.amount,0);
             const persons=activeSources.map(m=>{
               const srcTxns=b.txns.filter(t=>t.moneySourceId===m.id);
-              const received=srcTxns.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
-              const used=srcTxns.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
-              return{id:m.id,name:m.name,remaining:received-used,active:srcTxns.length>0};
+              const taggedIn=srcTxns.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const taggedOut=srcTxns.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const adj=(m.bankAdjustments&&m.bankAdjustments[b.code])||{received:0,used:0};
+              const remaining=taggedIn-taggedOut+(adj.received||0)-(adj.used||0);
+              return{id:m.id,name:m.name,taggedIn,taggedOut,remaining,active:srcTxns.length>0||!!(adj.received||adj.used)};
             }).filter(p=>p.active).sort((a,c)=>c.remaining-a.remaining);
             const unassigned=bankTotalNet-b.tagged;
-            const monthlyPersons=activeSources.map(m=>{
-              const before=b.txns.filter(t=>t.moneySourceId===m.id&&t.date<monthFrom);
-              const openReceived=before.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
-              const openUsed=before.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
-              const opening=openReceived-openUsed;
-              const inMonth=b.txns.filter(t=>t.moneySourceId===m.id&&t.date>=monthFrom&&t.date<=monthTo);
-              const received=inMonth.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
-              const used=inMonth.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
-              return{id:m.id,name:m.name,opening,received,used,closing:opening+received-used,activity:before.length>0||inMonth.length>0};
-            }).filter(p=>p.activity);
             return(<>
-              {/* Overview — who this bank's tagged money currently belongs to */}
+              {/* Overview — who this bank's tagged money currently belongs to.
+                  Tap a person's amount to enter a manual in/out correction —
+                  layered on top of their tagged transactions, never
+                  replacing them, so the transaction total stays the source
+                  of truth for the bank as a whole. */}
               <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:persons.length||Math.abs(unassigned)>0.5?12:0}}>
-                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>Overview</div>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A"}}>{fmtBal(bankTotalNet)}</div>
+                <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A",marginBottom:10}}>Overview</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingBottom:10,borderBottom:`1px solid ${T.border}`}}>
+                  <div style={{fontSize:11.5,fontWeight:700,color:"#5C7A76"}}>Balance in bank</div>
+                  <div style={{fontSize:15,fontWeight:800,color:"#0F172A"}}>{fmtBal(bankTotalNet)}</div>
                 </div>
                 {persons.map(p=>(
-                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:`1px solid ${T.border}`}}>
+                  <div key={p.id} onClick={()=>openAdjust(p.id,b.code,p.name,b.name,p.taggedIn,p.taggedOut)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
                     <div style={{fontSize:12,fontWeight:600,color:"#3A4750"}}>{p.name}</div>
-                    <div style={{fontSize:12.5,fontWeight:800,color:p.remaining<0?"#E14848":"#0D9488"}}>{fmtBal(p.remaining)}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <div style={{fontSize:12.5,fontWeight:800,color:p.remaining<0?"#E14848":"#0D9488"}}>{fmtBal(p.remaining)}</div>
+                      <i className="ti ti-pencil" style={{fontSize:11,color:"#B0BAC3"}}/>
+                    </div>
                   </div>
                 ))}
                 {Math.abs(unassigned)>0.5&&(
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderTop:`1px solid ${T.border}`}}>
                     <div style={{fontSize:12,fontWeight:600,color:"#98A2B3"}}>Unassigned</div>
                     <div style={{fontSize:12.5,fontWeight:800,color:"#98A2B3"}}>{fmtBal(unassigned)}</div>
                   </div>
                 )}
-                {!persons.length&&Math.abs(unassigned)<=0.5&&<div style={{textAlign:"center",padding:"6px 0 2px",color:"#98A2B3",fontSize:11.5}}>Nothing tagged in this bank yet.</div>}
-              </div>
-
-              {/* Monthly — same overview, scoped to one month at a time */}
-              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                  <div onClick={()=>stepMonth(-1)} style={{fontSize:16,color:"#8A93A3",padding:"0 8px"}}>‹</div>
-                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{monthLabel}</div>
-                  <div onClick={()=>stepMonth(1)} style={{fontSize:16,color:"#8A93A3",padding:"0 8px"}}>›</div>
-                </div>
-                {monthlyPersons.map(p=>(
-                  <div key={p.id} style={{padding:"8px 0",borderTop:`1px solid ${T.border}`}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                      <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{p.name}</div>
-                      <div style={{fontSize:12,fontWeight:800,color:p.closing<0?"#E14848":"#0D9488"}}>{fmtBal(p.closing)}</div>
-                    </div>
-                    <div style={{display:"flex",gap:10,fontSize:9.5,color:"#98A2B3"}}>
-                      <span>Open {fmtBal(p.opening)}</span><span style={{color:"#0E9F6E"}}>In {fmtBal(p.received)}</span><span style={{color:"#E14848"}}>Out {fmtBal(p.used)}</span>
-                    </div>
-                  </div>
-                ))}
-                {!monthlyPersons.length&&<div style={{textAlign:"center",padding:"6px 0 2px",color:"#98A2B3",fontSize:11.5}}>No activity this month.</div>}
+                {!persons.length&&Math.abs(unassigned)<=0.5&&<div style={{textAlign:"center",padding:"10px 0 2px",color:"#98A2B3",fontSize:11.5}}>Nothing tagged in this bank yet.</div>}
               </div>
 
               {/* Transactions — tag dropdown sits right on each entry */}
@@ -283,6 +291,28 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
             <div style={{display:"flex",gap:10}}>
               <div onClick={()=>setSettleId(null)} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,border:`1px solid ${T.border}`,color:"#5C6B73",fontWeight:700,fontSize:13}}>Cancel</div>
               <div onClick={settleDeficit} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,background:T.accent,color:"#fff",fontWeight:700,fontSize:13}}>Settle</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adjustCtx&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:160,display:"flex",alignItems:"flex-end"}} onClick={()=>setAdjustCtx(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",padding:"22px 20px calc(env(safe-area-inset-bottom) + 20px)",width:"100%"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#0F172A",marginBottom:2}}>{adjustCtx.name}</div>
+            <div style={{fontSize:11.5,color:"#8A93A3",marginBottom:14}}>{adjustCtx.bankName}</div>
+            <div style={{background:"#F6F8FA",borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between"}}>
+              <div style={{fontSize:11,color:"#8A93A3"}}>From transactions</div>
+              <div style={{fontSize:11,fontWeight:700}}><span style={{color:"#0E9F6E"}}>In {fmtBal(adjustCtx.taggedIn)}</span> <span style={{color:"#E14848",marginLeft:8}}>Out {fmtBal(adjustCtx.taggedOut)}</span></div>
+            </div>
+            <div style={{fontSize:10.5,fontWeight:700,color:"#8A93A3",textTransform:"uppercase",letterSpacing:0.4,marginBottom:8}}>Manual adjustment</div>
+            <div style={{fontSize:9.5,color:"#8A93A3",marginBottom:2}}>Amount in</div>
+            <input autoFocus type="number" placeholder="0" value={adjIn} onChange={e=>setAdjIn(e.target.value)} style={fieldStyle}/>
+            <div style={{fontSize:9.5,color:"#8A93A3",marginBottom:2}}>Amount out</div>
+            <input type="number" placeholder="0" value={adjOut} onChange={e=>setAdjOut(e.target.value)} style={{...fieldStyle,marginBottom:14}}/>
+            <div style={{display:"flex",gap:10}}>
+              <div onClick={()=>setAdjustCtx(null)} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,border:`1px solid ${T.border}`,color:"#5C6B73",fontWeight:700,fontSize:13}}>Cancel</div>
+              <div onClick={saveAdjust} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,background:T.accent,color:"#fff",fontWeight:700,fontSize:13}}>Save</div>
             </div>
           </div>
         </div>

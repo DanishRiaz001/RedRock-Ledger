@@ -777,10 +777,7 @@ Return ONLY valid JSON, no markdown:
   const addUnknownContact=(uid,name,type)=>{
     const newId=nextContactId(type,contacts);
     const newContact={id:newId,type,name,notes:""};
-    setContacts(p=>{
-      const updated=[...p,newContact];
-      return updated;
-    });
+    setContacts([...contacts,newContact]);
     setEntries(prev=>prev.map(e=>{
       if(e._uid!==uid)return e;
       const newUnknown=(e.unknown_parties||[]).filter(n=>n!==name);

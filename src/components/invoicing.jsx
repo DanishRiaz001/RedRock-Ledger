@@ -505,10 +505,10 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
     if(!form.name.trim())return;
     const cleaned={...form,paymentTermsDays:parseInt(form.paymentTermsDays)||30,creditLimit:form.creditLimit===""?null:parseFloat(form.creditLimit)};
     if(editingId){
-      setContacts(p=>p.map(c=>c.id===editingId?{...c,...cleaned}:c));
+      setContacts(contacts.map(c=>c.id===editingId?{...c,...cleaned}:c));
       setEditingId(null);
     }else{
-      setContacts(p=>[...p,{id:nextId(),type,...cleaned}]);
+      setContacts([...contacts,{id:nextId(),type,...cleaned}]);
       setShowNew(false);
     }
   };
@@ -557,7 +557,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         });
       });
       if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}. Expected a Name column at minimum.`);setImporting(false);return;}
-      setContacts(p=>[...p,...newContacts]);
+      setContacts([...contacts,...newContacts]);
       alert(`Imported ${newContacts.length} contact${newContacts.length===1?"":"s"}${skipped?` (${skipped} skipped — missing a name)`:""}.`);
     }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
     setImporting(false);
@@ -625,7 +625,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <NewContactModal
           defaultType={type}
           country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
-          onSave={contact=>{setContacts(p=>[...p,{id:nextId(),...contact}]);setShowNew(false);}}
+          onSave={contact=>{setContacts([...contacts,{id:nextId(),...contact}]);setShowNew(false);}}
           onClose={()=>setShowNew(false)}
           onBulkImport={onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
         />
@@ -3070,6 +3070,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
+  const[saving,setSaving]=React.useState(false);
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
@@ -3092,7 +3093,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
 
   const save=async()=>{
-    if(!valid)return;
+    // saving guards against a double-click firing this twice before the
+    // first await resolves — the button below also disables on `saving`,
+    // but that alone isn't enough since a fast second click can land before
+    // the first render pass reflects the disabled state.
+    if(!valid||saving)return;
     if(isDateClosed(form.date)){
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
       return;
@@ -3104,48 +3109,53 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     const amountNum=parseFloat(form.amount);
     const possibleDupe=transactions.find(t=>t.date===form.date&&Math.abs(t.amount-amountNum)<0.01&&t.description.trim().toLowerCase()===form.description.trim().toLowerCase());
     if(possibleDupe&&!window.confirm(`This looks like a duplicate of ${fmtB(possibleDupe.bilag)} — same date, amount, and description. Save it anyway?`))return;
-    // Remember what was used this time, so the next New Entry starts pre-filled
-    // with the same accounts — most entries in a row tend to repeat a pattern.
-    try{localStorage.setItem("rr_last_debit_code",form.debitCode);localStorage.setItem("rr_last_credit_code",form.creditCode);}catch{}
-    const amount=parseFloat(form.amount);
-    const lines=form.lines||[];
-    const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
-    // Multi-line entries share one groupRef so opening any line shows the whole entry
-    const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
-    const line0=lines[0]||{};
-    const vc0=findVatCode(line0.debitVatCode,"input")||findVatCode(line0.creditVatCode,"output");
-    // Save primary entry
-    const primaryResult=await onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
-    // A comment is extra context on top of the required description — saved
-    // as an entry comment (same thread DetailModal shows later) instead of
-    // a new column, so it's visible wherever comments already render.
-    if(form.notes&&form.notes.trim()&&addEntryComment&&primaryResult&&primaryResult.id){
-      addEntryComment(primaryResult.id,form.notes.trim());
+    setSaving(true);
+    try{
+      // Remember what was used this time, so the next New Entry starts pre-filled
+      // with the same accounts — most entries in a row tend to repeat a pattern.
+      try{localStorage.setItem("rr_last_debit_code",form.debitCode);localStorage.setItem("rr_last_credit_code",form.creditCode);}catch{}
+      const amount=parseFloat(form.amount);
+      const lines=form.lines||[];
+      const extraLines=lines.slice(1).filter(l=>l.debitCode&&l.creditCode&&parseFloat(l.amount)>0);
+      // Multi-line entries share one groupRef so opening any line shows the whole entry
+      const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
+      const line0=lines[0]||{};
+      const vc0=findVatCode(line0.debitVatCode,"input")||findVatCode(line0.creditVatCode,"output");
+      // Save primary entry
+      const primaryResult=await onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
+      // A comment is extra context on top of the required description — saved
+      // as an entry comment (same thread DetailModal shows later) instead of
+      // a new column, so it's visible wherever comments already render.
+      if(form.notes&&form.notes.trim()&&addEntryComment&&primaryResult&&primaryResult.id){
+        addEntryComment(primaryResult.id,form.notes.trim());
+      }
+      // Save each extra line as its own entry, linked via groupRef
+      for(const l of extraLines){
+        const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
+        await onSave({
+          date:l.date||form.date,
+          debitCode:l.debitCode,
+          creditCode:l.creditCode,
+          description:l.description||form.description,
+          amount:parseFloat(l.amount),
+          contactId:form.contactId||null,
+          sfFundId:form.sfFundId||null,
+          groupRef,
+          moneySourceId:form.moneySourceId||null,
+          projectId:form.projectId||null,
+          vatCode:(l.debitVatCode&&l.debitVatCode!=="0")?l.debitVatCode:(l.creditVatCode&&l.creditVatCode!=="0"?l.creditVatCode:null),
+          vatPct:vc?vc.rate:null,
+        });
+      }
+      setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
+      if(form.sfFundId&&saveSinkingFunds){
+        const updated=(sinkingFunds||[]).map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
+        saveSinkingFunds(updated);
+      }
+      setForm(emptyTxn);
+    } finally {
+      setSaving(false);
     }
-    // Save each extra line as its own entry, linked via groupRef
-    extraLines.forEach(l=>{
-      const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
-      onSave({
-        date:form.date,
-        debitCode:l.debitCode,
-        creditCode:l.creditCode,
-        description:l.description||form.description,
-        amount:parseFloat(l.amount),
-        contactId:form.contactId||null,
-        sfFundId:form.sfFundId||null,
-        groupRef,
-        moneySourceId:form.moneySourceId||null,
-        projectId:form.projectId||null,
-        vatCode:(l.debitVatCode&&l.debitVatCode!=="0")?l.debitVatCode:(l.creditVatCode&&l.creditVatCode!=="0"?l.creditVatCode:null),
-        vatPct:vc?vc.rate:null,
-      });
-    });
-    setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
-    if(form.sfFundId&&saveSinkingFunds){
-      const updated=(sinkingFunds||[]).map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
-      saveSinkingFunds(updated);
-    }
-    setForm(emptyTxn);
   };
 
   const saveNewContact=()=>{
@@ -3188,11 +3198,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const sfFunds=sinkingFunds||[];
 
   const saveInvoice=()=>{
-    if(!invContactId||!invAccountCode||!parseFloat(invAmount))return;
+    if(!invContactId||!invAccountCode||!parseFloat(invAmount)||saving)return;
     if(isDateClosed(form.date)){
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
       return;
     }
+    setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const allLines=[{accountCode:invAccountCode,amount:invAmount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
@@ -3241,6 +3252,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     }
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
     resetInvoiceForm();
+    setSaving(false);
   };
 
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
@@ -3266,11 +3278,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
 
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {/* First row — Date (30%) + Description (70%) */}
-        <div style={{display:"flex",gap:8}}>
-          <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{flex:"0 0 30%",minWidth:0}}/>
-          <input placeholder="Description" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inpSm,flex:"0 0 70%",minWidth:0}}/>
-        </div>
         <input placeholder="Comment (optional) — extra context for this entry" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{...inpSm}}/>
         {trackProjects&&(
           <select value={form.projectId||""} onChange={e=>{
@@ -3293,14 +3300,39 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </select>
         )}
 
-        {/* Debit (40%) / Credit (40%) / Amount (20%) — one row per line, no
-            per-line date or description, since those belong to the entry as
-            a whole, entered once above. */}
-        <div>
+        {/* One line = one row: date, description, debit, credit, amount all
+            together — each line is basically its own mini-transaction, so
+            it reads that way instead of splitting date/description out to
+            a shared header above. Fonts/padding shrunk to fit; the row
+            scrolls horizontally on narrow screens rather than wrapping,
+            which would break the "everything in one row" point of this. */}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
+          <div style={{display:"flex",gap:6,marginBottom:4,minWidth:626}}>
+            <div style={{flex:"0 0 96px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
+            <div style={{flex:"0 0 150px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
+            <div style={{flex:"0 0 128px",fontSize:8.5,color:T.red,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+            <div style={{flex:"0 0 128px",fontSize:8.5,color:T.green,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
+            <div style={{flex:"0 0 78px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Amount</div>
+          </div>
           {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
-            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",marginBottom:6}}>
-              <div style={{flex:"0 0 40%",minWidth:0}}>
-                {li===0&&<div style={{fontSize:9,color:T.red,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Debit</div>}
+            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,minWidth:626}}>
+              <div style={{flex:"0 0 96px",minWidth:0}}>
+                <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                  if(li===0){setForm(p=>({...p,date:v}));return;}
+                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                  lines[li]={...lines[li],date:v};
+                  setForm(p=>({...p,lines}));
+                }} style={{fontSize:11}}/>
+              </div>
+              <div style={{flex:"0 0 150px",minWidth:0}}>
+                <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
+                  if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                  const lines=[...(form.lines||[])];
+                  lines[li]={...lines[li],description:e.target.value};
+                  setForm(p=>({...p,lines}));
+                }} style={{...inpSm,fontSize:11,padding:"7px 8px"}}/>
+              </div>
+              <div style={{flex:"0 0 128px",minWidth:0}}>
                 <AccDrop value={line.debitCode||""} onChange={v=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],debitCode:v};
@@ -3312,8 +3344,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   setForm(p=>({...p,lines}));
                 }} options={vatCodeOptions("input")}/>
               </div>
-              <div style={{flex:"0 0 40%",minWidth:0}}>
-                {li===0&&<div style={{fontSize:9,color:T.green,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Credit</div>}
+              <div style={{flex:"0 0 128px",minWidth:0}}>
                 <AccDrop value={line.creditCode||""} onChange={v=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],creditCode:v};
@@ -3325,27 +3356,28 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   setForm(p=>({...p,lines}));
                 }} options={vatCodeOptions("output")}/>
               </div>
-              <div style={{flex:"0 0 20%",minWidth:0}}>
-                {li===0&&<div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>}
+              <div style={{flex:"0 0 78px",minWidth:0,display:"flex",gap:4,alignItems:"flex-start"}}>
                 {li===0?(
-                  <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                  <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
                 ):(
                   <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
                     const lines=[...(form.lines||[])];
                     lines[li]={...lines[li],amount:e.target.value};
                     setForm(p=>({...p,lines}));
-                  }} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                  }} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
+                )}
+                {li>0&&(
+                  <button onClick={()=>{
+                    const lines=[...(form.lines||[])];
+                    lines.splice(li,1);
+                    setForm(p=>({...p,lines}));
+                  }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:32,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
                 )}
               </div>
-              {li>0&&(
-                <button onClick={()=>{
-                  const lines=[...(form.lines||[])];
-                  lines.splice(li,1);
-                  setForm(p=>({...p,lines}));
-                }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:26,height:34,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
-              )}
             </div>
           ))}
+        </div>
+        <div>
           {calcResult&&(
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
               <span style={{fontSize:11,color:T.muted}}>= {fmt(calcResult)}</span>
@@ -3447,7 +3479,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             </select>
           </div>
         )}
-        <button style={{...btnRed,opacity:valid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={save}>{entrySaved?"✓ Saved!":"Save Entry"}</button>
+        <button disabled={!valid||saving} style={{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?"✓ Saved!":saving?"Saving…":"Save Entry"}</button>
       </div>
       )}
 
@@ -3554,7 +3586,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             </div>
 
             {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
-            <button style={{...btnRed,opacity:invValid?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s"}} onClick={saveInvoice}>{entrySaved?"✓ Saved!":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
+            <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?"✓ Saved!":saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
           </div>
         );
       })()}
