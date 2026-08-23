@@ -10,15 +10,19 @@ const QUICK_ACCESS=[
   {label:"Whose",icon:"ti-users",overlay:"Whose",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
   {label:"Bank overview",icon:"ti-building-bank",tab:"Bank",bg:"rgba(232,90,59,0.12)",fg:"#E85A3B"},
 ];
+const QUICK_ACCESS_2=[
+  {label:"Trial balance",icon:"ti-scale",overlay:"TrialBalance",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
+  {label:"Bilags",icon:"ti-receipt-2",tab:"Vouchers",bg:"rgba(255,107,74,0.12)",fg:"#FF6B4A"},
+  {label:"Suppliers",icon:"ti-truck-delivery",overlay:"Reskontro",overlayExtra:{defaultType:"supplier"},bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
+  {label:"Customers",icon:"ti-users-group",overlay:"Reskontro",overlayExtra:{defaultType:"customer"},bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
+];
 
-export default function MobileHome({accounts,transactions,profile,moneySources=[],feat={},onNavigate,onOpenOverlay}){
+export default function MobileHome({accounts,transactions,profile,companyProfile,moneySources=[],feat={},onNavigate,onOpenOverlay}){
   const today=new Date().toISOString().slice(0,10);
-  const oneMonthAgo=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,10);})();
 
   const balAt=(code,asOf)=>transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
   const seriesBalAt=(sk,asOf)=>accounts.filter(a=>getSK(a.code)===sk).reduce((s,a)=>s+balAt(a.code,asOf),0);
 
-  const cashNow=seriesBalAt("1900",today), cashPrev=seriesBalAt("1900",oneMonthAgo);
   const arNow=seriesBalAt("1500",today);
   const apNow=seriesBalAt("2400",today);
   const netProfit=useMemo(()=>{
@@ -26,7 +30,6 @@ export default function MobileHome({accounts,transactions,profile,moneySources=[
     const expense=transactions.filter(t=>{const sk=getSK(t.debitCode);return sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0);
     return income-expense;
   },[transactions]);
-  const cashChangePct=cashPrev?Math.round(((cashNow-cashPrev)/Math.abs(cashPrev))*1000)/10:0;
 
   const bankBal=(code)=>balAt(code,today);
   // Hide accounts sitting at zero with no activity — an empty bank card
@@ -56,6 +59,8 @@ export default function MobileHome({accounts,transactions,profile,moneySources=[
   const monthLabel=new Date().toLocaleString("default",{month:"long"});
 
   const firstName=(profile&&(profile.display_name||profile.email)||"there").split(/[ @]/)[0];
+  const companyName=(companyProfile&&companyProfile.companyName)||firstName;
+  const monthProfit=monthIncome-monthExpense;
 
   return(
     <div style={{paddingBottom:24}}>
@@ -66,14 +71,14 @@ export default function MobileHome({accounts,transactions,profile,moneySources=[
       }}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:14}}>
           <div>
-            <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>Good {new Date().getHours()<12?"morning":new Date().getHours()<18?"afternoon":"evening"}, {firstName}</div>
-            <div style={{fontSize:11.5,color:"rgba(255,255,255,0.75)",marginTop:2}}>Redrock Danria · {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+            <div style={{fontSize:20,fontWeight:800,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:260}}>{companyName}</div>
+            <div style={{fontSize:11.5,color:"rgba(255,255,255,0.75)",marginTop:2}}>Good {new Date().getHours()<12?"morning":new Date().getHours()<18?"afternoon":"evening"} · {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
           </div>
-          <div onClick={()=>onOpenOverlay({type:"Settings"})} style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.22)",border:"1.5px solid rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>{firstName[0].toUpperCase()}</div>
+          <div onClick={()=>onOpenOverlay({type:"Settings"})} style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.22)",border:"1.5px solid rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{companyName[0].toUpperCase()}</div>
         </div>
         <div style={{marginTop:22}}>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Total cash & bank</div>
-          <div style={{fontSize:36,fontWeight:800,color:"#fff",marginTop:4,letterSpacing:-0.5}}>{fmtBal(cashNow)}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Profit / loss · {monthLabel}</div>
+          <div style={{fontSize:36,fontWeight:800,color:"#fff",marginTop:4,letterSpacing:-0.5}}>{sign(monthProfit)}</div>
         </div>
         {/* Floating glass stat strip */}
         <div style={{position:"absolute",left:20,right:20,bottom:-34,zIndex:2,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:16,display:"flex",boxShadow:"0 20px 40px rgba(13,148,136,0.18)"}}>
@@ -85,44 +90,54 @@ export default function MobileHome({accounts,transactions,profile,moneySources=[
         </div>
       </div>
 
-      {/* Quick access grid */}
-      <div style={{padding:"0 20px",marginBottom:22}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
-          {QUICK_ACCESS.map(q=>(
-            <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
-              <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>
-              <div style={{fontSize:8.5,fontWeight:700,color:"#3A4750",lineHeight:1.2}}>{q.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Bank card carousel — momentum swipe, no dots/arrows; the next
           card's edge peeking in on the right is the only affordance,
-          matching how horizontal scroll reads everywhere else on iOS. */}
+          matching how horizontal scroll reads everywhere else on iOS.
+          Sits right under the hero now, above quick access, since these
+          balances are the thing worth seeing first. */}
       {banks.length>0&&(
         <div style={{marginBottom:22}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 20px",marginBottom:10}}>
             <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A"}}>Your accounts</div>
             <div onClick={()=>onNavigate("Bank")} style={{fontSize:11.5,color:T.accent,fontWeight:700}}>See all</div>
           </div>
-          <div style={{display:"flex",gap:10,overflowX:"auto",padding:"0 20px",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch"}}>
+          <div style={{display:"flex",gap:8,overflowX:"auto",padding:"0 20px",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch"}}>
             {banks.map((b,i)=>{
               const bal=bankBal(b.code);
               const c=BANK_COLORS[i%BANK_COLORS.length];
               return(
-                <div key={b.code} onClick={()=>onOpenOverlay({type:"Ledger",account:b})} style={{scrollSnapAlign:"start",flexShrink:0,width:158,background:"#fff",borderRadius:17,padding:13,boxShadow:"0 2px 12px rgba(20,40,50,0.06)",border:`1px solid ${T.border}`}}>
-                  <div style={{width:28,height:28,borderRadius:9,background:c.bg,color:c.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:11}}><i className="ti ti-building-bank" style={{fontSize:13}}/></div>
-                  <div style={{fontSize:8.5,color:"#98A2B3",fontWeight:700,letterSpacing:0.3,textTransform:"uppercase"}}>{b.code}</div>
-                  <div style={{fontSize:11,fontWeight:700,color:"#0F172A",marginTop:2,marginBottom:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                  <div style={{fontSize:8.5,color:"#98A2B3",fontWeight:600}}>Balance</div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#0F172A",marginTop:2}}>{fmtBal(bal)}</div>
+                <div key={b.code} onClick={()=>onOpenOverlay({type:"Ledger",account:b})} style={{scrollSnapAlign:"start",flexShrink:0,width:126,background:"#fff",borderRadius:15,padding:11,boxShadow:"0 2px 12px rgba(20,40,50,0.06)",border:`1px solid ${T.border}`}}>
+                  <div style={{width:23,height:23,borderRadius:8,background:c.bg,color:c.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:9}}><i className="ti ti-building-bank" style={{fontSize:11}}/></div>
+                  <div style={{fontSize:7.5,color:"#98A2B3",fontWeight:700,letterSpacing:0.3,textTransform:"uppercase"}}>{b.code}</div>
+                  <div style={{fontSize:10,fontWeight:700,color:"#0F172A",marginTop:2,marginBottom:9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
+                  <div style={{fontSize:7.5,color:"#98A2B3",fontWeight:600}}>Balance</div>
+                  <div style={{fontSize:12,fontWeight:800,color:"#0F172A",marginTop:2}}>{fmtBal(bal)}</div>
                 </div>
               );
             })}
           </div>
         </div>
       )}
+
+      {/* Quick access grid — two rows, sitting below the bank cards now */}
+      <div style={{padding:"0 20px",marginBottom:22}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:8}}>
+          {QUICK_ACCESS.map(q=>(
+            <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay,...(q.overlayExtra||{})}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
+              <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>
+              <div style={{fontSize:8.5,fontWeight:700,color:"#3A4750",lineHeight:1.2}}>{q.label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+          {QUICK_ACCESS_2.map(q=>(
+            <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay,...(q.overlayExtra||{})}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
+              <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>
+              <div style={{fontSize:8.5,fontWeight:700,color:"#3A4750",lineHeight:1.2}}>{q.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* This month — compact single-line net instead of two big bars, to
           leave room for the Whose summary below (the more actionable of
@@ -156,8 +171,10 @@ export default function MobileHome({accounts,transactions,profile,moneySources=[
         </div>
       )}
 
-      {/* New entry FAB */}
-      <div onClick={()=>onNavigate("Vouchers")} style={{position:"fixed",right:20,bottom:96,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#FF6B4A,#FF8266)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 20px rgba(255,107,74,0.4)",zIndex:5}}>
+      {/* New entry FAB — jumps straight to the new-voucher form, not just
+          the Vouchers list, via the shared overlay signal MobileVouchers
+          consumes on mount. */}
+      <div onClick={()=>{onNavigate("Vouchers");onOpenOverlay({type:"NewVoucher"});}} style={{position:"fixed",right:20,bottom:96,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#FF6B4A,#FF8266)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 20px rgba(255,107,74,0.4)",zIndex:5}}>
         <i className="ti ti-plus" style={{fontSize:26,color:"#fff"}}/>
       </div>
     </div>

@@ -1,13 +1,20 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { T } from "../../lib/theme.js";
 import { sign, fmtBal } from "../ledger.jsx";
 import { fmtB } from "../../lib/utils.js";
 import { NewEntryForm } from "../invoicing.jsx";
 
 export default function MobileVouchers(props){
-  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment}=props;
+  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment,overlay,setOverlay}=props;
   const[showNew,setShowNew]=useState(false);
   const[search,setSearch]=useState("");
+
+  // Home's "+" FAB signals a new entry via the shared overlay state (rather
+  // than switching tabs and leaving it at that) — consume it here and clear
+  // it right away so it doesn't also try to open one of the overlay screens.
+  useEffect(()=>{
+    if(overlay&&overlay.type==="NewVoucher"){setShowNew(true);setOverlay&&setOverlay(null);}
+  },[overlay]);
 
   const list=useMemo(()=>{
     const sorted=[...transactions].sort((a,b)=>b.bilag-a.bilag);

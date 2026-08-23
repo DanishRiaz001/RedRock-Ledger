@@ -118,46 +118,101 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
       {tab==="bybank"&&(<>
         {!perBank.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No bank accounts found.</div>}
         {perBank.length>0&&(<>
-          <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,marginBottom:16,WebkitOverflowScrolling:"touch"}}>
-            {perBank.map(b=>{
-              const active=(selectedBank||perBank[0].code)===b.code;
-              return(
-                <div key={b.code} onClick={()=>setSelectedBank(b.code)} style={{flexShrink:0,padding:"9px 14px",borderRadius:20,fontSize:12,fontWeight:700,background:active?T.accent:"#fff",color:active?"#fff":"#5C6B73",boxShadow:active?"none":"0 1px 6px rgba(20,40,50,0.05)",whiteSpace:"nowrap"}}>
-                  {b.name}
-                </div>
-              );
-            })}
-          </div>
+          {/* Dropdown bank picker — this drives the overview, monthly, and
+              transaction sections below it, all scoped to the chosen bank. */}
+          <select value={selectedBank||perBank[0].code} onChange={e=>setSelectedBank(e.target.value)} style={{width:"100%",background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",fontSize:13,fontWeight:800,color:"#0F172A",fontFamily:"inherit",marginBottom:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)",appearance:"none",WebkitAppearance:"none"}}>
+            {perBank.map(b=><option key={b.code} value={b.code}>{b.code} · {b.name}</option>)}
+          </select>
           {(()=>{
             const b=perBank.find(x=>x.code===(selectedBank||perBank[0].code))||perBank[0];
-            return(
-              <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{b.code} {b.name}</div>
-                  <div style={{fontSize:12,fontWeight:700,color:b.tagged<0?"#E14848":"#8A93A3"}}>{fmtBal(b.tagged)} tagged</div>
+            const bankTotalNet=b.txns.reduce((s,t)=>t.debitCode===b.code?s+t.amount:s-t.amount,0);
+            const persons=activeSources.map(m=>{
+              const srcTxns=b.txns.filter(t=>t.moneySourceId===m.id);
+              const received=srcTxns.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const used=srcTxns.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
+              return{id:m.id,name:m.name,remaining:received-used,active:srcTxns.length>0};
+            }).filter(p=>p.active).sort((a,c)=>c.remaining-a.remaining);
+            const unassigned=bankTotalNet-b.tagged;
+            const monthlyPersons=activeSources.map(m=>{
+              const before=b.txns.filter(t=>t.moneySourceId===m.id&&t.date<monthFrom);
+              const openReceived=before.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const openUsed=before.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const opening=openReceived-openUsed;
+              const inMonth=b.txns.filter(t=>t.moneySourceId===m.id&&t.date>=monthFrom&&t.date<=monthTo);
+              const received=inMonth.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
+              const used=inMonth.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
+              return{id:m.id,name:m.name,opening,received,used,closing:opening+received-used,activity:before.length>0||inMonth.length>0};
+            }).filter(p=>p.activity);
+            return(<>
+              {/* Overview — who this bank's tagged money currently belongs to */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:persons.length||Math.abs(unassigned)>0.5?12:0}}>
+                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>Overview</div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A"}}>{fmtBal(bankTotalNet)}</div>
                 </div>
-                <div style={{fontSize:10,color:"#98A2B3",marginBottom:10}}>Incoming = debit, outgoing = credit. Tap to tag or retag.</div>
+                {persons.map(p=>(
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#3A4750"}}>{p.name}</div>
+                    <div style={{fontSize:12.5,fontWeight:800,color:p.remaining<0?"#E14848":"#0D9488"}}>{fmtBal(p.remaining)}</div>
+                  </div>
+                ))}
+                {Math.abs(unassigned)>0.5&&(
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#98A2B3"}}>Unassigned</div>
+                    <div style={{fontSize:12.5,fontWeight:800,color:"#98A2B3"}}>{fmtBal(unassigned)}</div>
+                  </div>
+                )}
+                {!persons.length&&Math.abs(unassigned)<=0.5&&<div style={{textAlign:"center",padding:"6px 0 2px",color:"#98A2B3",fontSize:11.5}}>Nothing tagged in this bank yet.</div>}
+              </div>
+
+              {/* Monthly — same overview, scoped to one month at a time */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div onClick={()=>stepMonth(-1)} style={{fontSize:16,color:"#8A93A3",padding:"0 8px"}}>‹</div>
+                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{monthLabel}</div>
+                  <div onClick={()=>stepMonth(1)} style={{fontSize:16,color:"#8A93A3",padding:"0 8px"}}>›</div>
+                </div>
+                {monthlyPersons.map(p=>(
+                  <div key={p.id} style={{padding:"8px 0",borderTop:`1px solid ${T.border}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{p.name}</div>
+                      <div style={{fontSize:12,fontWeight:800,color:p.closing<0?"#E14848":"#0D9488"}}>{fmtBal(p.closing)}</div>
+                    </div>
+                    <div style={{display:"flex",gap:10,fontSize:9.5,color:"#98A2B3"}}>
+                      <span>Open {fmtBal(p.opening)}</span><span style={{color:"#0E9F6E"}}>In {fmtBal(p.received)}</span><span style={{color:"#E14848"}}>Out {fmtBal(p.used)}</span>
+                    </div>
+                  </div>
+                ))}
+                {!monthlyPersons.length&&<div style={{textAlign:"center",padding:"6px 0 2px",color:"#98A2B3",fontSize:11.5}}>No activity this month.</div>}
+              </div>
+
+              {/* Transactions — tag dropdown sits right on each entry */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+                <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A",marginBottom:4}}>Transactions</div>
+                <div style={{fontSize:10,color:"#98A2B3",marginBottom:10}}>Incoming = debit, outgoing = credit.</div>
                 {b.txns.slice(0,60).map(t=>{
                   const isIn=t.debitCode===b.code;
                   return(
                     <div key={t.id} style={{padding:"9px 0",borderTop:`1px solid ${T.border}`}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                        <div style={{flex:1,minWidth:0,marginRight:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                        <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:11.5,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
                           <div style={{fontSize:9.5,color:"#98A2B3"}}>{t.date}</div>
                         </div>
-                        <div style={{fontSize:12,fontWeight:800,color:isIn?"#0E9F6E":"#E14848",flexShrink:0}}>{isIn?"+":"−"}{fmt(t.amount)}</div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:12,fontWeight:800,color:isIn?"#0E9F6E":"#E14848",marginBottom:4}}>{isIn?"+":"−"}{fmt(t.amount)}</div>
+                          <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 6px",fontSize:10.5,fontFamily:"inherit",maxWidth:130}}>
+                            <option value="">— untagged —</option>
+                            {activeSources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                        </div>
                       </div>
-                      <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 8px",fontSize:11.5,fontFamily:"inherit"}}>
-                        <option value="">— untagged —</option>
-                        {activeSources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                      </select>
                     </div>
                   );
                 })}
                 {!b.txns.length&&<div style={{textAlign:"center",padding:"14px 0",color:"#98A2B3",fontSize:11.5}}>No transactions yet.</div>}
               </div>
-            );
+            </>);
           })()}
         </>)}
       </>)}

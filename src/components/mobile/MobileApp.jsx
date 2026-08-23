@@ -15,6 +15,7 @@ import MobileLedger from "./MobileLedger.jsx";
 import MobileTrialBalance from "./MobileTrialBalance.jsx";
 import MobileSettings from "./MobileSettings.jsx";
 import MobileWhose from "./MobileWhose.jsx";
+import MobileReskontro from "./MobileReskontro.jsx";
 import { TABBAR_H } from "./mobileConstants.js";
 
 const OVERLAY_META={
@@ -115,6 +116,12 @@ export default function MobileApp(props){
         <MobileWhose moneySources={effectiveMoneySources} saveMoneySources={props.saveMoneySources}
           transactions={props.transactions} accounts={props.accounts} tagTransaction={props.tagTransaction}
           onClose={()=>setOverlay(null)}/>
+      )}
+
+      {overlay&&overlay.type==="Reskontro"&&(
+        <MobileReskontro contacts={props.contacts} transactions={props.transactions}
+          matchTxns={props.matchTransactions} unmatchTxns={props.unmatchTransactions}
+          defaultType={overlay.defaultType} onClose={()=>setOverlay(null)}/>
       )}
     </div>
   );
