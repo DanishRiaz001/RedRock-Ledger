@@ -1441,14 +1441,29 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const[showAdd,setShowAdd]=useState(false);
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
+  const[panelTab,setPanelTab]=useState("sources"); // "sources" | "bybank"
 
   // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
   // transfer (e.g. Dr 1900 / Cr 1901, withdrawing bank cash) only counts on
   // the real bank side (as "used", since money left the bank), instead of
   // also registering as "received" on the cash side and double-counting a
   // single transfer as both money in and money out.
-  const bankCodes=useMemo(()=>new Set(accounts.filter(a=>getSK(a.code)==="1900"&&a.code!=="1900").map(a=>a.code)),[accounts]);
+  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"&&a.code!=="1900"),[accounts]);
+  const bankCodes=useMemo(()=>new Set(bankAccounts.map(a=>a.code)),[bankAccounts]);
   const bankTxns=useMemo(()=>transactions.filter(t=>bankCodes.has(t.debitCode)||bankCodes.has(t.creditCode)).sort((a,b)=>b.date.localeCompare(a.date)),[transactions,bankCodes]);
+
+  // Per-bank-account breakdown: for each bank, which sources have money
+  // tagged there and how much — "which account has which person's amount".
+  const activeSourcesList=moneySources.filter(m=>!m.inactive);
+  const perBank=useMemo(()=>bankAccounts.map(bank=>{
+    const rows=activeSourcesList.map(m=>{
+      const tagged=transactions.filter(t=>t.moneySourceId===m.id&&(t.debitCode===bank.code||t.creditCode===bank.code));
+      const received=tagged.filter(t=>t.debitCode===bank.code).reduce((s,t)=>s+t.amount,0);
+      const used=tagged.filter(t=>t.creditCode===bank.code).reduce((s,t)=>s+t.amount,0);
+      return{id:m.id,name:m.name,remaining:received-used};
+    }).filter(r=>r.remaining!==0);
+    return{code:bank.code,name:bank.name,rows,total:rows.reduce((s,r)=>s+r.remaining,0)};
+  }).filter(b=>b.rows.length>0),[bankAccounts,activeSourcesList,transactions]);
 
   const totalsFor=(id)=>{
     const src=moneySources.find(m=>m.id===id);
@@ -1515,6 +1530,34 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
         </div>
       )}
 
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        {[["sources","Sources"],["bybank","By bank"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setPanelTab(id)} style={{background:panelTab===id?T.accent:"none",color:panelTab===id?"#fff":T.sub,border:`1px solid ${panelTab===id?T.accent:T.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        ))}
+      </div>
+
+      {panelTab==="bybank"&&(
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Which account each person's money is sitting in right now.</div>
+          {perBank.map(b=>(
+            <div key={b.code} style={{border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:13,fontWeight:800,color:T.text}}>{b.code} {b.name}</div>
+                <div style={{fontSize:12,fontWeight:700,color:T.sub}}>{fmt(b.total)}</div>
+              </div>
+              {b.rows.map(r=>(
+                <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:`1px solid ${T.bg}`,fontSize:12.5}}>
+                  <span style={{color:T.text}}>{r.name}</span>
+                  <span style={{fontWeight:700,color:r.remaining<0?T.red:T.text}}>{fmt(r.remaining)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+          {!perBank.length&&<div style={{textAlign:"center",padding:"18px 0",color:T.muted,fontSize:12}}>No tagged bank activity yet.</div>}
+        </div>
+      )}
+
+      {panelTab==="sources"&&(<>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:16,minWidth:420}}>
           <thead><tr style={{background:T.bg,color:T.sub}}>
@@ -1584,6 +1627,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
           </tbody>
         </table>
       </div>
+      </>)}
     </div>
   );
 }
