@@ -245,7 +245,105 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   );
 }
 
-function LoginScreen({onLogin}){
+// The marketing homepage — what a signed-out visitor sees first. Built for
+// two audiences at once (a business running its own books, and an
+// accountant/bookkeeper managing several clients' books from one login),
+// since that split is the actual multi-tenant story this app has to tell.
+// Reuses the app's own teal/coral identity and Plus Jakarta Sans (already
+// loaded globally in index.html) rather than inventing a separate look.
+function MarketingHome({onSignIn,onSignUp,onPublicPage}){
+  const FEATURES=[
+    {icon:"ti-book-2",title:"Double-entry ledger",body:"A real chart of accounts with proper debits and credits — not a spreadsheet pretending to be one."},
+    {icon:"ti-file-invoice",title:"Invoicing & reskontro",body:"Send invoices, track payments, and match open items against customers and suppliers automatically."},
+    {icon:"ti-building-bank",title:"Bank reconciliation",body:"Import a statement and match it against your ledger line by line, with suggestions as you go."},
+    {icon:"ti-report-money",title:"Budgets & shared money",body:"Track spending by category, and keep tabs on money other people give you to spend on their behalf."},
+    {icon:"ti-building-store",title:"Multi-company & client access",body:"Run books for more than one company under one login, or grant your accountant tiered access to yours."},
+    {icon:"ti-device-mobile",title:"A real native app",body:"An iOS app that stays in sync with the web — book an entry on your phone, see it on your desktop instantly."},
+  ];
+  const navLink={background:"none",border:"none",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"};
+  return(
+    <div style={{minHeight:"100vh",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+      <div style={{position:"sticky",top:0,zIndex:20,background:"rgba(252,253,253,0.85)",backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{maxWidth:1120,margin:"0 auto",padding:"14px 24px",display:"flex",alignItems:"center",gap:24}}>
+          <img src={LOGO_B64} style={{height:32,objectFit:"contain"}}/>
+          <div style={{flex:1,display:"flex",gap:22,alignItems:"center"}}>
+            <a href="#features" style={{...navLink,textDecoration:"none"}}>Features</a>
+            <button onClick={()=>onPublicPage("pricing")} style={navLink}>Pricing</button>
+          </div>
+          <button onClick={onSignIn} style={{background:"none",border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>Sign in</button>
+          <button onClick={onSignUp} style={{background:T.accentGradient,border:"none",borderRadius:10,padding:"9px 18px",fontSize:13,fontWeight:800,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Get started</button>
+        </div>
+      </div>
+
+      <div style={{maxWidth:900,margin:"0 auto",padding:"88px 24px 56px",textAlign:"center"}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accentHover,borderRadius:20,padding:"5px 14px",fontSize:11.5,fontWeight:700,marginBottom:22}}>
+          <i className="ti ti-sparkles" style={{fontSize:13}}/>Built for real double-entry bookkeeping
+        </div>
+        <h1 style={{fontSize:"clamp(32px,5vw,52px)",fontWeight:900,color:"#0F172A",lineHeight:1.12,letterSpacing:-1,marginBottom:20}}>
+          Accounting software your bookkeeper<br/>actually wants to use
+        </h1>
+        <p style={{fontSize:16,color:"#475569",lineHeight:1.6,maxWidth:620,margin:"0 auto 32px"}}>
+          Ledger, invoicing, bank reconciliation, and budgets in one place — built to work equally well for a business running its own books and for an accountant managing several clients from a single login.
+        </p>
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={onSignUp} style={{background:T.accentGradient,border:"none",borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:800,color:"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(13,148,136,0.28)"}}>Create free account</button>
+          <button onClick={()=>onPublicPage("pricing")} style={{background:"#fff",border:`1.5px solid ${T.border}`,borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>See pricing</button>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1000,margin:"0 auto",padding:"0 24px 64px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:20,padding:28}}>
+            <div style={{width:44,height:44,borderRadius:12,background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><i className="ti ti-building-store" style={{fontSize:20}}/></div>
+            <div style={{fontSize:17,fontWeight:800,color:"#0F172A",marginBottom:8}}>Running your own books</div>
+            <div style={{fontSize:13,color:"#64748B",lineHeight:1.7}}>Book entries from your phone, send invoices, reconcile the bank, and keep a live budget — without learning accountant jargon first.</div>
+          </div>
+          <div style={{background:"#0F2A26",borderRadius:20,padding:28,color:"#fff"}}>
+            <div style={{width:44,height:44,borderRadius:12,background:"rgba(255,255,255,0.12)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><i className="ti ti-users-group" style={{fontSize:20}}/></div>
+            <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>Managing clients as an accountant</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.75)",lineHeight:1.7}}>Switch between every client's books from one login, with tiered access — readonly, reports, entries, or full — and nothing crosses between companies.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="features" style={{maxWidth:1120,margin:"0 auto",padding:"0 24px 72px"}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <h2 style={{fontSize:28,fontWeight:900,color:"#0F172A",marginBottom:8}}>Everything bookkeeping needs, nothing it doesn't</h2>
+          <p style={{fontSize:14,color:"#64748B"}}>One system, kept in sync between the web app and the native mobile app.</p>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:18}}>
+          {FEATURES.map(f=>(
+            <div key={f.title} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22}}>
+              <div style={{width:36,height:36,borderRadius:10,background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><i className={`ti ${f.icon}`} style={{fontSize:17}}/></div>
+              <div style={{fontSize:14.5,fontWeight:800,color:"#0F172A",marginBottom:6}}>{f.title}</div>
+              <div style={{fontSize:12.5,color:"#64748B",lineHeight:1.6}}>{f.body}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:"linear-gradient(135deg,#0F2A26,#0D9488)",padding:"56px 24px",textAlign:"center"}}>
+        <div style={{fontSize:24,fontWeight:900,color:"#fff",marginBottom:10}}>Ready to see your books in one place?</div>
+        <div style={{fontSize:13.5,color:"rgba(255,255,255,0.8)",marginBottom:24}}>This app is invite-only — create an account and an admin will activate it.</div>
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={onSignUp} style={{background:"#fff",border:"none",borderRadius:12,padding:"13px 26px",fontSize:14,fontWeight:800,color:"#0D9488",cursor:"pointer",fontFamily:"inherit"}}>Create free account</button>
+          <button onClick={onSignIn} style={{background:"rgba(255,255,255,0.12)",border:"1.5px solid rgba(255,255,255,0.3)",borderRadius:12,padding:"13px 26px",fontSize:14,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Sign in</button>
+        </div>
+      </div>
+
+      <div style={{padding:"28px 24px",textAlign:"center"}}>
+        <div style={{display:"flex",justifyContent:"center",gap:18,marginBottom:10,flexWrap:"wrap"}}>
+          {[["pricing","Pricing"],["privacy","Privacy"],["terms","Terms"],["status","Status"]].map(([id,label])=>(
+            <button key={id} onClick={()=>onPublicPage(id)} style={{background:"none",border:"none",color:"#94A3B8",fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ))}
+        </div>
+        <div style={{fontSize:10.5,color:"#CBD5E1"}}>REDROCK DANRIA ACCOUNTANTS</div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({onLogin,skipMarketing=false}){
   const[email,setEmail]=useState("");
   const[pass,setPass]=useState("");
   const[mode,setMode]=useState("login");
@@ -253,6 +351,11 @@ function LoginScreen({onLogin}){
   const[loading,setLoading]=useState(false);
   const[done,setDone]=useState(false);
   const[publicPage,setPublicPage]=useState(null); // null | "pricing" | "privacy" | "terms" | "status"
+  // The marketing homepage is a website-only front door — inside the native
+  // app there's no "landing on the site" moment, so it would just be an
+  // extra desktop-shaped screen to swipe past before the real (already
+  // mobile-native) sign-in card. skipMarketing starts it collapsed there.
+  const[showMarketing,setShowMarketing]=useState(!skipMarketing);
   const inp2={background:"#FAF9F7",border:`1px solid ${T.border}`,borderRadius:12,color:T.text,padding:"13px 16px",width:"100%",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
   const handle=async()=>{
     setErr("");setLoading(true);
@@ -284,7 +387,7 @@ function LoginScreen({onLogin}){
         <div style={{textAlign:"center",marginBottom:28}}>
           <img src={LOGO_FULL_B64} style={{width:180,objectFit:"contain"}}/>
         </div>
-        <button onClick={()=>setPublicPage(null)} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:20}}>← Back to sign in</button>
+        <button onClick={()=>setPublicPage(null)} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:20}}>← Back{showMarketing?"":" to sign in"}</button>
 
         {publicPage==="pricing"&&(<>
           <h1 style={{fontSize:28,fontWeight:900,color:"#0F172A",textAlign:"center",marginBottom:8}}>Simple pricing for real bookkeeping</h1>
@@ -348,6 +451,14 @@ function LoginScreen({onLogin}){
     </div>
   );
 
+  if(showMarketing)return(
+    <MarketingHome
+      onSignIn={()=>{setMode("login");setShowMarketing(false);}}
+      onSignUp={()=>{setMode("signup");setShowMarketing(false);}}
+      onPublicPage={setPublicPage}
+    />
+  );
+
   if(done)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FAF9F7",padding:24}}>
       <div style={{textAlign:"center",maxWidth:340}}>
@@ -362,6 +473,9 @@ function LoginScreen({onLogin}){
   return(
     <div style={{minHeight:"100vh",background:"#FAF9F7",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:360}}>
+        {!skipMarketing&&(
+          <button onClick={()=>setShowMarketing(true)} style={{background:"none",border:"none",color:"#94A3B8",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:14,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-arrow-left" style={{fontSize:13}}/>Back to home</button>
+        )}
         {/* Full logo with name */}
         <div style={{textAlign:"center",marginBottom:24}}>
           <img src={LOGO_FULL_B64} style={{width:240,objectFit:"contain"}}/>

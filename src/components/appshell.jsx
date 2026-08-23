@@ -1601,7 +1601,7 @@ function Root(){
     return()=>subscription.unsubscribe();
   },[]);
   if(checking)return <Spinner/>;
-  if(!user)return <LoginScreen onLogin={setUser}/>;
+  if(!user)return <LoginScreen onLogin={setUser} skipMarketing={isNativeApp()}/>;
   return <AppShell user={user}/>;
 }
 
