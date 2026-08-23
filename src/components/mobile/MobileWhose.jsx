@@ -7,7 +7,14 @@ import MobileScreen from "./MobileScreen.jsx";
 const fieldStyle={width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12};
 
 export default function MobileWhose({moneySources=[],saveMoneySources,transactions,accounts,tagTransaction,onClose}){
-  const[tab,setTab]=useState("sources"); // "sources" | "bybank"
+  const[tab,setTab]=useState("sources"); // "sources" | "bybank" | "monthly"
+  const now=new Date();
+  const[year,setYear]=useState(now.getFullYear());
+  const[month,setMonth]=useState(now.getMonth());
+  const monthLabel=new Date(year,month,1).toLocaleString("default",{month:"long",year:"numeric"});
+  const stepMonth=dir=>{let m=month+dir,y=year;if(m<0){m=11;y--;}else if(m>11){m=0;y++;}setMonth(m);setYear(y);};
+  const monthFrom=`${year}-${String(month+1).padStart(2,"0")}-01`;
+  const monthTo=new Date(year,month+1,0).toISOString().slice(0,10);
   const[showAdd,setShowAdd]=useState(false);
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
@@ -48,6 +55,23 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
     }).filter(r=>r.remaining!==0);
     return{code:bank.code,name:bank.name,rows,total:rows.reduce((s,r)=>s+r.remaining,0)};
   }).filter(b=>b.rows.length>0),[bankAccounts,activeSources,transactions]);
+
+  // Monthly statement per source: opening balance carried in from before
+  // this month, this month's received/used, and the resulting closing
+  // balance — so a person's running total actually reads like a statement
+  // instead of one all-time lump figure.
+  const monthlyFor=(id,from,to)=>{
+    const src=moneySources.find(m=>m.id===id);
+    if(!src)return{opening:0,received:0,used:0,closing:0};
+    const before=bankTxns.filter(t=>t.moneySourceId===id&&t.date<from);
+    const beforeReceived=(src.openingReceived||0)+before.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+    const beforeUsed=(src.openingUsed||0)+before.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const opening=beforeReceived-beforeUsed;
+    const inMonth=bankTxns.filter(t=>t.moneySourceId===id&&t.date>=from&&t.date<=to);
+    const received=inMonth.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+    const used=inMonth.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    return{opening,received,used,closing:opening+received-used};
+  };
 
   const resetForm=()=>{setForm({name:"",openingReceived:"",openingUsed:""});setEditingId(null);};
   const addSource=()=>{
@@ -177,7 +201,7 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
       )}
 
       <div style={{display:"flex",gap:6,marginBottom:18}}>
-        {[["sources","Sources"],["bybank","By bank"]].map(([id,label])=>(
+        {[["sources","Sources"],["bybank","By bank"],["monthly","Monthly"]].map(([id,label])=>(
           <div key={id} onClick={()=>setTab(id)} style={{flex:1,textAlign:"center",padding:"8px",borderRadius:20,fontSize:12,fontWeight:700,background:tab===id?T.accent:"#fff",color:tab===id?"#fff":"#5C6B73",boxShadow:tab===id?"none":"0 1px 6px rgba(20,40,50,0.05)"}}>{label}</div>
         ))}
       </div>
@@ -225,6 +249,32 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
           </div>
         ))}
         {!perBank.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No tagged bank activity yet.</div>}
+      </>)}
+
+      {tab==="monthly"&&(<>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",borderRadius:14,padding:"10px 16px",marginBottom:16,boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
+          <div onClick={()=>stepMonth(-1)} style={{fontSize:18,color:"#8A93A3",padding:"0 10px"}}>‹</div>
+          <div style={{fontSize:13.5,fontWeight:800,color:"#0F172A"}}>{monthLabel}</div>
+          <div onClick={()=>stepMonth(1)} style={{fontSize:18,color:"#8A93A3",padding:"0 10px"}}>›</div>
+        </div>
+        {activeSources.map(m=>{
+          const s=monthlyFor(m.id,monthFrom,monthTo);
+          return(
+            <div key={m.id} style={{background:"#fff",borderRadius:16,padding:16,marginBottom:10,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#0F172A"}}>{m.name}</div>
+                <div style={{fontSize:14,fontWeight:800,color:s.closing<0?"#E14848":"#0D9488"}}>{fmtBal(s.closing)}</div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#8A93A3",borderTop:`1px solid ${T.border}`,paddingTop:9}}>
+                <div><div style={{fontWeight:600}}>Opening</div><div style={{fontWeight:800,color:"#3A4750",marginTop:2}}>{fmtBal(s.opening)}</div></div>
+                <div><div style={{fontWeight:600,color:"#0E9F6E"}}>In</div><div style={{fontWeight:800,color:"#0E9F6E",marginTop:2}}>{fmtBal(s.received)}</div></div>
+                <div><div style={{fontWeight:600,color:"#E14848"}}>Out</div><div style={{fontWeight:800,color:"#E14848",marginTop:2}}>{fmtBal(s.used)}</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontWeight:600}}>Closing</div><div style={{fontWeight:800,color:s.closing<0?"#E14848":"#3A4750",marginTop:2}}>{fmtBal(s.closing)}</div></div>
+              </div>
+            </div>
+          );
+        })}
+        {!activeSources.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No money sources yet.</div>}
       </>)}
 
       {showAdd&&(

@@ -1441,7 +1441,14 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const[showAdd,setShowAdd]=useState(false);
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
-  const[panelTab,setPanelTab]=useState("sources"); // "sources" | "bybank"
+  const[panelTab,setPanelTab]=useState("sources"); // "sources" | "bybank" | "monthly"
+  const now=new Date();
+  const[mYear,setMYear]=useState(now.getFullYear());
+  const[mMonth,setMMonth]=useState(now.getMonth());
+  const mLabel=new Date(mYear,mMonth,1).toLocaleString("default",{month:"long",year:"numeric"});
+  const stepMMonth=dir=>{let m=mMonth+dir,y=mYear;if(m<0){m=11;y--;}else if(m>11){m=0;y++;}setMMonth(m);setMYear(y);};
+  const mFrom=`${mYear}-${String(mMonth+1).padStart(2,"0")}-01`;
+  const mTo=new Date(mYear,mMonth+1,0).toISOString().slice(0,10);
 
   // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
   // transfer (e.g. Dr 1900 / Cr 1901, withdrawing bank cash) only counts on
@@ -1474,6 +1481,22 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
     const received=(src.openingReceived||0)+taggedReceived;
     const used=(src.openingUsed||0)+taggedUsed;
     return{received,used,remaining:received-used};
+  };
+
+  // Monthly statement per source: opening balance carried in from before
+  // this month, this month's received/used, and the resulting closing
+  // balance — reads like a real statement instead of one all-time total.
+  const monthlyFor=(id,from,to)=>{
+    const src=moneySources.find(m=>m.id===id);
+    if(!src)return{opening:0,received:0,used:0,closing:0};
+    const before=bankTxns.filter(t=>t.moneySourceId===id&&t.date<from);
+    const beforeReceived=(src.openingReceived||0)+before.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+    const beforeUsed=(src.openingUsed||0)+before.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const opening=beforeReceived-beforeUsed;
+    const inMonth=bankTxns.filter(t=>t.moneySourceId===id&&t.date>=from&&t.date<=to);
+    const received=inMonth.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
+    const used=inMonth.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    return{opening,received,used,closing:opening+received-used};
   };
 
   const resetForm=()=>{setForm({name:"",openingReceived:"",openingUsed:""});setEditingId(null);};
@@ -1531,7 +1554,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
       )}
 
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["sources","Sources"],["bybank","By bank"]].map(([id,label])=>(
+        {[["sources","Sources"],["bybank","By bank"],["monthly","Monthly"]].map(([id,label])=>(
           <button key={id} onClick={()=>setPanelTab(id)} style={{background:panelTab===id?T.accent:"none",color:panelTab===id?"#fff":T.sub,border:`1px solid ${panelTab===id?T.accent:T.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
         ))}
       </div>
@@ -1554,6 +1577,42 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
             </div>
           ))}
           {!perBank.length&&<div style={{textAlign:"center",padding:"18px 0",color:T.muted,fontSize:12}}>No tagged bank activity yet.</div>}
+        </div>
+      )}
+
+      {panelTab==="monthly"&&(
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:14}}>
+            <button onClick={()=>stepMMonth(-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,color:T.sub}}>‹</button>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,minWidth:140,textAlign:"center"}}>{mLabel}</div>
+            <button onClick={()=>stepMMonth(1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,color:T.sub}}>›</button>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",minWidth:520}}>
+              <thead><tr style={{background:T.bg,color:T.sub}}>
+                <td style={{padding:"8px 12px",fontWeight:700}}>Source</td>
+                <td style={{textAlign:"right",fontWeight:700}}>Opening</td>
+                <td style={{textAlign:"right",fontWeight:700}}>In</td>
+                <td style={{textAlign:"right",fontWeight:700}}>Out</td>
+                <td style={{textAlign:"right",fontWeight:700,padding:"8px 12px"}}>Closing</td>
+              </tr></thead>
+              <tbody>
+                {moneySources.filter(m=>!m.inactive).map(m=>{
+                  const s=monthlyFor(m.id,mFrom,mTo);
+                  return(
+                    <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                      <td style={{padding:"8px 12px",fontWeight:600,color:T.text}}>{m.name}</td>
+                      <td style={{textAlign:"right",color:T.sub}}>{fmt(s.opening)}</td>
+                      <td style={{textAlign:"right",color:T.green}}>{fmt(s.received)}</td>
+                      <td style={{textAlign:"right",color:T.red}}>{fmt(s.used)}</td>
+                      <td style={{textAlign:"right",padding:"8px 12px",fontWeight:800,color:s.closing<0?T.red:T.text}}>{fmt(s.closing)}</td>
+                    </tr>
+                  );
+                })}
+                {!moneySources.filter(m=>!m.inactive).length&&<tr><td colSpan="5" style={{padding:"18px 0",textAlign:"center",color:T.muted}}>No money sources yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
