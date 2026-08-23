@@ -21,6 +21,7 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
   const[settleId,setSettleId]=useState(null);
   const[settleAmt,setSettleAmt]=useState("");
+  const[selectedBank,setSelectedBank]=useState(null);
 
   // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
   // transfer only counts on the real bank side, matching the desktop fix.
@@ -115,35 +116,50 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
       </div>
 
       {tab==="bybank"&&(<>
-        <div style={{fontSize:10.5,color:"#8A93A3",marginBottom:14}}>Incoming = debit, outgoing = credit. Tap a transaction to tag or retag it.</div>
-        {perBank.map(b=>(
-          <div key={b.code} style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{b.code} {b.name}</div>
-              <div style={{fontSize:12,fontWeight:700,color:b.tagged<0?"#E14848":"#8A93A3"}}>{fmtBal(b.tagged)} tagged</div>
-            </div>
-            {b.txns.slice(0,40).map(t=>{
-              const isIn=t.debitCode===b.code;
+        {!perBank.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No bank accounts found.</div>}
+        {perBank.length>0&&(<>
+          <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,marginBottom:16,WebkitOverflowScrolling:"touch"}}>
+            {perBank.map(b=>{
+              const active=(selectedBank||perBank[0].code)===b.code;
               return(
-                <div key={t.id} style={{padding:"9px 0",borderTop:`1px solid ${T.border}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                    <div style={{flex:1,minWidth:0,marginRight:8}}>
-                      <div style={{fontSize:11.5,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
-                      <div style={{fontSize:9.5,color:"#98A2B3"}}>{t.date}</div>
-                    </div>
-                    <div style={{fontSize:12,fontWeight:800,color:isIn?"#0E9F6E":"#E14848",flexShrink:0}}>{isIn?"+":"−"}{fmt(t.amount)}</div>
-                  </div>
-                  <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 8px",fontSize:11.5,fontFamily:"inherit"}}>
-                    <option value="">— untagged —</option>
-                    {activeSources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                <div key={b.code} onClick={()=>setSelectedBank(b.code)} style={{flexShrink:0,padding:"9px 14px",borderRadius:20,fontSize:12,fontWeight:700,background:active?T.accent:"#fff",color:active?"#fff":"#5C6B73",boxShadow:active?"none":"0 1px 6px rgba(20,40,50,0.05)",whiteSpace:"nowrap"}}>
+                  {b.name}
                 </div>
               );
             })}
-            {!b.txns.length&&<div style={{textAlign:"center",padding:"10px 0",color:"#98A2B3",fontSize:11.5}}>No transactions yet.</div>}
           </div>
-        ))}
-        {!perBank.length&&<div style={{textAlign:"center",padding:"30px 0",color:"#98A2B3",fontSize:12}}>No bank accounts found.</div>}
+          {(()=>{
+            const b=perBank.find(x=>x.code===(selectedBank||perBank[0].code))||perBank[0];
+            return(
+              <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{b.code} {b.name}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:b.tagged<0?"#E14848":"#8A93A3"}}>{fmtBal(b.tagged)} tagged</div>
+                </div>
+                <div style={{fontSize:10,color:"#98A2B3",marginBottom:10}}>Incoming = debit, outgoing = credit. Tap to tag or retag.</div>
+                {b.txns.slice(0,60).map(t=>{
+                  const isIn=t.debitCode===b.code;
+                  return(
+                    <div key={t.id} style={{padding:"9px 0",borderTop:`1px solid ${T.border}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                        <div style={{flex:1,minWidth:0,marginRight:8}}>
+                          <div style={{fontSize:11.5,fontWeight:700,color:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                          <div style={{fontSize:9.5,color:"#98A2B3"}}>{t.date}</div>
+                        </div>
+                        <div style={{fontSize:12,fontWeight:800,color:isIn?"#0E9F6E":"#E14848",flexShrink:0}}>{isIn?"+":"−"}{fmt(t.amount)}</div>
+                      </div>
+                      <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 8px",fontSize:11.5,fontFamily:"inherit"}}>
+                        <option value="">— untagged —</option>
+                        {activeSources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                  );
+                })}
+                {!b.txns.length&&<div style={{textAlign:"center",padding:"14px 0",color:"#98A2B3",fontSize:11.5}}>No transactions yet.</div>}
+              </div>
+            );
+          })()}
+        </>)}
       </>)}
 
       {tab==="monthly"&&(<>

@@ -1443,6 +1443,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
   const[panelTab,setPanelTab]=useState("bybank"); // "bybank" | "monthly"
+  const[selectedBank,setSelectedBank]=useState(null);
   const now=new Date();
   const[mYear,setMYear]=useState(now.getFullYear());
   const[mMonth,setMMonth]=useState(now.getMonth());
@@ -1556,45 +1557,58 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
 
       {panelTab==="bybank"&&(
         <div style={{marginBottom:16}}>
-          <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Incoming = debit, outgoing = credit. Tag each transaction to a source right here.</div>
-          {perBank.map(b=>(
-            <div key={b.code} style={{border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <div style={{fontSize:13,fontWeight:800,color:T.text}}>{b.code} {b.name}</div>
-                <div style={{fontSize:12,fontWeight:700,color:b.tagged<0?T.red:T.sub}}>{fmt(b.tagged)} tagged</div>
-              </div>
-              <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",fontSize:12,borderCollapse:"collapse",minWidth:480}}>
-                  <thead><tr style={{background:T.bg,color:T.sub}}>
-                    <td style={{padding:"6px 10px",fontWeight:700}}>Date</td>
-                    <td style={{fontWeight:700}}>Description</td>
-                    <td style={{textAlign:"right",fontWeight:700}}>Amount</td>
-                    <td style={{fontWeight:700,padding:"6px 10px"}}>Source</td>
-                  </tr></thead>
-                  <tbody>
-                    {b.txns.slice(0,60).map(t=>{
-                      const isIn=t.debitCode===b.code;
-                      return(
-                        <tr key={t.id} style={{borderBottom:`1px solid ${T.border}`}}>
-                          <td style={{padding:"6px 10px",color:T.sub,whiteSpace:"nowrap"}}>{t.date}</td>
-                          <td style={{color:T.text,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                          <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.red,whiteSpace:"nowrap"}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
-                          <td style={{padding:"6px 10px"}}>
-                            <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{...inp,padding:"5px 8px",fontSize:12}}>
-                              <option value="">— untagged —</option>
-                              {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                            </select>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {!b.txns.length&&<tr><td colSpan="4" style={{padding:"14px 0",textAlign:"center",color:T.muted}}>No transactions yet.</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
           {!perBank.length&&<div style={{textAlign:"center",padding:"18px 0",color:T.muted,fontSize:12}}>No bank accounts found.</div>}
+          {perBank.length>0&&(<>
+            <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+              {perBank.map(b=>{
+                const active=(selectedBank||perBank[0].code)===b.code;
+                return(
+                  <button key={b.code} onClick={()=>setSelectedBank(b.code)} style={{background:active?T.accent:"none",color:active?"#fff":T.sub,border:`1px solid ${active?T.accent:T.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{b.name}</button>
+                );
+              })}
+            </div>
+            {(()=>{
+              const b=perBank.find(x=>x.code===(selectedBank||perBank[0].code))||perBank[0];
+              return(
+                <div style={{border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <div style={{fontSize:13,fontWeight:800,color:T.text}}>{b.code} {b.name}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:b.tagged<0?T.red:T.sub}}>{fmt(b.tagged)} tagged</div>
+                  </div>
+                  <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Incoming = debit, outgoing = credit.</div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",fontSize:12,borderCollapse:"collapse",minWidth:480}}>
+                      <thead><tr style={{background:T.bg,color:T.sub}}>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>Date</td>
+                        <td style={{fontWeight:700}}>Description</td>
+                        <td style={{textAlign:"right",fontWeight:700}}>Amount</td>
+                        <td style={{fontWeight:700,padding:"6px 10px"}}>Source</td>
+                      </tr></thead>
+                      <tbody>
+                        {b.txns.slice(0,60).map(t=>{
+                          const isIn=t.debitCode===b.code;
+                          return(
+                            <tr key={t.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                              <td style={{padding:"6px 10px",color:T.sub,whiteSpace:"nowrap"}}>{t.date}</td>
+                              <td style={{color:T.text,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                              <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.red,whiteSpace:"nowrap"}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
+                              <td style={{padding:"6px 10px"}}>
+                                <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{...inp,padding:"5px 8px",fontSize:12}}>
+                                  <option value="">— untagged —</option>
+                                  {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {!b.txns.length&&<tr><td colSpan="4" style={{padding:"14px 0",textAlign:"center",color:T.muted}}>No transactions yet.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+          </>)}
         </div>
       )}
 

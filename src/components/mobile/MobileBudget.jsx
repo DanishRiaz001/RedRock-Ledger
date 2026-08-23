@@ -101,7 +101,7 @@ export default function MobileBudget({accounts,transactions,budgets,saveBudget})
   };
 
   return(
-    <div style={{paddingBottom:24}}>
+    <div style={{paddingBottom:24,overflowX:"hidden",maxWidth:"100%"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",borderRadius:14,padding:"10px 16px",marginBottom:18,boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>
         <div onClick={()=>stepMonth(-1)} style={{fontSize:18,color:"#8A93A3",padding:"0 8px"}}>‹</div>
         <div style={{fontSize:13.5,fontWeight:800,color:"#0F172A"}}>{periodLabel}</div>
@@ -142,14 +142,14 @@ export default function MobileBudget({accounts,transactions,budgets,saveBudget})
         )}
 
         {rows.length>0&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10,marginBottom:6}}>
             {rows.map(r=>{
               const actual=getActual(r.code);
               const over=actual>r.amount;
               const left=r.amount-actual;
               const look=lookFor(getName(r.code));
               return(
-                <div key={r.code} style={{position:"relative",background:"#fff",borderRadius:16,padding:"14px 12px",boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
+                <div key={r.code} style={{position:"relative",minWidth:0,background:"#fff",borderRadius:16,padding:"14px 12px",boxShadow:"0 1px 6px rgba(20,40,50,0.04)"}}>
                   <div onClick={e=>{e.stopPropagation();startEdit(r.code,r.amount);}} style={{position:"absolute",top:10,right:10,width:24,height:24,borderRadius:8,background:"#F6F8FA",display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <i className="ti ti-pencil" style={{fontSize:12,color:"#8A93A3"}}/>
                   </div>

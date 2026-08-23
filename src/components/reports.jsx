@@ -1376,30 +1376,64 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
             </div>
           </div>
         )}
-        {/* All settings as clean navigation cards — one line each, no inline
-            forms or stats cluttering this landing page. Company info now
-            lives only in its own dedicated screen (reached from here or the
-            header), so it isn't duplicated in two places. */}
-        <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}:undefined}>
-        {[
-          {icon:"🏢",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue},
-          {icon:"📋",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent},
-          {icon:"📥",label:"Opening Balance",sub:"Import a trial balance from another system",action:()=>onNavigate&&onNavigate("OpeningBalance"),bg:"#E0F2FE",color:"#0284C7"},
-          {icon:"🏷️",label:"Project Tracking",sub:companyProfile.trackProjects?"On":"Off — tag entries by project/department",action:()=>onNavigate&&onNavigate("ProjectTracking"),bg:"#F3E8FF",color:"#9333EA"},
-          {icon:"👥",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red},
-          {icon:"💱",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green},
-          {icon:"🔒",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange},
-          {icon:"🎯",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b"},
-          {icon:"💾",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent},
-          ...(isAdmin?[{icon:"🐞",label:"Bug Log",sub:"Errors reported by the app",action:()=>onNavigate&&onNavigate("BugLog"),bg:"#FEE2E2",color:T.red}]:[]),
-        ].map((item,i)=>(
-          <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div></div>
-            <span style={{fontSize:18,color:T.muted}}>›</span>
+        {/* All settings as clean navigation cards — no inline forms or stats
+            cluttering this landing page. Company info now lives only in its
+            own dedicated screen (reached from here or the header), so it
+            isn't duplicated in two places. Desktop groups the same items
+            into labeled sections in a wider grid; mobile keeps the original
+            single-column list untouched. */}
+        {(()=>{
+        const settingsItems=[
+          {icon:"🏢",tiIcon:"ti-building",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue,section:"Company"},
+          {icon:"📋",tiIcon:"ti-list-details",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent,section:"Company"},
+          {icon:"👥",tiIcon:"ti-users",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red,section:"Company"},
+          {icon:"🏷️",tiIcon:"ti-tag",label:"Project Tracking",sub:companyProfile.trackProjects?"On":"Off — tag entries by project/department",action:()=>onNavigate&&onNavigate("ProjectTracking"),bg:"#F3E8FF",color:"#9333EA",section:"Company"},
+          {icon:"📥",tiIcon:"ti-file-import",label:"Opening Balance",sub:"Import a trial balance from another system",action:()=>onNavigate&&onNavigate("OpeningBalance"),bg:"#E0F2FE",color:"#0284C7",section:"Accounting"},
+          {icon:"💱",tiIcon:"ti-currency-dollar",label:"Currency",sub:`Primary: ${primaryCurrency}`,action:()=>setScreen("currency"),bg:T.greenBg,color:T.green,section:"Accounting"},
+          {icon:"🔒",tiIcon:"ti-lock",label:"Period Close",sub:periodClose?`Closed up to ${periodClose}`:"No period locked",action:()=>setScreen("periodclose"),bg:"#FEF3C7",color:T.orange,section:"Accounting"},
+          {icon:"🎯",tiIcon:"ti-target",label:"Sinking Funds",sub:"Manage & reactivate funds",action:()=>setScreen("sinkingfunds"),bg:"#f1efe8",color:"#854f0b",section:"Accounting"},
+          {icon:"💾",tiIcon:"ti-database-export",label:"Backup & Restore",sub:"Export or import all data",action:()=>setScreen("backup"),bg:T.accentLight,color:T.accent,section:"Data"},
+          ...(isAdmin?[{icon:"🐞",tiIcon:"ti-bug",label:"Bug Log",sub:"Errors reported by the app",action:()=>onNavigate&&onNavigate("BugLog"),bg:"#FEE2E2",color:T.red,section:"Data"}]:[]),
+        ];
+        if(!isDesktop)return(
+          <div>
+            {settingsItems.map((item,i)=>(
+              <div key={i} onClick={item.action} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{background:item.bg,borderRadius:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{item.icon}</div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div><div style={{fontSize:11,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div></div>
+                <span style={{fontSize:18,color:T.muted}}>›</span>
+              </div>
+            ))}
           </div>
-        ))}
-        </div>
+        );
+        const sections=["Company","Accounting","Data"];
+        return(
+          <div style={{display:"flex",flexDirection:"column",gap:24}}>
+            {sections.map(sec=>{
+              const items=settingsItems.filter(x=>x.section===sec);
+              if(!items.length)return null;
+              return(
+                <div key={sec}>
+                  <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.6,marginBottom:10}}>{sec}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                    {items.map((item,i)=>(
+                      <div key={i} className="rr-set-card" onClick={item.action} style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:16,cursor:"pointer",display:"flex",flexDirection:"column",gap:10}}>
+                        <div style={{background:item.bg,borderRadius:10,width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <i className={`ti ${item.tiIcon}`} style={{fontSize:18,color:item.color}}/>
+                        </div>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.label}</div>
+                          <div style={{fontSize:11,color:T.sub,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+        })()}
       </div>
     </div>
   );
@@ -4171,149 +4205,38 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
     onSaveAccounts(updated);
     setEditingBankAccount(null);
   };
-  const[dayRange,setDayRange]=useState(90);
-  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"),[accounts]);
   const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+  // Only banks that have ever actually been used — an account sitting at
+  // zero with no history is just noise in this list.
+  const bankAccounts=useMemo(()=>accounts.filter(a=>getSK(a.code)==="1900"&&(getBal(a.code)!==0||transactions.some(t=>t.debitCode===a.code||t.creditCode===a.code))),[accounts,transactions]);
 
-  const outstandingPayments=useMemo(()=>invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&i.status!=="credit_note").reduce((s,i)=>s+i.total,0),[invoices]);
   const today=new Date().toISOString().slice(0,10);
-  const overduePayments=useMemo(()=>invoices.filter(i=>i.status!=="paid"&&i.status!=="credited"&&i.status!=="credit_note"&&i.dueDate&&i.dueDate<today).reduce((s,i)=>s+i.total,0),[invoices]);
-
-  const cutoff=useMemo(()=>{const d=new Date();d.setDate(d.getDate()-dayRange);return d.toISOString().slice(0,10);},[dayRange]);
-  const recentTxns=useMemo(()=>transactions.filter(t=>t.date>=cutoff&&bankAccounts.some(a=>a.code===t.debitCode||a.code===t.creditCode)).sort((a,b)=>b.date.localeCompare(a.date)),[transactions,cutoff,bankAccounts]);
-
-  const moneyIn=useMemo(()=>{
-    const m={};
-    recentTxns.forEach(t=>{
-      const isIn=bankAccounts.some(a=>a.code===t.debitCode);
-      if(!isIn)return;
-      const label=t.description||"Other";
-      m[label]=(m[label]||0)+t.amount;
-    });
-    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
-  },[recentTxns,bankAccounts]);
-  const moneyOut=useMemo(()=>{
-    const m={};
-    recentTxns.forEach(t=>{
-      const isOut=bankAccounts.some(a=>a.code===t.creditCode);
-      if(!isOut)return;
-      const label=t.description||"Other";
-      m[label]=(m[label]||0)+t.amount;
-    });
-    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
-  },[recentTxns,bankAccounts]);
-  const totalIn=moneyIn.reduce((s,[,v])=>s+v,0);
-  const totalOut=moneyOut.reduce((s,[,v])=>s+v,0);
-
-  // Fee analysis — flags likely bank fees by description keyword, since we
-  // don't get a structured "fee" flag from a real bank feed. Purely additive:
-  // never hides these from the normal transaction list, just totals them up.
-  const FEE_KEYWORDS=["fee","charge","gebyr","avgift","service charge","maintenance","commission","surcharge"];
-  const feeTxns=useMemo(()=>recentTxns.filter(t=>{
-    const d=(t.description||"").toLowerCase();
-    const isOut=bankAccounts.some(a=>a.code===t.creditCode);
-    return isOut&&FEE_KEYWORDS.some(k=>d.includes(k));
-  }),[recentTxns,bankAccounts]);
-  const totalFees=feeTxns.reduce((s,t)=>s+t.amount,0);
-
-  // Cash-flow forecast — projects the combined bank balance forward using
-  // open customer receivables (money expected in, by due date) and open
-  // supplier payables (money expected out, by due date). Simple and honest:
-  // it's a projection from what's already open, not a prediction model.
-  const forecastDays=useMemo(()=>{
-    const currentBalance=bankAccounts.reduce((s,a)=>s+getBal(a.code),0);
-    const openAR=transactions.filter(t=>t.contactId&&t.debitCode==="1500"&&t.dueDate&&!(t.matchedWith&&t.matchedAccount==="1500"));
-    const openAP=transactions.filter(t=>t.contactId&&t.creditCode==="2400"&&t.dueDate&&!(t.matchedWith&&t.matchedAccount==="2400"));
-    const days=[];
-    let running=currentBalance;
-    for(let i=0;i<=30;i+=5){
-      const d=new Date();d.setDate(d.getDate()+i);
-      const dStr=d.toISOString().slice(0,10);
-      const inByThen=openAR.filter(t=>t.dueDate<=dStr).reduce((s,t)=>s+t.amount,0);
-      const outByThen=openAP.filter(t=>t.dueDate<=dStr).reduce((s,t)=>s+t.amount,0);
-      days.push({label:i===0?"Today":`+${i}d`,balance:currentBalance+inByThen-outByThen});
-    }
-    return days;
-  },[bankAccounts,transactions]);
+  const yearStart=`${today.slice(0,4)}-01-01`;
 
   return(
     <div style={{maxWidth:1000}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Whose</h1>
-          <div style={{fontSize:12,color:T.muted}}>Track which money source each bank movement belongs to.</div>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          {[90,30,14].map(d=>(
-            <button key={d} onClick={()=>setDayRange(d)} style={{background:dayRange===d?T.accentLight:"none",color:dayRange===d?T.accent:T.sub,border:`1px solid ${dayRange===d?T.accent:T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{d} days</button>
-          ))}
-        </div>
+      <div style={{marginBottom:18}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Whose</h1>
+        <div style={{fontSize:12,color:T.muted}}>Track which money source each bank movement belongs to.</div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:10}}>
-            {bankAccounts.map(a=>{
-              const details=bankDetailsFor(a);
-              return(
-              <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",minHeight:76,display:"flex",flexDirection:"column",justifyContent:"center",position:"relative"}}>
-                <div onClick={()=>onOpenLedger&&onOpenLedger(a,cutoff,today)} style={{cursor:"pointer"}}>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
-                  <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
-                  {(details.branch||details.accountNumber)&&<div style={{fontSize:10,color:T.sub,marginTop:3}}>{details.branch}{details.branch&&details.accountNumber?" · ":""}{details.accountNumber}</div>}
-                </div>
-                {onSaveAccounts&&<button onClick={()=>setEditingBankAccount(a.code)} style={{position:"absolute",top:8,right:8,background:"rgba(255,255,255,0.7)",border:"none",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:700,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit</button>}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:10}}>
+          {bankAccounts.map(a=>{
+            const details=bankDetailsFor(a);
+            return(
+            <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",minHeight:76,display:"flex",flexDirection:"column",justifyContent:"center",position:"relative"}}>
+              <div onClick={()=>onOpenLedger&&onOpenLedger(a,yearStart,today)} style={{cursor:"pointer"}}>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
+                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
+                {(details.branch||details.accountNumber)&&<div style={{fontSize:10,color:T.sub,marginTop:3}}>{details.branch}{details.branch&&details.accountNumber?" · ":""}{details.accountNumber}</div>}
               </div>
-              );
-            })}
-            {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No bank accounts set up yet.</div>}
-          </div>
-        </div>
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Summary</div>
-          <div style={{display:"flex",gap:10}}>
-            <div style={{background:T.bg,borderRadius:10,padding:"12px 16px",flex:1}}>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4}}>Outstanding payments</div>
-              <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(outstandingPayments)}</div>
+              {onSaveAccounts&&<button onClick={()=>setEditingBankAccount(a.code)} style={{position:"absolute",top:8,right:8,background:"rgba(255,255,255,0.7)",border:"none",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:700,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit</button>}
             </div>
-            <div style={{background:T.redLight,borderRadius:10,padding:"12px 16px",flex:1}}>
-              <div style={{fontSize:11,color:T.red,marginBottom:4}}>Overdue payments</div>
-              <div style={{fontSize:16,fontWeight:800,color:T.red}}>{fmt(overduePayments)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr",gap:16,marginBottom:16}}>
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Cash-flow forecast</div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Projected from open invoices and bills — not a prediction, just what's already due.</div>
-          <div style={{display:"flex",alignItems:"flex-end",gap:8,height:90}}>
-            {forecastDays.map((d,i)=>{
-              const maxAbs=Math.max(...forecastDays.map(x=>Math.abs(x.balance)),1);
-              const h=Math.max((Math.abs(d.balance)/maxAbs)*70,4);
-              return(
-                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                  <div style={{fontSize:9,fontWeight:700,color:d.balance>=0?T.waterTeal:T.red,whiteSpace:"nowrap"}}>{fmt(d.balance)}</div>
-                  <div style={{width:"100%",background:d.balance>=0?T.waterTeal:T.red,borderRadius:"4px 4px 0 0",height:h}}/>
-                  <div style={{fontSize:9,color:T.muted}}>{d.label}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Fee analysis</div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Last {dayRange} days, matched by description keyword.</div>
-          <div style={{fontSize:22,fontWeight:900,color:T.red,marginBottom:10}}>{fmt(totalFees)}</div>
-          {feeTxns.slice(0,4).map(t=>(
-            <div key={t.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
-              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{t.description}</span>
-              <span style={{fontWeight:700,color:T.red}}>{fmt(t.amount)}</span>
-            </div>
-          ))}
-          {!feeTxns.length&&<div style={{fontSize:11,color:T.muted}}>No fee-like transactions found in this period.</div>}
+            );
+          })}
+          {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No active bank accounts yet.</div>}
         </div>
       </div>
 
@@ -5071,13 +4994,67 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         // The two matching columns live together as one unit — when the
         // attachment panel opens it's this whole grid that shrinks to make
         // room (both columns staying fully visible), never a floating panel
-        // covering data underneath. "From bank statement" is the column you
-        // cross-reference against the attachment, so it's kept on the far
-        // side, away from the split — "Entered in ledger" sits next to the
-        // divider and is the one that yields if you drag the attachment
-        // wide enough to overlap.
+        // covering data underneath. "Entered in ledger" is kept on the near
+        // side, next to the divider, since it's the one that yields if you
+        // drag the attachment wide enough to overlap — "From bank statement"
+        // is the column you cross-reference against the attachment, so it
+        // stays on the far side, away from the split.
         const matchingGrid=(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            {/* Entered in ledger */}
+            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
+                <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                <input type="checkbox" checked={allLeftSelected} disabled={isApproved||!displayLeftRows.length} onChange={toggleSelectAllLeft} title="Select all"/>
+                <div onClick={()=>toggleSort(setSortLeft,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                  Date{sortLeft.key==="date"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
+                </div>
+                <div onClick={()=>toggleSort(setSortLeft,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+                  Amount{sortLeft.key==="amount"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
+                </div>
+              </div>
+              <div style={{maxHeight:440,overflowY:"auto"}}>
+                {displayLeftRows.map(t=>{
+                  const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
+                  const selected=selectedTxnIds.has(t.id);
+                  return(
+                    <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
+                      <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
+                          <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                        </div>
+                        <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
+                          <span>{t.date}</span>
+                          {!!t.reconciled&&<span style={{color:T.green,fontWeight:700}}>· reconciled</span>}
+                        </div>
+                      </div>
+                      <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+                    </div>
+                  );
+                })}
+                {!displayLeftRows.length&&(
+                  <div style={{padding:"36px 20px",textAlign:"center",color:T.muted,fontSize:11}}>
+                    {ledgerEntries.length?"Everything here is matched — see the Matched tab.":(
+                      <>
+                        <div style={{marginBottom:10}}>No ledger entries this month. Check another period, or register new vouchers from the Inbox.</div>
+                        <button onClick={()=>onNavigate&&onNavigate("Files")} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to Inbox →</button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
+                <button onClick={()=>setShowMatched(true)} style={{width:"100%",background:T.bg,border:"none",borderTop:`1px solid ${T.border}`,padding:"9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>
+                  {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length} reconciled without a direct match →
+                </button>
+              )}
+            </div>
+
             {/* From bank statement */}
             <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
               <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -5142,60 +5119,6 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 })}
                 {!displayRightRows.length&&<div style={{padding:"36px 0",textAlign:"center",color:T.muted,fontSize:11}}>{filterMode==="matched"?"Nothing matched yet this month.":"No unposted lines. Upload a statement to get started."}</div>}
               </div>
-            </div>
-
-            {/* Entered in ledger */}
-            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
-              <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.text}}>Entered in ledger</div>
-                <div style={{fontSize:11,color:T.muted}}>{workingLedgerEntries.length} remaining</div>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
-                <input type="checkbox" checked={allLeftSelected} disabled={isApproved||!displayLeftRows.length} onChange={toggleSelectAllLeft} title="Select all"/>
-                <div onClick={()=>toggleSort(setSortLeft,"date")} style={{flex:1,minWidth:0,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                  Date{sortLeft.key==="date"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-                </div>
-                <div onClick={()=>toggleSort(setSortLeft,"amount")} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
-                  Amount{sortLeft.key==="amount"&&<i className={sortLeft.dir===1?"ti ti-arrow-up":"ti ti-arrow-down"} style={{fontSize:11}}/>}
-                </div>
-              </div>
-              <div style={{maxHeight:440,overflowY:"auto"}}>
-                {displayLeftRows.map(t=>{
-                  const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
-                  const selected=selectedTxnIds.has(t.id);
-                  return(
-                    <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
-                      <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                          <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
-                          <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
-                        </div>
-                        <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
-                          <span>{t.date}</span>
-                          {!!t.reconciled&&<span style={{color:T.green,fontWeight:700}}>· reconciled</span>}
-                        </div>
-                      </div>
-                      <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
-                    </div>
-                  );
-                })}
-                {!displayLeftRows.length&&(
-                  <div style={{padding:"36px 20px",textAlign:"center",color:T.muted,fontSize:11}}>
-                    {ledgerEntries.length?"Everything here is matched — see the Matched tab.":(
-                      <>
-                        <div style={{marginBottom:10}}>No ledger entries this month. Check another period, or register new vouchers from the Inbox.</div>
-                        <button onClick={()=>onNavigate&&onNavigate("Files")} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Go to Inbox →</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-              {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length>0&&(
-                <button onClick={()=>setShowMatched(true)} style={{width:"100%",background:T.bg,border:"none",borderTop:`1px solid ${T.border}`,padding:"9px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>
-                  {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).length} reconciled without a direct match →
-                </button>
-              )}
             </div>
           </div>
         );
