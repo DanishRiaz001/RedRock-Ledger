@@ -2746,6 +2746,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       return`<tr><td>${r.date}</td><td>${isClosed?"Yes":"No"}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right">${sign(r.movement)}</td></tr>`;
     }).join("");
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>${currentAccount.code} ${currentAccount.name}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
@@ -5306,6 +5307,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const printStatement=(contact,txns,total)=>{
     const rows=txns.map(t=>`<tr><td>${fmtB(t.bilag)}</td><td>${t.date}</td><td>${t.dueDate||"—"}</td><td>${t.description}</td><td style="text-align:right">${fmt(mv(t))}</td></tr>`).join("");
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>Statement — ${contact.name}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:20px;font-weight:bold;margin-bottom:2px;}

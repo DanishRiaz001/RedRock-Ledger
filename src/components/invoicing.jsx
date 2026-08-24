@@ -2510,6 +2510,7 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
 function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePayrollRun,companyProfile={}}){
   const printPayslip=(run,line)=>{
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>Payslip — ${line.employeeName}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:2px;}

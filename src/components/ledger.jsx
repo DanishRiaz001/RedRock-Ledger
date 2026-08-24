@@ -1265,6 +1265,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 
   const exportLedgerPDF=()=>{
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     let rows=allRows.map(r=>`<tr><td>${r.date}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</td><td style="text-align:right">${sign(r.balance)}</td></tr>`).join("");
     w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:${T.accent};color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
     <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Period: ${from} → ${to}</p>
@@ -1281,6 +1282,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
     const items=rows.filter(r=>selected.includes(r.id));
     if(items.length<2)return;
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     const total=items.reduce((s,r)=>s+r.amount,0);
     const blocks=items.map((r,i)=>`
       <div style="border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px;${i>0?"page-break-inside:avoid;":""}">
@@ -2001,6 +2003,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
             </div>
             </body></html>`;
             const w=window.open("","_blank","width=750,height=900");
+            if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
             w.document.write(html);w.document.close();
             setTimeout(()=>w.print(),400);
           }} style={{flexShrink:0,background:"none",border:"none",color:accentColor,fontSize:15,cursor:"pointer",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center"}}>

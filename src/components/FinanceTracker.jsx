@@ -32,14 +32,27 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[tab,setTab]=useState("Dashboard");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
-  // Opening an account ledger (e.g. from Trial Balance) pushes a browser
-  // history entry, so the browser's own back button/gesture closes the
-  // ledger and returns to whatever screen was open underneath — instead of
-  // navigating the whole app away, which is what happened before this.
+  // This app has no client-side router — switching screens is just this
+  // `tab` state, so the browser's real history never grew past one entry.
+  // A user could navigate three or four screens deep and one Back press
+  // would exit the whole site, since there was nothing local to go back
+  // to. This pushes one history entry per tab (or ledger-drilldown) change
+  // and a single popstate handler unwinds one step at a time — Back closes
+  // an open ledger drilldown first, then steps back through visited tabs,
+  // and only exits the site once that local trail is exhausted, same as
+  // any normal multi-page site.
+  const poppingRef=React.useRef(false);
   useEffect(()=>{
-    if(!ledgerAcc)return;
-    window.history.pushState({ledgerDrilldown:true},"");
-    const onPop=()=>setLedgerAcc(null);
+    if(poppingRef.current){poppingRef.current=false;return;}
+    window.history.pushState({tab},"");
+  },[tab,ledgerAcc]);
+  useEffect(()=>{
+    const onPop=()=>{
+      poppingRef.current=true;
+      if(ledgerAcc){setLedgerAcc(null);return;}
+      const t=window.history.state&&window.history.state.tab;
+      if(t)setTab(t);
+    };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
   },[ledgerAcc]);

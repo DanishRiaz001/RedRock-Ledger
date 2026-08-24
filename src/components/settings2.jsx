@@ -199,6 +199,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
   const printPDF=(title,htmlContent)=>{
     const w=window.open("","_blank");
+    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:30px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:4px;}

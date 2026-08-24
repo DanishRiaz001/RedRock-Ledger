@@ -263,9 +263,27 @@ function MarketingHome({onSignIn,onSignUp,onPublicPage}){
   const navLink={background:"none",border:"none",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"};
   return(
     <div style={{minHeight:"100vh",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+      <style>{`
+        @keyframes rr-drift1{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(30px,-24px) scale(1.06);}}
+        @keyframes rr-drift2{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-26px,20px) scale(1.05);}}
+        @keyframes rr-rise{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+        .rr-hero-blob-a{animation:rr-drift1 13s ease-in-out infinite;}
+        .rr-hero-blob-b{animation:rr-drift2 16s ease-in-out infinite;}
+        .rr-rise-1{animation:rr-rise .7s ease-out both;}
+        .rr-rise-2{animation:rr-rise .7s ease-out .1s both;}
+        .rr-rise-3{animation:rr-rise .7s ease-out .2s both;}
+        .rr-rise-4{animation:rr-rise .7s ease-out .3s both;}
+        @media (prefers-reduced-motion:reduce){.rr-hero-blob-a,.rr-hero-blob-b{animation:none;}.rr-rise-1,.rr-rise-2,.rr-rise-3,.rr-rise-4{animation:none;opacity:1;}}
+      `}</style>
       <div style={{position:"sticky",top:0,zIndex:20,background:"rgba(252,253,253,0.85)",backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{maxWidth:1120,margin:"0 auto",padding:"14px 24px",display:"flex",alignItems:"center",gap:24}}>
-          <img src={LOGO_B64} style={{height:32,objectFit:"contain"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <img src={LOGO_B64} style={{height:32,objectFit:"contain"}}/>
+            <div>
+              <div style={{fontSize:14,fontWeight:900,color:"#0F172A",lineHeight:1.15}}>Redrock Ledgers</div>
+              <div style={{fontSize:8.5,color:"#94A3B8",fontWeight:700,letterSpacing:0.8,textTransform:"uppercase"}}>Accounting, done properly</div>
+            </div>
+          </div>
           <div style={{flex:1,display:"flex",gap:22,alignItems:"center"}}>
             <a href="#features" style={{...navLink,textDecoration:"none"}}>Features</a>
             <button onClick={()=>onPublicPage("pricing")} style={navLink}>Pricing</button>
@@ -275,19 +293,26 @@ function MarketingHome({onSignIn,onSignUp,onPublicPage}){
         </div>
       </div>
 
-      <div style={{maxWidth:900,margin:"0 auto",padding:"88px 24px 56px",textAlign:"center"}}>
-        <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accentHover,borderRadius:20,padding:"5px 14px",fontSize:11.5,fontWeight:700,marginBottom:22}}>
-          <i className="ti ti-sparkles" style={{fontSize:13}}/>Built for real double-entry bookkeeping
-        </div>
-        <h1 style={{fontSize:"clamp(32px,5vw,52px)",fontWeight:900,color:"#0F172A",lineHeight:1.12,letterSpacing:-1,marginBottom:20}}>
-          Accounting software your bookkeeper<br/>actually wants to use
-        </h1>
-        <p style={{fontSize:16,color:"#475569",lineHeight:1.6,maxWidth:620,margin:"0 auto 32px"}}>
-          Ledger, invoicing, bank reconciliation, and budgets in one place — built to work equally well for a business running its own books and for an accountant managing several clients from a single login.
-        </p>
-        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-          <button onClick={onSignUp} style={{background:T.accentGradient,border:"none",borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:800,color:"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(13,148,136,0.28)"}}>Create free account</button>
-          <button onClick={()=>onPublicPage("pricing")} style={{background:"#fff",border:`1.5px solid ${T.border}`,borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>See pricing</button>
+      {/* Hero — slow-drifting gradient blobs behind the copy for the
+          "watery" feel already established elsewhere in the app, and each
+          block rises in on load instead of appearing flat/static. */}
+      <div style={{position:"relative",overflow:"hidden"}}>
+        <div className="rr-hero-blob-a" style={{position:"absolute",top:-160,right:"8%",width:420,height:420,borderRadius:"50%",background:"radial-gradient(circle,rgba(45,212,191,0.24),transparent 70%)",pointerEvents:"none"}}/>
+        <div className="rr-hero-blob-b" style={{position:"absolute",top:40,left:"2%",width:360,height:360,borderRadius:"50%",background:"radial-gradient(circle,rgba(13,148,136,0.16),transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"relative",maxWidth:900,margin:"0 auto",padding:"88px 24px 56px",textAlign:"center"}}>
+          <div className="rr-rise-1" style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accentHover,borderRadius:20,padding:"5px 14px",fontSize:11.5,fontWeight:700,marginBottom:22}}>
+            <i className="ti ti-sparkles" style={{fontSize:13}}/>Built for real double-entry bookkeeping
+          </div>
+          <h1 className="rr-rise-2" style={{fontSize:"clamp(32px,5vw,52px)",fontWeight:900,color:"#0F172A",lineHeight:1.12,letterSpacing:-1,marginBottom:20}}>
+            Accounting software your bookkeeper<br/>actually wants to use
+          </h1>
+          <p className="rr-rise-3" style={{fontSize:16,color:"#475569",lineHeight:1.6,maxWidth:620,margin:"0 auto 32px"}}>
+            Ledger, invoicing, bank reconciliation, and budgets in one place — built to work equally well for a business running its own books and for an accountant managing several clients from a single login.
+          </p>
+          <div className="rr-rise-4" style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+            <button onClick={onSignUp} style={{background:T.accentGradient,border:"none",borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:800,color:"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(13,148,136,0.28)"}}>Create free account</button>
+            <button onClick={()=>onPublicPage("pricing")} style={{background:"#fff",border:`1.5px solid ${T.border}`,borderRadius:12,padding:"14px 26px",fontSize:14.5,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>See pricing</button>
+          </div>
         </div>
       </div>
 
