@@ -8,6 +8,30 @@ import { getSK } from "./theme.js";
 // production. Using this instead of raw .has()/.includes() calls makes
 // that specific class of bug structurally impossible to repeat, since the
 // check works correctly no matter which collection type shows up.
+// Opens a fully-formed HTML string in a new tab as a real, navigable blob
+// document instead of the old window.open("","_blank") + document.write()
+// pattern. That pattern opens a completely blank page and only writes into
+// it afterward — modern browsers (Chrome especially) treat a blank-URL
+// window.open as far more suspicious than one given a real URL/document,
+// and were blocking it almost every time, not just occasionally. Giving
+// window.open a real blob: URL up front is what a normal "open in new tab"
+// looks like to a popup blocker, and is dramatically less likely to be
+// blocked at all.
+export function openHtmlInNewTab(html, windowFeatures) {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const w = windowFeatures ? window.open(url, "_blank", windowFeatures) : window.open(url, "_blank");
+  if (!w) {
+    URL.revokeObjectURL(url);
+    alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");
+    return null;
+  }
+  // Revoke well after the tab has had time to load the blob — revoking
+  // immediately can blank the tab out before it finishes reading it.
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+  return w;
+}
+
 export function hasId(collection, id) {
   if (!collection) return false;
   if (typeof collection.has === "function") return collection.has(id);

@@ -1001,7 +1001,6 @@ const SIDEBAR=[
   {id:"Reskontro",icon:"👥",label:"Customer/Supplier Ledger",group:"main"},
   {id:"SinkingFunds",icon:"🎯",label:"Sinking Funds",group:"tools"},
   {id:"Budget",icon:"📐",label:"Budget",group:"tools"},
-  {id:"Cheques",icon:"🧾",label:"Cheque Tracker",group:"tools"},
   {id:"Reports",icon:"📊",label:"Reports",group:"tools"},
   {id:"AIBookkeeping",icon:"🤖",label:"AI Bookkeeping",group:"tools"},
   {id:"Settings",icon:"⚙️",label:"Settings",group:"system"},

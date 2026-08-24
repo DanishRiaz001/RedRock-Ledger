@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI, hasId } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
@@ -1264,16 +1264,15 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   };
 
   const exportLedgerPDF=()=>{
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     let rows=allRows.map(r=>`<tr><td>${r.date}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</td><td style="text-align:right">${sign(r.balance)}</td></tr>`).join("");
-    w.document.write(`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:${T.accent};color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
+    const html=`<!DOCTYPE html><html><head><title>Ledger ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th{background:${T.accent};color:#fff;padding:7px 10px;text-align:left;font-size:11px}td{padding:6px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even) td{background:#f9f9f9}.foot{display:flex;gap:30px;margin-top:16px;padding:10px;background:#f0f0f0;border-radius:6px}.foot div{text-align:center}.foot .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.foot .val{font-size:13px;font-weight:bold}.btn-bar{display:flex;gap:10px;margin-top:20px;}@media print{.btn-bar{display:none}}</style></head><body>
     <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Period: ${from} → ${to}</p>
     <table><thead><tr><th>Date</th><th>Ref No</th><th>Description</th><th style="text-align:right">Movement</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="foot"><div><div class="lbl">Opening</div><div class="val">${sign(openingBal)}</div></div><div><div class="lbl">Period</div><div class="val">${sign(periodMovement)}</div></div><div><div class="lbl">Closing</div><div class="val">${sign(closingBal)}</div></div></div>
     <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:${T.accent};color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
-    </body></html>`);
-    w.document.close();setTimeout(()=>w.print(),400);
+    <script>window.onload=function(){window.print();};</script>
+    </body></html>`;
+    openHtmlInNewTab(html);
   };
 
   const[exportMenu,setExportMenu]=useState(false);
@@ -1281,8 +1280,6 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
   const mergeSelected=()=>{
     const items=rows.filter(r=>selected.includes(r.id));
     if(items.length<2)return;
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
     const total=items.reduce((s,r)=>s+r.amount,0);
     const blocks=items.map((r,i)=>`
       <div style="border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px;${i>0?"page-break-inside:avoid;":""}">
@@ -1296,13 +1293,14 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
           <span style="font-weight:bold;color:${r.movement>=0?"#059669":"#DC2626"}">${r.movement>=0?"+":"−"}${fmt(Math.abs(r.movement))}</span>
         </div>
       </div>`).join("");
-    w.document.write(`<!DOCTYPE html><html><head><title>Merged Entries · ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:13px;margin:30px}h1{font-size:16px}.btn-bar{display:flex;gap:10px;margin-top:20px}@media print{.btn-bar{display:none}}</style></head><body>
+    const html=`<!DOCTYPE html><html><head><title>Merged Entries · ${account.code}</title><style>body{font-family:Arial,sans-serif;font-size:13px;margin:30px}h1{font-size:16px}.btn-bar{display:flex;gap:10px;margin-top:20px}@media print{.btn-bar{display:none}}</style></head><body>
       <h1>${account.code} · ${account.name}</h1><p style="color:#888;font-size:11px">Merged export of ${items.length} selected entries</p>
       ${blocks}
       <div style="display:flex;justify-content:space-between;padding:12px 16px;background:#f0f0f0;border-radius:8px;font-weight:bold"><span>Total</span><span>${sign(total)}</span></div>
       <div class="btn-bar"><button onclick="window.print()" style="padding:8px 18px;background:${T.accent};color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save PDF</button><button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">← Close</button></div>
-      </body></html>`);
-    w.document.close();setTimeout(()=>w.print(),400);
+      <script>window.onload=function(){window.print();};</script>
+      </body></html>`;
+    openHtmlInNewTab(html);
   };
 
   return(
@@ -2001,11 +1999,9 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
               <button onclick="window.print()" style="padding:8px 18px;background:#1A1A2E;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 Print / Save as PDF</button>
               <button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-size:13px;">← Close</button>
             </div>
+            <script>window.onload=function(){window.print();};</script>
             </body></html>`;
-            const w=window.open("","_blank","width=750,height=900");
-            if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
-            w.document.write(html);w.document.close();
-            setTimeout(()=>w.print(),400);
+            openHtmlInNewTab(html,"width=750,height=900");
           }} style={{flexShrink:0,background:"none",border:"none",color:accentColor,fontSize:15,cursor:"pointer",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center"}}>
             ⬇
           </button>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, SaveFlashButton } from "./ledger.jsx";
 import { ResizableSplit } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
@@ -2745,9 +2745,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       const isClosed=!!(r.matchedWith&&r.matchedAccount===currentCode);
       return`<tr><td>${r.date}</td><td>${isClosed?"Yes":"No"}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right">${sign(r.movement)}</td></tr>`;
     }).join("");
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
-    w.document.write(`<!DOCTYPE html><html><head><title>${currentAccount.code} ${currentAccount.name}</title><style>
+    const html=`<!DOCTYPE html><html><head><title>${currentAccount.code} ${currentAccount.name}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
       .sub{font-size:12px;color:#666;margin-bottom:18px;}
@@ -2771,8 +2769,8 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <tbody>${rows}</tbody>
       </table>
       <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
-    </body></html>`);
-    w.document.close();
+    </body></html>`;
+    openHtmlInNewTab(html);
   };
 
   return(
@@ -3083,37 +3081,21 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     );
   }
 
-  // Feeds the table header's own sticky offset (below) — this is the ONLY
-  // thing this measurement drives now, not a layout spacer, so an
-  // off-by-a-frame value here is at worst a 1px header nudge, never a gap.
-  const[fixedBarHeight,setFixedBarHeight]=useState(64);
-  const fixedBarRef=React.useRef(null);
-  useLayoutEffect(()=>{
-    if(fixedBarRef.current)setFixedBarHeight(fixedBarRef.current.offsetHeight);
-  });
-  // A plain layout-effect only remeasures when THIS component re-renders —
-  // but the toolbar's actual height can change from things that don't
-  // (window resize wrapping the filter row onto two lines, fonts finishing
-  // load). Without catching those, the sticky header sticks at a stale
-  // offset and a data row is left peeking through the gap above it. A
-  // ResizeObserver catches every real height change directly.
-  useEffect(()=>{
-    if(!fixedBarRef.current||typeof ResizeObserver==="undefined")return;
-    const ro=new ResizeObserver(entries=>{
-      const h=entries[0]&&entries[0].target.offsetHeight;
-      if(h)setFixedBarHeight(h);
-    });
-    ro.observe(fixedBarRef.current);
-    return()=>ro.disconnect();
-  },[]);
-
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
 
-      {/* Sticky, not fixed — see the table header below for why this is now
-          a single-table structure instead of a duplicated shadow header. */}
-      <div ref={fixedBarRef} style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
+      {/* The filter toolbar AND the column-header row live in ONE sticky
+          block now, not two independently-stickied elements with a
+          JS-measured gap between them (a prior fix tried to keep that gap
+          in sync via ResizeObserver, but any mismatch — even for a single
+          frame during a resize or font swap — let a data row peek through
+          the seam, which is exactly the "account row floats above the
+          header" bug this was reported as). Sticking them together as one
+          unit makes that class of bug structurally impossible: there is
+          only one sticky boundary, so a row is always either fully above
+          or fully below it, never sandwiched in a gap between two. */}
+      <div style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:10,padding:"8px 10px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
           <div style={{position:"relative"}}>
             <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
@@ -3164,6 +3146,15 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <i className="ti ti-settings" style={{fontSize:16}}/>
           </button>
         </div>
+
+        {/* Column headers — part of the same sticky block as the toolbar
+            above, not a second independently-positioned sticky element. */}
+        <div style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),color:T.sub,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,marginTop:8}}>
+          <div style={{position:"relative",padding:"11px 14px",fontWeight:700}}>Account<ResizeHandle idx={0}/></div>
+          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance<ResizeHandle idx={1}/></div>
+          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Difference<ResizeHandle idx={2}/></div>
+          <div style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</div>
+        </div>
       </div>
 
       {/* Div/grid "table" instead of a real <table> — Chrome has a known,
@@ -3176,13 +3167,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           already used for Bank Reconciliation and Reskontro, where this
           gap/blank-header issue never shows up. */}
       <div id="trialbalance-print-area">
-      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:13}}>
-        <div style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),color:T.sub,background:T.bg,position:"sticky",top:fixedBarHeight,zIndex:40}}>
-          <div style={{position:"relative",padding:"11px 14px",fontWeight:700}}>Account<ResizeHandle idx={0}/></div>
-          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Opening balance<ResizeHandle idx={1}/></div>
-          <div style={{position:"relative",textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Difference<ResizeHandle idx={2}/></div>
-          <div style={{textAlign:"right",fontWeight:700,padding:"11px 14px"}}>Closing balance</div>
-        </div>
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:13,marginTop:8}}>
         <div>
           {rows.map(r=>(
             <div key={r.code} className="rr-table-row" style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),background:"#fff",borderBottom:`1px solid ${T.border}`}}>
@@ -5306,9 +5291,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   // open items, meant to be sent to them (not just for internal viewing).
   const printStatement=(contact,txns,total)=>{
     const rows=txns.map(t=>`<tr><td>${fmtB(t.bilag)}</td><td>${t.date}</td><td>${t.dueDate||"—"}</td><td>${t.description}</td><td style="text-align:right">${fmt(mv(t))}</td></tr>`).join("");
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
-    w.document.write(`<!DOCTYPE html><html><head><title>Statement — ${contact.name}</title><style>
+    const html=`<!DOCTYPE html><html><head><title>Statement — ${contact.name}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:20px;font-weight:bold;margin-bottom:2px;}
       .sub{font-size:12px;color:#666;margin-bottom:24px;}
@@ -5326,8 +5309,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <tfoot><tr class="total-row"><td colspan="4">Total outstanding</td><td style="text-align:right">${fmt(total)}</td></tr></tfoot>
       </table>
       <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
-    </body></html>`);
-    w.document.close();
+    </body></html>`;
+    openHtmlInNewTab(html);
   };
 
   // Register the Excel export with the global download button — exports

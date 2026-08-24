@@ -55,7 +55,7 @@ export default function MobileApp(props){
   const feat={
     bank:getFeature("bank"),reskontro:getFeature("reskontro"),whose:getFeature("whose"),
     budget:getFeature("budget"),sinkingFunds:getFeature("sinkingFunds"),reports:getFeature("reports"),
-    import:getFeature("import"),cheque:getFeature("cheque"),tags:getFeature("tags"),
+    import:getFeature("import"),tags:getFeature("tags"),
     calcAmount:getFeature("calcAmount"),vat:isNorway,
   };
   const effectiveMoneySources=feat.whose?props.moneySources:[];

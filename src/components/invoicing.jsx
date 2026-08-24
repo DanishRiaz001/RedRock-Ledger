@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal, VatDrop } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
@@ -631,33 +631,35 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         />
       )}
       {editingId&&(
-        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>{editingId?"Edit contact":`New ${type}`}</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <input placeholder="Name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
-            <input placeholder="Email" type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} style={inp}/>
-            <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
-            <input placeholder="Account no. / IBAN (optional)" value={form.accountNo} onChange={e=>setForm(p=>({...p,accountNo:e.target.value}))} style={inp}/>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={inp}/>
-            <div>
-              <select value={form.paymentTermsDays} onChange={e=>setForm(p=>({...p,paymentTermsDays:e.target.value}))} style={inp}>
-                <option value="0">Due immediately</option>
-                <option value="7">Net 7</option>
-                <option value="15">Net 15</option>
-                <option value="30">Net 30</option>
-                <option value="45">Net 45</option>
-                <option value="60">Net 60</option>
-              </select>
+        <div onClick={cancel} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)",padding:20}}>
+            <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:14}}>Edit {type}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <input placeholder="Name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
+              <input placeholder="Email" type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} style={inp}/>
+              <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
+              <input placeholder="Account no. / IBAN (optional)" value={form.accountNo} onChange={e=>setForm(p=>({...p,accountNo:e.target.value}))} style={inp}/>
             </div>
-          </div>
-          {type==="customer"&&(
-            <input type="number" placeholder="Credit limit (optional — warns before invoicing past it)" value={form.creditLimit} onChange={e=>setForm(p=>({...p,creditLimit:e.target.value}))} style={{...inp,marginBottom:10}}/>
-          )}
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={save} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
-            <button onClick={cancel} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={inp}/>
+              <div>
+                <select value={form.paymentTermsDays} onChange={e=>setForm(p=>({...p,paymentTermsDays:e.target.value}))} style={inp}>
+                  <option value="0">Due immediately</option>
+                  <option value="7">Net 7</option>
+                  <option value="15">Net 15</option>
+                  <option value="30">Net 30</option>
+                  <option value="45">Net 45</option>
+                  <option value="60">Net 60</option>
+                </select>
+              </div>
+            </div>
+            {type==="customer"&&(
+              <input type="number" placeholder="Credit limit (optional — warns before invoicing past it)" value={form.creditLimit} onChange={e=>setForm(p=>({...p,creditLimit:e.target.value}))} style={{...inp,marginBottom:10}}/>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:6}}>
+              <button onClick={save} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+              <button onClick={cancel} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
@@ -2509,9 +2511,7 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
 // Salary Expense / Cr Bank (and Cr deductions account, if used) per employee.
 function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePayrollRun,companyProfile={}}){
   const printPayslip=(run,line)=>{
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
-    w.document.write(`<!DOCTYPE html><html><head><title>Payslip — ${line.employeeName}</title><style>
+    const html=`<!DOCTYPE html><html><head><title>Payslip — ${line.employeeName}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
       .sub{font-size:12px;color:#666;margin-bottom:24px;}
@@ -2531,8 +2531,8 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
       </table>
       <p style="font-size:10px;color:#999;margin-top:20px;">No statutory tax withholding is calculated automatically — gross pay only.</p>
       <div class="btn-bar" style="margin-top:24px;"><button onclick="window.print()" style="padding:10px 20px;background:${T.accent};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
-    </body></html>`);
-    w.document.close();
+    </body></html>`;
+    openHtmlInNewTab(html);
   };
   const activeEmployees=employees.filter(e=>e.active);
   const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"||a.code==="1001");

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey } from "../lib/utils.js";
+import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey, openHtmlInNewTab } from "../lib/utils.js";
 import { sb } from "../lib/supabaseClient.js";
 import { Card, BackHeader, Menu3, AccDropFlat, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
@@ -198,9 +198,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   };
 
   const printPDF=(title,htmlContent)=>{
-    const w=window.open("","_blank");
-    if(!w){alert("Your browser blocked this new tab — please allow pop-ups for this site and try again.");return;}
-    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    const html=`<!DOCTYPE html><html><head><title>${title}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:30px;}
       h1{font-size:18px;font-weight:bold;margin-bottom:4px;}
       .sub{font-size:11px;color:#666;margin-bottom:20px;}
@@ -220,9 +218,9 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
       <button onclick="window.print()" style="padding:8px 18px;background:#1A1A2E;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 Print / Save as PDF</button>
       <button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-size:13px;">← Close</button>
     </div>
-    </body></html>`);
-    w.document.close();
-    setTimeout(()=>w.print(),400);
+    <script>window.onload=function(){window.print();};</script>
+    </body></html>`;
+    openHtmlInNewTab(html);
   };
 
   const exportResultatPDF=()=>{
@@ -1992,127 +1990,6 @@ function DisabledScreen({title,onBack}){
   );
 }
 
-// ─── Cheque Tracker ───────────────────────────────────────────────────────────
-function ChequeScreen({onBack,isDesktop=false}){
-  const KEY="rr_cheques";
-  const[cheques,setChequesState]=useState(()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch{return[];}});
-  const[showForm,setShowForm]=useState(false);
-  const[chequeType,setChequeType]=useState("issued"); // issued | received
-  const[form,setForm]=useState({number:"",party:"",amount:"",date:new Date().toISOString().split("T")[0],bank:"",status:"pending"});
-
-  const save=(cqs)=>{setChequesState(cqs);localStorage.setItem(KEY,JSON.stringify(cqs));};
-  const addCheque=()=>{
-    if(!form.number||!form.party||!parseFloat(form.amount))return;
-    const n=[...cheques,{id:Date.now(),type:chequeType,...form,amount:parseFloat(form.amount)}];
-    save(n);setShowForm(false);setForm({number:"",party:"",amount:"",date:new Date().toISOString().split("T")[0],bank:"",status:"pending"});
-  };
-  const updateStatus=(id,status)=>{const n=cheques.map(c=>c.id===id?{...c,status}:c);save(n);};
-  const deleteCheque=(id)=>{const n=cheques.filter(c=>c.id!==id);save(n);};
-  const[tab,setTab]=useState("issued");
-  const list=cheques.filter(c=>c.type===tab);
-  const STATUS_COLOR={pending:T.orange,cleared:T.green,bounced:T.red,cancelled:T.muted};
-
-  const formCard=(
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      <input placeholder="Cheque No." value={form.number} onChange={e=>setForm(p=>({...p,number:e.target.value}))} style={inp}/>
-      <input placeholder="Party name" value={form.party} onChange={e=>setForm(p=>({...p,party:e.target.value}))} style={inp}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        <input type="number" placeholder="Amount" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} style={inp}/>
-        <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp}/>
-      </div>
-      <input placeholder="Bank (optional)" value={form.bank} onChange={e=>setForm(p=>({...p,bank:e.target.value}))} style={inp}/>
-      <SaveFlashButton onClick={addCheque} label="Add Cheque"/>
-    </div>
-  );
-
-  if(isDesktop){
-    const totalPending=list.filter(c=>c.status==="pending").reduce((s,c)=>s+c.amount,0);
-    return(
-      <div style={{maxWidth:1000}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Cheque tracker</h1>
-          <button onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}} style={{background:showForm?"none":T.accent,color:showForm?T.sub:"#fff",border:`1px solid ${showForm?T.border:T.accent}`,borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"Cancel":`+ Add ${tab} cheque`}</button>
-        </div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          {["issued","received"].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?T.accent:"none",color:tab===t?"#fff":T.sub,border:`1px solid ${tab===t?T.accent:T.border}`,borderRadius:8,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t} ({cheques.filter(c=>c.type===t).length})</button>
-          ))}
-          <div style={{flex:1}}/>
-          <div style={{fontSize:12,color:T.muted}}>Pending: <span style={{fontWeight:800,color:T.orange}}>{fmt(totalPending)}</span></div>
-        </div>
-        {showForm&&<div style={{background:T.bg,borderRadius:12,padding:16,border:`1px solid ${T.border}`,marginBottom:16,maxWidth:500}}>{formCard}</div>}
-        <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-        <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{color:T.sub,background:T.bg}}>
-            <td style={{padding:"11px 14px",fontWeight:700}}>Cheque no.</td><td style={{fontWeight:700}}>Party</td><td style={{fontWeight:700}}>Date</td><td style={{fontWeight:700}}>Bank</td><td style={{textAlign:"right",fontWeight:700}}>Amount</td><td style={{fontWeight:700}}>Status</td><td style={{padding:"11px 14px"}}></td>
-          </tr></thead>
-          <tbody>
-            {list.map(c=>(
-              <tr key={c.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                <td style={{padding:"11px 14px",color:T.accent,fontWeight:700}}>#{c.number}</td>
-                <td style={{fontWeight:600,color:T.text}}>{c.party}</td>
-                <td style={{color:T.text}}>{c.date}</td>
-                <td style={{color:T.text}}>{c.bank||"—"}</td>
-                <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(c.amount)}</td>
-                <td>
-                  <select value={c.status} onChange={e=>updateStatus(c.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:c.status==="cleared"?T.greenBg:c.status==="bounced"?T.redLight:c.status==="cancelled"?T.bg:T.orangeBg,color:STATUS_COLOR[c.status],fontWeight:700,textTransform:"capitalize"}}>
-                    {["pending","cleared","bounced","cancelled"].map(s=><option key={s} value={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td style={{textAlign:"right",padding:"11px 14px"}}><button onClick={()=>deleteCheque(c.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button></td>
-              </tr>
-            ))}
-            {!list.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No {tab} cheques yet.</td></tr>}
-          </tbody>
-        </table>
-        </div>
-      </div>
-    );
-  }
-
-  return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Cheque Tracker" sub="ISSUED & RECEIVED" onBack={onBack}/>
-      <div style={{padding:16}}>
-        <div style={{display:"flex",gap:6,marginBottom:12}}>
-          {["issued","received"].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",borderRadius:10,border:`1.5px solid ${tab===t?T.accent:T.border}`,background:tab===t?T.accent:"#fff",color:tab===t?"#fff":T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
-          ))}
-        </div>
-        <button style={{...btnRed,marginBottom:12}} onClick={()=>{setChequeType(tab);setShowForm(s=>!s);}}>
-          {showForm?"✕ Cancel":`+ Add ${tab} cheque`}
-        </button>
-        {showForm&&<Card style={{marginBottom:12}}>{formCard}</Card>}
-        {list.map(c=>(
-          <div key={c.id} style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"13px 14px",marginBottom:8}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                  <span style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,padding:"1px 7px",borderRadius:5}}>#{c.number}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:T.text}}>{c.party}</span>
-                </div>
-                <div style={{fontSize:11,color:T.muted}}>{c.date}{c.bank?` · ${c.bank}`:""}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:14,fontWeight:900,color:T.text}}>{fmt(c.amount)}</div>
-                <span style={{fontSize:9,fontWeight:700,color:STATUS_COLOR[c.status],background:c.status==="cleared"?T.greenBg:c.status==="bounced"?T.redLight:c.status==="cancelled"?T.border:T.orangeBg,borderRadius:5,padding:"2px 7px",textTransform:"uppercase"}}>{c.status}</span>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              {["pending","cleared","bounced","cancelled"].map(s=>(
-                <button key={s} onClick={()=>updateStatus(c.id,s)} style={{padding:"3px 9px",borderRadius:7,border:`1px solid ${c.status===s?T.accent:T.border}`,background:c.status===s?T.accentLight:"#fff",color:c.status===s?T.accent:T.sub,fontSize:10,fontWeight:c.status===s?700:400,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{s}</button>
-              ))}
-              <button onClick={()=>deleteCheque(c.id)} style={{marginLeft:"auto",padding:"3px 9px",borderRadius:7,border:`1px solid ${T.redMid}`,background:T.redLight,color:T.red,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
-            </div>
-          </div>
-        ))}
-        {!list.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>No {tab} cheques yet.</div>}
-      </div>
-    </div>
-  );
-}
-
-
 // ─── Bug Log Screen ───────────────────────────────────────────────────────────
 function BugLogScreen({onBack,isDesktop=false}){
   const[bugs,setBugs]=React.useState(()=>getBugs().reverse());
@@ -2246,7 +2123,6 @@ const ADMIN_FEATURES=[
   {id:"sinkingFunds",label:"Sinking Funds",icon:"🎯",desc:"Savings goals tracker"},
   {id:"reports",label:"Reports",icon:"📊",desc:"P&L, Balance Sheet, Ledger export"},
   {id:"import",label:"Import Excel",icon:"📥",desc:"Import transactions from Excel"},
-  {id:"cheque",label:"Cheque Tracker",icon:"🧾",desc:"Issued & received cheques"},
   {id:"tags",label:"Transaction Tags",icon:"🏷️",desc:"Tag entries for filtering"},
   {id:"aiBookkeeping",label:"AI Bookkeeping",icon:"🤖",desc:"Natural-language entry parser"},
   {id:"files",label:"Inbox",icon:"📥",desc:"Upload & manage receipt files"},
@@ -2264,4 +2140,4 @@ const PACKAGE_TIERS=[
 const USER_PACKAGE_KEY="rr_user_packages";
 const getUserPackages=()=>{try{return JSON.parse(localStorage.getItem(USER_PACKAGE_KEY)||"{}")}catch{return{};}};
 
-export { BalanceListsScreen, ReportsScreen, ImportScreen, BudgetScreen, ProfileRow, ProfileScreen, FilesScreen, DisabledScreen, ChequeScreen, BugLogScreen, ManualBugForm, ScreenErrorBoundary, ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages };
+export { BalanceListsScreen, ReportsScreen, ImportScreen, BudgetScreen, ProfileRow, ProfileScreen, FilesScreen, DisabledScreen, BugLogScreen, ManualBugForm, ScreenErrorBoundary, ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages };

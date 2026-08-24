@@ -23,7 +23,7 @@ import {
 } from "./invoicing.jsx";
 import {
   BalanceListsScreen, ReportsScreen, ImportScreen, BudgetScreen, ProfileScreen, FilesScreen,
-  DisabledScreen, ChequeScreen, BugLogScreen, ScreenErrorBoundary,
+  DisabledScreen, BugLogScreen, ScreenErrorBoundary,
 } from "./settings2.jsx";
 import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
@@ -99,7 +99,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"New voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",Cheques:"Cheque tracker",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"New voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -137,7 +137,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     Resultat:"accounting",BalanceSheet:"accounting",VATReport:"accounting",VATTermin:"accounting",VATCodes:"accounting",AccountingSettings:"accounting",
     Reports:"reports",Budget:"reports",SinkingFunds:"reports",ReportsHub:"reports",SalesPerCustomer:"reports",BalanceLists:"reports",
     AgedReskontro:"accounting",MonthlyOverview:"accounting",
-    Bank:"bank",BankDashboard:"bank",BankWhose:"bank",Cheques:"bank",BankSettings:"bank",
+    Bank:"bank",BankDashboard:"bank",BankWhose:"bank",BankSettings:"bank",
     Contacts:"customers",ContactNew:"customers",CustomerImport:"customers",CustomerSettings:"customers",
     InvoiceNew:"invoicing",InvoiceOverview:"invoicing",RecurringInvoices:"invoicing",QuoteNew:"invoicing",QuoteOverview:"invoicing",InvoiceSettings:"invoicing",
     CompanyInfo:"company",Employees:"company",EmployeeNew:"company",Payroll:"company",Settings:"company",SAFTImport:"company",
@@ -280,7 +280,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     sinkingFunds:getFeature("sinkingFunds"),
     reports:getFeature("reports"),
     import:getFeature("import"),
-    cheque:getFeature("cheque"),
     tags:getFeature("tags"),
     calcAmount:getFeature("calcAmount"),
     vat:isNorway,
@@ -318,10 +317,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   if(tab==="Budget"&&!isDesktop){
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
     return(<BudgetScreen accounts={accounts} transactions={transactions} budgets={budgets} saveBudget={saveBudget} saveBudgetSurplusSetting={saveBudgetSurplusSetting} sweepBudgetSurplus={sweepBudgetSurplus} sinkingFunds={sinkingFunds} filterFrom={filterFrom} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/>);
-  }
-  if(tab==="Cheques"&&!isDesktop){
-    if(!feat.cheque)return(<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>);
-    return(<ChequeScreen onBack={()=>setTab("Dashboard")}/>);
   }
   if(tab==="AIBookkeeping"&&!isDesktop){
     if(!feat.aiBookkeeping)return(<DisabledScreen title="AI Bookkeeping" onBack={()=>setTab("Dashboard")}/>);
@@ -613,7 +608,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             const bankItems=[
               {tab:"BankWhose",label:"Whose"},
               {tab:"Bank",label:"Bank reconciliation"},
-              {tab:"Cheques",label:"Cheque tracker",featureKey:"cheque"},
               {tab:"BankSettings",label:"Settings"},
             ].filter(it=>!it.featureKey||feat[it.featureKey]);
             const bankExpanded=expandedCat==="bank";
@@ -1175,12 +1169,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             :<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>
         )}
 
-        {tab==="Cheques"&&(
-          feat.cheque
-            ?<ChequeScreen onBack={()=>setTab("Dashboard")} isDesktop={true}/>
-            :<DisabledScreen title="Cheque Tracker" onBack={()=>setTab("Dashboard")}/>
-        )}
-
         {tab==="Reports"&&(
           <div style={{maxWidth:1000}}>
             {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} isDesktop={true}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
@@ -1249,7 +1237,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
             {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
               const active=tab===item.id;
-              const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Cheques:"cheque",Files:"files",AIBookkeeping:"aiBookkeeping"}[item.id];
+              const featureKey={Bank:"bank",Reskontro:"reskontro",Budget:"budget",SinkingFunds:"sinkingFunds",Reports:"reports",Import:"import",Files:"files",AIBookkeeping:"aiBookkeeping"}[item.id];
               const isOff=featureKey&&!feat[featureKey];
               if(isOff)return null;
               return(
