@@ -8,7 +8,6 @@ const QUICK_ACCESS=[
   {label:"Sinking fund",icon:"ti-piggy-bank",overlay:"SinkingFund",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
   {label:"Analytics",icon:"ti-chart-histogram",overlay:"Analytics",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
   {label:"Whose",icon:"ti-users",overlay:"Whose",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
-  {label:"Bank overview",icon:"ti-building-bank",tab:"Bank",bg:"rgba(232,90,59,0.12)",fg:"#E85A3B"},
 ];
 const QUICK_ACCESS_2=[
   {label:"Trial balance",icon:"ti-scale",overlay:"TrialBalance",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
@@ -26,8 +25,12 @@ export default function MobileHome({accounts,transactions,profile,companyProfile
   const arNow=seriesBalAt("1500",today);
   const apNow=seriesBalAt("2400",today);
   const netProfit=useMemo(()=>{
-    const income=transactions.filter(t=>getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900").reduce((s,t)=>s+t.amount,0);
-    const expense=transactions.filter(t=>{const sk=getSK(t.debitCode);return sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0);
+    // Excludes reversed/reversal entries — same rule Analytics, Budget, and
+    // Monthly already use, so a corrected mistake doesn't get counted twice
+    // (once as the original, once as its opposite-signed reversal landing
+    // outside the same income/expense bucket it started in).
+    const income=transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&(getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900")).reduce((s,t)=>s+t.amount,0);
+    const expense=transactions.filter(t=>{const sk=getSK(t.debitCode);return!t.reversedBy&&!t.reversalOf&&sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0);
     return income-expense;
   },[transactions]);
 
@@ -53,8 +56,8 @@ export default function MobileHome({accounts,transactions,profile,companyProfile
   },[effectiveMoneySources,transactions,bankCodesForWhose]);
 
   const monthFrom=today.slice(0,7)+"-01";
-  const monthIncome=useMemo(()=>transactions.filter(t=>t.date>=monthFrom&&t.date<=today&&(getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900")).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
-  const monthExpense=useMemo(()=>transactions.filter(t=>{const sk=getSK(t.debitCode);return t.date>=monthFrom&&t.date<=today&&sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
+  const monthIncome=useMemo(()=>transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&t.date>=monthFrom&&t.date<=today&&(getSK(t.creditCode)==="3000"||getSK(t.creditCode)==="3900")).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
+  const monthExpense=useMemo(()=>transactions.filter(t=>{const sk=getSK(t.debitCode);return!t.reversedBy&&!t.reversalOf&&t.date>=monthFrom&&t.date<=today&&sk&&sk>="4000"&&sk<"8000";}).reduce((s,t)=>s+t.amount,0),[transactions,monthFrom,today]);
   const monthMax=Math.max(1,monthIncome,monthExpense);
   const monthLabel=new Date().toLocaleString("default",{month:"long"});
 
@@ -121,7 +124,7 @@ export default function MobileHome({accounts,transactions,profile,companyProfile
 
       {/* Quick access grid — two rows, sitting below the bank cards now */}
       <div style={{padding:"0 20px",marginBottom:22}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
           {QUICK_ACCESS.map(q=>(
             <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay,...(q.overlayExtra||{})}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
               <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>

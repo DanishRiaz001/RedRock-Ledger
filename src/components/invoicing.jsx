@@ -3071,6 +3071,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
   const[saving,setSaving]=React.useState(false);
+  const[showAttachPopover,setShowAttachPopover]=useState(false);
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
@@ -3262,13 +3263,53 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     <Card style={{flex:1,marginBottom:0,minWidth:0}}>
       {/* Bilag + Date — Entry type is its own row of buttons below, since it's
           the first real decision (what kind of entry this is), not something
-          to bury in a dropdown. */}
+          to bury in a dropdown. On mobile, a compact attachment icon sits
+          right after Date instead of a permanent dashed drop-zone lower down
+          — tapping it opens a small popover with the same upload/pick-file
+          options, so attaching a receipt doesn't cost a full section of
+          space it needs the rest of the time. */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
         <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px",flexShrink:0}}>
           <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
           <div style={{fontSize:15,fontWeight:900,color:T.accent}}>{fmtB(nextBilag)}</div>
         </div>
-        <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150,flexShrink:0}}/>
+        <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:isDesktop?150:0,flex:isDesktop?"none":1,minWidth:0}}/>
+        {!isDesktop&&entryMode==="receipt"&&(
+          <div style={{position:"relative",flexShrink:0}}>
+            <button onClick={()=>setShowAttachPopover(s=>!s)} style={{width:40,height:40,borderRadius:10,border:`1px solid ${form.attachmentId?T.accent:T.border}`,background:form.attachmentId?T.accentLight:"#fff",color:T.accent,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit"}}>
+              <i className="ti ti-paperclip" style={{fontSize:18}}/>
+            </button>
+            {form.attachmentId&&<div style={{position:"absolute",top:-3,right:-3,width:13,height:13,borderRadius:"50%",background:T.accent,border:"2px solid #fff"}}/>}
+            {showAttachPopover&&(
+              <>
+                <div onClick={()=>setShowAttachPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                <div style={{position:"absolute",right:0,top:46,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:230}}>
+                  {form.attachmentId?(()=>{
+                    const f=inboxFiles.find(x=>x.id===form.attachmentId);
+                    return(
+                      <div style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:9,padding:"7px 9px"}}>
+                        <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                        <button onClick={()=>{setForm(p=>({...p,attachmentId:""}));setShowAttachPopover(false);}} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,padding:"4px 8px",fontWeight:700,fontFamily:"inherit"}}>Remove</button>
+                      </div>
+                    );
+                  })():(<>
+                    <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:9,padding:"14px 8px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg}}>
+                      <i className="ti ti-upload" style={{fontSize:17,color:T.accent}}/>
+                      <span style={{fontSize:10.5,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload"}</span>
+                      <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0]){uploadToInbox(e.target.files[0]);setShowAttachPopover(false);}}}/>
+                    </label>
+                    {inboxFiles.length>0&&(
+                      <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value){setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));setShowAttachPopover(false);}}} style={{...selSm,width:"100%",marginTop:8,fontSize:11}}>
+                        <option value="">— or pick from Inbox —</option>
+                        {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                      </select>
+                    )}
+                  </>)}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <div style={{display:"flex",gap:6,marginBottom:14}}>
         {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
@@ -3300,12 +3341,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </select>
         )}
 
-        {/* One line = one row: date, description, debit, credit, amount all
-            together — each line is basically its own mini-transaction, so
-            it reads that way instead of splitting date/description out to
-            a shared header above. Fonts/padding shrunk to fit; the row
-            scrolls horizontally on narrow screens rather than wrapping,
-            which would break the "everything in one row" point of this. */}
+        {/* Desktop: one line = one horizontal row (date, description, debit,
+            credit, amount together), scrolling sideways past the fold
+            rather than wrapping. Mobile: the same fields stacked as two
+            compact rows per line (date+description, then debit/credit/
+            amount) with hairline dividers instead of boxed cells — no
+            horizontal scroll, matches the rest of the app's density. */}
+        {isDesktop?(
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
           <div style={{display:"flex",gap:6,marginBottom:4,minWidth:626}}>
             <div style={{flex:"0 0 96px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
@@ -3377,6 +3419,77 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             </div>
           ))}
         </div>
+        ):(
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
+          {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
+            <div key={li} style={{borderTop:li===0?"none":`1px solid #F0F4F3`}}>
+              <div style={{display:"flex",gap:12,padding:"8px 12px",alignItems:"center"}}>
+                <div style={{width:76,flexShrink:0}}>
+                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                    if(li===0){setForm(p=>({...p,date:v}));return;}
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],date:v};
+                    setForm(p=>({...p,lines}));
+                  }} style={{fontSize:11}}/>
+                </div>
+                <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
+                  if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                  const lines=[...(form.lines||[])];
+                  lines[li]={...lines[li],description:e.target.value};
+                  setForm(p=>({...p,lines}));
+                }} style={{...inpSm,fontSize:12,padding:"7px 8px",flex:1,minWidth:0}}/>
+                {li>0&&(
+                  <button onClick={()=>{
+                    const lines=[...(form.lines||[])];
+                    lines.splice(li,1);
+                    setForm(p=>({...p,lines}));
+                  }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8,padding:"0 12px 9px",alignItems:"flex-start"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:8,color:T.red,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Dr</div>
+                  <AccDrop value={line.debitCode||""} onChange={v=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],debitCode:v};
+                    setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
+                  }} accounts={accounts}/>
+                  <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],debitVatCode:code};
+                    setForm(p=>({...p,lines}));
+                  }} options={vatCodeOptions("input")}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:8,color:T.green,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Cr</div>
+                  <AccDrop value={line.creditCode||""} onChange={v=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],creditCode:v};
+                    setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
+                  }} accounts={accounts}/>
+                  <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],creditVatCode:code};
+                    setForm(p=>({...p,lines}));
+                  }} options={vatCodeOptions("output")}/>
+                </div>
+                <div style={{width:80,flexShrink:0}}>
+                  <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:2,textAlign:"right"}}>Amount</div>
+                  {li===0?(
+                    <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:13,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                  ):(
+                    <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
+                      const lines=[...(form.lines||[])];
+                      lines[li]={...lines[li],amount:e.target.value};
+                      setForm(p=>({...p,lines}));
+                    }} style={{...inpSm,fontSize:13,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        )}
         <div>
           {calcResult&&(
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -3595,77 +3708,45 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     <div style={isDesktop?{width:320,flexShrink:0,position:"sticky",top:16}:{width:"100%"}}>
       {/* Mobile only — desktop gets the richer live-preview panel below
           instead, which now includes this same upload/pick-file capability
-          in its own empty state, so the two don't duplicate each other. */}
-      {!isDesktop&&(
+          in its own empty state, so the two don't duplicate each other.
+          Receipt mode's attachment now lives in the popover next to Date
+          above, so this card only handles Supplier/Customer mode. */}
+      {!isDesktop&&entryMode!=="receipt"&&(
       <Card style={{marginBottom:0}}>
-        {entryMode==="receipt"?(
-          <>
-            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>📎 Attachment (optional)</div>
-            {form.attachmentId?(()=>{
-              const f=inboxFiles.find(x=>x.id===form.attachmentId);
-              const isImg=f&&f.type&&f.type.startsWith("image");
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+          <span style={{fontSize:12}}>📎</span>
+          <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
+        </div>
+        {invAttachmentIds.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+            {invAttachmentIds.map(fid=>{
+              const f=inboxFiles.find(x=>x.id===fid);
               return(
-                <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 10px"}}>
-                  <div style={{width:36,height:36,borderRadius:8,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{isImg?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-                  <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                  <button onClick={()=>setForm(p=>({...p,attachmentId:""}))} style={{background:T.redLight,border:"none",borderRadius:7,cursor:"pointer",color:T.red,fontSize:11,padding:"5px 10px",fontWeight:700,fontFamily:"inherit"}}>Remove</button>
+                <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
+                  <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                  <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                  <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
                 </div>
               );
-            })():(
-              <div>
-                <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"20px 10px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg}}>
-                  <span style={{fontSize:22}}>{uploadingReceipt?"⏳":"📎"}</span>
-                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload a file"}</span>
-                  <span style={{fontSize:9,color:T.muted}}>Image, PDF, or document</span>
-                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
-                </label>
-                {inboxFiles.length>0&&(
-                  <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:8}}>
-                    <option value="">— or pick an existing Inbox file —</option>
-                    {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                  </select>
-                )}
-              </div>
-            )}
-          </>
-        ):(
-          <>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-              <span style={{fontSize:12}}>📎</span>
-              <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
-            </div>
-            {invAttachmentIds.length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
-                {invAttachmentIds.map(fid=>{
-                  const f=inboxFiles.find(x=>x.id===fid);
-                  return(
-                    <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
-                      <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-                      <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                      <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
-              <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
-              <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
-              <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
-                if(!e.target.files[0])return;
-                setUploadingInvAtt(true);
-                const newFile=await uploadInboxFile(e.target.files[0]);
-                if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
-                setUploadingInvAtt(false);
-              }}/>
-            </label>
-            {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
-              <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
-                <option value="">— or pick an existing Inbox file —</option>
-                {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-              </select>
-            )}
-          </>
+            })}
+          </div>
+        )}
+        <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
+          <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
+          <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
+          <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
+            if(!e.target.files[0])return;
+            setUploadingInvAtt(true);
+            const newFile=await uploadInboxFile(e.target.files[0]);
+            if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+            setUploadingInvAtt(false);
+          }}/>
+        </label>
+        {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
+          <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
+            <option value="">— or pick an existing Inbox file —</option>
+            {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+          </select>
         )}
       </Card>
       )}

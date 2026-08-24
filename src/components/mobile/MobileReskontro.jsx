@@ -10,6 +10,17 @@ export default function MobileReskontro({contacts,transactions,matchTxns,unmatch
   const[view,setView]=useState("open"); // "open" | "matched"
   const[expandedId,setExpandedId]=useState(null);
   const[selected,setSelected]=useState({}); // {contactId:[txnIds]}
+  // "All time" by default — Open already means "every outstanding item
+  // regardless of when it was booked," so a period filter here narrows what
+  // you're looking at rather than being required to see everything.
+  const now=new Date();
+  const[periodMode,setPeriodMode]=useState("all"); // "all" | "month"
+  const[year,setYear]=useState(now.getFullYear());
+  const[month,setMonth]=useState(now.getMonth());
+  const monthFrom=`${year}-${String(month+1).padStart(2,"0")}-01`;
+  const monthTo=new Date(year,month+1,0).toISOString().slice(0,10);
+  const monthLabel=new Date(year,month,1).toLocaleString("default",{month:"long",year:"numeric"});
+  const stepMonth=dir=>{let m=month+dir,y=year;if(m<0){m=11;y--;}else if(m>11){m=0;y++;}setMonth(m);setYear(y);};
 
   const code=type==="customer"?"1500":"2400";
   const inBucket=c=>getSK(c)===code;
@@ -23,13 +34,14 @@ export default function MobileReskontro({contacts,transactions,matchTxns,unmatch
     .map(c=>{
       let txns=transactions.filter(t=>t.contactId===c.id&&(inBucket(t.debitCode)||inBucket(t.creditCode)));
       txns=view==="open"?txns.filter(t=>!isMatched(t)):txns.filter(t=>isMatched(t));
+      if(periodMode==="month")txns=txns.filter(t=>t.date>=monthFrom&&t.date<=monthTo);
       txns=txns.sort((a,b)=>a.date.localeCompare(b.date));
       const total=txns.reduce((s,t)=>s+mv(t),0);
       return{contact:c,txns,total};
     })
     .filter(g=>g.txns.length>0)
     .sort((a,b)=>Math.abs(b.total)-Math.abs(a.total))
-  ,[relevantContacts,transactions,search,view,code]);
+  ,[relevantContacts,transactions,search,view,code,periodMode,monthFrom,monthTo]);
 
   const toggleSel=(cid,tid)=>setSelected(p=>{
     const cur=p[cid]||[];
@@ -57,10 +69,25 @@ export default function MobileReskontro({contacts,transactions,matchTxns,unmatch
 
       <input placeholder="Search contact…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
 
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
         {[["open","Open"],["matched","Matched"]].map(([id,label])=>(
           <div key={id} onClick={()=>{setView(id);setExpandedId(null);}} style={{flex:1,textAlign:"center",padding:"7px",borderRadius:16,fontSize:11.5,fontWeight:700,background:view===id?"#0F2A26":"#fff",color:view===id?"#fff":"#5C6B73",boxShadow:view===id?"none":"0 1px 6px rgba(20,40,50,0.05)"}}>{label}</div>
         ))}
+      </div>
+
+      {/* Period — defaults to All time so Open keeps showing every
+          outstanding item; switching to By month narrows both views. */}
+      <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
+        <div onClick={()=>setPeriodMode("all")} style={{padding:"6px 12px",borderRadius:14,fontSize:11,fontWeight:700,background:periodMode==="all"?T.accentLight:"#fff",color:periodMode==="all"?T.accent:"#5C6B73",boxShadow:periodMode==="all"?"none":"0 1px 6px rgba(20,40,50,0.05)",flexShrink:0}}>All time</div>
+        {periodMode==="month"?(
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",background:T.accentLight,borderRadius:14,padding:"5px 10px"}}>
+            <div onClick={()=>stepMonth(-1)} style={{fontSize:15,color:T.accent,padding:"0 8px",cursor:"pointer"}}>‹</div>
+            <div style={{fontSize:11,fontWeight:700,color:T.accent}}>{monthLabel}</div>
+            <div onClick={()=>stepMonth(1)} style={{fontSize:15,color:T.accent,padding:"0 8px",cursor:"pointer"}}>›</div>
+          </div>
+        ):(
+          <div onClick={()=>setPeriodMode("month")} style={{padding:"6px 12px",borderRadius:14,fontSize:11,fontWeight:700,background:"#fff",color:"#5C6B73",boxShadow:"0 1px 6px rgba(20,40,50,0.05)"}}>By month</div>
+        )}
       </div>
 
       {view==="open"&&(

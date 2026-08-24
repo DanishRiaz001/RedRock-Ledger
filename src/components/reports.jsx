@@ -2102,11 +2102,14 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
   const arNow=seriesBalAt("1500",today), arPrev=seriesBalAt("1500",oneMonthAgo);
   const apNow=seriesBalAt("2400",today), apPrev=seriesBalAt("2400",oneMonthAgo);
 
-  const income=useMemo(()=>transactions.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
-  const expense=useMemo(()=>transactions.filter(t=>isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
+  // Excludes reversed/reversal entries — same rule the rest of the app's
+  // income/expense reporting uses (Dashboard's own period KPIs, Analytics,
+  // Budget, Monthly), so a corrected mistake isn't counted twice.
+  const income=useMemo(()=>transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
+  const expense=useMemo(()=>transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0),[transactions]);
   const net=income-expense;
-  const incomePrev=useMemo(()=>transactions.filter(t=>isIncomeSK(t.creditCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
-  const expensePrev=useMemo(()=>transactions.filter(t=>isExpenseSK(t.debitCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
+  const incomePrev=useMemo(()=>transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
+  const expensePrev=useMemo(()=>transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)&&t.date<=oneMonthAgo).reduce((s,t)=>s+t.amount,0),[transactions,oneMonthAgo]);
   const netPrev=incomePrev-expensePrev;
 
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
@@ -2126,7 +2129,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
 
   const expenseByAcct=useMemo(()=>{
     const m={};
-    transactions.filter(t=>isExpenseSK(t.debitCode)).forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});
+    transactions.filter(t=>!t.reversedBy&&!t.reversalOf&&isExpenseSK(t.debitCode)).forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});
     return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,5);
   },[transactions]);
   const pieColors=["#0D7377","#5DCAA5","#D85A30","#888780","#EF9F27"];
