@@ -4339,7 +4339,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to the cash-name
@@ -4360,7 +4360,8 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[dismissedSuggestions,setDismissedSuggestions]=useState(()=>new Set()); // line ids where the auto-suggested match was dismissed
   const[postMenu,setPostMenu]=useState(null); // {lineId, x, y} — right-click "Select account" context menu
   const[uploading,setUploading]=useState(false);
-  const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName}
+  const[readingPdf,setReadingPdf]=useState(false);
+  const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName, isPdf}
   const[importing,setImporting]=useState(false);
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
   const[showHistory,setShowHistory]=useState(false);
@@ -4574,8 +4575,27 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     }
     setUploading(false);
   };
+  const handlePdfUpload=async(file)=>{
+    if(!selectedAccount){alert("Choose a bank account first.");return;}
+    if(!parseBankStatementPDF)return;
+    setReadingPdf(true);
+    const result=await parseBankStatementPDF(file);
+    setReadingPdf(false);
+    setPreview({...result,fileName:file.name});
+  };
+  // Preview rows are editable before commit (date/description/amount only —
+  // everything else about a bank statement line is fixed by the schema) so
+  // an AI-read PDF can be corrected, and a CSV/Excel row can be fixed up too.
+  const updatePreviewRow=(i,field,value)=>{
+    setPreview(p=>({...p,rows:p.rows.map((r,idx)=>idx===i?{...r,[field]:value}:r)}));
+  };
+  const removePreviewRow=(i)=>{
+    setPreview(p=>({...p,rows:p.rows.filter((_,idx)=>idx!==i)}));
+  };
   const confirmImport=async()=>{
     if(!preview||!preview.rows||importing)return;
+    const bad=preview.rows.find(r=>!r.date||r.amount==null||isNaN(r.amount)||r.amount===0);
+    if(bad){alert("Every row needs a date and a non-zero amount before importing.");return;}
     setImporting(true);
     const result=await commitBankStatementRows(selectedAccount,preview.rows);
     setImporting(false);
@@ -4690,7 +4710,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     <div>
       {preview&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!importing&&setPreview(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:640,width:"100%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:720,width:"100%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
             <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Preview import — {preview.fileName}</div>
             {preview.error?(
               <>
@@ -4705,27 +4725,32 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               </>
             ):(
               <>
-                <div style={{fontSize:11,color:T.muted,marginBottom:14}}>
-                  Detected columns — Date: <b>{preview.detectedColumns.date}</b> · Description: <b>{preview.detectedColumns.description}</b>{preview.detectedColumns.amount&&<> · Amount: <b>{preview.detectedColumns.amount}</b></>}{preview.detectedColumns.debit&&<> · Debit: <b>{preview.detectedColumns.debit}</b></>}{preview.detectedColumns.credit&&<> · Credit: <b>{preview.detectedColumns.credit}</b></>}
-                </div>
+                {preview.isPdf?(
+                  <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Read with AI — check every row below before importing; dates, descriptions, and amounts are all editable.</div>
+                ):(
+                  <div style={{fontSize:11,color:T.muted,marginBottom:14}}>
+                    Detected columns — Date: <b>{preview.detectedColumns.date}</b> · Description: <b>{preview.detectedColumns.description}</b>{preview.detectedColumns.amount&&<> · Amount: <b>{preview.detectedColumns.amount}</b></>}{preview.detectedColumns.debit&&<> · Debit: <b>{preview.detectedColumns.debit}</b></>}{preview.detectedColumns.credit&&<> · Credit: <b>{preview.detectedColumns.credit}</b></>}
+                  </div>
+                )}
                 <div style={{fontSize:11,fontWeight:700,color:T.text,marginBottom:8}}>{preview.rows.length} row{preview.rows.length===1?"":"s"} ready to import{(preview.skippedNoDate||preview.skippedZeroOrBad)?` (${(preview.skippedNoDate||0)+(preview.skippedZeroOrBad||0)} skipped — no date or zero amount)`:""}</div>
-                <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
+                <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:16,maxHeight:360,overflowY:"auto"}}>
                   <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-                    <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"7px 10px"}}>Date</td><td>Description</td><td style={{textAlign:"right",padding:"7px 10px"}}>Amount</td></tr></thead>
+                    <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"7px 10px",width:118}}>Date</td><td>Description</td><td style={{textAlign:"right",width:110}}>Amount</td><td style={{width:30}}/></tr></thead>
                     <tbody>
-                      {preview.rows.slice(0,8).map((r,i)=>(
+                      {preview.rows.map((r,i)=>(
                         <tr key={i} style={{borderTop:`1px solid ${T.border}`}}>
-                          <td style={{padding:"7px 10px",color:T.text}}>{r.date}</td>
-                          <td style={{color:T.text,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</td>
-                          <td style={{textAlign:"right",padding:"7px 10px",fontWeight:600,color:r.amount>=0?T.green:T.red}}>{sign(r.amount)}</td>
+                          <td style={{padding:"4px 6px"}}><input type="date" value={r.date||""} onChange={e=>updatePreviewRow(i,"date",e.target.value)} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",color:T.text,boxSizing:"border-box"}}/></td>
+                          <td style={{padding:"4px 6px"}}><input type="text" value={r.description||""} onChange={e=>updatePreviewRow(i,"description",e.target.value)} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",color:T.text,boxSizing:"border-box"}}/></td>
+                          <td style={{padding:"4px 6px"}}><input type="number" step="any" value={r.amount==null?"":r.amount} onChange={e=>updatePreviewRow(i,"amount",e.target.value===""?null:parseFloat(e.target.value))} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",textAlign:"right",fontWeight:600,color:r.amount>=0?T.green:T.red,boxSizing:"border-box"}}/></td>
+                          <td style={{textAlign:"center"}}><span onClick={()=>removePreviewRow(i)} title="Remove row" style={{cursor:"pointer",color:T.muted,fontSize:13}}>✕</span></td>
                         </tr>
                       ))}
+                      {!preview.rows.length&&<tr><td colSpan="4" style={{padding:"16px 0",textAlign:"center",color:T.muted}}>No rows left — cancel and try a different file.</td></tr>}
                     </tbody>
                   </table>
-                  {preview.rows.length>8&&<div style={{padding:"7px 10px",fontSize:11,color:T.muted,textAlign:"center",borderTop:`1px solid ${T.border}`}}>+{preview.rows.length-8} more row{preview.rows.length-8===1?"":"s"} not shown here</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={confirmImport} disabled={importing} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:11,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":`Import ${preview.rows.length} row${preview.rows.length===1?"":"s"}`}</button>
+                  <button onClick={confirmImport} disabled={importing||!preview.rows.length} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:11,cursor:importing?"wait":"pointer",fontFamily:"inherit",opacity:preview.rows.length?1:0.5}}>{importing?"Importing…":`Import ${preview.rows.length} row${preview.rows.length===1?"":"s"}`}</button>
                   <button onClick={()=>setPreview(null)} disabled={importing} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:11,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                 </div>
               </>
@@ -4867,6 +4892,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </button>
           <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-history" style={{fontSize:15}}/></button>
           <button onClick={()=>{setExportScope("period");setShowExportModal(true);}} title="Send or download" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-download" style={{fontSize:15}}/></button>
+          {parseBankStatementPDF&&(
+            <label title="Read a bank statement PDF and turn it into importable rows" style={{background:"#fff",color:isApproved?T.muted:T.accent,border:`1px solid ${isApproved?T.border:T.accent}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(readingPdf?"wait":"pointer"),fontFamily:"inherit",opacity:readingPdf?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
+              {readingPdf?"Reading PDF…":(<><i className="ti ti-file-text-ai" style={{fontSize:13,marginRight:5}}/>Read PDF</>)}
+              <input type="file" accept=".pdf,application/pdf" disabled={readingPdf||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handlePdfUpload(e.target.files[0]);e.target.value="";}}/>
+            </label>
+          )}
           <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
             {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:11,marginRight:5}}/>Upload</>)}
             <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>

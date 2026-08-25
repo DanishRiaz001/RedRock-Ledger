@@ -606,6 +606,41 @@ function AppShell({user}){
     return{rows,detectedColumns,skippedNoDate,skippedZeroOrBad,totalRowsInFile:json.length-dataStart,columnHeaders,rawRows,guessedCols};
   };
 
+  // Same preview pipeline as the CSV/Excel path above, but for a scanned or
+  // exported bank statement PDF — reads it with Claude instead of a
+  // spreadsheet parser. Needs the user's own Anthropic key (Company →
+  // Settings), same as inbox receipt scanning; returns rows in the exact
+  // shape parseBankStatementFile does so the same preview/edit/commit UI
+  // handles both.
+  const parseBankStatementPDF=async(file)=>{
+    if(!getAnthropicKey())return{error:"Add your Anthropic API key in Company → Settings to enable PDF reading — it's stored only in this browser."};
+    if(file.type!=="application/pdf")return{error:"Please choose a PDF file."};
+    try{
+      const reader=new FileReader();
+      const base64=await new Promise((resolve,reject)=>{
+        reader.onload=()=>resolve(reader.result.split(",")[1]);
+        reader.onerror=reject;
+        reader.readAsDataURL(file);
+      });
+      const prompt=`This file is a bank account statement. Extract every transaction line you can find. Return ONLY valid JSON, no markdown, no explanation:
+{"rows":[{"date":"YYYY-MM-DD","description":"the transaction description/narrative","amount":a plain number, positive for money IN (credit/deposit), negative for money OUT (debit/withdrawal)}]}
+Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in vs out) isn't clear, use the statement's own debit/credit columns to decide the sign. If you genuinely cannot read any transactions, return {"rows":[]}.`;
+      const{data,error}=await callClaudeAPI({
+        model:"claude-sonnet-4-6",max_tokens:8000,
+        messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:prompt}]}],
+      });
+      if(error)return{error:"Reading the PDF failed: "+error};
+      const text=data.content.map(b=>b.text||"").join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      const rows=(parsed.rows||[]).map((r,i)=>({rowNum:i+1,date:r.date||null,description:String(r.description||"").trim(),amount:r.amount!=null?parseFloat(r.amount):null})).filter(r=>r.date&&r.amount!=null&&r.amount!==0);
+      if(!rows.length)return{error:"Couldn't find any transactions in this PDF. It may be a scanned image with text Claude couldn't read, or not a statement."};
+      return{rows,isPdf:true};
+    }catch(e){
+      return{error:"Reading the PDF failed: "+(e&&e.message?e.message:"unknown error")};
+    }
+  };
+
   // Actually saves previously-parsed rows. Remembers the inserted IDs so the
   // whole import can be undone as one action if it turns out to be wrong.
   const commitBankStatementRows=async(accountCode,rows)=>{
@@ -1592,7 +1627,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,fetchTxnAttachments,
-    bankStatementLines,uploadBankStatement,parseBankStatementFile,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
+    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
