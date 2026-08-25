@@ -192,6 +192,26 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
                   </div>
                 )}
                 {!persons.length&&Math.abs(unassigned)<=0.5&&<div style={{textAlign:"center",padding:"10px 0 2px",color:"#98A2B3",fontSize:11.5}}>Nothing tagged in this bank yet.</div>}
+                {/* Reconciliation footer — persons' remaining + unassigned
+                    should always equal the balance in bank; a non-zero
+                    difference means a tagged transaction belongs to an
+                    inactive source (hidden from the list above). */}
+                {(persons.length>0||Math.abs(unassigned)>0.5)&&(()=>{
+                  const overviewSum=persons.reduce((s,p)=>s+p.remaining,0)+unassigned;
+                  const difference=bankTotalNet-overviewSum;
+                  return(
+                    <div style={{marginTop:6,paddingTop:9,borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontSize:11.5,fontWeight:700,color:"#5C7A76"}}>Overview sum</div>
+                        <div style={{fontSize:12.5,fontWeight:800,color:"#0F172A"}}>{fmtBal(overviewSum)}</div>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontSize:11.5,fontWeight:700,color:"#5C7A76"}}>Difference</div>
+                        <div style={{fontSize:12.5,fontWeight:800,color:Math.abs(difference)>0.5?"#E14848":"#0D9488"}}>{fmtBal(difference)}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Transactions — tag dropdown sits right on each entry */}

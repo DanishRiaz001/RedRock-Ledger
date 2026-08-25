@@ -1510,8 +1510,27 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
       const mine=txns.filter(t=>t.moneySourceId===m.id);
       const received=mine.filter(t=>t.debitCode===bankCode).reduce((s,t)=>s+t.amount,0);
       const used=mine.filter(t=>t.creditCode===bankCode).reduce((s,t)=>s+t.amount,0);
-      return{id:m.id,name:m.name,received,used,remaining:received-used};
+      // Manual per-bank corrections entered from the app (bankAdjustments) —
+      // read here too so a source's remaining matches across both platforms
+      // instead of the desktop total silently ignoring an app-side fix.
+      const adj=(m.bankAdjustments&&m.bankAdjustments[bankCode])||{received:0,used:0};
+      const remaining=received-used+(adj.received||0)-(adj.used||0);
+      return{id:m.id,name:m.name,received,used,remaining};
     }).filter(s=>s.received||s.used);
+  };
+
+  // Reconciliation footer for the left column: does every person's remaining
+  // plus the untagged remainder actually add up to the bank's real booked
+  // balance?
+  // A non-zero difference means either an inactive source is still holding
+  // tagged transactions (excluded from the visible person list above) or a
+  // manual adjustment was entered — both worth surfacing, not hiding.
+  const bankReconciliation=(bankCode,bookedBalance,taggedNet)=>{
+    const sources=perSourceForBank(bankCode);
+    const sourcesSum=sources.reduce((s,x)=>s+x.remaining,0);
+    const unassigned=bookedBalance-taggedNet;
+    const overviewSum=sourcesSum+unassigned;
+    return{sources,unassigned,overviewSum,difference:bookedBalance-overviewSum};
   };
 
   const resetForm=()=>{setForm({name:"",openingReceived:"",openingUsed:""});setEditingId(null);};
@@ -1588,21 +1607,40 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
               </div>
               <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>Who's in this bank</div>
               {(()=>{
-                const sources=perSourceForBank(activeBank.code);
-                if(!sources.length)return<div style={{fontSize:11,color:T.muted,padding:"6px 0"}}>Nothing tagged here yet.</div>;
-                return(
-                  <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto",paddingRight:2}}>
-                    {sources.map(s=>(
-                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11.5,padding:"5px 0",borderBottom:`1px solid ${T.border}`}}>
-                        <span style={{color:T.text,fontWeight:600}}>{s.name}</span>
-                        <span style={{display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontWeight:700,color:s.remaining<0?T.red:T.sub}}>{fmt(s.remaining)}</span>
-                          <span onClick={()=>editSourceById(s.id)} title="Edit balance" style={{cursor:"pointer",fontSize:11,opacity:0.7}}>✏️</span>
-                        </span>
-                      </div>
-                    ))}
+                const bookedBalance=getBal(activeBank.code);
+                const rec=bankReconciliation(activeBank.code,bookedBalance,activeBankData.tagged);
+                return(<>
+                  {!rec.sources.length?<div style={{fontSize:11,color:T.muted,padding:"6px 0"}}>Nothing tagged here yet.</div>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto",paddingRight:2}}>
+                      {rec.sources.map(s=>(
+                        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11.5,padding:"5px 0",borderBottom:`1px solid ${T.border}`}}>
+                          <span style={{color:T.text,fontWeight:600}}>{s.name}</span>
+                          <span style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontWeight:700,color:s.remaining<0?T.red:T.sub}}>{fmt(s.remaining)}</span>
+                            <span onClick={()=>editSourceById(s.id)} title="Edit balance" style={{cursor:"pointer",fontSize:11,opacity:0.7}}>✏️</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Reconciliation footer — proves (or disproves) that every
+                      person's remaining plus whatever's still untagged really
+                      does add up to the bank's actual booked balance. */}
+                  <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                      <span style={{color:T.muted}}>Unassigned</span>
+                      <span style={{fontWeight:600,color:T.sub}}>{fmt(rec.unassigned)}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                      <span style={{color:T.muted}}>Overview sum</span>
+                      <span style={{fontWeight:700,color:T.text}}>{fmt(rec.overviewSum)}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                      <span style={{color:T.muted}}>Difference</span>
+                      <span style={{fontWeight:700,color:Math.abs(rec.difference)>0.5?T.red:T.green}}>{fmt(rec.difference)}</span>
+                    </div>
                   </div>
-                );
+                </>);
               })()}
             </>)}
           </div>
