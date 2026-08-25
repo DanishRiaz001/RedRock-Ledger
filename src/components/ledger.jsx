@@ -1443,6 +1443,15 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const[editingId,setEditingId]=useState(null);
   const[form,setForm]=useState({name:"",openingReceived:"",openingUsed:""});
   const[selectedBank,setSelectedBank]=useState(null);
+  const[tagFilter,setTagFilter]=useState("all"); // "all" | "untagged" | a source id
+  const[periodMode,setPeriodMode]=useState("all"); // "all" | "month"
+  const now=new Date();
+  const[pYear,setPYear]=useState(now.getFullYear());
+  const[pMonth,setPMonth]=useState(now.getMonth());
+  const pLabel=new Date(pYear,pMonth,1).toLocaleString("default",{month:"long",year:"numeric"});
+  const stepPMonth=dir=>{let m=pMonth+dir,y=pYear;if(m<0){m=11;y--;}else if(m>11){m=0;y++;}setPMonth(m);setPYear(y);};
+  const pFrom=`${pYear}-${String(pMonth+1).padStart(2,"0")}-01`;
+  const pTo=new Date(pYear,pMonth+1,0).toISOString().slice(0,10);
 
   // "1900" itself is Cash in Hand, not a bank — excluded so a cash⇄bank
   // transfer (e.g. Dr 1900 / Cr 1901, withdrawing bank cash) only counts on
@@ -1472,6 +1481,13 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
     return{code:bank.code,name:bank.name,txns,tagged};
   }),[bankAccounts,transactions]);
   const activeBankData=perBank.find(b=>b.code===(activeBank&&activeBank.code))||perBank[0]||{code:"",name:"",txns:[],tagged:0};
+  const filteredTxns=useMemo(()=>{
+    let txns=activeBankData.txns;
+    if(periodMode==="month")txns=txns.filter(t=>t.date>=pFrom&&t.date<=pTo);
+    if(tagFilter==="untagged")txns=txns.filter(t=>!t.moneySourceId);
+    else if(tagFilter!=="all")txns=txns.filter(t=>t.moneySourceId===tagFilter);
+    return txns;
+  },[activeBankData,periodMode,pFrom,pTo,tagFilter]);
 
   const totalsFor=(id)=>{
     const src=moneySources.find(m=>m.id===id);
@@ -1506,6 +1522,14 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
     resetForm();setShowAdd(false);
   };
   const startEdit=(m)=>{setEditingId(m.id);setForm({name:m.name,openingReceived:String(m.openingReceived||0),openingUsed:String(m.openingUsed||0)});setShowAdd(true);};
+  // Jumps straight to editing a source's opening balances from the bank
+  // overview list, instead of making you find it again inside Manage sources.
+  const editSourceById=(id)=>{
+    const m=moneySources.find(x=>x.id===id);
+    if(!m)return;
+    startEdit(m);
+    setShowManage(true);
+  };
   const saveEditSrc=()=>{
     if(!form.name.trim())return;
     saveMoneySources(moneySources.map(m=>m.id===editingId?{...m,name:form.name.trim(),openingReceived:parseFloat(form.openingReceived)||0,openingUsed:parseFloat(form.openingUsed)||0}:m));
@@ -1567,11 +1591,14 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                 const sources=perSourceForBank(activeBank.code);
                 if(!sources.length)return<div style={{fontSize:11,color:T.muted,padding:"6px 0"}}>Nothing tagged here yet.</div>;
                 return(
-                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto",paddingRight:2}}>
                     {sources.map(s=>(
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11.5,padding:"5px 0",borderBottom:`1px solid ${T.border}`}}>
                         <span style={{color:T.text,fontWeight:600}}>{s.name}</span>
-                        <span style={{fontWeight:700,color:s.remaining<0?T.red:T.sub}}>{fmt(s.remaining)}</span>
+                        <span style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontWeight:700,color:s.remaining<0?T.red:T.sub}}>{fmt(s.remaining)}</span>
+                          <span onClick={()=>editSourceById(s.id)} title="Edit balance" style={{cursor:"pointer",fontSize:11,opacity:0.7}}>✏️</span>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1580,12 +1607,32 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
             </>)}
           </div>
 
-          {/* Right: this bank's transactions, taggable inline */}
+          {/* Right: this bank's transactions, filterable + taggable inline */}
           <div style={{border:`1px solid ${T.border}`,borderRadius:10,padding:13}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <div style={{fontSize:11,color:T.muted}}>Incoming = debit, outgoing = credit.</div>
               <div style={{fontSize:11,fontWeight:700,color:activeBankData.tagged<0?T.red:T.sub}}>{fmt(activeBankData.tagged)} tagged</div>
             </div>
+
+            <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:6,marginBottom:10}}>
+              <select value={tagFilter} onChange={e=>setTagFilter(e.target.value)} style={{...inp,fontSize:11,padding:"5px 8px",width:"auto"}}>
+                <option value="all">All transactions</option>
+                <option value="untagged">Untagged only</option>
+                {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name} only</option>)}
+              </select>
+              <button onClick={()=>setPeriodMode("all")} style={{background:periodMode==="all"?T.accent:"none",color:periodMode==="all"?"#fff":T.sub,border:`1px solid ${periodMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All time</button>
+              {periodMode==="all"?(
+                <button onClick={()=>setPeriodMode("month")} style={{background:"none",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
+              ):(
+                <div style={{display:"flex",alignItems:"center",gap:4,background:T.accentLight||T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"3px 6px"}}>
+                  <button onClick={()=>stepPMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.accent,padding:"0 4px"}}>‹</button>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent,minWidth:92,textAlign:"center"}}>{pLabel}</span>
+                  <button onClick={()=>stepPMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.accent,padding:"0 4px"}}>›</button>
+                  <button onClick={()=>setPeriodMode("all")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:T.sub,padding:"0 4px"}}>✕</button>
+                </div>
+              )}
+            </div>
+
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",fontSize:11,borderCollapse:"collapse",minWidth:400}}>
                 <thead><tr style={{background:T.bg,color:T.sub}}>
@@ -1595,7 +1642,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                   <td style={{fontWeight:700,padding:"5px 8px"}}>Source</td>
                 </tr></thead>
                 <tbody>
-                  {activeBankData.txns.slice(0,60).map(t=>{
+                  {filteredTxns.slice(0,60).map(t=>{
                     const isIn=t.debitCode===activeBankData.code;
                     return(
                       <tr key={t.id} style={{borderBottom:`1px solid ${T.border}`}}>
@@ -1611,7 +1658,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                       </tr>
                     );
                   })}
-                  {!activeBankData.txns.length&&<tr><td colSpan="4" style={{padding:"12px 0",textAlign:"center",color:T.muted}}>No transactions yet.</td></tr>}
+                  {!filteredTxns.length&&<tr><td colSpan="4" style={{padding:"12px 0",textAlign:"center",color:T.muted}}>No transactions match this filter.</td></tr>}
                 </tbody>
               </table>
             </div>
