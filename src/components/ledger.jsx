@@ -1527,9 +1527,12 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   // manual adjustment was entered — both worth surfacing, not hiding.
   const bankReconciliation=(bankCode,bookedBalance,taggedNet)=>{
     const sources=perSourceForBank(bankCode);
-    const sourcesSum=sources.reduce((s,x)=>s+x.remaining,0);
+    // Overview sum is just the persons added together (each one's own
+    // received minus used) — e.g. +50,000 and -20,000 nets to +30,000.
+    // Unassigned is shown separately as context, not folded into the sum,
+    // so Difference always answers "balance minus what people actually hold."
+    const overviewSum=sources.reduce((s,x)=>s+x.remaining,0);
     const unassigned=bookedBalance-taggedNet;
-    const overviewSum=sourcesSum+unassigned;
     return{sources,unassigned,overviewSum,difference:bookedBalance-overviewSum};
   };
 

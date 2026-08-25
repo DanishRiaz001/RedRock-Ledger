@@ -192,12 +192,13 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
                   </div>
                 )}
                 {!persons.length&&Math.abs(unassigned)<=0.5&&<div style={{textAlign:"center",padding:"10px 0 2px",color:"#98A2B3",fontSize:11.5}}>Nothing tagged in this bank yet.</div>}
-                {/* Reconciliation footer — persons' remaining + unassigned
-                    should always equal the balance in bank; a non-zero
-                    difference means a tagged transaction belongs to an
-                    inactive source (hidden from the list above). */}
+                {/* Reconciliation footer — Overview sum is just the persons
+                    added together (e.g. +50,000 and -20,000 nets to
+                    +30,000); Difference is the balance minus that sum, so it
+                    shows what's not accounted for by name (untagged, or a
+                    tagged-but-now-inactive source hidden from the list). */}
                 {(persons.length>0||Math.abs(unassigned)>0.5)&&(()=>{
-                  const overviewSum=persons.reduce((s,p)=>s+p.remaining,0)+unassigned;
+                  const overviewSum=persons.reduce((s,p)=>s+p.remaining,0);
                   const difference=bankTotalNet-overviewSum;
                   return(
                     <div style={{marginTop:6,paddingTop:9,borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}}>
