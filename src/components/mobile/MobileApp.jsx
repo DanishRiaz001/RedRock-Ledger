@@ -30,9 +30,11 @@ const OVERLAY_META={
 // nothing in here can affect the website's rendering path at all — the only
 // thing shared is the props (data + save functions) both trees receive
 // from the same place.
+// "Bank" is deliberately not in this bar — it's still reachable via Home's
+// bank carousel ("See all") and setTab still handles it fine without a tab
+// button, this just keeps the bottom nav down to what's used every day.
 const TABS=[
   {id:"Home",label:"Home",icon:"ti-home"},
-  {id:"Bank",label:"Bank",icon:"ti-building-bank"},
   {id:"Vouchers",label:"Vouchers",icon:"ti-receipt-2"},
   {id:"Reports",label:"Reports",icon:"ti-chart-bar"},
   {id:"More",label:"More",icon:"ti-dots"},

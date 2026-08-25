@@ -63,6 +63,7 @@ function EditVoucherSheet({txn,accounts,saveEdit,deleteTxn,onClose}){
 export default function MobileVouchers(props){
   const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment,overlay,setOverlay,saveEdit,deleteTxn}=props;
   const[showNew,setShowNew]=useState(false);
+  const[newEntryMode,setNewEntryMode]=useState("receipt");
   const[search,setSearch]=useState("");
   const[editTxn,setEditTxn]=useState(null);
 
@@ -70,7 +71,7 @@ export default function MobileVouchers(props){
   // than switching tabs and leaving it at that) — consume it here and clear
   // it right away so it doesn't also try to open one of the overlay screens.
   useEffect(()=>{
-    if(overlay&&overlay.type==="NewVoucher"){setShowNew(true);setOverlay&&setOverlay(null);}
+    if(overlay&&overlay.type==="NewVoucher"){setNewEntryMode(overlay.mode||"receipt");setShowNew(true);setOverlay&&setOverlay(null);}
   },[overlay]);
 
   const list=useMemo(()=>{
@@ -91,7 +92,7 @@ export default function MobileVouchers(props){
           sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile}
           transactions={transactions} moneySources={moneySources} tagTransaction={tagTransaction} isDesktop={false}
           projects={projects} trackProjects={!!(companyProfile&&companyProfile.trackProjects)} saveProjects={saveProjects}
-          addEntryComment={addEntryComment}
+          addEntryComment={addEntryComment} initialEntryMode={newEntryMode}
           onSave={async(form)=>{const r=await addTransaction(form);setShowNew(false);return r;}}/>
       </div>
     </div>
@@ -102,7 +103,7 @@ export default function MobileVouchers(props){
       <div style={{padding:"calc(env(safe-area-inset-top) + 18px) 20px 0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div style={{fontSize:22,fontWeight:800,color:"#0F172A"}}>Vouchers</div>
-          <div onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,#FF6B4A,#FF8266)",color:"#fff",borderRadius:12,padding:"9px 14px",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 16px rgba(255,107,74,0.3)"}}>
+          <div onClick={()=>{setNewEntryMode("receipt");setShowNew(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,#FF6B4A,#FF8266)",color:"#fff",borderRadius:12,padding:"9px 14px",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 16px rgba(255,107,74,0.3)"}}>
             <i className="ti ti-plus" style={{fontSize:14}}/>New
           </div>
         </div>

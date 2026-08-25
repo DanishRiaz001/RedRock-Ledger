@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { T, getSK } from "../../lib/theme.js";
 import { sign, fmtBal } from "../ledger.jsx";
 import { BANK_COLORS } from "./mobileConstants.js";
@@ -16,8 +16,15 @@ const QUICK_ACCESS_2=[
   {label:"Customers",icon:"ti-users-group",overlay:"Reskontro",overlayExtra:{defaultType:"customer"},bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
 ];
 
+const ADD_CHOICES=[
+  {mode:"receipt",label:"Receipt",sub:"Bank, cash or expense entry",icon:"ti-receipt-2",bg:"rgba(255,107,74,0.12)",fg:"#FF6B4A"},
+  {mode:"customer",label:"Customer",sub:"Money coming from a customer",icon:"ti-users-group",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
+  {mode:"supplier",label:"Supplier",sub:"Money going to a supplier",icon:"ti-truck-delivery",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
+];
+
 export default function MobileHome({accounts,transactions,profile,companyProfile,moneySources=[],feat={},onNavigate,onOpenOverlay}){
   const today=new Date().toISOString().slice(0,10);
+  const[showAddChooser,setShowAddChooser]=useState(false);
 
   const balAt=(code,asOf)=>transactions.filter(t=>t.date<=asOf).reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
   const seriesBalAt=(sk,asOf)=>accounts.filter(a=>getSK(a.code)===sk).reduce((s,a)=>s+balAt(a.code,asOf),0);
@@ -174,12 +181,33 @@ export default function MobileHome({accounts,transactions,profile,companyProfile
         </div>
       )}
 
-      {/* New entry FAB — jumps straight to the new-voucher form, not just
-          the Vouchers list, via the shared overlay signal MobileVouchers
-          consumes on mount. */}
-      <div onClick={()=>{onNavigate("Vouchers");onOpenOverlay({type:"NewVoucher"});}} style={{position:"fixed",right:20,bottom:96,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#FF6B4A,#FF8266)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 20px rgba(255,107,74,0.4)",zIndex:5}}>
+      {/* New entry FAB — asks which kind of entry first, then jumps straight
+          to the new-voucher form pre-set to that type, via the shared
+          overlay signal MobileVouchers consumes on mount. */}
+      <div onClick={()=>setShowAddChooser(true)} style={{position:"fixed",right:20,bottom:96,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#FF6B4A,#FF8266)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 20px rgba(255,107,74,0.4)",zIndex:5}}>
         <i className="ti ti-plus" style={{fontSize:26,color:"#fff"}}/>
       </div>
+
+      {showAddChooser&&(
+        <div onClick={()=>setShowAddChooser(false)} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"flex-end"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)"}}>
+            <div style={{fontSize:15,fontWeight:800,color:"#0F172A",marginBottom:2,padding:"0 4px"}}>New entry</div>
+            <div style={{fontSize:12,color:"#98A2B3",marginBottom:16,padding:"0 4px"}}>What are you recording?</div>
+            {ADD_CHOICES.map(c=>(
+              <div key={c.mode} onClick={()=>{setShowAddChooser(false);onNavigate("Vouchers");onOpenOverlay({type:"NewVoucher",mode:c.mode});}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 8px",borderRadius:12,cursor:"pointer"}}>
+                <div style={{width:42,height:42,borderRadius:11,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.bg}}>
+                  <i className={`ti ${c.icon}`} style={{fontSize:19,color:c.fg}}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#0F172A"}}>{c.label}</div>
+                  <div style={{fontSize:11.5,color:"#98A2B3",marginTop:1}}>{c.sub}</div>
+                </div>
+                <i className="ti ti-chevron-right" style={{fontSize:15,color:"#B0BAC3"}}/>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
