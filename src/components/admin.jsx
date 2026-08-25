@@ -173,6 +173,10 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
   if(selUser){
     const p=profiles.find(x=>x.id===selUser.id)||selUser; // re-read live row so status updates immediately after a toggle
     const isDeact=p.is_active===false;
+    // Never approved yet vs. was active and got turned off — both read as
+    // is_active:false, so activated_at (stamped on first-ever approval) is
+    // what actually tells them apart.
+    const isPending=isDeact&&!p.activated_at;
     const userNum=profiles.findIndex(x=>x.id===p.id)+1;
     const deactBtnStyle=isDeact
       ?{background:T.green,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",width:"100%"}
@@ -190,7 +194,7 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
                   <div style={{fontSize:16,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.display_name||p.email||"User"}</div>
                   <div style={{fontSize:12,color:T.muted}}>{p.email}</div>
                   <div style={{display:"flex",gap:5,marginTop:6}}>
-                    {isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED / PENDING</span>}
+                    {isDeact&&<span style={{fontSize:10,background:isPending?"#FEF3C7":"#fee2e2",color:isPending?T.orange:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>{isPending?"⏳ PENDING APPROVAL":"🚫 DEACTIVATED"}</span>}
                     {p.is_admin&&<span style={{fontSize:10,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800}}>ADMIN</span>}
                   </div>
                 </div>
@@ -198,10 +202,10 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
               <div style={{fontSize:11,color:T.muted,borderTop:`1px solid ${T.border}`,paddingTop:10}}>Joined: {p.created_at?p.created_at.slice(0,10):"—"}</div>
             </div>
             <div style={{background:isDeact?"#fff8f8":"#fff",borderRadius:14,border:`1px solid ${isDeact?T.red:T.border}`,padding:20}}>
-              <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:10}}>{isDeact?"Account deactivated / pending":"Account active"}</div>
+              <div style={{fontSize:13,fontWeight:700,color:isDeact?T.red:T.text,marginBottom:10}}>{isDeact?(isPending?"Awaiting approval":"Account deactivated"):"Account active"}</div>
               {p.is_admin
                 ?<div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.orange,fontWeight:600}}>⚠️ Admin accounts cannot be deactivated.</div>
-                :<button onClick={()=>toggleDeactivate(p.id,isDeact)} style={deactBtnStyle}>{isDeact?"✅ Activate / Approve Account":"🚫 Deactivate Account"}</button>
+                :<button onClick={()=>toggleDeactivate(p.id,isDeact)} style={deactBtnStyle}>{isDeact?(isPending?"✅ Approve Account":"✅ Reactivate Account"):"🚫 Deactivate Account"}</button>
               }
             </div>
           <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20,marginTop:14}}>
@@ -462,19 +466,20 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
               <tbody>
                 {shownProfiles.map(p=>{
                   const isDeact=p.is_active===false;
+                  const isPending=isDeact&&!p.activated_at;
                   const realIdx=profiles.findIndex(x=>x.id===p.id);
                   const isSel=selectedUserIds.includes(p.id);
                   return(
                     <tr key={p.id} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",background:isSel?T.accentLight:"transparent"}}>
                       <td style={{padding:"10px 0"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={isSel} onChange={()=>setSelectedUserIds(prev=>isSel?prev.filter(id=>id!==p.id):[...prev,p.id])}/></td>
-                      <td onClick={()=>setSelUser(p)} style={{color:T.muted}}>{isDeact?"🚫":"#"+(realIdx+1)}</td>
+                      <td onClick={()=>setSelUser(p)} style={{color:T.muted}}>{isDeact?(isPending?"⏳":"🚫"):"#"+(realIdx+1)}</td>
                       <td onClick={()=>setSelUser(p)} style={{fontWeight:700,color:T.text}}>{p.display_name||p.email||"User"}{p.is_admin&&<span style={{fontSize:9,background:"#EDE9FE",color:"#7C3AED",padding:"2px 7px",borderRadius:5,fontWeight:800,marginLeft:6}}>ADMIN</span>}</td>
                       <td onClick={()=>setSelUser(p)} style={{color:T.sub}}>{p.email}</td>
                       <td onClick={()=>setSelUser(p)} style={{color:T.muted,fontSize:12}}>{p.created_at?p.created_at.slice(0,10):"—"}</td>
-                      <td onClick={()=>setSelUser(p)}>{isDeact&&<span style={{fontSize:10,background:"#fee2e2",color:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>DEACTIVATED</span>}</td>
+                      <td onClick={()=>setSelUser(p)}>{isDeact&&<span style={{fontSize:10,background:isPending?"#FEF3C7":"#fee2e2",color:isPending?T.orange:T.red,padding:"2px 8px",borderRadius:5,fontWeight:700}}>{isPending?"PENDING":"DEACTIVATED"}</span>}</td>
                       <td style={{textAlign:"right"}} onClick={e=>e.stopPropagation()}>
                         {isDeact?(
-                          <button onClick={()=>toggleDeactivate(p.id,true)} title="Activate this account" style={{background:T.green,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Activate</button>
+                          <button onClick={()=>toggleDeactivate(p.id,true)} title={isPending?"Approve this account":"Reactivate this account"} style={{background:T.green,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{isPending?"Approve":"Activate"}</button>
                         ):(
                           <span onClick={()=>setSelUser(p)} style={{color:T.muted,cursor:"pointer"}}>›</span>
                         )}

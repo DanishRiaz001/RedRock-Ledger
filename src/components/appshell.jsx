@@ -1492,10 +1492,17 @@ If you genuinely cannot read useful information from this file, return {"supplie
   // RLS on accounts/contacts/transactions/sinking_funds already checks profiles.is_active,
   // so this is the single source of truth for whether a user can do anything at all.
   const toggleUserActive=async(userId,nextActive)=>{
-    const{error}=await sb.from("profiles").update({is_active:nextActive}).eq("id",userId);
+    // First-ever activation also stamps activated_at — that's what lets the
+    // pending-approval screen and the Admin Panel tell "brand new signup,
+    // never approved" apart from "was active, got turned off later", which
+    // is_active alone can't distinguish (both read as false).
+    const target=profiles.find(x=>x.id===userId);
+    const patch={is_active:nextActive};
+    if(nextActive&&target&&!target.activated_at)patch.activated_at=new Date().toISOString();
+    const{error}=await sb.from("profiles").update(patch).eq("id",userId);
     if(error){alert("Failed to update user status: "+error.message);return;}
-    setProfiles(p=>p.map(x=>x.id===userId?{...x,is_active:nextActive}:x));
-    if(userId===user.id)setProfile(p=>p?{...p,is_active:nextActive}:p);
+    setProfiles(p=>p.map(x=>x.id===userId?{...x,...patch}:x));
+    if(userId===user.id)setProfile(p=>p?{...p,...patch}:p);
   };
 
   // Client access grants — admin-only (Danish assigns which employees can
@@ -1571,8 +1578,12 @@ If you genuinely cannot read useful information from this file, return {"supplie
 
   // No profile row, or an admin has switched this account off: no access, no data —
   // don't even attempt to load the ledger. This is the "you need an invite / approval" wall.
+  // A profile with is_active:false and no activated_at yet has NEVER been
+  // approved — that's still "pending", not "deactivated" (which implies
+  // access existed and was later turned off). activated_at is what tells
+  // the two apart, since is_active alone reads false for both.
   if(!profile||profile.is_active===false)return(
-    <PendingAccessScreen reason={!profile?"pending":"deactivated"} onSignOut={signOut}/>
+    <PendingAccessScreen reason={!profile||!profile.activated_at?"pending":"deactivated"} onSignOut={signOut}/>
   );
 
   if(loadError)return(
