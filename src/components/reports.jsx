@@ -2085,7 +2085,7 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
-function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={},auditLog=[]}){
+function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={},auditLog=[],profile,companyProfile}){
   const entriesToday=useMemo(()=>{
     const today=new Date().toISOString().slice(0,10);
     return auditLog.filter(a=>a.entityType==="transaction"&&a.action==="create"&&a.createdAt&&a.createdAt.slice(0,10)===today).length;
@@ -2159,18 +2159,36 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
   const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
   const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed",banks:"Bank accounts"};
 
+  // One consistent card look for every widget on this screen — same radius,
+  // same border, same soft shadow — instead of the mix of radii/shadows that
+  // made the page read as several different components glued together.
+  const card={background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,boxShadow:"0 1px 2px rgba(15,42,38,0.03)",padding:20};
+  const cardTitle={fontSize:13.5,fontWeight:800,color:T.text,marginBottom:16,letterSpacing:-0.1};
+
+  const firstName=(profile&&(profile.display_name||profile.email)||"there").split(/[ @]/)[0];
+  const greetHour=new Date().getHours();
+  const greeting=greetHour<12?"Good morning":greetHour<18?"Good afternoon":"Good evening";
+  const todayLabel=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,position:"relative"}}>
-        {entriesToday>0?(
-          <div onClick={()=>onNavigate&&onNavigate("Entries")} style={{fontSize:12,color:T.waterTeal,fontWeight:700,cursor:onNavigate?"pointer":"default",display:"flex",alignItems:"center",gap:5}}>
-            <i className="ti ti-circle-check" style={{fontSize:14}}/>{entriesToday} entr{entriesToday===1?"y":"ies"} recorded today
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:22,position:"relative"}}>
+        <div>
+          <div style={{fontSize:21,fontWeight:800,color:T.text,letterSpacing:-0.3,marginBottom:4}}>{greeting}, {firstName.charAt(0).toUpperCase()+firstName.slice(1)}</div>
+          <div style={{fontSize:12.5,color:T.muted,display:"flex",alignItems:"center",gap:10}}>
+            <span>{todayLabel}</span>
+            {entriesToday>0&&(
+              <span onClick={()=>onNavigate&&onNavigate("Entries")} style={{color:T.waterTeal,fontWeight:700,cursor:onNavigate?"pointer":"default",display:"flex",alignItems:"center",gap:4}}>
+                <span style={{width:4,height:4,borderRadius:"50%",background:T.border,display:"inline-block"}}/>
+                <i className="ti ti-circle-check" style={{fontSize:13}}/>{entriesToday} entr{entriesToday===1?"y":"ies"} recorded today
+              </span>
+            )}
           </div>
-        ):(<div/>)}
-        <button onClick={()=>setCustomizing(o=>!o)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-layout-grid" style={{fontSize:13,marginRight:5}}/>Customize</button>
+        </div>
+        <button onClick={()=>setCustomizing(o=>!o)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 2px rgba(15,42,38,0.03)"}}><i className="ti ti-layout-grid" style={{fontSize:13,marginRight:5}}/>Customize</button>
         {customizing&&(<>
           <div onClick={()=>setCustomizing(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-          <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14}}>
+          <div style={{position:"absolute",right:0,top:44,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:500,minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14}}>
             <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:10}}>Show on dashboard</div>
             {Object.keys(WIDGET_LABELS).map(key=>(
               <label key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,padding:"6px 0",cursor:"pointer"}}>
@@ -2188,7 +2206,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
             const KPI_CHIP={"Cash and bank":{bg:"rgba(13,148,136,0.14)",fg:"#0D9488",icon:"ti-droplet"},"Receivable":{bg:"rgba(14,159,110,0.14)",fg:"#0E9F6E",icon:"ti-arrow-down-right"},"Payable":{bg:"rgba(225,72,72,0.12)",fg:"#E14848",icon:"ti-arrow-up-right"},"Net profit":{bg:T.coralLight,fg:T.coral,icon:"ti-chart-line"}};
             const chip=KPI_CHIP[k.label]||{bg:T.accentLight,fg:T.accent,icon:"ti-report-money"};
             return(
-              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:20,padding:"18px 20px",cursor:k.goTo?"pointer":"default",boxShadow:"0 10px 30px rgba(20,60,90,0.06)"}} className={k.goTo?"rr-sidebar-item":""}>
+              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 20px",cursor:k.goTo?"pointer":"default",boxShadow:"0 10px 30px rgba(20,60,90,0.06)"}} className={k.goTo?"rr-sidebar-item":""}>
                 <div style={{width:34,height:34,borderRadius:11,background:chip.bg,color:chip.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}><i className={`ti ${chip.icon}`} style={{fontSize:16}}/></div>
                 <div style={{fontSize:11.5,color:T.sub,marginBottom:8,fontWeight:600}}>{k.label}</div>
                 <div style={{fontSize:22,fontWeight:800,color:T.text,marginBottom:8}}>{fmt(k.value)}</div>
@@ -2200,27 +2218,31 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         </div>}
 
         {widgets.charts&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
-          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Balance composition</div>
+          <div style={card}>
+            <div style={cardTitle}>Balance composition</div>
             <div style={{display:"flex",alignItems:"center",gap:20}}>
               <ConicChart data={donutData}/>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:9}}>
                 {donutData.map(d=>(
-                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub}}>
-                    <span style={{width:9,height:9,borderRadius:2,background:d.color,display:"inline-block"}}/>{d.label} ({fmt(Math.abs(d.value))})
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:T.sub}}>
+                    <span style={{width:9,height:9,borderRadius:3,background:d.color,display:"inline-block",flexShrink:0}}/>
+                    <span>{d.label}</span>
+                    <span style={{fontWeight:700,color:T.text,marginLeft:2}}>{fmt(Math.abs(d.value))}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Top expense categories (all time)</div>
+          <div style={card}>
+            <div style={cardTitle}>Top expense categories (all time)</div>
             <div style={{display:"flex",alignItems:"center",gap:20}}>
               <ConicChart data={pieData} donut={false}/>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:9}}>
                 {pieData.length?pieData.map(d=>(
-                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub}}>
-                    <span style={{width:9,height:9,borderRadius:2,background:d.color,display:"inline-block"}}/>{d.label} ({fmt(d.value)})
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:T.sub}}>
+                    <span style={{width:9,height:9,borderRadius:3,background:d.color,display:"inline-block",flexShrink:0}}/>
+                    <span>{d.label}</span>
+                    <span style={{fontWeight:700,color:T.text,marginLeft:2}}>{fmt(d.value)}</span>
                   </div>
                 )):<div style={{fontSize:12,color:T.muted}}>No expenses yet.</div>}
               </div>
@@ -2228,9 +2250,9 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
           </div>
         </div>}
 
-        {widgets.entries&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.text}}>All entries</div>
+        {widgets.entries&&<div style={card}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{...cardTitle,marginBottom:0}}>All entries</div>
             <div style={{display:"flex",gap:6}}>
               {[["all","All"],["income","Income"],["expense","Expense"],["unreconciled","Unreconciled"]].map(([key,label])=>(
                 <button key={key} onClick={()=>setEntryFilter(key)} style={{background:entryFilter===key?T.accent:"none",color:entryFilter===key?"#fff":T.sub,border:`1px solid ${entryFilter===key?T.accent:T.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label} <span style={{opacity:0.75}}>{counts[key]}</span></button>
@@ -2238,36 +2260,40 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
             </div>
           </div>
           <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{color:T.muted,fontSize:11}}>
-              <td style={{padding:"6px 0"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
+            <thead><tr style={{color:T.muted,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>
+              <td style={{padding:"0 0 10px"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
             </tr></thead>
             <tbody>
-              {filteredEntries.slice(0,10).map(t=>(
-                <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"9px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
-                  <td style={{color:T.sub}}>{t.date}</td>
-                  <td>{t.description}</td>
-                  <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
-                </tr>
-              ))}
+              {filteredEntries.slice(0,10).map(t=>{
+                const isIn=isIncomeSK(t.creditCode);
+                return(
+                  <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}} className="rr-sidebar-item">
+                    <td style={{padding:"11px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+                    <td style={{color:T.sub}}>{t.date}</td>
+                    <td style={{color:T.text}}>{t.description}</td>
+                    <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.text}}>{fmt(t.amount)}</td>
+                  </tr>
+                );
+              })}
               {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
             </tbody>
           </table>
         </div>}
       </div>
 
-      {widgets.activity&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18}}>
-        <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Activity</div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {widgets.activity&&<div style={card}>
+        <div style={cardTitle}>Activity</div>
+        <div style={{display:"flex",flexDirection:"column",gap:15}}>
           {activity.map(t=>{
             const isIn=isIncomeSK(t.creditCode);
             return(
-              <div key={t.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+              <div key={t.id} style={{display:"flex",gap:11,alignItems:"flex-start"}}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}><i className={isIn?"ti ti-arrow-down-left":"ti ti-arrow-up-right"} style={{fontSize:15}}/></div>
-                <div style={{minWidth:0}}>
-                  <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                <div style={{minWidth:0,flex:1}}>
+                  <div style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
                   <div style={{fontSize:10,color:T.muted,marginTop:2}}>{fmtB(t.bilag)} · {t.date}</div>
                 </div>
+                <div style={{fontSize:12,fontWeight:700,color:isIn?T.green:T.text,flexShrink:0}}>{fmt(t.amount)}</div>
               </div>
             );
           })}
@@ -2275,8 +2301,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         </div>
       </div>}
 
-      {widgets.recent&&recentTabs.length>0&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18,marginTop:16}}>
-        <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Recently viewed</div>
+      {widgets.recent&&recentTabs.length>0&&<div style={{...card,marginTop:16}}>
+        <div style={cardTitle}>Recently viewed</div>
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
           {recentTabs.map(rt=>(
             <div key={rt} onClick={()=>onNavigate&&onNavigate(rt)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,cursor:"pointer"}} className="rr-sidebar-item">
@@ -2292,19 +2318,19 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         if(!bankAccts.length)return null;
         const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
         return(
-          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:18,marginTop:16}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>Bank accounts</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{...card,marginTop:16}}>
+            <div style={cardTitle}>Bank accounts</div>
+            <div style={{display:"flex",flexDirection:"column",gap:11}}>
               {bankAccts.map(a=>{
                 const bal=getBal(a.code);
                 return(
-                  <div key={a.code} onClick={()=>onNavigate&&onNavigate("Bank")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"4px 0"}}>
-                    <span style={{fontSize:12,color:T.text}}>{a.name}</span>
+                  <div key={a.code} onClick={()=>onNavigate&&onNavigate("Bank")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"3px 0"}} className="rr-sidebar-item">
+                    <span style={{fontSize:12,color:T.text,fontWeight:600}}>{a.name}</span>
                     <span style={{fontSize:13,fontWeight:700,color:bal>=0?T.waterTeal:T.accent}}>{sign(bal)}</span>
                   </div>
                 );
               })}
-              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:8,marginTop:2,display:"flex",justifyContent:"space-between"}}>
+              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:10,marginTop:3,display:"flex",justifyContent:"space-between"}}>
                 <span style={{fontSize:12,fontWeight:700,color:T.text}}>Total</span>
                 <span style={{fontSize:13,fontWeight:800,color:T.text}}>{sign(bankAccts.reduce((s,a)=>s+getBal(a.code),0))}</span>
               </div>
