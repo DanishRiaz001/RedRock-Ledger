@@ -179,11 +179,18 @@ function AppShell({user}){
   // never leaves you looking at old data for long. Skipped if the last
   // fetch was very recent, so quick tab-switches don't hammer the DB.
   const lastFetchRef=React.useRef(Date.now());
+  // Set right before a tab-focus refetch so the load effect below knows to
+  // skip setLoading(true) — without this, coming back to the tab flips the
+  // whole app to a full-screen spinner and unmounts everything underneath
+  // it, silently discarding any in-progress unsaved input (e.g. a half-typed
+  // entry) even though this refetch is only meant to quietly refresh data.
+  const backgroundRefetchRef=React.useRef(false);
   useEffect(()=>{
     const onVisible=()=>{
       if(document.visibilityState!=="visible")return;
       if(Date.now()-lastFetchRef.current<15000)return;
       lastFetchRef.current=Date.now();
+      backgroundRefetchRef.current=true;
       setLoadRetryCount(c=>c+1);
     };
     document.addEventListener("visibilitychange",onVisible);
@@ -248,7 +255,8 @@ function AppShell({user}){
 
   useEffect(()=>{
     if(!activeCompanyId)return; // don't fetch until we know which company's data to load
-    setLoading(true);
+    const isBackground=backgroundRefetchRef.current;
+    if(!isBackground)setLoading(true);
     setLoadError(null);
     // A 25s timeout on top of the .catch() below — covers the other failure
     // mode where a query never resolves OR rejects (a genuinely stuck
@@ -331,6 +339,7 @@ function AppShell({user}){
       quoteNoRef.current=startQuoteNo;
       setNextQuoteNo(startQuoteNo);
       setLoading(false);
+      backgroundRefetchRef.current=false;
     }).catch(err=>{
       // This used to have no .catch() at all — if any single one of the ~20
       // queries above rejected (a bad relationship, an RLS edge case, a
@@ -339,8 +348,11 @@ function AppShell({user}){
       // forever with zero visible error. Now it fails loudly instead, with
       // an on-screen message and a retry button.
       console.error("Startup data load failed:",err);
-      setLoadError(err&&err.message?err.message:"Something went wrong loading your data.");
-      setLoading(false);
+      if(!isBackground){
+        setLoadError(err&&err.message?err.message:"Something went wrong loading your data.");
+        setLoading(false);
+      }
+      backgroundRefetchRef.current=false;
     });
   },[viewingUserId,activeCompanyId,loadRetryCount]);
 

@@ -4253,36 +4253,7 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
         <div style={{fontSize:12,color:T.muted}}>Track which money source each bank movement belongs to.</div>
       </div>
 
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18,marginBottom:16}}>
-        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Booked balance</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:10}}>
-          {bankAccounts.map(a=>{
-            const details=bankDetailsFor(a);
-            return(
-            <div key={a.code} style={{background:T.waterTealSubtle,borderRadius:10,padding:"12px 16px",minHeight:76,display:"flex",flexDirection:"column",justifyContent:"center",position:"relative"}}>
-              <div onClick={()=>onOpenLedger&&onOpenLedger(a,yearStart,today)} style={{cursor:"pointer"}}>
-                <div style={{fontSize:11,color:T.sub,marginBottom:4}}>{a.code} {a.name}</div>
-                <div style={{fontSize:16,fontWeight:800,color:T.text}}>{fmt(getBal(a.code))} <span style={{fontSize:11,fontWeight:600,color:T.muted}}>{a.currency&&a.currency!=="PKR"?a.currency:""}</span></div>
-                {(details.branch||details.accountNumber)&&<div style={{fontSize:10,color:T.sub,marginTop:3}}>{details.branch}{details.branch&&details.accountNumber?" · ":""}{details.accountNumber}</div>}
-              </div>
-              {onSaveAccounts&&<button onClick={()=>setEditingBankAccount(a.code)} style={{position:"absolute",top:8,right:8,background:"rgba(255,255,255,0.7)",border:"none",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:700,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit</button>}
-            </div>
-            );
-          })}
-          {!bankAccounts.length&&<div style={{fontSize:12,color:T.muted}}>No active bank accounts yet.</div>}
-        </div>
-      </div>
-
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-          <div>
-            <div style={{fontSize:14,fontWeight:800,color:T.text}}>Whose</div>
-            <div style={{fontSize:11,color:T.muted,marginTop:3}}>Tag bank movements to a source so the balance stays understandable.</div>
-          </div>
-          <div style={{fontSize:11,color:T.sub}}>{moneySources.length} source{moneySources.length===1?"":"s"}</div>
-        </div>
-        <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction}/>
-      </div>
+      <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction} bankAccounts={bankAccounts} getBal={getBal} bankDetailsFor={bankDetailsFor} onOpenLedger={onOpenLedger} onEditBankAccount={onSaveAccounts?setEditingBankAccount:null} yearStart={yearStart} today={today}/>
 
       {editingBankAccount&&(()=>{
         const acct=bankAccounts.find(a=>a.code===editingBankAccount);
