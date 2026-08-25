@@ -471,62 +471,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           );
         })()}
         <div style={{flex:1}}/>
-        {showAddClient&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!creatingClient&&setShowAddClient(false)}>
-            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Add a new client</div>
-              <div style={{fontSize:12,color:T.sub,marginBottom:16,lineHeight:1.5}}>Creates a separate, fully isolated set of books — nothing here is visible from any other client's company.</div>
-              <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>COMPANY NAME *</div>
-              {(()=>{
-                const submitNewClient=async()=>{
-                  if(!newClientName.trim()||!createCompany||creatingClient)return;
-                  setCreatingClient(true);
-                  const created=await createCompany(newClientName.trim());
-                  setCreatingClient(false);
-                  if(created){setShowAddClient(false);setNewClientName("");}
-                };
-                return(<>
-                  <input autoFocus placeholder="e.g. Ventilasjonsspesialisten AS" value={newClientName} onChange={e=>setNewClientName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitNewClient();}} style={{...inp,marginBottom:14}}/>
-                  <div style={{display:"flex",gap:8,alignItems:"flex-start",background:T.accentLight,borderRadius:10,padding:"10px 12px",marginBottom:18}}>
-                    <i className="ti ti-list-check" style={{fontSize:14,color:T.accent,marginTop:1,flexShrink:0}}/>
-                    <div style={{fontSize:11.5,color:T.accentHover,lineHeight:1.5}}>Starts pre-loaded with the standard Norwegian NS 4102 chart of accounts — every new client gets the same starting point, and any account can be renamed, added, or removed afterward from Accounting → Chart of accounts.</div>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <button disabled={!newClientName.trim()||creatingClient} onClick={submitNewClient} style={{flex:1,background:newClientName.trim()?T.accent:T.border,color:newClientName.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:newClientName.trim()&&!creatingClient?"pointer":"default",fontFamily:"inherit"}}>{creatingClient?"Creating…":"Create client"}</button>
-                    <button onClick={()=>setShowAddClient(false)} disabled={creatingClient} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-                  </div>
-                </>);
-              })()}
-            </div>
-          </div>
-        )}
-        {showInviteClient&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInviteClient(false)}>
-            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Invite a new client</div>
-              <div style={{fontSize:12,color:T.sub,marginBottom:18,lineHeight:1.5}}>New clients set up their own login first, then you grant yourself (or your team) access to their books:</div>
-              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-                <div style={{display:"flex",gap:10}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>1</div>
-                  <div style={{fontSize:12,color:T.text}}>Send them the sign-up link below. They create their own email + password and fill in their company info.</div>
-                </div>
-                <div style={{display:"flex",gap:10}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>2</div>
-                  <div style={{fontSize:12,color:T.text}}>Approve their account in <b>Admin Panel → Users</b> (new sign-ups start inactive until approved).</div>
-                </div>
-                <div style={{display:"flex",gap:10}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>3</div>
-                  <div style={{fontSize:12,color:T.text}}>Still in Admin Panel, grant yourself (or whichever team member is doing the bookkeeping) access to that client — they'll then show up in this dropdown for that team member too.</div>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:6,marginBottom:16}}>
-                <input readOnly value={typeof window!=="undefined"?window.location.origin:""} style={{...inp,flex:1,background:T.bg,fontSize:11}}/>
-                <button onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(window.location.origin);}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Copy</button>
-              </div>
-              <button onClick={()=>setShowInviteClient(false)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
-            </div>
-          </div>
-        )}
         <div style={{position:"relative",width:260}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
           <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
@@ -578,6 +522,69 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           </>)}
         </div>
       </div>
+
+      {/* These two modals used to live inside the header div above — but that
+          header has backdropFilter set, which (like `filter`/`transform`)
+          creates a new containing block for `position:fixed` descendants.
+          That silently re-anchored the modal to the 60px-tall header instead
+          of the viewport, so centering it pushed most of it off-screen above
+          the page. Rendering them here, outside that header, fixes it. */}
+      {showAddClient&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!creatingClient&&setShowAddClient(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Add a new client</div>
+            <div style={{fontSize:12,color:T.sub,marginBottom:16,lineHeight:1.5}}>Creates a separate, fully isolated set of books — nothing here is visible from any other client's company.</div>
+            <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>COMPANY NAME *</div>
+            {(()=>{
+              const submitNewClient=async()=>{
+                if(!newClientName.trim()||!createCompany||creatingClient)return;
+                setCreatingClient(true);
+                const created=await createCompany(newClientName.trim());
+                setCreatingClient(false);
+                if(created){setShowAddClient(false);setNewClientName("");}
+              };
+              return(<>
+                <input autoFocus placeholder="e.g. Ventilasjonsspesialisten AS" value={newClientName} onChange={e=>setNewClientName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitNewClient();}} style={{...inp,marginBottom:14}}/>
+                <div style={{display:"flex",gap:8,alignItems:"flex-start",background:T.accentLight,borderRadius:10,padding:"10px 12px",marginBottom:18}}>
+                  <i className="ti ti-list-check" style={{fontSize:14,color:T.accent,marginTop:1,flexShrink:0}}/>
+                  <div style={{fontSize:11.5,color:T.accentHover,lineHeight:1.5}}>Starts pre-loaded with the standard Norwegian NS 4102 chart of accounts — every new client gets the same starting point, and any account can be renamed, added, or removed afterward from Accounting → Chart of accounts.</div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button disabled={!newClientName.trim()||creatingClient} onClick={submitNewClient} style={{flex:1,background:newClientName.trim()?T.accent:T.border,color:newClientName.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:newClientName.trim()&&!creatingClient?"pointer":"default",fontFamily:"inherit"}}>{creatingClient?"Creating…":"Create client"}</button>
+                  <button onClick={()=>setShowAddClient(false)} disabled={creatingClient} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                </div>
+              </>);
+            })()}
+          </div>
+        </div>
+      )}
+      {showInviteClient&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowInviteClient(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:6}}>Invite a new client</div>
+            <div style={{fontSize:12,color:T.sub,marginBottom:18,lineHeight:1.5}}>New clients set up their own login first, then you grant yourself (or your team) access to their books:</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>1</div>
+                <div style={{fontSize:12,color:T.text}}>Send them the sign-up link below. They create their own email + password and fill in their company info.</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>2</div>
+                <div style={{fontSize:12,color:T.text}}>Approve their account in <b>Admin Panel → Users</b> (new sign-ups start inactive until approved).</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>3</div>
+                <div style={{fontSize:12,color:T.text}}>Still in Admin Panel, grant yourself (or whichever team member is doing the bookkeeping) access to that client — they'll then show up in this dropdown for that team member too.</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,marginBottom:16}}>
+              <input readOnly value={typeof window!=="undefined"?window.location.origin:""} style={{...inp,flex:1,background:T.bg,fontSize:11}}/>
+              <button onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(window.location.origin);}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Copy</button>
+            </div>
+            <button onClick={()=>setShowInviteClient(false)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+          </div>
+        </div>
+      )}
 
       {/* Below the header: sidebar (distinct background) + content, sharing
           the remaining vertical space. */}
