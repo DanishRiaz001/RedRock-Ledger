@@ -408,7 +408,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
           </div>
           {clientSwitcherOpen&&(<>
-            <div onClick={()=>{setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{position:"fixed",inset:0,zIndex:490}}/>
             <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:420,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
               <div style={{padding:10,borderBottom:`1px solid ${T.border}`}}>
                 <input autoFocus placeholder="Search company" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:12}}/>
@@ -453,7 +452,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 <i className="ti ti-chevron-down" style={{fontSize:12}}/>
               </button>
               {companySwitcherOpen&&(<>
-                <div onClick={()=>setCompanySwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:498}}/>
                 <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:499,minWidth:240,boxShadow:"0 10px 32px rgba(0,0,0,0.18)",overflow:"hidden"}}>
                   <div style={{padding:"9px 14px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",borderBottom:`1px solid ${T.border}`}}>Your companies</div>
                   {companies.map(c=>(
@@ -483,7 +481,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <i className="ti ti-download" style={{fontSize:15,color:T.sub}}/>
           </button>
           {downloadMenuOpen&&(<>
-            <div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
             <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:170,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
               <div onClick={exportCurrentToPdf} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:6}}/>Download as PDF</div>
               <div onClick={excelAvailable?exportCurrentToExcel:undefined} style={{padding:"10px 14px",fontSize:12,cursor:excelAvailable?"pointer":"default",color:excelAvailable?T.text:T.muted,fontWeight:600,opacity:excelAvailable?1:0.5}}><i className="ti ti-file-type-xls" style={{fontSize:13,marginRight:6}}/>Download as Excel{!excelAvailable&&" (not on this screen)"}</div>
@@ -496,7 +493,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             {unreadToastCount>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,fontWeight:800,background:T.accent,color:"#fff",borderRadius:9,padding:"1px 4px",minWidth:12,textAlign:"center"}}>{unreadToastCount}</span>}
           </div>
           {toastPanelOpen&&(<>
-            <div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
             <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:360,overflowY:"auto",boxShadow:"0 8px 24px rgba(20,40,40,0.12)"}}>
               <div style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:T.text,textTransform:"uppercase",letterSpacing:0.4,borderBottom:`1px solid ${T.border}`}}>Notifications</div>
               {toasts.length?toasts.map(t=>(
@@ -513,7 +509,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         <div style={{position:"relative"}}>
           <div onClick={()=>setProfileMenuOpen(o=>!o)} style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg, ${T.accent} 0%, ${T.accentHover} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>{(profile&&profile.email?profile.email[0]:"U").toUpperCase()}</div>
           {profileMenuOpen&&(<>
-            <div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
             <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
               <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-user" style={{fontSize:13,marginRight:6}}/>Profile</div>
               <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-settings" style={{fontSize:13,marginRight:6}}/>Settings</div>
@@ -522,6 +517,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           </>)}
         </div>
       </div>
+
+      {/* Invisible full-viewport "click outside to close" catchers for the
+          header's dropdown menus — same backdropFilter containing-block issue
+          as the two modals below: inside the header, position:fixed;inset:0
+          only covered the 60px header itself, so clicking anywhere in the
+          actual page content never closed these menus. Each one's matching
+          dropdown panel stays put in the header (position:absolute relative
+          to its own trigger still works fine there); only the catcher moves. */}
+      {clientSwitcherOpen&&<div onClick={()=>{setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{position:"fixed",inset:0,zIndex:490}}/>}
+      {companySwitcherOpen&&<div onClick={()=>setCompanySwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:498}}/>}
+      {downloadMenuOpen&&<div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
+      {toastPanelOpen&&<div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
+      {profileMenuOpen&&<div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
 
       {/* These two modals used to live inside the header div above — but that
           header has backdropFilter set, which (like `filter`/`transform`)
