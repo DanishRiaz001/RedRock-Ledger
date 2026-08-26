@@ -1645,6 +1645,19 @@ If you genuinely cannot read useful information from this file, return {"supplie
   };
   return(
     <div>
+      {/* This is the loud version of what used to be a silent console.warn.
+          "__no_company_scoping__" means the companies fetch/create failed
+          (e.g. an RLS policy gap) — every entry saved while this banner is
+          up gets no company_id at all, and silently becomes invisible the
+          moment scoping starts working again. That exact chain is what
+          caused a real "missing data" incident, so this can't be allowed to
+          fail quietly a second time. Admin-only so real clients never see an
+          alarming technical banner they have no way to act on. */}
+      {isAdmin&&activeCompanyId==="__no_company_scoping__"&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#DC2626",color:"#fff",padding:"8px 16px",fontSize:12,fontWeight:700,textAlign:"center",fontFamily:"system-ui,sans-serif"}}>
+          ⚠ Company data scoping is broken (companies table unreachable — likely an RLS policy gap). Anything entered right now won't be linked to a company and may look "missing" later. Fix the RLS policies on the companies table before continuing.
+        </div>
+      )}
       {isNativeApp()?<MobileApp {...appProps}/>:<FinanceTracker {...appProps}/>}
     </div>
   );
