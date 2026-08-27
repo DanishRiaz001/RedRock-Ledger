@@ -4382,6 +4382,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   // Bilag click → full entry detail (view/edit/comment/reverse), same
   // pattern every other ledger screen in the app uses.
   const[detailTxn,setDetailTxn]=useState(null);
+  // Set alongside detailTxn when opened via the dedicated comment icon (as
+  // opposed to the bilag number) so the entry detail modal jumps straight
+  // to the comment thread instead of landing on the plain summary view.
+  const[detailTxnShowComments,setDetailTxnShowComments]=useState(false);
+  const openTxnComments=t=>{setDetailTxnShowComments(true);setDetailTxn(t);};
   // Independent sort per column — click a header to sort by it, click again
   // to reverse; each column remembers its own sort so posting on one side
   // doesn't disturb how the other is ordered.
@@ -5087,6 +5092,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
+                          {addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(t);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                           <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                         </div>
                         <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
@@ -5158,6 +5164,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
+                          {linkedTxn&&addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(linkedTxn);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                           <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                         </div>
                         <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
@@ -5217,10 +5224,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+        initialShowComments={detailTxnShowComments}
         onEdit={u=>{if(onEditTxn)onEditTxn(u);setDetailTxn(null);}}
         onDelete={id=>{if(onDeleteTxn)onDeleteTxn(id);setDetailTxn(null);}}
         onReverse={tx=>{if(onReverseTxn)onReverseTxn(tx);setDetailTxn(null);}}
-        onClose={()=>setDetailTxn(null)}/>}
+        onClose={()=>{setDetailTxn(null);setDetailTxnShowComments(false);}}/>}
     </div>
   );
 }

@@ -842,10 +842,10 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction}){
+function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
   const[showEdit,setShowEdit]=useState(false);
   const[showChangeLog,setShowChangeLog]=useState(false);
-  const[showComments,setShowComments]=useState(false);
+  const[showComments,setShowComments]=useState(initialShowComments);
   const[attViewer,setAttViewer]=useState(null);
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isReversed=!!txn.reversedBy;
