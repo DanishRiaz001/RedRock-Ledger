@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { T, inp, btnRed, btnGhost } from "../lib/theme.js";
+import { T, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { callClaudeAPI } from "../lib/utils.js";
 import { sb, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop } from "./ledger.jsx";
@@ -30,7 +30,24 @@ function AccessRequestsPanel({accessRequests,requestsLoading,onApprove,onDismiss
   );
 }
 
-function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,isDesktop=false}){
+function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,companies=[],createCompany,renameCompany,deleteCompany,activeCompanyId,setActiveCompanyId,isDesktop=false}){
+  const[newCompanyName,setNewCompanyName]=useState("");
+  const[creatingCompany,setCreatingCompany]=useState(false);
+  const[companyError,setCompanyError]=useState("");
+  const submitNewCompany=async()=>{
+    if(!newCompanyName.trim()||!createCompany||creatingCompany)return;
+    setCreatingCompany(true);setCompanyError("");
+    const created=await createCompany(newCompanyName.trim());
+    setCreatingCompany(false);
+    if(created)setNewCompanyName("");
+    else setCompanyError("Something went wrong creating the company — check the alert that popped up for the real error.");
+  };
+  const doDeleteCompany=async(c)=>{
+    if(!deleteCompany)return;
+    if(!window.confirm(`Permanently delete "${c.name}" and everything in it (accounts, transactions, contacts — all of it)? This can't be undone.`))return;
+    const result=await deleteCompany(c.id);
+    if(result&&result.error)alert("Couldn't delete: "+result.error);
+  };
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[clientGrants,setClientGrants]=useState([]);
@@ -366,12 +383,40 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
       <div style={{maxWidth:1000}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Admin panel</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
-          {[["global","Global"],["users","Per user"],["requests",`Access requests${accessRequests.length?` (${accessRequests.length})`:""}`],["analytics","Analytics"],["revenue","Revenue"]].map(([id,label])=>(
+          {[["global","Global"],["users","Per user"],["requests",`Access requests${accessRequests.length?` (${accessRequests.length})`:""}`],["companies",`Companies (${companies.length})`],["analytics","Analytics"],["revenue","Revenue"]].map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?T.accent:"none",color:tab===id?"#fff":T.sub,border:`1px solid ${tab===id?T.accent:T.border}`,borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
 
         {tab==="requests"&&<AccessRequestsPanel accessRequests={accessRequests} requestsLoading={requestsLoading} onApprove={approveRequest} onDismiss={dismissRequest}/>}
+
+        {tab==="companies"&&(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:20,maxWidth:640}}>
+            <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Your companies</div>
+            <div style={{fontSize:12,color:T.sub,marginBottom:18,lineHeight:1.5}}>Each one is a separate, fully isolated set of books under your own login — good for test data you want to throw away later without touching your real books.</div>
+            <div style={{display:"flex",gap:8,marginBottom:companyError?8:20}}>
+              <input placeholder="e.g. Test 1" value={newCompanyName} onChange={e=>setNewCompanyName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitNewCompany();}} style={{...inp,flex:1}}/>
+              <button disabled={!newCompanyName.trim()||creatingCompany} onClick={submitNewCompany} style={{background:newCompanyName.trim()?T.accent:T.border,color:newCompanyName.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 18px",fontWeight:700,fontSize:13,cursor:newCompanyName.trim()&&!creatingCompany?"pointer":"default",fontFamily:"inherit"}}>{creatingCompany?"Creating…":"+ Create"}</button>
+            </div>
+            {companyError&&<div style={{fontSize:11,color:T.red,marginBottom:20}}>{companyError}</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+              {companies.map(c=>(
+                <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 4px",borderTop:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                    {c.id===activeCompanyId&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
+                    <span style={{fontSize:13,fontWeight:c.id===activeCompanyId?700:500,color:c.id===activeCompanyId?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                    <span style={{fontSize:10,color:T.muted,flexShrink:0}}>{c.created_at?c.created_at.slice(0,10):""}</span>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    {c.id!==activeCompanyId&&setActiveCompanyId&&<button onClick={()=>setActiveCompanyId(c.id)} style={{...btnSm,background:"none",border:`1px solid ${T.border}`,color:T.sub}}>Switch to</button>}
+                    {companies.length>1&&<button onClick={()=>doDeleteCompany(c)} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>}
+                  </div>
+                </div>
+              ))}
+              {!companies.length&&<div style={{textAlign:"center",padding:"20px 0",color:T.muted,fontSize:12}}>No companies yet.</div>}
+            </div>
+          </div>
+        )}
 
         {tab==="revenue"&&(()=>{
           const userPkgs=getUserPackages();

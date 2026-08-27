@@ -121,6 +121,22 @@ function AppShell({user}){
     const{error}=await sb.from("companies").update({name}).eq("id",id);
     if(error){alert("Couldn't rename — check your connection and try again.");}
   };
+  // Deletes a test/client company and everything under it (every table with
+  // a company_id column references this row with ON DELETE CASCADE — see
+  // sql/add_multi_company.sql). Refuses to delete the last remaining
+  // company so nobody accidentally locks themselves out of the app with
+  // nothing left to switch to.
+  const deleteCompany=async(id)=>{
+    if(companies.length<=1)return{error:"Can't delete your only company."};
+    const{error}=await sb.from("companies").delete().eq("id",id);
+    if(error)return{error:error.message};
+    setCompanies(p=>p.filter(c=>c.id!==id));
+    if(activeCompanyId===id){
+      const next=companies.find(c=>c.id!==id);
+      if(next)setActiveCompanyId(next.id);
+    }
+    return{success:true};
+  };
   // Used by Admin Panel's grant-access UI — an admin picking which of a
   // client's companies to grant an employee access to needs that client's
   // company list, not their own.
@@ -1622,7 +1638,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
   const appProps={
     isAdmin,canEdit,profiles,
     viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
-    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,
+    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,
     accounts,setAccounts,addAccount,updateAccount,
     contacts,setContacts,
     transactions,addTransaction,
