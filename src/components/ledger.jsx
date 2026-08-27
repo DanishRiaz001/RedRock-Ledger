@@ -513,6 +513,49 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
   const[paymentTermsDays,setPaymentTermsDays]=useState("30");
   const[creditLimit,setCreditLimit]=useState("");
 
+  // Brønnøysundregisteret (Norwegian business registry) name search — live,
+  // debounced, public API (no key, CORS-open). Only offered for NO companies
+  // since this registry has nothing to say about a Pakistani business.
+  // Picking a result fills whatever fields Brreg actually has for that
+  // entity — phone/email are frequently just not registered publicly, so
+  // those stay blank rather than fabricating anything.
+  const[brregResults,setBrregResults]=useState([]);
+  const[brregSearching,setBrregSearching]=useState(false);
+  const[brregOpen,setBrregOpen]=useState(false);
+  const[brregPicked,setBrregPicked]=useState(false);
+  const brregTimer=useRef(null);
+  useEffect(()=>{
+    if(country!=="NO"||brregPicked){setBrregResults([]);return;}
+    const q=name.trim();
+    if(q.length<2){setBrregResults([]);setBrregOpen(false);return;}
+    if(brregTimer.current)clearTimeout(brregTimer.current);
+    brregTimer.current=setTimeout(async()=>{
+      setBrregSearching(true);
+      try{
+        const res=await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter?navn=${encodeURIComponent(q)}&size=6`,{headers:{Accept:"application/json"}});
+        const data=await res.json();
+        const hits=(data&&data._embedded&&data._embedded.enheter)||[];
+        setBrregResults(hits);
+        setBrregOpen(hits.length>0);
+      }catch(e){setBrregResults([]);setBrregOpen(false);}
+      setBrregSearching(false);
+    },400);
+    return()=>{if(brregTimer.current)clearTimeout(brregTimer.current);};
+  },[name,country,brregPicked]);
+  const pickBrregResult=(e)=>{
+    setBrregPicked(true);setBrregOpen(false);setBrregResults([]);
+    setName(e.navn||name);
+    if(e.organisasjonsnummer)setOrgNumber(e.organisasjonsnummer);
+    const addr=e.forretningsadresse||e.postadresse;
+    if(addr){
+      const line=(addr.adresse||[]).filter(Boolean).join(", ");
+      const cityLine=[addr.postnummer,addr.poststed].filter(Boolean).join(" ");
+      setAddress([line,cityLine].filter(Boolean).join(", "));
+    }
+    if(e.epostadresse)setEmail(e.epostadresse);
+    if(e.telefon||e.mobil)setPhone(e.telefon||e.mobil);
+  };
+
   const valid=name.trim().length>0;
   const submit=()=>{
     if(!valid)return;
@@ -537,9 +580,24 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
             ))}
           </div>
 
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
-            <input autoFocus value={name} onChange={e=>setName(e.target.value)} style={inp}/>
+          <div style={{position:"relative"}}>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              Name *
+              {country==="NO"&&brregSearching&&<span style={{fontSize:10,color:T.muted,fontWeight:500}}>· searching Brreg…</span>}
+            </div>
+            <input autoFocus value={name} onChange={e=>{setName(e.target.value);setBrregPicked(false);}} onFocus={()=>{if(brregResults.length)setBrregOpen(true);}} style={inp}/>
+            {country==="NO"&&brregOpen&&brregResults.length>0&&(<>
+              <div onClick={()=>setBrregOpen(false)} style={{position:"fixed",inset:0,zIndex:310}}/>
+              <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",zIndex:320,maxHeight:220,overflowY:"auto"}}>
+                <div style={{padding:"7px 12px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,borderBottom:`1px solid ${T.border}`}}>From Brønnøysundregisteret</div>
+                {brregResults.map(r=>(
+                  <div key={r.organisasjonsnummer} onClick={()=>pickBrregResult(r)} style={{padding:"9px 12px",cursor:"pointer",borderBottom:`1px solid ${T.border}`}} onMouseDown={e=>e.preventDefault()}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:T.text}}>{r.navn}</div>
+                    <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>Org.nr {r.organisasjonsnummer}{r.forretningsadresse&&r.forretningsadresse.poststed?` · ${r.forretningsadresse.poststed}`:""}</div>
+                  </div>
+                ))}
+              </div>
+            </>)}
           </div>
 
           {country==="NO"&&(
