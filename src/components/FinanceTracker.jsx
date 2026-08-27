@@ -444,15 +444,27 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   const q=clientSwitcherSearch.trim().toLowerCase();
                   const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q));
                   if(!shown.length)return null;
+                  const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+                  // Deep link so a company opened this way always wins over
+                  // whatever this browser last had active (see the
+                  // ?company= handling in appshell.jsx) — lets you compare
+                  // two clients' books side by side in separate tabs instead
+                  // of switching back and forth in one.
+                  const openInNewTab=(e,c)=>{
+                    e.stopPropagation();
+                    const url=`${window.location.origin}${window.location.pathname}?company=${c.id}`;
+                    window.open(url,"_blank");
+                  };
                   return(<>
                     <div style={{padding:"8px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Your companies</div>
                     {shown.map(c=>{
                       const active=viewingUserId===user.id&&c.id===activeCompanyId;
                       return(
-                        <div key={c.id} onClick={()=>{setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
-                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}><i className="ti ti-building-store" style={{fontSize:12}}/></div>
+                        <div key={c.id} onClick={()=>{setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}} className="rr-sidebar-item">
+                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
                           <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                           {active&&<i className="ti ti-check" style={{fontSize:13,color:T.accent,flexShrink:0}}/>}
+                          <i onClick={e=>openInNewTab(e,c)} title="Open in a new tab" className="ti ti-external-link" style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>
                         </div>
                       );
                     })}
