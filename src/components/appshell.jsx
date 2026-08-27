@@ -36,10 +36,18 @@ function AppShell({user}){
   // page refresh doesn't silently drop you back to a different company.
   const[companies,setCompanies]=useState([]);
   const[activeCompanyId,setActiveCompanyIdState]=useState(()=>{
+    // A ?company=<id> link (from the switcher's "Open in new tab") always
+    // wins over whatever this browser last had active — that's the whole
+    // point of opening a second tab pinned to a specific company, so it
+    // shouldn't silently inherit this tab's last-selected one instead.
     // Guarded — some environments (privacy mode, sandboxed iframes, blocked
     // storage) throw on localStorage access. Without this, that single
     // call failing would crash the entire app blank on first render.
-    try{return localStorage.getItem("rr_active_company")||null;}catch(e){return null;}
+    try{
+      const fromUrl=new URLSearchParams(window.location.search).get("company");
+      if(fromUrl)return fromUrl;
+      return localStorage.getItem("rr_active_company")||null;
+    }catch(e){return null;}
   });
   const[companiesLoading,setCompaniesLoading]=useState(true);
   const setActiveCompanyId=id=>{setActiveCompanyIdState(id);if(id){try{localStorage.setItem("rr_active_company",id);}catch(e){/* storage blocked — company switch still works for this session */}}};

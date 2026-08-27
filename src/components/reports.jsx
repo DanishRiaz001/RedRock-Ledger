@@ -5092,7 +5092,6 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           <span onClick={e=>{e.stopPropagation();setDetailTxn(t);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(t.bilag)}</span>
-                          {addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(t);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                           <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{t.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                         </div>
                         <div style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:6}}>
@@ -5101,6 +5100,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                         </div>
                       </div>
                       <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+                      {addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(t);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                     </div>
                   );
                 })}
@@ -5164,12 +5164,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
-                          {linkedTxn&&addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(linkedTxn);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:12,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                           <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
                         </div>
                         <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
                       </div>
                       <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(l.amount)}</div>
+                      {linkedTxn&&addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(linkedTxn);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                       <div style={{flexShrink:0,display:"flex",gap:4}}>
                         {isMatchedMode?(
                           <button onClick={e=>{e.stopPropagation();doUnmatch(l);}} disabled={isApproved} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:isApproved?T.muted:T.sub,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Unmatch</button>
