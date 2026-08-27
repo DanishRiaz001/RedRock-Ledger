@@ -31,12 +31,31 @@ function CustomerImportScreen({contacts,setContacts}){
     for(const syn of FIELD_SYNONYMS[field]){if(normRow[syn]!=null)return String(normRow[syn]).trim();}
     return"";
   };
+  // Some real exports put a report title ("Customers/suppliers") or a blank
+  // row above the actual column headers — sheet_to_json always treated row 1
+  // as the header row regardless, turning every real header into a
+  // meaningless "__EMPTY" placeholder and silently skipping every row. Scan
+  // the first several rows and use whichever one actually looks like a
+  // header row (most cells matching a known field name), falling back to
+  // row 0 so a normal file's behavior is unchanged.
+  const findHeaderRowIndex=(rawRows)=>{
+    const allSynonyms=Object.values(FIELD_SYNONYMS).flat();
+    let best=0,bestScore=0;
+    for(let i=0;i<Math.min(10,rawRows.length);i++){
+      const score=(rawRows[i]||[]).filter(cell=>allSynonyms.includes(normKey(cell))).length;
+      if(score>bestScore){bestScore=score;best=i;}
+    }
+    return best;
+  };
   const doImport=async(file,type)=>{
     setImportError("");setImportResult(null);setImporting(true);
     try{
       const isCsv=/\.csv$/i.test(file.name);
       const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
-      const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rawRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      const headerRowIdx=findHeaderRowIndex(rawRows);
+      const json=XLSX.utils.sheet_to_json(ws,{range:headerRowIdx,defval:""});
       if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
       const originalHeaders=Object.keys(json[0]||{});
       const existingNums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
