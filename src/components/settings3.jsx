@@ -11,6 +11,26 @@ function CustomerImportScreen({contacts,setContacts}){
   const[importResult,setImportResult]=useState(null);
   const[howTab,setHowTab]=useState("read");
 
+  // Column matching used to require an exact header spelling ("Name",
+  // "name", or "Navn" — nothing else), so any real-world export using
+  // something like "Company Name", "Supplier", "NAME", or "Kontaktnavn"
+  // silently skipped every single row with no clue why. Now every header is
+  // normalized (lowercased, trimmed, punctuation stripped) and matched
+  // against a real list of synonyms, and — critically — if nothing usable
+  // is found, the error shows exactly what headers the file actually had,
+  // so this is diagnosable from the error message alone next time.
+  const normKey=s=>String(s||"").toLowerCase().trim().replace(/[^a-z0-9]/g,"");
+  const FIELD_SYNONYMS={
+    name:["name","navn","companyname","company","business","businessname","firma","firmanavn","supplier","suppliername","customer","customername","contactname","kontaktnavn","organisasjon","virksomhet","kunde","leverandor","leverandornavn"],
+    email:["email","emailaddress","epost","epostadresse","mail","eposte"],
+    phone:["phone","phonenumber","telefon","tlf","mobil","mobile","mobilnummer"],
+    address:["address","adresse","gateadresse","street","streetaddress","forretningsadresse"],
+    orgNumber:["orgnumber","orgnr","organisasjonsnummer","organizationnumber","organisationnumber"],
+  };
+  const findField=(normRow,field)=>{
+    for(const syn of FIELD_SYNONYMS[field]){if(normRow[syn]!=null)return String(normRow[syn]).trim();}
+    return"";
+  };
   const doImport=async(file,type)=>{
     setImportError("");setImportResult(null);setImporting(true);
     try{
@@ -18,22 +38,29 @@ function CustomerImportScreen({contacts,setContacts}){
       const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
       const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const originalHeaders=Object.keys(json[0]||{});
       const existingNums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
       let next=(existingNums.length?Math.max(...existingNums):0)+1;
       const prefix=type==="customer"?"C":"S";
       const newContacts=[];let skipped=0;
       json.forEach(row=>{
-        const name=String(row.Name||row.name||row.Navn||"").trim();
+        const normRow={};
+        Object.keys(row).forEach(k=>{normRow[normKey(k)]=row[k];});
+        const name=findField(normRow,"name");
         if(!name){skipped++;return;}
         newContacts.push({
           id:`${prefix}${String(next++).padStart(3,"0")}`,type,name,
-          email:String(row.Email||row.email||row["E-post"]||"").trim(),
-          phone:String(row.Phone||row.phone||row.Telefon||"").trim(),
-          address:String(row.Address||row.address||row.Adresse||"").trim(),
+          email:findField(normRow,"email"),
+          phone:findField(normRow,"phone"),
+          address:findField(normRow,"address"),
+          accountNo:"",
           paymentTermsDays:30,
         });
       });
-      if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}.`);setImporting(false);return;}
+      if(!newContacts.length){
+        setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}. This file's column headers were: ${originalHeaders.join(", ")||"(none detected)"}. None of them matched a recognized Name column — rename one to "Name" (or "Navn") and try again.`);
+        setImporting(false);return;
+      }
       setContacts([...contacts,...newContacts]);
       setImportResult({count:newContacts.length,skipped});
     }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}
