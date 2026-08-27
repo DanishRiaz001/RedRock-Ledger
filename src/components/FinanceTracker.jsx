@@ -389,7 +389,17 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       {/* Full-width top header — same height and color everywhere, sits above
           both the sidebar and the content area (not just to the right of the
           sidebar like before). The sidebar below it is visually distinct. */}
-      <div style={{height:60,flexShrink:0,background:"rgba(255,255,255,0.7)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:`1px solid ${T.borderGlass}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:100}}>
+      {/* zIndex bumped from 100 to 600: the header's dropdown panels
+          (client/company switcher, download, notifications, profile) live
+          inside this element at LOCAL z-indexes up to 500 — but the
+          invisible full-viewport "click outside to close" catchers for
+          those same menus render as root-level siblings AFTER this header
+          in the DOM (see below), at z-index 490-498. A child's z-index only
+          matters relative to its own stacking context, so with the header
+          itself below those catchers in the global stack, the catchers sat
+          on top of the whole header — including its dropdown panels —
+          silently eating every click meant for them. */}
+      <div style={{height:60,flexShrink:0,background:"rgba(255,255,255,0.7)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:`1px solid ${T.borderGlass}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:600}}>
         <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:220-18}}>
           <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
           <div>

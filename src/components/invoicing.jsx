@@ -528,6 +528,29 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   const[mergeKeepId,setMergeKeepId]=useState("");
   const[mergeRemoveId,setMergeRemoveId]=useState("");
   const[merging,setMerging]=useState(false);
+  // Column matching used to require an exact header spelling ("Name"/"name"
+  // only) — any real export using something like "Kunde-/leverandørnavn",
+  // "Company", or "Leverandør" silently skipped every row. Headers are now
+  // normalized (lowercased, trimmed, punctuation stripped) and matched
+  // against a real synonym list, matching the same fix applied to the other
+  // import screen (Settings → Import). Rows with no recognizable Type column
+  // now default to whichever tab (Customers/Suppliers) you imported from,
+  // instead of silently defaulting everything to "customer".
+  const normImportKey=s=>String(s||"").toLowerCase().trim().replace(/[^a-z0-9]/g,"");
+  const IMPORT_SYNONYMS={
+    name:["name","navn","companyname","company","business","businessname","firma","firmanavn","supplier","suppliername","leverandor","leverandornavn","customer","customername","kunde","kundenavn","contactname","kontaktnavn","organisasjon","virksomhet"],
+    email:["email","emailaddress","epost","epostadresse","mail"],
+    phone:["phone","phonenumber","telefon","tlf","mobil","mobile"],
+    address:["address","adresse","gateadresse","street","streetaddress"],
+    accountNo:["accountno","accountnumber","kontonummer","iban"],
+    paymentTermsDays:["paymentterms","paymenttermsdays","betalingsbetingelser"],
+    creditLimit:["creditlimit","kredittgrense"],
+    type:["type","kundeleverandor","kundetype"],
+  };
+  const findImportField=(normRow,field)=>{
+    for(const syn of IMPORT_SYNONYMS[field]){if(normRow[syn]!=null)return String(normRow[syn]).trim();}
+    return"";
+  };
   const importContacts=async(file)=>{
     setImportError("");setImporting(true);
     try{
@@ -535,6 +558,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
       const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
       const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const originalHeaders=Object.keys(json[0]||{});
       const existingCustomerNums=contacts.filter(c=>c.type==="customer").map(c=>parseInt((c.id||"").slice(1))||0);
       const existingSupplierNums=contacts.filter(c=>c.type==="supplier").map(c=>parseInt((c.id||"").slice(1))||0);
       let nextC=(existingCustomerNums.length?Math.max(...existingCustomerNums):0)+1;
@@ -542,21 +566,27 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
       const newContacts=[];
       let skipped=0;
       json.forEach(row=>{
-        const name=String(row.Name||row.name||"").trim();
+        const normRow={};
+        Object.keys(row).forEach(k=>{normRow[normImportKey(k)]=row[k];});
+        const name=findImportField(normRow,"name");
         if(!name){skipped++;return;}
-        const rowType=String(row.Type||row.type||"customer").toLowerCase().includes("supplier")?"supplier":"customer";
+        const typeVal=findImportField(normRow,"type").toLowerCase();
+        const rowType=typeVal.includes("supplier")||typeVal.includes("leverand")?"supplier":typeVal.includes("customer")||typeVal.includes("kunde")?"customer":type;
         const id=rowType==="customer"?`C${String(nextC++).padStart(3,"0")}`:`S${String(nextS++).padStart(3,"0")}`;
         newContacts.push({
           id,type:rowType,name,
-          email:String(row.Email||row.email||"").trim(),
-          phone:String(row.Phone||row.phone||"").trim(),
-          address:String(row.Address||row.address||"").trim(),
-          accountNo:String(row["Account no."]||row.accountNo||"").trim(),
-          paymentTermsDays:parseInt(row["Payment terms (days)"]||row.paymentTermsDays)||30,
-          creditLimit:row["Credit limit"]?parseFloat(row["Credit limit"]):null,
+          email:findImportField(normRow,"email"),
+          phone:findImportField(normRow,"phone"),
+          address:findImportField(normRow,"address"),
+          accountNo:findImportField(normRow,"accountNo"),
+          paymentTermsDays:parseInt(findImportField(normRow,"paymentTermsDays"))||30,
+          creditLimit:(()=>{const v=findImportField(normRow,"creditLimit");return v?parseFloat(v):null;})(),
         });
       });
-      if(!newContacts.length){setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}. Expected a Name column at minimum.`);setImporting(false);return;}
+      if(!newContacts.length){
+        setImportError(`No usable rows found${skipped?` (${skipped} skipped — missing a name)`:""}. This file's column headers were: ${originalHeaders.join(", ")||"(none detected)"}. None of them matched a recognized Name column — rename one to "Name" and try again.`);
+        setImporting(false);return;
+      }
       setContacts([...contacts,...newContacts]);
       alert(`Imported ${newContacts.length} contact${newContacts.length===1?"":"s"}${skipped?` (${skipped} skipped — missing a name)`:""}.`);
     }catch(e){setImportError("Couldn't read that file. Make sure it's a CSV or Excel export.");}

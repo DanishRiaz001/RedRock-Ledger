@@ -3982,6 +3982,20 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   };
   const salesByRate=groupByRate(salesTxns);
   const purchasesByRate=groupByRate(purchaseTxns);
+  // Further breakdown within each rate group — which actual income/expense
+  // account the VAT base came from, not just the total for the rate. Sales
+  // group by the credit side (the revenue account itself); purchases group
+  // by the debit side (the expense account itself) — the offsetting
+  // bank/AR/AP account on the other leg is still shown per-row via otherCode.
+  const groupByAccount=(rows,codeField)=>{
+    const m={};
+    rows.forEach(t=>{
+      const code=t[codeField];
+      if(!m[code])m[code]={code,rows:[],net:0,vat:0};
+      m[code].rows.push(t);m[code].net+=(t.amount-(t.vatAmount||0));m[code].vat+=(t.vatAmount||0);
+    });
+    return Object.values(m).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+  };
 
   const totalSales=periodTxns.filter(t=>isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0);
   const totalExpenses=periodTxns.filter(t=>isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0);
@@ -4054,7 +4068,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <div style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",background:T.bg,fontSize:11,fontWeight:700,color:T.text}}>
               <span>{(()=>{const vc=vatCodeForRate(g.rate,"output");return vc?`Kode ${vc.code} · ${vc.name}`:`${g.rate}% mva-sats`;})()}</span><span>Grunnlag {fmt(g.net)} · Mva {fmt(g.vat)}</span>
             </div>
-            {g.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.debitCode)}/>)}
+            {groupByAccount(g.rows,"creditCode").map(acc=>(
+              <div key={acc.code}>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px 6px 24px",borderTop:`1px solid ${T.border}`,fontSize:10.5,fontWeight:700,color:T.sub}}>
+                  <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
+                </div>
+                {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.debitCode)}/>)}
+              </div>
+            ))}
           </div>
         ))}
         {!salesByRate.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</div>}
@@ -4067,7 +4088,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <div style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",background:T.bg,fontSize:11,fontWeight:700,color:T.text}}>
               <span>{(()=>{const vc=vatCodeForRate(g.rate,"input");return vc?`Kode ${vc.code} · ${vc.name}`:`${g.rate}% mva-sats`;})()}</span><span>Grunnlag {fmt(g.net)} · Mva {fmt(g.vat)}</span>
             </div>
-            {g.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.creditCode)}/>)}
+            {groupByAccount(g.rows,"debitCode").map(acc=>(
+              <div key={acc.code}>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px 6px 24px",borderTop:`1px solid ${T.border}`,fontSize:10.5,fontWeight:700,color:T.sub}}>
+                  <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
+                </div>
+                {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.creditCode)}/>)}
+              </div>
+            ))}
           </div>
         ))}
         {!purchasesByRate.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</div>}
