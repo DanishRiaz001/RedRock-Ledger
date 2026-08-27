@@ -164,7 +164,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[toasts,setToasts]=useState([]);
   const[toastPanelOpen,setToastPanelOpen]=useState(false);
   const[clientSwitcherOpen,setClientSwitcherOpen]=useState(false);
-  const[companySwitcherOpen,setCompanySwitcherOpen]=useState(false);
   const[clientSwitcherSearch,setClientSwitcherSearch]=useState("");
   const[showInviteClient,setShowInviteClient]=useState(false);
   const[showAddClient,setShowAddClient]=useState(false);
@@ -398,35 +397,80 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <div style={{fontSize:8,color:T.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Accountants</div>
           </div>
         </div>
+        {/* One unified switcher — used to be two separate dropdowns (which
+            user's login you're viewing, and which company/book under that
+            login) that both rendered independently, so the visible pill
+            could say "Redrock Danria" while you'd actually switched
+            companies elsewhere and have no way to tell from here. Now the
+            pill always shows what you're actually looking at (the active
+            company's name when it's your own login, or the client's email
+            when viewing someone else's), and the one dropdown lets you
+            switch either kind of context in the same place. */}
         <div style={{position:"relative"}}>
-          <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
-            <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
-            <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap"}}>{viewingUserId===user.id?"Redrock Danria":(myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client"}</span>
-            {viewingUserId===user.id&&(
-              <span onClick={e=>{e.stopPropagation();setTab("CompanyInfo");}} title="Edit company information" style={{color:T.sub,fontSize:11,marginLeft:2,display:"flex",alignItems:"center"}}><i className="ti ti-settings" style={{fontSize:12}}/></span>
-            )}
-            <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
-          </div>
+          {(()=>{
+            const activeCompany=viewingUserId===user.id?companies.find(c=>c.id===activeCompanyId):null;
+            const pillLabel=viewingUserId===user.id
+              ?(activeCompany?activeCompany.name:"Redrock Danria")
+              :((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client");
+            return(
+              <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
+                <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
+                <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{pillLabel}</span>
+                {companies.length>1&&viewingUserId===user.id&&<span style={{fontSize:9,background:T.border,color:T.sub,borderRadius:10,padding:"1px 6px",fontWeight:700}}>{companies.length}</span>}
+                {viewingUserId===user.id&&(
+                  <span onClick={e=>{e.stopPropagation();setTab("CompanyInfo");}} title="Edit company information" style={{color:T.sub,fontSize:11,marginLeft:2,display:"flex",alignItems:"center"}}><i className="ti ti-settings" style={{fontSize:12}}/></span>
+                )}
+                <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
+              </div>
+            );
+          })()}
           {clientSwitcherOpen&&(<>
-            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:420,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:460,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
               <div style={{padding:10,borderBottom:`1px solid ${T.border}`}}>
-                <input autoFocus placeholder="Search company" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:12}}/>
+                <input autoFocus placeholder="Search" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:12}}/>
               </div>
               <div style={{overflowY:"auto"}}>
-                {(()=>{
+                {companies.length>0&&(()=>{
+                  const q=clientSwitcherSearch.trim().toLowerCase();
+                  const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q));
+                  if(!shown.length)return null;
+                  return(<>
+                    <div style={{padding:"8px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Your companies</div>
+                    {shown.map(c=>{
+                      const active=viewingUserId===user.id&&c.id===activeCompanyId;
+                      return(
+                        <div key={c.id} onClick={()=>{setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}><i className="ti ti-building-store" style={{fontSize:12}}/></div>
+                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                          {active&&<i className="ti ti-check" style={{fontSize:13,color:T.accent,flexShrink:0}}/>}
+                        </div>
+                      );
+                    })}
+                  </>);
+                })()}
+                {isAdmin&&createCompany&&(
+                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
+                    <i className="ti ti-plus" style={{fontSize:14,marginLeft:26-14}}/>Add a company
+                  </div>
+                )}
+                {myClientAccess.length>0&&(()=>{
                   const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
                   const q=clientSwitcherSearch.trim().toLowerCase();
-                  const rows=[{id:user.id,label:"Redrock Danria",sub:null},...myClientAccess.map(c=>({id:c.clientUserId,label:c.clientEmail,sub:c.accessLevel}))].filter(r=>!q||r.label.toLowerCase().includes(q));
-                  return rows.map(r=>{
-                    const active=viewingUserId===r.id;
-                    return(
-                      <div key={r.id} onClick={()=>{setViewingUserId(r.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
-                        <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(r.label)}</div>
-                        <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label}</span>
-                        {r.sub&&<span style={{fontSize:9,color:T.muted,textTransform:"capitalize",flexShrink:0}}>{r.sub}</span>}
-                      </div>
-                    );
-                  });
+                  const shown=myClientAccess.filter(c=>!q||c.clientEmail.toLowerCase().includes(q));
+                  if(!shown.length)return null;
+                  return(<>
+                    <div style={{padding:"10px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,borderTop:`1px solid ${T.border}`}}>Client access</div>
+                    {shown.map(c=>{
+                      const active=viewingUserId===c.clientUserId;
+                      return(
+                        <div key={c.clientUserId} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(c.clientEmail)}</div>
+                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.clientEmail}</span>
+                          <span style={{fontSize:9,color:T.muted,textTransform:"capitalize",flexShrink:0}}>{c.accessLevel}</span>
+                        </div>
+                      );
+                    })}
+                  </>);
                 })()}
               </div>
               {isAdmin&&(
@@ -437,37 +481,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             </div>
           </>)}
         </div>
-        {/* Company switcher — every company under the current account, with
-            a live count so a mismatch (data under a company you're not
-            currently viewing) is immediately visible instead of silently
-            looking like missing data. */}
-        {companies.length>0&&(()=>{
-          const active=companies.find(c=>c.id===activeCompanyId);
-          return(
-            <div style={{position:"relative",marginLeft:10}}>
-              <button onClick={()=>setCompanySwitcherOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff"}}>
-                <i className="ti ti-building-store" style={{fontSize:14}}/>
-                <span style={{fontSize:12,fontWeight:700}}>{active?active.name:"Select company"}</span>
-                {companies.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.2)",borderRadius:10,padding:"1px 6px",fontWeight:700}}>{companies.length}</span>}
-                <i className="ti ti-chevron-down" style={{fontSize:12}}/>
-              </button>
-              {companySwitcherOpen&&(<>
-                <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,zIndex:499,minWidth:240,boxShadow:"0 10px 32px rgba(0,0,0,0.18)",overflow:"hidden"}}>
-                  <div style={{padding:"9px 14px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",borderBottom:`1px solid ${T.border}`}}>Your companies</div>
-                  {companies.map(c=>(
-                    <div key={c.id} onClick={()=>{setActiveCompanyId(c.id);setCompanySwitcherOpen(false);}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",cursor:"pointer",background:c.id===activeCompanyId?T.accentLight:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                      <span style={{fontSize:13,fontWeight:c.id===activeCompanyId?700:500,color:c.id===activeCompanyId?T.accent:T.text}}>{c.name}</span>
-                      {c.id===activeCompanyId&&<i className="ti ti-check" style={{fontSize:14,color:T.accent}}/>}
-                    </div>
-                  ))}
-                  <div onClick={()=>{setCompanySwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:6,padding:"11px 14px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
-                    <i className="ti ti-plus" style={{fontSize:14}}/>Add client
-                  </div>
-                </div>
-              </>)}
-            </div>
-          );
-        })()}
         <div style={{flex:1}}/>
         <div style={{position:"relative",width:260}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
@@ -526,7 +539,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           dropdown panel stays put in the header (position:absolute relative
           to its own trigger still works fine there); only the catcher moves. */}
       {clientSwitcherOpen&&<div onClick={()=>{setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{position:"fixed",inset:0,zIndex:490}}/>}
-      {companySwitcherOpen&&<div onClick={()=>setCompanySwitcherOpen(false)} style={{position:"fixed",inset:0,zIndex:498}}/>}
       {downloadMenuOpen&&<div onClick={()=>setDownloadMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
       {toastPanelOpen&&<div onClick={()=>setToastPanelOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
       {profileMenuOpen&&<div onClick={()=>setProfileMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>}
