@@ -636,9 +636,88 @@ function AppShell({user}){
   // Settings), same as inbox receipt scanning; returns rows in the exact
   // shape parseBankStatementFile does so the same preview/edit/commit UI
   // handles both.
+  // Free, no-API-key fallback — pulls the PDF's real text out with pdf.js
+  // (loaded via CDN in index.html) and pattern-matches dates/amounts myself
+  // instead of asking an AI to read it. Costs nothing, but is meaningfully
+  // less reliable than the AI path: it only works on PDFs with real
+  // selectable text (which is most bank-generated statement exports, not
+  // scanned/photographed ones), and amount-column detection is a guess —
+  // review every row in the preview before importing.
+  const parseAmountToken=(raw)=>{
+    let s=String(raw||"").trim();
+    let neg=false;
+    if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1);}
+    if(s.startsWith("-")){neg=true;s=s.slice(1);}
+    else if(s.startsWith("+"))s=s.slice(1);
+    s=s.replace(/[^\d.,]/g,"");
+    if(!s)return null;
+    const lastComma=s.lastIndexOf(","),lastDot=s.lastIndexOf(".");
+    let decimalSep=null;
+    if(lastComma>-1&&lastDot>-1)decimalSep=lastComma>lastDot?",":".";
+    else if(lastComma>-1)decimalSep=(s.length-lastComma-1)===2?",":null;
+    else if(lastDot>-1)decimalSep=(s.length-lastDot-1)===2?".":null;
+    let intPart=s,fracPart="";
+    if(decimalSep){const idx=s.lastIndexOf(decimalSep);intPart=s.slice(0,idx);fracPart=s.slice(idx+1);}
+    intPart=intPart.replace(/[.,]/g,"");
+    const num=parseFloat(intPart+(fracPart?"."+fracPart:""));
+    if(isNaN(num))return null;
+    return neg?-num:num;
+  };
+  const DATE_LINE_PATTERNS=[
+    {re:/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/,toISO:m=>`${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`},
+    {re:/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/,toISO:m=>`${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`},
+    {re:/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{2})\b/,toISO:m=>`20${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`},
+  ];
+  const parseBankStatementPDFFallback=async(file)=>{
+    if(!window.pdfjsLib)return{error:"PDF reader didn't load — check your connection and try again."};
+    try{
+      const buf=await file.arrayBuffer();
+      const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+      const lines=[];
+      for(let p=1;p<=pdf.numPages;p++){
+        const page=await pdf.getPage(p);
+        const content=await page.getTextContent();
+        // Group text items into lines by Y position (items on the same
+        // printed line share ~the same baseline), then sort each line's
+        // items left-to-right by X — reconstructs reading order from what's
+        // otherwise just an unordered bag of positioned text fragments.
+        const byY={};
+        content.items.forEach(it=>{
+          const y=Math.round(it.transform[5]);
+          if(!byY[y])byY[y]=[];
+          byY[y].push(it);
+        });
+        Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
+          const lineText=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>it.str).join(" ").replace(/\s+/g," ").trim();
+          if(lineText)lines.push(lineText);
+        });
+      }
+      const rows=[];
+      lines.forEach(line=>{
+        let dateMatch=null,dateISO=null;
+        for(const p of DATE_LINE_PATTERNS){
+          const m=line.match(p.re);
+          if(m){dateMatch=m;dateISO=p.toISO(m);break;}
+        }
+        if(!dateISO)return;
+        const remainder=line.replace(dateMatch[0],"");
+        const amountTokens=remainder.match(/\(?-?\d[\d.,]*\)?/g)||[];
+        if(!amountTokens.length)return;
+        const lastToken=amountTokens[amountTokens.length-1];
+        const amount=parseAmountToken(lastToken);
+        if(amount==null||amount===0)return;
+        const description=remainder.slice(0,remainder.lastIndexOf(lastToken)).replace(/[|,;:\-]+$/,"").trim()||"(no description found)";
+        rows.push({rowNum:rows.length+1,date:dateISO,description,amount});
+      });
+      if(!rows.length)return{error:"Couldn't find any transaction-looking lines in this PDF using free text extraction. It's likely a scanned image (no real text to read) — add an Anthropic API key in Company → Settings to read it with AI instead, or use a CSV/Excel export if your bank offers one."};
+      return{rows,isPdf:true,isFallback:true};
+    }catch(e){
+      return{error:"Reading the PDF failed: "+(e&&e.message?e.message:"unknown error")};
+    }
+  };
   const parseBankStatementPDF=async(file)=>{
-    if(!getAnthropicKey())return{error:"Add your Anthropic API key in Company → Settings to enable PDF reading — it's stored only in this browser."};
     if(file.type!=="application/pdf")return{error:"Please choose a PDF file."};
+    if(!getAnthropicKey())return parseBankStatementPDFFallback(file);
     try{
       const reader=new FileReader();
       const base64=await new Promise((resolve,reject)=>{

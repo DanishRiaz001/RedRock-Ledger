@@ -4759,7 +4759,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             ):(
               <>
                 {preview.isPdf?(
-                  <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Read with AI — check every row below before importing; dates, descriptions, and amounts are all editable.</div>
+                  preview.isFallback?(
+                    <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,padding:"9px 12px",fontSize:11,color:"#92400E",marginBottom:14,lineHeight:1.5}}>Read with free text extraction (no AI key set) — this is a rougher guess than the AI reader, especially for which number on each line is the actual amount. Check every row carefully before importing; dates, descriptions, and amounts are all editable.</div>
+                  ):(
+                    <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Read with AI — check every row below before importing; dates, descriptions, and amounts are all editable.</div>
+                  )
                 ):(
                   <div style={{fontSize:11,color:T.muted,marginBottom:14}}>
                     Detected columns — Date: <b>{preview.detectedColumns.date}</b> · Description: <b>{preview.detectedColumns.description}</b>{preview.detectedColumns.amount&&<> · Amount: <b>{preview.detectedColumns.amount}</b></>}{preview.detectedColumns.debit&&<> · Debit: <b>{preview.detectedColumns.debit}</b></>}{preview.detectedColumns.credit&&<> · Credit: <b>{preview.detectedColumns.credit}</b></>}
