@@ -450,22 +450,29 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   // ?company= handling in appshell.jsx) — lets you compare
                   // two clients' books side by side in separate tabs instead
                   // of switching back and forth in one.
-                  const openInNewTab=(e,c)=>{
-                    e.stopPropagation();
-                    const url=`${window.location.origin}${window.location.pathname}?company=${c.id}`;
-                    window.open(url,"_blank");
-                  };
                   return(<>
                     <div style={{padding:"8px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Your companies</div>
                     {shown.map(c=>{
                       const active=viewingUserId===user.id&&c.id===activeCompanyId;
+                      const href=`${window.location.origin}${window.location.pathname}?company=${c.id}`;
                       return(
-                        <div key={c.id} onClick={()=>{setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}} className="rr-sidebar-item">
+                        // A real <a href> on purpose, not a div onClick — a
+                        // plain left-click still switches in place below
+                        // (same as before), but this is what actually makes
+                        // right-click → "Open link in new tab" (and middle-
+                        // click, and Cmd/Ctrl+click) work at all. Browsers
+                        // only offer those for genuine links; no div/span
+                        // with an onClick handler, however link-like, ever
+                        // gets that context-menu option.
+                        <a key={c.id} href={href} onClick={e=>{
+                          if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
+                          e.preventDefault();
+                          setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");
+                        }} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}} className="rr-sidebar-item">
                           <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
                           <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                           {active&&<i className="ti ti-check" style={{fontSize:13,color:T.accent,flexShrink:0}}/>}
-                          <i onClick={e=>openInNewTab(e,c)} title="Open in a new tab" className="ti ti-external-link" style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>
-                        </div>
+                        </a>
                       );
                     })}
                   </>);
