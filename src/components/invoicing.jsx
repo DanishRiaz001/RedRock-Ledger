@@ -3318,6 +3318,35 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           — tapping it opens a small popover with the same upload/pick-file
           options, so attaching a receipt doesn't cost a full section of
           space it needs the rest of the time. */}
+      {/* Desktop: a plain bordered "voucher details" panel — bilag number,
+          date, and the entry-type switcher grouped as one labeled section,
+          matching how other accounting software separates header fields
+          from the postings table below, instead of a colored floating
+          badge. Mobile keeps the compact accent badge + inline attach
+          icon, which fits its single-line header better. */}
+      {isDesktop?(
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+          <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Bilag</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.text,padding:"9px 0"}}>{fmtB(nextBilag)}</div>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
+              <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
+            </div>
+            <div style={{flex:"0 0 auto"}}>
+              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Entry type</div>
+              <div style={{display:"flex",gap:8}}>
+                {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
+                  <button key={val} onClick={()=>setEntryMode(val)} style={{background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ):(
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
         <div style={{background:T.accentLight,borderRadius:8,padding:"4px 10px",flexShrink:0}}>
           <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:0.5}}>BILAG</div>
@@ -3361,19 +3390,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </div>
         )}
       </div>
-      {/* Desktop: a compact, auto-width segmented tab bar — the same
-          convention used for tabs everywhere else in the desktop app
-          (see Admin panel). Mobile keeps the full-width tappable pills,
-          since a small thumb target there is the wrong trade-off. */}
-      <div style={{display:"flex",gap:isDesktop?8:6,marginBottom:14}}>
+      )}
+      {/* Mobile only — desktop's entry-type switcher now lives inside the
+          Voucher details panel above, next to Bilag/Date. */}
+      {!isDesktop&&(
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
         {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
-          isDesktop?(
-            <button key={val} onClick={()=>setEntryMode(val)} style={{background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
-          ):(
-            <button key={val} onClick={()=>setEntryMode(val)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`1.5px solid ${entryMode===val?T.accent:T.border}`,background:entryMode===val?T.accentLight:"#fff",color:entryMode===val?T.accent:T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
-          )
+          <button key={val} onClick={()=>setEntryMode(val)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`1.5px solid ${entryMode===val?T.accent:T.border}`,background:entryMode===val?T.accentLight:"#fff",color:entryMode===val?T.accent:T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
         ))}
       </div>
+      )}
 
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -3406,13 +3432,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             amount) with hairline dividers instead of boxed cells — no
             horizontal scroll, matches the rest of the app's density. */}
         {isDesktop?(
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
-          <div style={{display:"flex",gap:6,marginBottom:4,minWidth:626}}>
-            <div style={{flex:"0 0 96px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
-            <div style={{flex:"0 0 150px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
-            <div style={{flex:"0 0 128px",fontSize:8.5,color:T.red,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
-            <div style={{flex:"0 0 128px",fontSize:8.5,color:T.green,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
-            <div style={{flex:"0 0 78px",fontSize:8.5,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Amount</div>
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",padding:"12px 14px 14px"}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,minWidth:626,paddingBottom:6,borderBottom:`1px solid ${T.border}`}}>
+            <div style={{flex:"0 0 96px",fontSize:10,color:T.muted,fontWeight:700}}>Date</div>
+            <div style={{flex:"0 0 150px",fontSize:10,color:T.muted,fontWeight:700}}>Description</div>
+            <div style={{flex:"0 0 128px",fontSize:10,color:T.muted,fontWeight:700}}>Debit</div>
+            <div style={{flex:"0 0 128px",fontSize:10,color:T.muted,fontWeight:700}}>Credit</div>
+            <div style={{flex:"0 0 78px",fontSize:10,color:T.muted,fontWeight:700}}>Amount</div>
           </div>
           {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
             <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,minWidth:626}}>
@@ -3476,6 +3504,24 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               </div>
             </div>
           ))}
+          </div>
+          {/* Running totals — since each line's single Amount posts to both
+              its debit and credit side, Debit and Credit always match; shown
+              anyway (same convention as a real double-entry voucher screen)
+              so the balance is visibly confirmed before saving. */}
+          {(()=>{
+            const lines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+            const total=lines.reduce((s,l,li)=>s+(parseFloat(li===0?form.amount:l.amount)||0),0);
+            return(
+              <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:T.bg,minWidth:626}}>
+                <div style={{flex:"0 0 96px"}}/>
+                <div style={{flex:"0 0 150px"}}/>
+                <div style={{flex:"0 0 128px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
+                <div style={{flex:"0 0 128px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
+                <div style={{flex:"0 0 78px",fontSize:11,color:T.muted}}>Balanced</div>
+              </div>
+            );
+          })()}
         </div>
         ):(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
@@ -3643,16 +3689,27 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         )}
 
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
-        {moneySources&&moneySources.length>0&&(
-          <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
-            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{isDesktop?"Whose":"👥 Whose"}</div>
+        {moneySources&&moneySources.length>0&&(isDesktop?(
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Whose</div>
             <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
               <option value="">— Select source (optional) —</option>
               {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-        )}
-        <button disabled={!valid||saving} style={{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?"✓ Saved!":saving?"Saving…":"Save Entry"}</button>
+        ):(
+          <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
+            <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+              <option value="">— Select source (optional) —</option>
+              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        ))}
+        {/* Desktop: a normal-sized, left-aligned primary button — matching
+            how a save/create action sits in the rest of the desktop app's
+            forms, instead of a full-width mobile "tap target" button. */}
+        <button disabled={!valid||saving} style={isDesktop?{background:entrySaved?"#059669":T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:valid&&!saving?"pointer":"default",opacity:valid&&!saving?1:0.5,alignSelf:"flex-start",fontFamily:"inherit",transition:"background 0.2s"}:{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?"✓ Saved!":saving?"Saving…":"Save Entry"}</button>
       </div>
       )}
 
