@@ -574,16 +574,111 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
       const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rawRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
-      const headerRowIdx=findImportHeaderRowIndex(rawRows);
-      const json=XLSX.utils.sheet_to_json(ws,{range:headerRowIdx,defval:""});
-      if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
-      const originalHeaders=Object.keys(json[0]||{});
       const existingCustomerNums=contacts.filter(c=>c.type==="customer").map(c=>parseInt((c.id||"").slice(1))||0);
       const existingSupplierNums=contacts.filter(c=>c.type==="supplier").map(c=>parseInt((c.id||"").slice(1))||0);
       let nextC=(existingCustomerNums.length?Math.max(...existingCustomerNums):0)+1;
       let nextS=(existingSupplierNums.length?Math.max(...existingSupplierNums):0)+1;
       const newContacts=[];
       let skipped=0;
+
+      // Tripletex's "Kunde-/leverandøroversikt" export doesn't use real
+      // columns at all — every field for a row (name, customer/supplier
+      // number, org number, contact person) is squashed into ONE cell with
+      // zero separators, e.g. "Abax AS20107Leverandørnummer993098736Org.nr.",
+      // and the address/phone/email are similarly squashed into the next
+      // cell. No amount of header-matching can ever parse that — it needs
+      // pulling fields out by their literal Norwegian labels instead. Detect
+      // this specific export by its fixed two-column header row and parse it
+      // with a dedicated extractor rather than the generic column importer.
+      const tripletexHeaderIdx=rawRows.findIndex(r=>(r||[]).some(c=>/kunde-?\/?leverand[øo]rdetaljer/i.test(String(c||"")))&&(r||[]).some(c=>/^kontakt$/i.test(String(c||"").trim())));
+      if(tripletexHeaderIdx!==-1){
+        const takeBefore=(str,label)=>{const idx=str.indexOf(label);return idx===-1?{value:null,rest:str}:{value:str.slice(0,idx),rest:str.slice(idx+label.length)};};
+        const trailingDigits=s=>{const m=s.match(/(\d+)\s*$/);return m?m[1]:"";};
+        // Only strip the trailing ID-number run itself, not "everything from
+        // the first digit onward" — a company name can legitimately contain
+        // a digit (e.g. "St1 Norge AS", "Rema 1000 AS"), and that must stay
+        // part of the name rather than being mistaken for where an ID starts.
+        const stripTrailingDigitsForName=s=>{const m=s.match(/(\d+)\s*$/);return m?s.slice(0,m.index).trim():s;};
+        // "Trygve MagnusKundeansvarlig" style: the account-manager's name is
+        // glued directly onto the end of the company name with no space —
+        // real multi-word names always have a real space, so the last two
+        // space-separated Capitalized words are the person, not the company.
+        // Each "word" continues in lowercase only — a real word never has a
+        // second embedded capital, so this can't be fooled by a name+person
+        // glued with no space (e.g. "VinmonopoletTrygve", where the embedded
+        // capital T is the real join point between the two original cells).
+        const stripTrailingPersonName=text=>{
+          const m=text.match(/([A-ZÆØÅ][a-zæøå'.-]*(?:\s[A-ZÆØÅ][a-zæøå'.-]*){1,1})$/);
+          if(m)return{name:text.slice(0,text.length-m[1].length).trim(),person:m[1].trim()};
+          return{name:text.trim(),person:""};
+        };
+        const parseNameBlob=blob=>{
+          let rest=blob,namePart=null,contactPerson="",customerNo="",supplierNo="",orgNo="";
+          let seg=takeBefore(rest,"Kundeansvarlig");
+          if(seg.value!==null){const{name:n,person}=stripTrailingPersonName(seg.value);namePart=n;contactPerson=person;rest=seg.rest;}
+          seg=takeBefore(rest,"Kundenummer");
+          if(seg.value!==null){customerNo=trailingDigits(seg.value);if(namePart===null)namePart=stripTrailingDigitsForName(seg.value);rest=seg.rest;}
+          seg=takeBefore(rest,"Leverandørnummer");
+          if(seg.value!==null){supplierNo=trailingDigits(seg.value);if(namePart===null)namePart=stripTrailingDigitsForName(seg.value);rest=seg.rest;}
+          seg=takeBefore(rest,"Org.nr.");
+          if(seg.value!==null){orgNo=trailingDigits(seg.value);if(namePart===null)namePart=stripTrailingDigitsForName(seg.value);}
+          if(namePart===null)namePart=blob;
+          return{name:namePart.trim(),contactPerson,customerNo,supplierNo,orgNo};
+        };
+        const parseContactBlob=blob=>{
+          let rest=blob;
+          let seg=takeBefore(rest,"Postadresse");
+          const postAddr=seg.value!==null?seg.value.trim():"";
+          if(seg.value!==null)rest=seg.rest;
+          seg=takeBefore(rest,"Forretningsadr.");
+          const visitAddr=seg.value!==null?seg.value.trim():"";
+          if(seg.value!==null)rest=seg.rest;
+          let phone="",mobile="",email="",guard=0;
+          while(rest&&guard<5){
+            guard++;
+            const labels=["Telefon","Mobil","E-post","Faks"];
+            let earliest=null;
+            for(const l of labels){const idx=rest.indexOf(l);if(idx!==-1&&(earliest===null||idx<earliest.idx))earliest={label:l,idx};}
+            if(!earliest)break;
+            const value=rest.slice(0,earliest.idx).trim();
+            rest=rest.slice(earliest.idx+earliest.label.length);
+            if(earliest.label==="Telefon")phone=value;else if(earliest.label==="Mobil")mobile=value;else if(earliest.label==="E-post")email=value;
+          }
+          return{address:visitAddr||postAddr,phone:phone||mobile,email};
+        };
+        for(let i=tripletexHeaderIdx+1;i<rawRows.length;i++){
+          const row=rawRows[i]||[];
+          const nameBlob=String(row[0]||"").trim();
+          if(!nameBlob){skipped++;continue;}
+          const parsedName=parseNameBlob(nameBlob);
+          if(!parsedName.name){skipped++;continue;}
+          const parsedContact=parseContactBlob(String(row[1]||""));
+          // Only pull in rows for the tab currently open (Customers or
+          // Suppliers) — an entity can be both in Tripletex, but this app
+          // keeps them as separate records, so import each role separately
+          // by switching tabs and importing the same file again.
+          const hasThisRole=type==="customer"?!!parsedName.customerNo:!!parsedName.supplierNo;
+          if(!hasThisRole){skipped++;continue;}
+          const id=type==="customer"?`C${String(nextC++).padStart(3,"0")}`:`S${String(nextS++).padStart(3,"0")}`;
+          newContacts.push({
+            id,type,name:parsedName.name,
+            email:parsedContact.email,phone:parsedContact.phone,address:parsedContact.address,
+            accountNo:parsedName.orgNo,paymentTermsDays:30,creditLimit:null,
+          });
+        }
+        if(!newContacts.length){
+          setImportError(`No ${type==="customer"?"customers":"suppliers"} found in this file for the ${type==="customer"?"Customers":"Suppliers"} tab${skipped?` (${skipped} rows skipped)`:""}. This looks like a Tripletex customer/supplier export that mixes both — try switching to the other tab and importing the same file again if you're looking for the other type.`);
+          setImporting(false);return;
+        }
+        setContacts([...contacts,...newContacts]);
+        alert(`Imported ${newContacts.length} ${type==="customer"?"customer":"supplier"}${newContacts.length===1?"":"s"}${skipped?` (${skipped} rows skipped — not a ${type} in this file, or missing a name)`:""}.`);
+        setImporting(false);return;
+      }
+
+      const headerRowIdx=findImportHeaderRowIndex(rawRows);
+      const json=XLSX.utils.sheet_to_json(ws,{range:headerRowIdx,defval:""});
+      if(!json.length){setImportError("That file appears to be empty.");setImporting(false);return;}
+      const originalHeaders=Object.keys(json[0]||{});
       json.forEach(row=>{
         const normRow={};
         Object.keys(row).forEach(k=>{normRow[normImportKey(k)]=row[k];});
