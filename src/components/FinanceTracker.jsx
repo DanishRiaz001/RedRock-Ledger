@@ -403,14 +403,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:220-18}}>
           <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
           <div>
-            <div style={{fontSize:12,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Danria</div>
+            <div style={{fontSize:12,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Ledger</div>
             <div style={{fontSize:8,color:T.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Accountants</div>
           </div>
         </div>
         {/* One unified switcher — used to be two separate dropdowns (which
             user's login you're viewing, and which company/book under that
             login) that both rendered independently, so the visible pill
-            could say "Redrock Danria" while you'd actually switched
+            could say "Redrock Ledger" while you'd actually switched
             companies elsewhere and have no way to tell from here. Now the
             pill always shows what you're actually looking at (the active
             company's name when it's your own login, or the client's email
@@ -420,7 +420,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           {(()=>{
             const activeCompany=viewingUserId===user.id?companies.find(c=>c.id===activeCompanyId):null;
             const pillLabel=viewingUserId===user.id
-              ?(activeCompany?activeCompany.name:"Redrock Danria")
+              ?(activeCompany?activeCompany.name:"Redrock Ledger")
               :((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client");
             return(
               <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
@@ -1258,7 +1258,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           <div style={{padding:"24px 20px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12}}>
             <img src={LOGO_B64} style={{height:44,objectFit:"contain"}}/>
             <div>
-              <div style={{fontSize:13,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Danria</div>
+              <div style={{fontSize:13,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Ledger</div>
               <div style={{fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginTop:2}}>Accountants</div>
             </div>
           </div>

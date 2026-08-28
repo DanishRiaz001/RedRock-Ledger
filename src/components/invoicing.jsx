@@ -895,7 +895,7 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
       {isViewingOwnBooks&&requestRedrockAccess&&(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginTop:16}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:6}}>Give your accountant access</div>
-          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>If Redrock Danria manages your books, request access here — they'll see the request and can assign the right person on their team to your account.</p>
+          <p style={{fontSize:12,color:T.muted,marginBottom:14}}>If Redrock Ledger manages your books, request access here — they'll see the request and can assign the right person on their team to your account.</p>
           {requestSent?(
             <div style={{background:T.greenBg,color:T.green,borderRadius:8,padding:"10px 14px",fontSize:12,fontWeight:600}}>✓ Request sent — Redrock will follow up once access is set up.</div>
           ):(

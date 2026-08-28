@@ -2111,7 +2111,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
               </tbody></table>`;
             }).join("")}
             <div class="grand ${grandTotal>=0?"pos":"neg"}">Grand Total: ${grandTotal>=0?"+":"−"}${fmt(Math.abs(grandTotal))}</div>
-            <div class="footer">Redrock Danria Accountants &nbsp;·&nbsp; ${isCustomer?"Accounts Receivable":"Accounts Payable"} Report &nbsp;·&nbsp; ${new Date().toISOString().slice(0,10)}</div>
+            <div class="footer">Redrock Ledger Accountants &nbsp;·&nbsp; ${isCustomer?"Accounts Receivable":"Accounts Payable"} Report &nbsp;·&nbsp; ${new Date().toISOString().slice(0,10)}</div>
             <div class="btn-bar">
               <button onclick="window.print()" style="padding:8px 18px;background:#1A1A2E;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 Print / Save as PDF</button>
               <button onclick="window.close()" style="padding:8px 18px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-size:13px;">← Close</button>

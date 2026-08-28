@@ -362,7 +362,7 @@ function MarketingHome({onSignIn,onSignUp,onPublicPage}){
             <button key={id} onClick={()=>onPublicPage(id)} style={{background:"none",border:"none",color:"#94A3B8",fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
-        <div style={{fontSize:10.5,color:"#CBD5E1"}}>REDROCK DANRIA ACCOUNTANTS</div>
+        <div style={{fontSize:10.5,color:"#CBD5E1"}}>REDROCK LEDGER ACCOUNTANTS</div>
       </div>
     </div>
   );
@@ -546,7 +546,7 @@ function LoginScreen({onLogin,skipMarketing=false}){
           </div>
         </div>
 
-        <div style={{textAlign:"center",marginTop:20,fontSize:10,color:"#CBD5E1",letterSpacing:0.5}}>REDROCK DANRIA ACCOUNTANTS · SECURE LOGIN</div>
+        <div style={{textAlign:"center",marginTop:20,fontSize:10,color:"#CBD5E1",letterSpacing:0.5}}>REDROCK LEDGER ACCOUNTANTS · SECURE LOGIN</div>
         <div style={{display:"flex",justifyContent:"center",gap:14,marginTop:14}}>
           {[["pricing","Pricing"],["privacy","Privacy"],["terms","Terms"],["status","Status"]].map(([id,label])=>(
             <button key={id} onClick={()=>setPublicPage(id)} style={{background:"none",border:"none",color:"#94A3B8",fontSize:11,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>{label}</button>
