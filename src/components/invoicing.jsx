@@ -3361,9 +3361,17 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </div>
         )}
       </div>
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
+      {/* Desktop: a compact, auto-width segmented tab bar — the same
+          convention used for tabs everywhere else in the desktop app
+          (see Admin panel). Mobile keeps the full-width tappable pills,
+          since a small thumb target there is the wrong trade-off. */}
+      <div style={{display:"flex",gap:isDesktop?8:6,marginBottom:14}}>
         {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
-          <button key={val} onClick={()=>setEntryMode(val)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`1.5px solid ${entryMode===val?T.accent:T.border}`,background:entryMode===val?T.accentLight:"#fff",color:entryMode===val?T.accent:T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          isDesktop?(
+            <button key={val} onClick={()=>setEntryMode(val)} style={{background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ):(
+            <button key={val} onClick={()=>setEntryMode(val)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`1.5px solid ${entryMode===val?T.accent:T.border}`,background:entryMode===val?T.accentLight:"#fff",color:entryMode===val?T.accent:T.sub,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          )
         ))}
       </div>
 
@@ -3557,7 +3565,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         {/* Sinking fund picker — when 1009x account selected */}
         {needSF&&(
           <div style={{background:T.accentLight,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"12px 14px"}}>
-            <div style={{fontSize:10,color:T.accent,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>🎯 Sinking Fund Target</div>
+            <div style={{fontSize:10,color:T.accent,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{isDesktop?"Sinking Fund Target":"🎯 Sinking Fund Target"}</div>
             <select value={form.sfFundId||""} onChange={e=>setForm(p=>({...p,sfFundId:e.target.value}))} style={{...selSm,width:"100%",marginBottom:form.sfFundId?"8px":"0"}}>
               <option value="">— Select a fund —</option>
               {sfFunds.map(f=>(
@@ -3588,7 +3596,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         {needContact&&(
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
-              {reskontroMode?"👥 Reskontro — All Contacts":autoNeedContact?(contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"):"👥 Contact (optional)"}
+              {isDesktop
+                ?(reskontroMode?"Reskontro — All Contacts":autoNeedContact?(contactType==="customer"?"Customer (AR · 1500)":"Supplier (AP · 2400)"):"Contact (optional)")
+                :(reskontroMode?"👥 Reskontro — All Contacts":autoNeedContact?(contactType==="customer"?"👤 Customer (AR · 1500)":"👤 Supplier (AP · 2400)"):"👥 Contact (optional)")}
             </div>
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1,position:"relative"}}>
@@ -3635,7 +3645,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
         {moneySources&&moneySources.length>0&&(
           <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
-            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{isDesktop?"Whose":"👥 Whose"}</div>
             <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
               <option value="">— Select source (optional) —</option>
               {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
@@ -3655,7 +3665,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {/* Supplier/Customer selector */}
             <div>
-              <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"👤 Customer":"👤 Supplier"}</div>
+              <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{isDesktop?(invIsCustomer?"Customer":"Supplier"):(invIsCustomer?"👤 Customer":"👤 Supplier")}</div>
               {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
                 <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
@@ -3740,8 +3750,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
               <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
                 <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
-                {accounts.filter(a=>a.code==="1001").map(a=><option key={a.code} value={a.code}>💵 {a.name}</option>)}
-                {bankAccounts.map(a=><option key={a.code} value={a.code}>🏦 {a.code} {a.name}</option>)}
+                {accounts.filter(a=>a.code==="1001").map(a=><option key={a.code} value={a.code}>{isDesktop?"":"💵 "}{a.name}</option>)}
+                {bankAccounts.map(a=><option key={a.code} value={a.code}>{isDesktop?"":"🏦 "}{a.code} {a.name}</option>)}
               </select>
               {invRegisterPayment&&(
                 <div style={{fontSize:10,color:T.muted,marginTop:5}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."} Same date as the invoice, full amount.</div>
