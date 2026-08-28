@@ -3422,15 +3422,18 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       {isDesktop?(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
           <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
-          {/* All three fields render as the same 40px-tall bordered box —
-              Bilag is read-only text but still boxed like a real field, and
-              the entry-type buttons match the date input's own padding/font
-              size, so nothing here floats at a different height than its
-              neighbors. */}
+          {/* Guessing one fixed pixel height for all three was the bug —
+              the real date <input> (styled via the shared `inp` object)
+              renders at whatever height its own font-size/padding/border
+              naturally produce, which isn't exactly any round number. So
+              instead of forcing a height, Bilag and the entry-type buttons
+              are given that EXACT SAME padding, font-size, border and
+              box-sizing as `inp` — identical box models always compute to
+              identical heights, no magic number to keep in sync. */}
           <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap",alignItems:"flex-start"}}>
             <div>
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Bilag</div>
-              <div style={{...inp,width:"auto",minWidth:84,background:T.bg,fontWeight:700,display:"flex",alignItems:"center",boxSizing:"border-box",height:40}}>{fmtB(nextBilag)}</div>
+              <div style={{...inp,width:"auto",minWidth:84,background:T.bg,fontWeight:700,display:"inline-flex",alignItems:"center"}}>{fmtB(nextBilag)}</div>
             </div>
             <div>
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
@@ -3440,7 +3443,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Entry type</div>
               <div style={{display:"flex",gap:8}}>
                 {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
-                  <button key={val} onClick={()=>setEntryMode(val)} style={{background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,borderRadius:8,padding:"0 16px",height:40,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxSizing:"border-box"}}>{label}</button>
+                  <button key={val} onClick={()=>setEntryMode(val)} style={{...inp,width:"auto",background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>
                 ))}
               </div>
             </div>
