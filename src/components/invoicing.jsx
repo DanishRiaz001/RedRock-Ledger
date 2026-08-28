@@ -3535,9 +3535,18 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             amount) with hairline dividers instead of boxed cells — no
             horizontal scroll, matches the rest of the app's density. */}
         {isDesktop?(
-        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
-          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",padding:"12px 14px 14px"}}>
+        // overflow:"hidden" (for rounded corners) plus overflowX:"auto" (for
+        // narrow-window scrolling) between them clip ANY absolutely-
+        // positioned dropdown that extends below its row — including
+        // AccDrop's own account-search popup, which made picking an account
+        // from the list impossible. Neither is worth that: the header's own
+        // borderRadius handles the rounded-corner look without a clipping
+        // parent, and the table's fixed-width columns rarely need to scroll
+        // on a real desktop window, so it's a fair trade for search actually
+        // working.
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub,borderRadius:"10px 10px 0 0"}}>Postings</div>
+          <div style={{padding:"12px 14px 14px"}}>
           <div style={{display:"flex",gap:6,marginBottom:8,minWidth:626,paddingBottom:6,borderBottom:`1px solid ${T.border}`}}>
             <div style={{flex:"0 0 96px",fontSize:10,color:T.muted,fontWeight:700}}>Date</div>
             <div style={{flex:"0 0 150px",fontSize:10,color:T.muted,fontWeight:700}}>Description</div>
@@ -3616,7 +3625,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             const lines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
             const total=lines.reduce((s,l,li)=>s+(parseFloat(li===0?form.amount:l.amount)||0),0);
             return(
-              <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:T.bg,minWidth:626}}>
+              <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:T.bg,minWidth:626,borderRadius:"0 0 10px 10px"}}>
                 <div style={{flex:"0 0 96px"}}/>
                 <div style={{flex:"0 0 150px"}}/>
                 <div style={{flex:"0 0 128px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
@@ -3627,7 +3636,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           })()}
         </div>
         ):(
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
+        // No overflow:hidden here — it clipped AccDrop's own account-search
+        // dropdown (position:absolute) the moment a line's dropdown needed
+        // to extend past this box, which for a single-line entry (the most
+        // common case) is the very first row. No row has its own background
+        // that would need clipping to keep the corners looking rounded, so
+        // dropping it has no visible cost.
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14}}>
           {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
             <div key={li} style={{borderTop:li===0?"none":`1px solid #F0F4F3`}}>
               <div style={{display:"flex",gap:12,padding:"8px 12px",alignItems:"center"}}>
