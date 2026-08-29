@@ -715,105 +715,114 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
 
   const pct=total>0?Math.round((progress/total)*100):0;
 
-  return(
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
-      <BackHeader title="Import Excel" sub="BULK IMPORT ENTRIES" onBack={onBack}/>
-      <div style={{padding:16}}>
+  // This screen only ever renders from the desktop tracker (FinanceTracker) —
+  // there's no separate mobile call site for it — so the mobile-card
+  // wrapper (BackHeader banner, maxWidth:430 centered column, "Tap to
+  // choose" copy) was simply wrong here, not a deliberate mobile/desktop
+  // split like other screens have. Rebuilt as a plain desktop page: a
+  // normal heading, and bordered panels with a header band, matching the
+  // convention used everywhere else (Voucher details, Postings, Admin
+  // panel, Home dashboard) instead of a phone-shaped card floating in the
+  // middle of a wide screen.
+  const cardHead={padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub};
+  const cardStyle={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",marginBottom:16,maxWidth:720};
 
-        {/* Step 1 — Upload */}
-        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Step 1 — Upload your import file</div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:12,lineHeight:1.6}}>
+  return(
+    <div>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Import Excel</h1>
+
+      <div style={cardStyle}>
+        <div style={cardHead}>Step 1 — Upload your import file</div>
+        <div style={{padding:16}}>
+          <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.6}}>
             Upload your Excel file. It must have a sheet named <em>Import Entries</em> with columns: Date, Debit Code, Credit Code, Description, Amount, Contact ID (optional).
           </div>
-          <label style={{display:"block",background:T.blueBg,border:`2px dashed ${T.blue}`,borderRadius:12,padding:"20px",textAlign:"center",cursor:"pointer"}}>
-            <div style={{fontSize:28,marginBottom:6}}>📂</div>
-            <div style={{fontSize:13,fontWeight:700,color:T.blue}}>Tap to choose Excel file</div>
-            <div style={{fontSize:11,color:T.muted,marginTop:4}}>.xlsx files only</div>
+          <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:T.bg,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"22px 16px",textAlign:"center",cursor:"pointer"}}>
+            <i className="ti ti-upload" style={{fontSize:22,color:T.accent}}/>
+            <div style={{fontSize:13,fontWeight:700,color:T.accent}}>Click to choose an Excel file</div>
+            <div style={{fontSize:11,color:T.muted}}>.xlsx files only</div>
             <input type="file" accept=".xlsx" onChange={handleFile} style={{display:"none"}}/>
           </label>
         </div>
+      </div>
 
-        {/* Error */}
-        {status==="error"&&(
-          <div style={{background:T.redLight,borderRadius:12,padding:"14px 16px",marginBottom:12,border:`1px solid ${T.redMid}`}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.red,marginBottom:4}}>❌ Error</div>
-            <div style={{fontSize:12,color:T.red}}>{errMsg}</div>
+      {status==="error"&&(
+        <div style={{...cardStyle,border:`1px solid ${T.redMid}`}}>
+          <div style={{...cardHead,color:T.red,background:T.redLight,borderColor:T.redMid}}>Error</div>
+          <div style={{padding:16,fontSize:12,color:T.red}}>{errMsg}</div>
+        </div>
+      )}
+
+      {(status==="preview"||status==="importing"||status==="done")&&rows.length>0&&(
+        <div style={cardStyle}>
+          <div style={cardHead}>
+            {status==="preview"&&`Step 2 — Preview (${rows.length} entries found)`}
+            {status==="importing"&&`Importing… ${progress} / ${total}`}
+            {status==="done"&&`Done — ${imported} entries imported`}
           </div>
-        )}
-
-        {/* Preview */}
-        {(status==="preview"||status==="importing"||status==="done")&&rows.length>0&&(
-          <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:12}}>
-              {status==="preview"&&`Step 2 — Preview (${rows.length} entries found)`}
-              {status==="importing"&&`Importing… ${progress} / ${total}`}
-              {status==="done"&&`✅ Done — ${imported} entries imported`}
-            </div>
-
-            {/* Progress bar */}
+          <div style={{padding:16}}>
             {(status==="importing"||status==="done")&&(
               <div style={{marginBottom:14}}>
-                <div style={{background:T.bg,borderRadius:6,height:10,overflow:"hidden",marginBottom:6}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:status==="done"?T.green:T.blue,borderRadius:6,transition:"width 0.3s"}}/>
+                <div style={{background:T.bg,borderRadius:6,height:8,overflow:"hidden",marginBottom:6}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:status==="done"?T.green:T.accent,borderRadius:6,transition:"width 0.3s"}}/>
                 </div>
                 <div style={{fontSize:11,color:T.muted,textAlign:"center"}}>{pct}% — {imported} saved to database</div>
               </div>
             )}
 
-            {/* Preview table */}
             {status==="preview"&&(
               <>
-                <div style={{display:"grid",gridTemplateColumns:"80px 52px 52px 1fr 70px",gap:4,padding:"6px 0",borderBottom:`2px solid ${T.border}`,marginBottom:4}}>
+                <div style={{display:"grid",gridTemplateColumns:"90px 60px 60px 1fr 90px",gap:8,padding:"0 0 8px",borderBottom:`1px solid ${T.border}`,marginBottom:4}}>
                   {["Date","Debit","Credit","Description","Amount"].map(h=>(
-                    <div key={h} style={{fontSize:9,fontWeight:700,color:T.muted,textTransform:"uppercase"}}>{h}</div>
+                    <div key={h} style={{fontSize:10,fontWeight:700,color:T.muted}}>{h}</div>
                   ))}
                 </div>
-                <div style={{maxHeight:280,overflowY:"auto"}}>
+                <div style={{maxHeight:340,overflowY:"auto"}}>
                   {rows.slice(0,50).map((r,i)=>(
-                    <div key={i} style={{display:"grid",gridTemplateColumns:"80px 52px 52px 1fr 70px",gap:4,padding:"5px 0",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:i%2===0?"#fff":T.bg}}>
-                      <div style={{fontSize:10,color:T.muted}}>{r.date}</div>
-                      <div style={{fontSize:10,fontWeight:700,color:T.red}}>{r.debitCode}</div>
-                      <div style={{fontSize:10,fontWeight:700,color:T.green}}>{r.creditCode}</div>
-                      <div style={{fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</div>
-                      <div style={{fontSize:11,fontWeight:700,textAlign:"right",color:T.text}}>{r.amount.toLocaleString()}</div>
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"90px 60px 60px 1fr 90px",gap:8,padding:"7px 0",borderBottom:`1px solid ${T.border}`,alignItems:"center"}}>
+                      <div style={{fontSize:12,color:T.sub}}>{r.date}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.red}}>{r.debitCode}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.green}}>{r.creditCode}</div>
+                      <div style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</div>
+                      <div style={{fontSize:12,fontWeight:700,textAlign:"right",color:T.text}}>{r.amount.toLocaleString()}</div>
                     </div>
                   ))}
-                  {rows.length>50&&<div style={{textAlign:"center",padding:8,fontSize:11,color:T.muted}}>…and {rows.length-50} more</div>}
+                  {rows.length>50&&<div style={{textAlign:"center",padding:8,fontSize:12,color:T.muted}}>…and {rows.length-50} more</div>}
                 </div>
-                <div style={{marginTop:14,display:"flex",gap:8}}>
-                  <SaveFlashButton onClick={doImport} label={`⬆ Import All ${rows.length} Entries`}/>
+                <div style={{marginTop:14}}>
+                  <button onClick={doImport} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Import all {rows.length} entries</button>
                 </div>
-                <div style={{fontSize:10,color:T.muted,marginTop:8,lineHeight:1.5}}>
-                  ⚠️ Make sure you have added all accounts and Reskontro contacts before importing.
+                <div style={{fontSize:11,color:T.muted,marginTop:10,lineHeight:1.5}}>
+                  Make sure you've added all accounts and Reskontro contacts before importing.
                 </div>
               </>
             )}
 
             {status==="done"&&(
               <div style={{textAlign:"center",padding:"10px 0"}}>
-                <div style={{fontSize:40,marginBottom:8}}>🎉</div>
+                <i className="ti ti-circle-check" style={{fontSize:36,color:T.green,marginBottom:8}}/>
                 <div style={{fontSize:14,fontWeight:700,color:T.green,marginBottom:4}}>All entries imported!</div>
                 <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Go to Accounts or Reports to verify your balances.</div>
-                <button style={btnRed} onClick={onBack}>← Back to Home</button>
+                <button onClick={onBack} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Back to Home</button>
               </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Instructions */}
-        {status==="idle"&&(
-          <div style={{background:T.blueBg,borderRadius:12,padding:"14px 16px",border:`1px solid ${T.border}`}}>
-            <div style={{fontSize:12,fontWeight:800,color:T.blue,marginBottom:8}}>Before importing — add these contacts in Reskontro:</div>
+      {status==="idle"&&(
+        <div style={cardStyle}>
+          <div style={cardHead}>Before importing — add these contacts in Reskontro</div>
+          <div style={{padding:16}}>
             {[["S001","Supplier 1","Supplier"],["S002","Supplier 2","Supplier"],["S003","Supplier 3","Supplier"],["S004","Supplier 4","Supplier"],["S005","Supplier 5","Supplier"]].map(([id,name,type])=>(
-              <div key={id} style={{display:"flex",gap:8,fontSize:11,color:T.text,marginBottom:4}}>
-                <span style={{background:T.blueBg,color:T.blue,fontWeight:700,padding:"1px 6px",borderRadius:4,minWidth:36,textAlign:"center"}}>{id}</span>
+              <div key={id} style={{display:"flex",gap:8,fontSize:12,color:T.text,marginBottom:6}}>
+                <span style={{background:T.accentLight,color:T.accent,fontWeight:700,padding:"1px 7px",borderRadius:4,minWidth:40,textAlign:"center"}}>{id}</span>
                 <span>{name} <span style={{color:T.muted}}>({type})</span></span>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
