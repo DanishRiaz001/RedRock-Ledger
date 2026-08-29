@@ -2169,11 +2169,14 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
   const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
   const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed",banks:"Bank accounts"};
 
-  // One consistent card look for every widget on this screen — same radius,
-  // same border, same soft shadow — instead of the mix of radii/shadows that
-  // made the page read as several different components glued together.
-  const card={background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,boxShadow:"0 1px 2px rgba(15,42,38,0.03)",padding:20};
-  const cardTitle={fontSize:13.5,fontWeight:800,color:T.text,marginBottom:16,letterSpacing:-0.1};
+  // Same bordered-panel-with-header-band look used everywhere else in the
+  // desktop app now (Voucher details, Postings, Admin panel) — a plain
+  // title bar with its own background/border, not a floating bold label
+  // inside an otherwise undivided card. Every widget below is built from
+  // these three pieces instead of each rolling its own header treatment.
+  const card={background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",boxShadow:"0 1px 2px rgba(15,42,38,0.03)"};
+  const cardHead={padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub};
+  const cardBody={padding:16};
 
   const firstName=(profile&&(profile.display_name||profile.email)||"there").split(/[ @]/)[0];
   const greetHour=new Date().getHours();
@@ -2215,12 +2218,18 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
             const positive=k.delta>=0;
             const KPI_CHIP={"Cash and bank":{bg:"rgba(13,148,136,0.14)",fg:"#0D9488",icon:"ti-droplet"},"Receivable":{bg:"rgba(14,159,110,0.14)",fg:"#0E9F6E",icon:"ti-arrow-down-right"},"Payable":{bg:"rgba(225,72,72,0.12)",fg:"#E14848",icon:"ti-arrow-up-right"},"Net profit":{bg:T.coralLight,fg:T.coral,icon:"ti-chart-line"}};
             const chip=KPI_CHIP[k.label]||{bg:T.accentLight,fg:T.accent,icon:"ti-report-money"};
+            // Flat bordered box — no blur/glass, no big soft glow shadow —
+            // matching the plain panel look used everywhere else now. The
+            // icon shrinks to a small inline marker next to the label
+            // instead of its own bubble, so the card reads as data first.
             return(
-              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 20px",cursor:k.goTo?"pointer":"default",boxShadow:"0 10px 30px rgba(20,60,90,0.06)"}} className={k.goTo?"rr-sidebar-item":""}>
-                <div style={{width:34,height:34,borderRadius:11,background:chip.bg,color:chip.fg,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}><i className={`ti ${chip.icon}`} style={{fontSize:16}}/></div>
-                <div style={{fontSize:11.5,color:T.sub,marginBottom:8,fontWeight:600}}>{k.label}</div>
-                <div style={{fontSize:22,fontWeight:800,color:T.text,marginBottom:8}}>{fmt(k.value)}</div>
-                <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:positive?T.greenBg:T.redLight,color:positive?T.green:T.red}}>{positive?"+":"−"}{fmt(Math.abs(k.delta))}</span>
+              <div key={k.label} onClick={()=>onNavigate&&k.goTo&&onNavigate(k.goTo)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"14px 16px",cursor:k.goTo?"pointer":"default",boxShadow:"0 1px 2px rgba(15,42,38,0.03)"}} className={k.goTo?"rr-sidebar-item":""}>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10}}>
+                  <div style={{width:22,height:22,borderRadius:6,background:chip.bg,color:chip.fg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className={`ti ${chip.icon}`} style={{fontSize:12}}/></div>
+                  <div style={{fontSize:11.5,color:T.sub,fontWeight:600}}>{k.label}</div>
+                </div>
+                <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:8}}>{fmt(k.value)}</div>
+                <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:6,background:positive?T.greenBg:T.redLight,color:positive?T.green:T.red}}>{positive?"+":"−"}{fmt(Math.abs(k.delta))}</span>
                 <span style={{fontSize:10,color:T.muted,marginLeft:6}}>vs last month</span>
               </div>
             );
@@ -2229,8 +2238,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
 
         {widgets.charts&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
           <div style={card}>
-            <div style={cardTitle}>Balance composition</div>
-            <div style={{display:"flex",alignItems:"center",gap:20}}>
+            <div style={cardHead}>Balance composition</div>
+            <div style={{...cardBody,display:"flex",alignItems:"center",gap:20}}>
               <ConicChart data={donutData}/>
               <div style={{display:"flex",flexDirection:"column",gap:9}}>
                 {donutData.map(d=>(
@@ -2244,8 +2253,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
             </div>
           </div>
           <div style={card}>
-            <div style={cardTitle}>Top expense categories (all time)</div>
-            <div style={{display:"flex",alignItems:"center",gap:20}}>
+            <div style={cardHead}>Top expense categories (all time)</div>
+            <div style={{...cardBody,display:"flex",alignItems:"center",gap:20}}>
               <ConicChart data={pieData} donut={false}/>
               <div style={{display:"flex",flexDirection:"column",gap:9}}>
                 {pieData.length?pieData.map(d=>(
@@ -2261,14 +2270,19 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         </div>}
 
         {widgets.entries&&<div style={card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{...cardTitle,marginBottom:0}}>All entries</div>
+          <div style={{...cardHead,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>All entries</span>
+            {/* Flat segmented tabs — same convention as the entry-type
+                switcher and Admin panel's tab bar — instead of fully-rounded
+                filter pills, which read as a different, older UI language
+                than the rest of the desktop app now. */}
             <div style={{display:"flex",gap:6}}>
               {[["all","All"],["income","Income"],["expense","Expense"],["unreconciled","Unreconciled"]].map(([key,label])=>(
-                <button key={key} onClick={()=>setEntryFilter(key)} style={{background:entryFilter===key?T.accent:"none",color:entryFilter===key?"#fff":T.sub,border:`1px solid ${entryFilter===key?T.accent:T.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label} <span style={{opacity:0.75}}>{counts[key]}</span></button>
+                <button key={key} onClick={()=>setEntryFilter(key)} style={{background:entryFilter===key?T.accent:"none",color:entryFilter===key?"#fff":T.sub,border:`1px solid ${entryFilter===key?T.accent:T.border}`,borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label} <span style={{opacity:0.75}}>{counts[key]}</span></button>
               ))}
             </div>
           </div>
+          <div style={cardBody}>
           <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <thead><tr style={{color:T.muted,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>
               <td style={{padding:"0 0 10px"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
@@ -2288,12 +2302,13 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
               {!filteredEntries.length&&<tr><td colSpan="4" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this filter.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>}
       </div>
 
       {widgets.activity&&<div style={card}>
-        <div style={cardTitle}>Activity</div>
-        <div style={{display:"flex",flexDirection:"column",gap:15}}>
+        <div style={cardHead}>Activity</div>
+        <div style={{...cardBody,display:"flex",flexDirection:"column",gap:15}}>
           {activity.map(t=>{
             const isIn=isIncomeSK(t.creditCode);
             return(
@@ -2312,8 +2327,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
       </div>}
 
       {widgets.recent&&recentTabs.length>0&&<div style={{...card,marginTop:16}}>
-        <div style={cardTitle}>Recently viewed</div>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+        <div style={cardHead}>Recently viewed</div>
+        <div style={{...cardBody,display:"flex",flexDirection:"column",gap:2}}>
           {recentTabs.map(rt=>(
             <div key={rt} onClick={()=>onNavigate&&onNavigate(rt)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,cursor:"pointer"}} className="rr-sidebar-item">
               <i className="ti ti-history" style={{fontSize:13,color:T.muted}}/>
@@ -2329,8 +2344,8 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
         const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
         return(
           <div style={{...card,marginTop:16}}>
-            <div style={cardTitle}>Bank accounts</div>
-            <div style={{display:"flex",flexDirection:"column",gap:11}}>
+            <div style={cardHead}>Bank accounts</div>
+            <div style={{...cardBody,display:"flex",flexDirection:"column",gap:11}}>
               {bankAccts.map(a=>{
                 const bal=getBal(a.code);
                 return(
