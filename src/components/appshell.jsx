@@ -336,7 +336,7 @@ function AppShell({user}){
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
       setNextBilag(startBilag);
-      setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false})));
+      setSFState((sR.data||[]).map(f=>({id:f.fund_id,name:f.name,goal:parseFloat(f.goal),saved:parseFloat(f.saved),color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false,accountCode:f.account_code||null})));
       setMoneySourcesState((msR.data||[]).map(m=>({id:m.id,name:m.name,openingReceived:parseFloat(m.opening_received)||0,openingUsed:parseFloat(m.opening_used)||0,inactive:!!m.inactive})));
       setProjectsState((projR.data||[]).map(p=>({id:p.id,name:p.name,inactive:!!p.inactive})));
       setReconciliationStatusState((rsR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,period:r.period,status:r.status,statusComment:r.status_comment||"",accountComment:r.account_comment||"",updatedBy:r.updated_by,updatedAt:r.updated_at})));
@@ -1264,7 +1264,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const {error:delErr}=await scoped(sb.from("sinking_funds").delete().eq("user_id",user.id));
     if(delErr){console.error("SF delete error:",delErr);alert("Sinking Funds save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(f=>({user_id:user.id,...(cid?{company_id:cid}:{}),fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false}));
+      const rows=list.map(f=>({user_id:user.id,...(cid?{company_id:cid}:{}),fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false,account_code:f.accountCode||null}));
       console.log("SF inserting:",rows);
       const {error:insErr}=await sb.from("sinking_funds").insert(rows);
       if(insErr){console.error("SF insert error:",insErr);alert("Sinking Funds save failed (insert): "+insErr.message);}

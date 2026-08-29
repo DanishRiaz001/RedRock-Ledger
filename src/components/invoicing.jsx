@@ -3173,7 +3173,7 @@ function ContactSearchInline({contacts,value,onChange,type}){
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt"}){
   const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
   const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",sfFundId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -3311,7 +3311,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           description:l.description||form.description,
           amount:parseFloat(l.amount),
           contactId:form.contactId||null,
-          sfFundId:form.sfFundId||null,
           groupRef,
           moneySourceId:form.moneySourceId||null,
           projectId:form.projectId||null,
@@ -3321,10 +3320,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       }
       if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);
       setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
-      if(form.sfFundId&&saveSinkingFunds){
-        const updated=(sinkingFunds||[]).map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
-        saveSinkingFunds(updated);
-      }
+      // No manual sinking-fund increment here anymore — a fund's progress
+      // is now the real balance of its own account (see balAt above /
+      // SinkingFundsScreen), which this entry just updated on its own by
+      // being posted like any other transaction.
       setForm(emptyTxn);
     } finally {
       setSaving(false);
@@ -3363,12 +3362,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     } else {setCalcResult(null);}
   };
 
-  // Sinking fund detection
-  const isSFAccount=(code)=>code&&code.startsWith("1009");
-  const needSF=isSFAccount(form.debitCode)||isSFAccount(form.creditCode);
-
   // Load funds from prop
   const sfFunds=sinkingFunds||[];
+  // Real ledger balance of an account — this is now literally what a
+  // sinking fund's progress is, once it's linked to its own account code,
+  // so it stays correct no matter which screen posted the transaction.
+  const balAt=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
 
   const saveInvoice=async()=>{
     if(!invContactId||!invAccountCode||!parseFloat(invAmount)||saving)return;
@@ -3822,35 +3821,34 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           }} style={{fontSize:11,color:T.accent,background:T.accentLight,border:"none",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add line</button>
         </div>
 
-        {/* Sinking fund picker — when 1009x account selected */}
-        {needSF&&(
-          <div style={{background:T.accentLight,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"12px 14px"}}>
-            <div style={{fontSize:10,color:T.accent,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{isDesktop?"Sinking Fund Target":"🎯 Sinking Fund Target"}</div>
-            <select value={form.sfFundId||""} onChange={e=>setForm(p=>({...p,sfFundId:e.target.value}))} style={{...selSm,width:"100%",marginBottom:form.sfFundId?"8px":"0"}}>
-              <option value="">— Select a fund —</option>
-              {sfFunds.map(f=>(
-                <option key={f.id} value={f.id}>{f.icon} {f.name} · saved {fmt(f.saved||0)} of {fmt(f.goal||0)}</option>
-              ))}
-            </select>
-            {!sfFunds.length&&<div style={{fontSize:11,color:T.muted,marginTop:4}}>No funds yet. Create one in Sinking Funds first.</div>}
-            {form.sfFundId&&sfFunds.find(f=>f.id===form.sfFundId)&&(()=>{
-              const f=sfFunds.find(x=>x.id===form.sfFundId);
-              const pct=Math.min(100,Math.round(((f.saved||0)/(f.goal||1))*100));
-              return(
-                <div>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                    <span style={{fontSize:11,color:T.sub}}>{f.icon} {f.name}</span>
-                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{pct}%</span>
-                  </div>
-                  <div style={{background:"rgba(255,255,255,0.5)",borderRadius:4,height:5,overflow:"hidden"}}>
-                    <div style={{width:`${pct}%`,height:"100%",background:f.color||T.accent,borderRadius:4}}/>
-                  </div>
-                  <div style={{fontSize:10,color:T.muted,marginTop:4}}>This amount will be added to the fund on save</div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        {/* Sinking fund progress preview — each fund now has its own real
+            ledger account, so contributing to one is just posting a normal
+            entry against that account via the Debit/Credit dropdowns above,
+            the same as any other account. No separate "which fund" tag to
+            set and no manual number to keep in sync — this card is purely
+            informational, confirming which fund (if any) this entry
+            affects and what its percentage will be afterward, computed
+            live from the real transaction history. */}
+        {(()=>{
+          const matchedFund=sfFunds.find(f=>f.accountCode&&(f.accountCode===form.debitCode||f.accountCode===form.creditCode));
+          if(!matchedFund)return null;
+          const currentSaved=matchedFund.accountCode?balAt(matchedFund.accountCode):(matchedFund.saved||0);
+          const amt=parseFloat(form.amount)||0;
+          const projected=currentSaved+(matchedFund.accountCode===form.debitCode?amt:-amt);
+          const pct=matchedFund.goal>0?Math.min(100,Math.round((projected/matchedFund.goal)*100)):0;
+          return(
+            <div style={{background:T.accentLight,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"12px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:11,fontWeight:700,color:T.sub}}>{matchedFund.icon} {matchedFund.name}</span>
+                <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{pct}% after this entry</span>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.5)",borderRadius:4,height:5,overflow:"hidden"}}>
+                <div style={{width:`${pct}%`,height:"100%",background:matchedFund.color||T.accent,borderRadius:4}}/>
+              </div>
+              <div style={{fontSize:10,color:T.muted,marginTop:4}}>{fmt(projected)} of {fmt(matchedFund.goal||0)}</div>
+            </div>
+          );
+        })()}
 
         {/* Smart contact selector — only when 1500 or 2400 */}
         {needContact&&(
@@ -4150,9 +4148,53 @@ const INIT_SF=[
   {id:"SF003",name:"Vacation",goal:150000,saved:62000,color:"#7C3AED",icon:"✈️",months:6},
 ];
 
-function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[],filterFrom,filterTo,isDesktop=false}){
+function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[],filterFrom,filterTo,isDesktop=false,accounts=[],addAccount,addTransaction}){
   // No local funds state — always use parent sinkingFunds directly to avoid sync bugs
   const funds=sinkingFunds||[];
+  // A fund used to track "saved" as a plain number you (or New Entry's old
+  // sinking-fund tagging) manually incremented — completely disconnected
+  // from the real ledger, so posting a contribution via Bank reconciliation,
+  // General Ledger, or Import (anything other than that one New Entry path)
+  // never moved it, and the number could be typed in directly regardless of
+  // what actually happened. Each fund now gets its own dedicated account
+  // (1009xx) in the real chart of accounts; once linked, its progress is
+  // simply that account's real balance — correct no matter which screen
+  // posted the transaction. `saved` is kept only as the pre-migration
+  // fallback for funds that haven't been linked yet.
+  const balAt=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
+  const displaySaved=f=>f.accountCode?balAt(f.accountCode):(f.saved||0);
+  const nextFundAccountCode=()=>{
+    const used=new Set([...(accounts||[]).map(a=>a.code),...funds.filter(f=>f.accountCode).map(f=>f.accountCode)]);
+    for(let n=1;n<100;n++){
+      const code="1009"+String(n).padStart(2,"0");
+      if(!used.has(code))return code;
+    }
+    return "1009"+String(Date.now()).slice(-4);
+  };
+  // Links an existing (pre-migration) fund to a brand-new dedicated account,
+  // carrying its current manually-tracked total over as a real opening-
+  // balance entry (against the standard Opening Balance Account, 9200) so
+  // no history is lost — from that point on its progress is just the
+  // account's real balance like any other fund.
+  const linkFundToAccount=async(f)=>{
+    const code=nextFundAccountCode();
+    if(addAccount)await addAccount({code,name:f.name,matchable:true});
+    if((f.saved||0)>0&&addTransaction){
+      await addTransaction({date:new Date().toISOString().slice(0,10),debitCode:code,creditCode:"9200",description:`Opening balance — ${f.name} (migrated from manual tracking)`,amount:f.saved});
+    }
+    return{...f,accountCode:code};
+  };
+  const[linking,setLinking]=useState(false);
+  const linkAllFunds=async()=>{
+    setLinking(true);
+    const updated=[];
+    for(const f of funds){
+      updated.push(f.accountCode?f:await linkFundToAccount(f));
+    }
+    saveSinkingFunds(updated);
+    setLinking(false);
+  };
+  const unlinkedFunds=funds.filter(f=>!f.inactive&&!f.accountCode);
   const[showForm,setShowForm]=useState(false);
   const[editId,setEditId]=useState(null);
   const[form,setForm]=useState({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""});
@@ -4161,7 +4203,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
 
   const activeFunds=funds.filter(f=>!f.inactive);
   const totalGoal=activeFunds.reduce((s,f)=>s+(f.goal||0),0);
-  const totalSaved=activeFunds.reduce((s,f)=>s+(f.saved||0),0);
+  const totalSaved=activeFunds.reduce((s,f)=>s+displaySaved(f),0);
   const overallPct=totalGoal>0?Math.min(Math.round((totalSaved/totalGoal)*100),100):0;
 
   // Detect leftover damage from a fixed bug where a new fund's id could
@@ -4186,7 +4228,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   // Monthly contribution = sum of all monthly required amounts
   const totalMonthly=activeFunds.reduce((s,f)=>{
     if(!f.months||f.months<=0)return s;
-    return s+Math.ceil((f.goal-f.saved)/f.months);
+    return s+Math.ceil((f.goal-displaySaved(f))/f.months);
   },0);
 
   // Monthly income from transactions
@@ -4197,18 +4239,25 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
     transactions.filter(t=>t.date>=curFrom&&t.date<=curTo&&!t.reversedBy&&!t.reversalOf&&isIncomeSK(t.creditCode)).reduce((s,t)=>s+t.amount,0),
   [transactions,curFrom,curTo]);
 
-  // Last month saved — look at sinking fund transactions from last month
+  // Last month saved — net movement of each linked fund's own account
+  // during last month (a real balance change, not a blanket "any 1009x
+  // debit" guess that would double-count multiple funds' activity or miss
+  // a fund that isn't linked yet).
   const lastMonthFrom=new Date(now.getFullYear(),now.getMonth()-1,1).toISOString().slice(0,10);
   const lastMonthTo=new Date(now.getFullYear(),now.getMonth(),0).toISOString().slice(0,10);
   const lastMonthSaved=useMemo(()=>
-    transactions.filter(t=>t.date>=lastMonthFrom&&t.date<=lastMonthTo&&(t.debitCode&&t.debitCode.startsWith("1009"))).reduce((s,t)=>s+t.amount,0),
-  [transactions,lastMonthFrom,lastMonthTo]);
+    activeFunds.filter(f=>f.accountCode).reduce((sum,f)=>{
+      const net=transactions.filter(t=>t.date>=lastMonthFrom&&t.date<=lastMonthTo&&(t.debitCode===f.accountCode||t.creditCode===f.accountCode)).reduce((s,t)=>t.debitCode===f.accountCode?s+t.amount:s-t.amount,0);
+      return sum+net;
+    },0),
+  [transactions,lastMonthFrom,lastMonthTo,activeFunds]);
 
   // Risk level per fund
   const getRisk=(f)=>{
+    const saved=displaySaved(f);
     if(!f.months||f.months<=0)return{label:"No timeline",color:"#888",bg:"#f3f4f6"};
-    const needed=Math.ceil((f.goal-f.saved)/f.months);
-    const pct=f.goal>0?(f.saved/f.goal)*100:0;
+    const needed=Math.ceil((f.goal-saved)/f.months);
+    const pct=f.goal>0?(saved/f.goal)*100:0;
     const timeRatio=pct/(100/f.months); // how much saved vs how much time passed
     if(pct>=100)return{label:"Complete",color:"#00875A",bg:"#eaf3de"};
     if(needed<=totalMonthly*0.3)return{label:"On track",color:"#3b6d11",bg:"#eaf3de"};
@@ -4235,10 +4284,12 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
   };
 
   const openNew=()=>{setForm({name:"",goal:"",saved:"",icon:"🎯",color:"#0057B8",months:""});setEditId(null);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
+  // Editing never touches saved/accountCode — once a fund is linked, its
+  // number comes from the real ledger, not this form.
   const openEdit=f=>{setForm({name:f.name,goal:String(f.goal),saved:String(f.saved),icon:f.icon,color:f.color,months:String(f.months||"")});setEditId(f.id);setShowForm(true);setMenuOpen(false);setCardMenu(null);};
   const deleteFund=id=>{
     const f=funds.find(x=>x.id===id);
-    if(f&&(f.saved||0)>0){alert("Cannot delete a fund with saved balance. Use Rename or Inactive instead.");setCardMenu(null);return;}
+    if(f&&displaySaved(f)>0){alert("Cannot delete a fund with saved balance. Use Rename or Inactive instead.");setCardMenu(null);return;}
     const newList=funds.filter(x=>x.id!==id);saveSinkingFunds(newList);setCardMenu(null);
   };
   const toggleFundInactive=id=>{
@@ -4246,28 +4297,45 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
     saveSinkingFunds(newList);setCardMenu(null);
   };
   const cancelForm=()=>{setShowForm(false);setEditId(null);};
-  const save=()=>{
-    if(!form.name.trim()||!parseFloat(form.goal))return;
-    const savedVal=form.saved!==""?parseFloat(form.saved):0;
+  const[saving,setSaving]=useState(false);
+  const save=async()=>{
+    if(!form.name.trim()||!parseFloat(form.goal)||saving)return;
     const monthsVal=form.months?parseInt(form.months):null;
     if(editId){
-      const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}:f);
+      // Name/goal/months only — saved and accountCode are untouched here.
+      const updated=funds.map(f=>f.id===editId?{...f,name:form.name,goal:parseFloat(form.goal),months:monthsVal}:f);
       saveSinkingFunds(updated);
-    } else {
-      // Using funds.length+1 for the id collided after any fund got deleted
-      // (e.g. 3 funds → delete the 2nd → length is 2 → next new fund reuses
-      // an id already taken by the 3rd) — silently pointing budget sweeps,
-      // edits, and deletes at the wrong fund. Base it on the highest existing
-      // numeric suffix instead, so it's unique no matter what's been removed.
+      cancelForm();
+      return;
+    }
+    // Using funds.length+1 for the id collided after any fund got deleted
+    // (e.g. 3 funds → delete the 2nd → length is 2 → next new fund reuses
+    // an id already taken by the 3rd) — silently pointing budget sweeps,
+    // edits, and deletes at the wrong fund. Base it on the highest existing
+    // numeric suffix instead, so it's unique no matter what's been removed.
+    setSaving(true);
+    try{
       const maxNum=funds.reduce((max,f)=>{
         const m=/^SF(\d+)$/.exec(f.id);
         return m?Math.max(max,parseInt(m[1],10)):max;
       },0);
       const id="SF"+String(maxNum+1).padStart(3,"0");
-      const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:savedVal,icon:form.icon,color:form.color,months:monthsVal}];
+      // A brand-new fund gets its own dedicated account from the moment
+      // it's created — "Starting balance" (if any) becomes a real opening
+      // transaction against it, so the number on the card is never
+      // anything other than what the ledger actually says.
+      const accountCode=nextFundAccountCode();
+      if(addAccount)await addAccount({code:accountCode,name:form.name,matchable:true});
+      const startingBalance=form.saved!==""?parseFloat(form.saved):0;
+      if(startingBalance>0&&addTransaction){
+        await addTransaction({date:new Date().toISOString().slice(0,10),debitCode:accountCode,creditCode:"9200",description:`Opening balance — ${form.name}`,amount:startingBalance});
+      }
+      const newList=[...funds,{id,name:form.name,goal:parseFloat(form.goal),saved:0,icon:form.icon,color:form.color,months:monthsVal,accountCode}];
       saveSinkingFunds(newList);
+      cancelForm();
+    } finally {
+      setSaving(false);
     }
-    cancelForm();
   };
 
   const COLORS=["#00875A","#0057B8","#7C3AED","#B45309","#0D7377","#1D4ED8"];
@@ -4283,6 +4351,13 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
         <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {duplicateIdFunds.length} fund{duplicateIdFunds.length===1?"":"s"} share an internal ID with another fund (a past bug could cause this after deleting one) — sweeps, edits, or deletes could affect the wrong fund until this is fixed.</div>
           <button onClick={fixDuplicateIds} style={{background:"#fff",border:`1px solid ${T.orange}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Fix now</button>
+        </div>
+      )}
+
+      {unlinkedFunds.length>0&&(
+        <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {unlinkedFunds.length} fund{unlinkedFunds.length===1?"":"s"} still {unlinkedFunds.length===1?"tracks":"track"} its saved amount as a plain number instead of a real ledger account — only updates when tagged in New Entry's old sinking-fund picker, not from Bank reconciliation, Import, or anywhere else you might post to it. Linking creates a dedicated account for each and carries its current total over as a real opening-balance entry, so nothing is lost.</div>
+          <button onClick={linkAllFunds} disabled={linking} style={{background:"#fff",border:`1px solid ${T.orange}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,color:T.orange,cursor:linking?"wait":"pointer",fontFamily:"inherit"}}>{linking?"Linking…":`Link ${unlinkedFunds.length===1?"it":"all"} now`}</button>
         </div>
       )}
 
@@ -4348,8 +4423,20 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
               <input placeholder="Fund name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Goal</div><input type="number" placeholder="500000" value={form.goal} onChange={e=>setForm(p=>({...p,goal:e.target.value}))} style={inp}/></div>
-                <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Saved</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
+                {editId?(
+                  // Once a fund exists, its saved amount is the real balance
+                  // of its own account — nowhere left to type a number in.
+                  <div>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Saved</div>
+                    <div style={{...inp,display:"flex",alignItems:"center",background:T.bg,color:T.sub,cursor:"default"}}>{fmt(displaySaved(funds.find(f=>f.id===editId)||{}))}</div>
+                  </div>
+                ):(
+                  <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Starting balance</div><input type="number" placeholder="0" value={form.saved} onChange={e=>setForm(p=>({...p,saved:e.target.value}))} style={inp}/></div>
+                )}
               </div>
+              {editId&&(()=>{const f=funds.find(x=>x.id===editId);return f&&f.accountCode?(
+                <div style={{fontSize:11,color:T.muted}}>Linked to account <b style={{color:T.text}}>{f.accountCode}</b> — post any entry to it (from anywhere) and this updates automatically.</div>
+              ):null;})()}
               <div><div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase"}}>Months to goal</div><input type="number" placeholder="e.g. 24" value={form.months} onChange={e=>setForm(p=>({...p,months:e.target.value}))} style={inp}/></div>
               {!editId&&(
                 <div>
@@ -4360,9 +4447,10 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                   <div style={{display:"flex",gap:7}}>
                     {COLORS.map(col=><button key={col} onClick={()=>setForm(p=>({...p,color:col}))} style={{width:22,height:22,borderRadius:"50%",background:col,border:`3px solid ${form.color===col?"#111":"transparent"}`,cursor:"pointer"}}/>)}
                   </div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:8}}>A dedicated account is created automatically for this fund — any entry posted to it (from any screen) will count toward its goal.</div>
                 </div>
               )}
-              <SaveFlashButton onClick={save} label={editId?"Save Changes":"Create Fund"}/>
+              <SaveFlashButton onClick={save} label={saving?"Creating…":editId?"Save Changes":"Create Fund"}/>
             </div>
           </div>
         )}
@@ -4370,8 +4458,9 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
         {/* Fund cards — 2 column grid on mobile, 3 on desktop */}
         <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 1fr 1fr":"1fr 1fr",gap:10}}>
           {activeFunds.map(f=>{
-            const pct=Math.min(Math.round(((f.saved||0)/(f.goal||1))*100),100);
-            const remaining=Math.max(0,f.goal-(f.saved||0));
+            const saved=displaySaved(f);
+            const pct=Math.min(Math.round((saved/(f.goal||1))*100),100);
+            const remaining=Math.max(0,f.goal-saved);
             const done=pct>=100;
             const monthly=f.months&&f.months>0&&!done?Math.ceil(remaining/f.months):null;
             const risk=getRisk(f);
@@ -4389,7 +4478,7 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                         <div style={{position:"absolute",right:0,top:28,background:"#fff",border:"0.5px solid #d3d1c7",borderRadius:10,zIndex:100,minWidth:140,boxShadow:"0 6px 20px rgba(0,0,0,0.1)"}}>
                           <div onClick={()=>openEdit(f)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.accent,fontWeight:600,borderBottom:"0.5px solid #d3d1c7"}}>✏️ Edit</div>
                           <div onClick={()=>toggleFundInactive(f.id)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.orange,fontWeight:600,borderBottom:"0.5px solid #d3d1c7"}}>{f.inactive?"✅ Reactivate":"⏸ Inactive"}</div>
-                          {(!f.saved||f.saved===0)?<div onClick={()=>deleteFund(f.id)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}>🗑️ Delete</div>:<div style={{padding:"10px 14px",fontSize:10,color:"#888780"}}>Has balance — no delete</div>}
+                          {saved===0?<div onClick={()=>deleteFund(f.id)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}>🗑️ Delete</div>:<div style={{padding:"10px 14px",fontSize:10,color:"#888780"}}>Has balance — no delete</div>}
                         </div>
                       )}
                     </div>
@@ -4410,9 +4499,15 @@ function SinkingFundsScreen({onBack,sinkingFunds,saveSinkingFunds,transactions=[
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                   <RingGauge pct={pct} color={done?"#00875A":f.color} size={52}/>
                   <div>
-                    <div style={{fontSize:15,fontWeight:500,color:"#1a1a18"}}>{fmt(f.saved||0)}</div>
+                    <div style={{fontSize:15,fontWeight:500,color:"#1a1a18"}}>{fmt(saved)}</div>
                     <div style={{fontSize:11,color:"#888780"}}>of {fmt(f.goal)}</div>
                   </div>
+                </div>
+                {/* Which real account backs this fund — the whole point of
+                    the redesign is that posting here from anywhere updates
+                    this card, so it's worth always being visible. */}
+                <div style={{fontSize:10,color:f.accountCode?"#888780":T.orange,marginBottom:8}}>
+                  {f.accountCode?`Account ${f.accountCode}`:"⚠ Not linked to an account yet"}
                 </div>
 
                 {/* Progress bar */}

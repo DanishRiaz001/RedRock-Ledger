@@ -311,7 +311,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   }
   if(tab==="SinkingFunds"&&!isDesktop){
     if(!feat.sinkingFunds)return(<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>);
-    return(<ScreenErrorBoundary name="Sinking Funds"><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")}/></ScreenErrorBoundary>);
+    return(<ScreenErrorBoundary name="Sinking Funds"><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")} accounts={accounts} addAccount={addAccount} addTransaction={addTransactionNotified}/></ScreenErrorBoundary>);
   }
   if(tab==="Budget"&&!isDesktop){
     if(!feat.budget)return(<DisabledScreen title="Budget" onBack={()=>setTab("Dashboard")}/>);
@@ -1221,7 +1221,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="SinkingFunds"&&(
           feat.sinkingFunds
-            ?<div style={{maxWidth:900}}><ScreenErrorBoundary name="Sinking Funds"><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")} isDesktop={true}/></ScreenErrorBoundary></div>
+            ?<div style={{maxWidth:900}}><ScreenErrorBoundary name="Sinking Funds"><SinkingFundsScreen sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} transactions={transactions} filterTo={filterTo} onBack={()=>setTab("Dashboard")} isDesktop={true} accounts={accounts} addAccount={addAccount} addTransaction={addTransactionNotified}/></ScreenErrorBoundary></div>
             :<DisabledScreen title="Sinking Funds" onBack={()=>setTab("Dashboard")}/>
         )}
 
