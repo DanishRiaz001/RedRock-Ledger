@@ -3223,6 +3223,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[lastSavedBilag,setLastSavedBilag]=React.useState(null);
   const[saving,setSaving]=React.useState(false);
   const[showAttachPopover,setShowAttachPopover]=useState(false);
+  const[showCommentPopover,setShowCommentPopover]=useState(false);
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
@@ -3450,14 +3451,38 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
               <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
             </div>
-            <div style={{flex:"0 0 auto"}}>
+            <div>
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Entry type</div>
-              <div style={{display:"flex",gap:8}}>
-                {[["receipt","Receipt"],["supplier","Supplier Invoice"],["customer","Customer Sale"]].map(([val,label])=>(
-                  <button key={val} onClick={()=>setEntryMode(val)} style={{...inp,width:"auto",background:entryMode===val?T.accent:"none",color:entryMode===val?"#fff":T.sub,border:`1px solid ${entryMode===val?T.accent:T.border}`,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>
-                ))}
-              </div>
+              <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px"}}>
+                <option value="receipt">Receipt</option>
+                <option value="supplier">Supplier Invoice</option>
+                <option value="customer">Customer Sale</option>
+              </select>
             </div>
+            {/* Comment lives here as an icon, not a permanent full-width row
+                — a filled dot marks when one's actually been typed, and it
+                only shows for Receipt entries since that's the only mode a
+                comment currently attaches to. Pushed to the far right of
+                this same row via marginLeft:auto, same idea as the "Show
+                preview" tab on the attachment panel. */}
+            {entryMode==="receipt"&&(
+              <div style={{position:"relative",marginLeft:"auto"}}>
+                <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4,visibility:"hidden"}}>Comment</div>
+                <button onClick={()=>setShowCommentPopover(s=>!s)} title={form.notes?"Edit comment":"Add a comment"} style={{...inp,width:40,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:form.notes?T.accent:T.sub,background:form.notes?T.accentLight:"#fff",borderColor:form.notes?T.accent:T.border,position:"relative"}}>
+                  <i className="ti ti-message-circle" style={{fontSize:16}}/>
+                  {form.notes&&<div style={{position:"absolute",top:-3,right:-3,width:12,height:12,borderRadius:"50%",background:T.accent,border:"2px solid #fff"}}/>}
+                </button>
+                {showCommentPopover&&(
+                  <>
+                    <div onClick={()=>setShowCommentPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                    <div style={{position:"absolute",right:0,top:46,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:260}}>
+                      <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>Comment (optional)</div>
+                      <textarea autoFocus value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ):(
@@ -3517,7 +3542,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
 
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <input placeholder="Comment (optional) — extra context for this entry" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{...inpSm}}/>
+        {/* Desktop: this is now the comment icon on the Voucher details row
+            instead of a permanent full-width input — mobile keeps it here
+            since there's no header row to attach an icon to. */}
+        {!isDesktop&&<input placeholder="Comment (optional) — extra context for this entry" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{...inpSm}}/>}
         {trackProjects&&(
           <select value={form.projectId||""} onChange={e=>{
             if(e.target.value==="__new__"){
@@ -3723,6 +3751,22 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           ))}
         </div>
         )}
+        {/* Desktop: Tags and Whose sit right under the Date/Description
+            columns instead of as separate full-width rows near the bottom —
+            same width as those two columns (96+150+gap), so they read as
+            "extra detail on this line" rather than two more free-floating
+            fields competing with Debit/Credit/Amount for attention. */}
+        {isDesktop&&(feat.tags!==false||(moneySources&&moneySources.length>0))&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:252,marginBottom:4}}>
+            {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>}
+            {moneySources&&moneySources.length>0&&(
+              <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,padding:"7px 8px"}}>
+                <option value="">— Whose (optional) —</option>
+                {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            )}
+          </div>
+        )}
         <div>
           {calcResult&&(
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -3817,16 +3861,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </div>
         )}
 
+        {/* Desktop: Tags and Whose already rendered right under the
+            Postings table's Date/Description columns above — this spot is
+            mobile-only now. */}
+        {!isDesktop&&<>
         {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
-        {moneySources&&moneySources.length>0&&(isDesktop?(
-          <div>
-            <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Whose</div>
-            <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
-              <option value="">— Select source (optional) —</option>
-              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-        ):(
+        {moneySources&&moneySources.length>0&&(
           <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
             <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
             <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
@@ -3834,7 +3874,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-        ))}
+        )}
+        </>}
         {/* Desktop: a normal-sized, left-aligned primary button — matching
             how a save/create action sits in the rest of the desktop app's
             forms, instead of a full-width mobile "tap target" button. */}
