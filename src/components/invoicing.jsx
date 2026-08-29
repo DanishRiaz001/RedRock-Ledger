@@ -4047,7 +4047,13 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     const attached=form.attachmentId?inboxFiles.find(f=>f.id===form.attachmentId):null;
     return(
       <ResizableSplit
-        left={formCard}
+        // Capped to 60% of the screen width regardless of whether the
+        // preview panel is open or collapsed — without this, hiding the
+        // preview let the form stretch edge-to-edge (ResizableSplit's left
+        // side is flex:1, so it fills whatever's left), which made every
+        // field awkwardly wide instead of just leaving the freed space
+        // blank the way collapsing a side panel normally should.
+        left={<div style={{maxWidth:"60vw"}}>{formCard}</div>}
         collapsible={true}
         collapseLabel="Hide preview"
         expandLabel="Show preview"

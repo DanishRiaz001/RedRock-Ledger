@@ -4585,8 +4585,28 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
   const searchMatch=(text)=>!searchQuery||String(text||"").toLowerCase().includes(searchQuery.toLowerCase());
   const matchesDirection=(amount)=>directionFilter==="all"||(directionFilter==="incoming"?amount>=0:amount<0);
-  const displayLeftRows=applySort(leftRows.filter(t=>(searchMatch(t.description)||searchMatch(fmtBal(mv(t))))&&matchesDirection(mv(t))),sortLeft,mv);
-  const displayRightRows=applySort((filterMode==="matched"?matchedLines:rightRows).filter(l=>(searchMatch(l.description)||searchMatch(fmtBal(l.amount)))&&matchesDirection(l.amount)),sortRight,l=>l.amount);
+  // applySort's plain date/amount sort was silently undoing the "pin the
+  // suggested pair to row 1" placement from leftRows/rightRows above the
+  // moment any real sort was active (Date-ascending by default) — the
+  // suggested row only looked pinned when its own date happened to sort
+  // first anyway, not because pinning actually worked. Sort everything
+  // else first, then reinsert the suggested row at the very top, so it's
+  // reliably the first thing you see regardless of sort column/direction.
+  const displayLeftRows=(()=>{
+    const filtered=leftRows.filter(t=>(searchMatch(t.description)||searchMatch(fmtBal(mv(t))))&&matchesDirection(mv(t)));
+    if(!topSuggestion)return applySort(filtered,sortLeft,mv);
+    const pinned=filtered.find(t=>t.id===topSuggestion.txn.id);
+    const rest=applySort(filtered.filter(t=>t.id!==topSuggestion.txn.id),sortLeft,mv);
+    return pinned?[pinned,...rest]:rest;
+  })();
+  const displayRightRows=(()=>{
+    const source=filterMode==="matched"?matchedLines:rightRows;
+    const filtered=source.filter(l=>(searchMatch(l.description)||searchMatch(fmtBal(l.amount)))&&matchesDirection(l.amount));
+    if(filterMode==="matched"||!topSuggestion)return applySort(filtered,sortRight,l=>l.amount);
+    const pinned=filtered.find(l=>l.id===topSuggestion.line.id);
+    const rest=applySort(filtered.filter(l=>l.id!==topSuggestion.line.id),sortRight,l=>l.amount);
+    return pinned?[pinned,...rest]:rest;
+  })();
   const allLeftSelected=displayLeftRows.length>0&&displayLeftRows.every(t=>selectedTxnIds.has(t.id));
   const allRightSelected=filterMode!=="matched"&&displayRightRows.length>0&&displayRightRows.every(l=>selectedLineIds.has(l.id));
   const toggleSelectAllLeft=()=>setSelectedTxnIds(allLeftSelected?new Set():new Set(displayLeftRows.map(t=>t.id)));
