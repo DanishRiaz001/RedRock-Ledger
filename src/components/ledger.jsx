@@ -305,7 +305,13 @@ function fmtDateDisplay(iso){
   if(isNaN(d.getTime()))return iso;
   return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
-function FlexDateInput({value,onChange,style}){
+// `style` only ever reached the outer wrapper (for width/flex/position from
+// the caller's layout) — the visible <input> always rendered at `inp`'s full
+// default size regardless, which silently broke any caller trying to shrink
+// it to match a smaller sibling field. `inputStyle` is the real hook for
+// that: it merges onto the actual input, defaulting to {} so every existing
+// caller (which only ever used `style`) renders exactly as before.
+function FlexDateInput({value,onChange,style,inputStyle}){
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState("");
   const nativeRef=React.useRef(null);
@@ -323,7 +329,7 @@ function FlexDateInput({value,onChange,style}){
         onChange={e=>setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){setEditing(false);}}}
-        style={{...inp,paddingRight:36}}
+        style={{...inp,paddingRight:36,...inputStyle}}
       />
       <i
         className="ti ti-calendar"

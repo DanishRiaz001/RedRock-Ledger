@@ -3215,6 +3215,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
+  // The bilag number for a NOT-YET-SAVED entry is only a prediction
+  // (`nextBilag`) — showing it up front as if it were assigned looked
+  // presumptuous and, on a busy day with two tabs open, could even be wrong
+  // by the time Save is actually clicked. Only surface the real one, once
+  // it comes back from the save itself.
+  const[lastSavedBilag,setLastSavedBilag]=React.useState(null);
   const[saving,setSaving]=React.useState(false);
   const[showAttachPopover,setShowAttachPopover]=useState(false);
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
@@ -3293,6 +3299,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           vatPct:vc?vc.rate:null,
         });
       }
+      if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);
       setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
       if(form.sfFundId&&saveSinkingFunds){
         const updated=(sinkingFunds||[]).map(f=>f.id===form.sfFundId?{...f,saved:(f.saved||0)+amount}:f);
@@ -3343,7 +3350,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   // Load funds from prop
   const sfFunds=sinkingFunds||[];
 
-  const saveInvoice=()=>{
+  const saveInvoice=async()=>{
     if(!invContactId||!invAccountCode||!parseFloat(invAmount)||saving)return;
     if(isDateClosed(form.date)){
       alert(`Period is closed up to ${getPeriodClose()}. This date cannot accept new entries.`);
@@ -3355,7 +3362,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
-    allLines.forEach((l,idx)=>{
+    let firstBilag=null;
+    for(let idx=0;idx<allLines.length;idx++){
+      const l=allLines[idx];
       const amt=parseFloat(l.amount);
       const isReverse=amt<0; // negative amount = kreditnote/kreditnota, reverses the normal debit/credit
       const absAmt=Math.abs(amt);
@@ -3369,7 +3378,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         debitCode=isReverse?contactCode:l.accountCode;
         creditCode=isReverse?l.accountCode:contactCode;
       }
-      onSave({
+      const res=await onSave({
         date:form.date,
         debitCode,creditCode,
         description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
@@ -3380,14 +3389,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         groupRef,
         attachmentIds:idx===0?invAttachmentIds:undefined,
       });
-    });
+      if(idx===0&&res&&res.bilag!=null)firstBilag=res.bilag;
+    }
     if(hasPayment){
       // Payment leg, settling the full invoice total on the same date —
       // purchase → Supplier debited / Bank or Cash credited.
       // sale → Bank or Cash debited / Customer credited.
       const debitCode=invIsCustomer?invRegisterPayment:contactCode;
       const creditCode=invIsCustomer?contactCode:invRegisterPayment;
-      onSave({
+      await onSave({
         date:form.date,
         debitCode,creditCode,
         description:`Payment${invoiceNo?" · "+invoiceNo:""}`,
@@ -3396,6 +3406,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         groupRef,
       });
     }
+    if(firstBilag!=null)setLastSavedBilag(firstBilag);
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
     resetInvoiceForm();
     setSaving(false);
@@ -3426,15 +3437,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               the real date <input> (styled via the shared `inp` object)
               renders at whatever height its own font-size/padding/border
               naturally produce, which isn't exactly any round number. So
-              instead of forcing a height, Bilag and the entry-type buttons
-              are given that EXACT SAME padding, font-size, border and
-              box-sizing as `inp` — identical box models always compute to
-              identical heights, no magic number to keep in sync. */}
+              instead of forcing a height, the entry-type buttons are given
+              that EXACT SAME padding, font-size, border and box-sizing as
+              `inp` — identical box models always compute to identical
+              heights, no magic number to keep in sync.
+              No Bilag field here anymore — it's only a prediction until
+              Save actually assigns one, so it now shows up on the Save
+              button itself once the entry is really saved, instead of
+              claiming a number up front. */}
           <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap",alignItems:"flex-start"}}>
-            <div>
-              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Bilag</div>
-              <div style={{...inp,width:"auto",minWidth:84,background:T.bg,fontWeight:700,display:"inline-flex",alignItems:"center"}}>{fmtB(nextBilag)}</div>
-            </div>
             <div>
               <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
               <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
@@ -3562,7 +3573,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],date:v};
                   setForm(p=>({...p,lines}));
-                }} style={{fontSize:11}}/>
+                }} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
               </div>
               <div style={{flex:"0 0 150px",minWidth:0}}>
                 <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
@@ -3652,7 +3663,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],date:v};
                     setForm(p=>({...p,lines}));
-                  }} style={{fontSize:11}}/>
+                  }} inputStyle={{fontSize:12,padding:"7px 8px"}}/>
                 </div>
                 <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
                   if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
@@ -3827,7 +3838,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         {/* Desktop: a normal-sized, left-aligned primary button — matching
             how a save/create action sits in the rest of the desktop app's
             forms, instead of a full-width mobile "tap target" button. */}
-        <button disabled={!valid||saving} style={isDesktop?{background:entrySaved?"#059669":T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:valid&&!saving?"pointer":"default",opacity:valid&&!saving?1:0.5,alignSelf:"flex-start",fontFamily:"inherit",transition:"background 0.2s"}:{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?"✓ Saved!":saving?"Saving…":"Save Entry"}</button>
+        <button disabled={!valid||saving} style={isDesktop?{background:entrySaved?"#059669":T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:valid&&!saving?"pointer":"default",opacity:valid&&!saving?1:0.5,alignSelf:"flex-start",fontFamily:"inherit",transition:"background 0.2s"}:{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":"Save Entry"}</button>
       </div>
       )}
 
@@ -3934,7 +3945,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             </div>
 
             {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
-            <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?"✓ Saved!":saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
+            <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
           </div>
         );
       })()}
