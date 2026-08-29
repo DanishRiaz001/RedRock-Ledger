@@ -3197,7 +3197,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     return emptyTxn;
   });
   const[showAddContact,setShowAddContact]=useState(false);
-  const[showEntryPreview,setShowEntryPreview]=useState(true);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
   const[entryMode,setEntryMode]=useState(initialEntryMode); // "receipt" | "supplier" | "customer"
   const[invContactId,setInvContactId]=useState("");
@@ -3415,8 +3414,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
 
   const inpSm={...inp,fontSize:14,padding:"9px 12px"};
 
-  return(
-    <div style={{display:"flex",gap:20,alignItems:"flex-start",flexDirection:isDesktop?"row":"column"}}>
+  // The form itself is identical either way — only what WRAPS it differs
+  // (a resizable split-pane on desktop, a simple stack on mobile) — so it's
+  // built once here and reused by both return paths below instead of
+  // duplicating this entire form twice.
+  const formCard=(
     <Card style={{flex:1,marginBottom:0,minWidth:0}}>
       {/* Bilag + Date — Entry type is its own row of buttons below, since it's
           the first real decision (what kind of entry this is), not something
@@ -3586,32 +3588,35 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
           <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub,borderRadius:"10px 10px 0 0"}}>Postings</div>
           <div style={{padding:"12px 14px 14px"}}>
-          <div style={{display:"flex",gap:6,marginBottom:8,minWidth:626,paddingBottom:6,borderBottom:`1px solid ${T.border}`}}>
-            <div style={{flex:"0 0 96px",fontSize:10,color:T.muted,fontWeight:700}}>Date</div>
-            <div style={{flex:"0 0 150px",fontSize:10,color:T.muted,fontWeight:700}}>Description</div>
-            <div style={{flex:"0 0 128px",fontSize:10,color:T.muted,fontWeight:700}}>Debit</div>
-            <div style={{flex:"0 0 128px",fontSize:10,color:T.muted,fontWeight:700}}>Credit</div>
-            <div style={{flex:"0 0 78px",fontSize:10,color:T.muted,fontWeight:700}}>Amount</div>
+          {/* Date and Description stack into ONE column (date on top,
+              description below) instead of sitting side by side — frees
+              real width for Debit/Credit/Amount, which is where an account
+              name actually needs the room to not get truncated. Matches how
+              a real double-entry voucher table typically groups "when/what"
+              as one combined column separate from "where the money moves". */}
+          <div style={{display:"flex",gap:6,marginBottom:8,minWidth:578,paddingBottom:6,borderBottom:`1px solid ${T.border}`}}>
+            <div style={{flex:"0 0 190px",fontSize:10,color:T.muted,fontWeight:700}}>Date / Description</div>
+            <div style={{flex:"0 0 140px",fontSize:10,color:T.muted,fontWeight:700}}>Debit</div>
+            <div style={{flex:"0 0 140px",fontSize:10,color:T.muted,fontWeight:700}}>Credit</div>
+            <div style={{flex:"0 0 90px",fontSize:10,color:T.muted,fontWeight:700}}>Amount</div>
           </div>
           {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
-            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,minWidth:626}}>
-              <div style={{flex:"0 0 96px",minWidth:0}}>
+            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,minWidth:578}}>
+              <div style={{flex:"0 0 190px",minWidth:0,display:"flex",flexDirection:"column",gap:4}}>
                 <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
                   if(li===0){setForm(p=>({...p,date:v}));return;}
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],date:v};
                   setForm(p=>({...p,lines}));
-                }} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
-              </div>
-              <div style={{flex:"0 0 150px",minWidth:0}}>
+                }} style={{width:100}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
                 <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
                   if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
                   const lines=[...(form.lines||[])];
                   lines[li]={...lines[li],description:e.target.value};
                   setForm(p=>({...p,lines}));
-                }} style={{...inpSm,fontSize:11,padding:"7px 8px"}}/>
+                }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
               </div>
-              <div style={{flex:"0 0 128px",minWidth:0}}>
+              <div style={{flex:"0 0 140px",minWidth:0}}>
                 <AccDrop value={line.debitCode||""} onChange={v=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],debitCode:v};
@@ -3623,7 +3628,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   setForm(p=>({...p,lines}));
                 }} options={vatCodeOptions("input")}/>
               </div>
-              <div style={{flex:"0 0 128px",minWidth:0}}>
+              <div style={{flex:"0 0 140px",minWidth:0}}>
                 <AccDrop value={line.creditCode||""} onChange={v=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],creditCode:v};
@@ -3635,7 +3640,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   setForm(p=>({...p,lines}));
                 }} options={vatCodeOptions("output")}/>
               </div>
-              <div style={{flex:"0 0 78px",minWidth:0,display:"flex",gap:4,alignItems:"flex-start"}}>
+              <div style={{flex:"0 0 90px",minWidth:0,display:"flex",gap:4,alignItems:"flex-start"}}>
                 {li===0?(
                   <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
                 ):(
@@ -3664,12 +3669,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             const lines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
             const total=lines.reduce((s,l,li)=>s+(parseFloat(li===0?form.amount:l.amount)||0),0);
             return(
-              <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:T.bg,minWidth:626,borderRadius:"0 0 10px 10px"}}>
-                <div style={{flex:"0 0 96px"}}/>
-                <div style={{flex:"0 0 150px"}}/>
-                <div style={{flex:"0 0 128px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
-                <div style={{flex:"0 0 128px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
-                <div style={{flex:"0 0 78px",fontSize:11,color:T.muted}}>Balanced</div>
+              <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:T.bg,minWidth:578,borderRadius:"0 0 10px 10px"}}>
+                <div style={{flex:"0 0 190px"}}/>
+                <div style={{flex:"0 0 140px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
+                <div style={{flex:"0 0 140px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(total)}</div>
+                <div style={{flex:"0 0 90px",fontSize:11,color:T.muted}}>Balanced</div>
               </div>
             );
           })()}
@@ -3757,7 +3761,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             "extra detail on this line" rather than two more free-floating
             fields competing with Debit/Credit/Amount for attention. */}
         {isDesktop&&(feat.tags!==false||(moneySources&&moneySources.length>0))&&(
-          <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:252,marginBottom:4}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:190,marginBottom:4}}>
             {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>}
             {moneySources&&moneySources.length>0&&(
               <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,padding:"7px 8px"}}>
@@ -3991,61 +3995,27 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         );
       })()}
     </Card>
+  );
 
-    <div style={isDesktop?{width:320,flexShrink:0,position:"sticky",top:16}:{width:"100%"}}>
-      {/* Mobile only — desktop gets the richer live-preview panel below
-          instead, which now includes this same upload/pick-file capability
-          in its own empty state, so the two don't duplicate each other.
-          Receipt mode's attachment now lives in the popover next to Date
-          above, so this card only handles Supplier/Customer mode. */}
-      {!isDesktop&&entryMode!=="receipt"&&(
-      <Card style={{marginBottom:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-          <span style={{fontSize:12}}>📎</span>
-          <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
-        </div>
-        {invAttachmentIds.length>0&&(
-          <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
-            {invAttachmentIds.map(fid=>{
-              const f=inboxFiles.find(x=>x.id===fid);
-              return(
-                <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
-                  <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
-                  <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
-                  <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
-          <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
-          <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
-          <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
-            if(!e.target.files[0])return;
-            setUploadingInvAtt(true);
-            const newFile=await uploadInboxFile(e.target.files[0]);
-            if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
-            setUploadingInvAtt(false);
-          }}/>
-        </label>
-        {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
-          <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
-            <option value="">— or pick an existing Inbox file —</option>
-            {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-          </select>
-        )}
-      </Card>
-      )}
-      {isDesktop&&(()=>{
-        const attached=form.attachmentId?inboxFiles.find(f=>f.id===form.attachmentId):null;
-        if(!showEntryPreview)return(
-          <div onClick={()=>setShowEntryPreview(true)} title="Show preview" style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",writingMode:"vertical-rl",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,zIndex:60,boxShadow:"-2px 0 8px rgba(0,0,0,0.08)"}}>
-            <i className="ti ti-chevron-left" style={{fontSize:12,transform:"rotate(90deg)"}}/>Show preview
-          </div>
-        );
-        return(
-          <div style={{width:400,flexShrink:0,position:"sticky",top:16,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+  if(isDesktop){
+    // Same resizable, drag-to-widen, right-anchored preview pattern already
+    // used for Inbox and the other voucher-entry screens (ResizableSplit) —
+    // this screen used to hand-roll its own fixed-width, non-resizable
+    // version of the same idea, which meant the one place attachments
+    // matter most (a brand-new entry) looked and behaved differently from
+    // everywhere else a document preview appears in the app.
+    const attached=form.attachmentId?inboxFiles.find(f=>f.id===form.attachmentId):null;
+    return(
+      <ResizableSplit
+        left={formCard}
+        collapsible={true}
+        collapseLabel="Hide preview"
+        expandLabel="Show preview"
+        defaultRightWidth={400}
+        minRightWidth={300}
+        maxRightWidth={640}
+        right={(
+          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
             {!attached?(
               <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center"}}>
                 <i className="ti ti-file-off" style={{fontSize:28}}/>
@@ -4070,13 +4040,58 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 </div>
               </>
             )}
-            <div onClick={()=>setShowEntryPreview(false)} title="Hide preview" style={{position:"absolute",left:-1,top:16,transform:"translateX(-100%)",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",writingMode:"vertical-rl",display:"flex",alignItems:"center",gap:6}}>
-              <i className="ti ti-chevron-right" style={{fontSize:12,transform:"rotate(90deg)"}}/>Hide preview
-            </div>
           </div>
-        );
-      })()}
-    </div>
+        )}
+      />
+    );
+  }
+
+  return(
+    <div style={{display:"flex",gap:20,alignItems:"flex-start",flexDirection:"column"}}>
+      {formCard}
+      <div style={{width:"100%"}}>
+        {/* Receipt mode's attachment lives in the popover next to Date
+            above, so this card only handles Supplier/Customer mode. */}
+        {entryMode!=="receipt"&&(
+        <Card style={{marginBottom:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+            <span style={{fontSize:12}}>📎</span>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,flex:1,textTransform:"uppercase",letterSpacing:0.5}}>{invAttachmentIds.length?`${invAttachmentIds.length} file${invAttachmentIds.length>1?"s":""} attached`:"Attachment (optional)"}</div>
+          </div>
+          {invAttachmentIds.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+              {invAttachmentIds.map(fid=>{
+                const f=inboxFiles.find(x=>x.id===fid);
+                return(
+                  <div key={fid} style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 8px"}}>
+                    <div style={{width:26,height:26,borderRadius:6,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{(f&&f.type&&f.type.startsWith("image"))?"🖼️":(f&&f.type&&f.type.includes("pdf"))?"📕":"📄"}</div>
+                    <span style={{fontSize:11,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
+                    <button onClick={()=>setInvAttachmentIds(p=>p.filter(x=>x!==fid))} style={{background:T.redLight,border:"none",borderRadius:6,cursor:"pointer",color:T.red,fontSize:10,fontWeight:700,padding:"3px 7px",fontFamily:"inherit"}}>Remove</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
+            <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
+            <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
+            <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
+              if(!e.target.files[0])return;
+              setUploadingInvAtt(true);
+              const newFile=await uploadInboxFile(e.target.files[0]);
+              if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+              setUploadingInvAtt(false);
+            }}/>
+          </label>
+          {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
+            <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
+              <option value="">— or pick an existing Inbox file —</option>
+              {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+            </select>
+          )}
+        </Card>
+        )}
+      </div>
     </div>
   );
 }
