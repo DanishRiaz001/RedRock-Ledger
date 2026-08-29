@@ -3223,6 +3223,26 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[saving,setSaving]=React.useState(false);
   const[showAttachPopover,setShowAttachPopover]=useState(false);
   const[showCommentPopover,setShowCommentPopover]=useState(false);
+  const[lineMenuOpen,setLineMenuOpen]=useState(null); // index of the posting line whose ⋮ menu is open, or null
+  // Duplicate/Delete consolidated into one ⋮ menu per line instead of a lone
+  // "−" button — line 0 is a special case since it's bound directly to the
+  // top-level form fields (form.date/description/debitCode/...) rather than
+  // an entry in form.lines, so duplicating it means reading from those
+  // instead of from the lines array.
+  const duplicateLine=(li)=>{
+    const currentLines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+    const source=li===0
+      ?{date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount}
+      :currentLines[li];
+    const newLines=[...currentLines];
+    newLines.splice(li+1,0,{...source});
+    setForm(p=>({...p,lines:newLines}));
+  };
+  const deleteLine=(li)=>{
+    const lines=[...(form.lines||[])];
+    lines.splice(li,1);
+    setForm(p=>({...p,lines}));
+  };
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
@@ -3650,13 +3670,30 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     setForm(p=>({...p,lines}));
                   }} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
                 )}
-                {li>0&&(
-                  <button onClick={()=>{
-                    const lines=[...(form.lines||[])];
-                    lines.splice(li,1);
-                    setForm(p=>({...p,lines}));
-                  }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:32,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
-                )}
+                {/* One ⋮ menu instead of a lone delete button — Duplicate
+                    always available, Delete only for lines after the first
+                    (line 0 is the entry's own primary debit/credit, not a
+                    removable extra line). */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <button onClick={()=>setLineMenuOpen(o=>o===li?null:li)} title="Line options" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",width:22,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,fontFamily:"inherit"}}>
+                    <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
+                  </button>
+                  {lineMenuOpen===li&&(
+                    <>
+                      <div onClick={()=>setLineMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                      <div style={{position:"absolute",right:0,top:34,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:140}}>
+                        <button onClick={()=>{duplicateLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                          <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
+                        </button>
+                        {li>0&&(
+                          <button onClick={()=>{deleteLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                            <i className="ti ti-trash" style={{fontSize:14}}/>Delete
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -3893,12 +3930,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
         return(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",flexDirection:"column",gap:isDesktop?7:10}}>
             {/* Supplier/Customer selector */}
             <div>
               <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{isDesktop?(invIsCustomer?"Customer":"Supplier"):(invIsCustomer?"👤 Customer":"👤 Supplier")}</div>
               {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
-                <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
                   <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
                   <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
@@ -3908,15 +3945,18 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               )}
             </div>
 
-            {/* Invoice No + Due date — compact, no Amount here (amount now lives with the account line below) */}
+            {/* Invoice No + Due date — compact, no Amount here (amount now lives with the account line below).
+                Desktop: shorter boxes (6px vertical padding vs 7px), matching
+                the tight, no-wasted-space density of a real invoice-entry
+                form rather than a comfortably-padded mobile field. */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
+                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
               </div>
               <div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
+                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
               </div>
             </div>
 
@@ -3928,10 +3968,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               </div>
               <div style={{flex:3}}>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount{invAmount&&parseFloat(invAmount)<0?" (cr.note)":""}</div>
-                <input placeholder="0" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
+                <input placeholder="0" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 8px":"7px 8px"}}/>
               </div>
             </div>
-            <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:"7px 10px"}}/>
+            <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
 
             {/* Additional lines — account (70%) + amount (30%) only, no date/description per line */}
             {invExtraLines.map((l,li)=>(

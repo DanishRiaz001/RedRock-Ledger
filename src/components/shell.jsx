@@ -221,8 +221,16 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             screen edge instead of resizing it. The tab below is now offset
             clear of this handle's own width so the two can't compete for
             the same click. */}
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,alignSelf:"stretch",cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:overlapping?61:62,background:"#F5F9FA"}}>
-          <div style={{width:4,height:44,borderRadius:2,background:overlapping?T.accent:"#C9D6D6"}}/>
+        {/* The grip dot used to be centered via flex alignItems across this
+            strip's FULL height — fine on a short form that fits one screen,
+            but on a long one (many fields, a big postings table) that
+            center point lands well below the fold, so there's nothing
+            visible near the top telling you the panel is even resizable.
+            position:sticky keeps the dot near the top of the viewport no
+            matter how tall the content grows; the draggable strip itself
+            still spans the full height, so grabbing it anywhere still works. */}
+        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,alignSelf:"stretch",position:"relative",cursor:"col-resize",flexShrink:0,zIndex:overlapping?61:62,background:"#F5F9FA"}}>
+          <div style={{position:"sticky",top:90,width:4,height:44,margin:"0 auto",borderRadius:2,background:overlapping?T.accent:"#C9D6D6"}}/>
         </div>
         <div style={overlapping?{
           // Overlap mode: anchored to the actual right edge of the viewport
