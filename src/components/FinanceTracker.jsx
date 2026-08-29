@@ -29,7 +29,15 @@ import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
 
 function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany}){
-  const[tab,setTab]=useState("Dashboard");
+  // The active tab used to live ONLY in this state, never in the URL
+  // itself (pushState below was called with no url argument) — meaning no
+  // internal navigation item could ever have a real, distinct href to
+  // open in a new tab or right-click-copy, no matter how it was styled.
+  // Reading/writing a `tab` query param fixes that at the root: every
+  // sidebar link now points at a real, shareable URL.
+  const[tab,setTab]=useState(()=>{
+    try{return new URLSearchParams(window.location.search).get("tab")||"Dashboard";}catch{return"Dashboard";}
+  });
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
   // This app has no client-side router — switching screens is just this
@@ -44,8 +52,35 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const poppingRef=React.useRef(false);
   useEffect(()=>{
     if(poppingRef.current){poppingRef.current=false;return;}
-    window.history.pushState({tab},"");
+    try{
+      const params=new URLSearchParams(window.location.search);
+      params.set("tab",tab);
+      window.history.pushState({tab},"",`${window.location.pathname}?${params.toString()}`);
+    }catch{window.history.pushState({tab},"");}
   },[tab,ledgerAcc]);
+  // Builds the real href for a sidebar/nav link to a tab, preserving any
+  // other query params already on the URL (e.g. ?company=). Paired with
+  // navProps below, which intercepts a plain left-click to keep using the
+  // fast in-place tab switch — real navigation (right-click → open in new
+  // tab, middle-click, Cmd/Ctrl-click) falls through to the browser instead
+  // since there's now an actual URL behind it.
+  const tabHref=(t,extraParams)=>{
+    try{
+      const params=new URLSearchParams(window.location.search);
+      params.set("tab",t);
+      if(extraParams)Object.entries(extraParams).forEach(([k,v])=>{if(v==null)params.delete(k);else params.set(k,v);});
+      return`?${params.toString()}`;
+    }catch{return"#";}
+  };
+  const navProps=(t,onClickExtra,extraParams)=>({
+    href:tabHref(t,extraParams),
+    onClick:(e)=>{
+      if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+      e.preventDefault();
+      if(onClickExtra)onClickExtra();
+      setTab(t);
+    },
+  });
   useEffect(()=>{
     const onPop=()=>{
       poppingRef.current=true;
@@ -127,7 +162,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const canWriteFull=currentAccessLevel==="full";
   const[expandedCat,setExpandedCat]=useState(null);
   const[expandedSubCat,setExpandedSubCat]=useState(null);
-  const[reskontroDefaultType,setReskontroDefaultType]=useState("customer");
+  const[reskontroDefaultType,setReskontroDefaultType]=useState(()=>{
+    try{return new URLSearchParams(window.location.search).get("type")||"customer";}catch{return"customer";}
+  });
   // Auto-expand whichever sidebar category contains the current screen, so
   // arriving via a pin/shortcut/direct link doesn't leave the sidebar looking
   // like nothing is selected. Users can still manually collapse afterward.
@@ -647,19 +684,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               {pinnedTabs.map(p=>{
                 const active=tab===p.tab;
                 return(
-                  <div key={p.tab} onClick={()=>setTab(p.tab)} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
+                  <a key={p.tab} {...navProps(p.tab)} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"6px 16px 6px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                     <i className="ti ti-star-filled" style={{fontSize:12,color:active?T.accent:"#FBBF24",flexShrink:0,width:18,textAlign:"center"}}/>
                     <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
-                  </div>
+                  </a>
                 );
               })}
               <div style={{borderTop:`1px solid ${T.border}`,margin:"6px 16px 6px 13px"}}/>
             </>
           )}
-          <div onClick={()=>setTab("Dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
+          <a {...navProps("Dashboard")} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Dashboard"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Dashboard"?T.accentLight:"transparent"}}>
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
-          </div>
+          </a>
           {feat.bank&&(()=>{
             const bankItems=[
               {tab:"BankWhose",label:"Whose"},
@@ -680,9 +717,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     {bankItems.map(it=>{
                       const active=tab===it.tab;
                       return(
-                        <div key={it.tab} onClick={()=>setTab(it.tab)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8}}>
+                        <a key={it.tab} {...navProps(it.tab)} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:"pointer",borderRadius:8,display:"block"}}>
                           <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{it.label}</span>
-                        </div>
+                        </a>
                       );
                     })}
                   </div>
@@ -710,11 +747,12 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     {custItems.map(it=>{
                       const active=tab===it.tab;
                       const locked=it.requiresWrite&&!canWriteEntries;
+                      const linkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab);
                       return(
-                        <div key={it.tab} onClick={()=>!locked&&setTab(it.tab)} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
+                        <a key={it.tab} {...linkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
                           <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
                           {locked&&<i className="ti ti-lock" style={{fontSize:11,color:T.muted}}/>}
-                        </div>
+                        </a>
                       );
                     })}
                   </div>
@@ -819,9 +857,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                                 {it.subItems.map(si=>{
                                   const active=tab===si.tab&&reskontroDefaultType===si.param;
                                   return(
-                                    <div key={si.label} onClick={()=>{if(si.param)setReskontroDefaultType(si.param);setTab(si.tab);}} className="rr-sidebar-item" style={{padding:"5px 10px",cursor:"pointer",borderRadius:7}}>
+                                    <a key={si.label} {...navProps(si.tab,()=>{if(si.param)setReskontroDefaultType(si.param);},si.param?{type:si.param}:undefined)} className="rr-sidebar-item" style={{padding:"5px 10px",cursor:"pointer",borderRadius:7,display:"block"}}>
                                       <span style={{fontSize:11,color:active?T.accent:T.sub,fontWeight:active?700:400}}>{si.label}</span>
-                                    </div>
+                                    </a>
                                   );
                                 })}
                               </div>
@@ -832,15 +870,16 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       const active=tab===it.tab;
                       const isPinned=pinnedTabs.some(p=>p.tab===it.tab);
                       const locked=it.requiresWrite&&!canWriteEntries;
+                      const leafLinkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab);
                       return(
-                        <div key={it.tab} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
-                          <span onClick={()=>!locked&&setTab(it.tab)} title={locked?"You don't have entry access for these books":undefined} style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
+                        <a key={it.tab} {...leafLinkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
                           {locked?(
                             <i className="ti ti-lock" style={{fontSize:11,color:T.muted,flexShrink:0}}/>
                           ):(
-                            <i onClick={()=>togglePin(it.tab,it.label)} title={isPinned?"Remove from Favorites":"Add to Favorites"} className={isPinned?"ti ti-star-filled":"ti ti-star rr-sidebar-pin"} style={{fontSize:12,color:isPinned?"#FBBF24":T.muted,cursor:"pointer",flexShrink:0}}/>
+                            <i onClick={e=>{e.preventDefault();e.stopPropagation();togglePin(it.tab,it.label);}} title={isPinned?"Remove from Favorites":"Add to Favorites"} className={isPinned?"ti ti-star-filled":"ti ti-star rr-sidebar-pin"} style={{fontSize:12,color:isPinned?"#FBBF24":T.muted,cursor:"pointer",flexShrink:0}}/>
                           )}
-                        </div>
+                        </a>
                       );
                     })}
                   </div>
@@ -855,11 +894,11 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
             const tiIcon={Settings:"ti-settings",Profile:"ti-user",AdminPanel:"ti-shield-lock",BugLog:"ti-bug"}[item.id]||"ti-circle";
             return(
-              <div key={item.id} onClick={()=>setTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
+              <a key={item.id} {...navProps(item.id)} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                 <i className={`ti ${tiIcon}`} style={{fontSize:16,width:18,textAlign:"center",color:active?T.accent:T.sub}}/>
                 <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px"}}>{bugCount}</span>}
-              </div>
+              </a>
             );
           })}
         </div>
