@@ -347,6 +347,7 @@ function AppShell({user}){
           // existing account only gets these if it doesn't have them yet.
           if(!a.accountType&&d.accountType)patch.accountType=d.accountType;
           if(!a.balanceGroup&&d.balanceGroup)patch.balanceGroup=d.balanceGroup;
+          if(!a.saftCode13&&d.saftCode13)patch.saftCode13=d.saftCode13;
           if(!Object.keys(patch).length)return a;
           backfills.push({code:a.code,...patch});
           return{...a,...patch};
@@ -363,6 +364,7 @@ function AppShell({user}){
               if(b.defaultVatCode!=null){patch.default_vat_code=b.defaultVatCode;patch.default_vat_pct=b.defaultVatPct;}
               if(b.accountType!=null)patch.account_type=b.accountType;
               if(b.balanceGroup!=null)patch.balance_group=b.balanceGroup;
+              if(b.saftCode13!=null)patch.saft_code_13=b.saftCode13;
               let q=sb.from("accounts").update(patch).eq("user_id",viewingUserId).eq("code",b.code);
               q=cid?q.eq("company_id",cid):q.is("company_id",null);
               await q;
@@ -936,9 +938,20 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const isOutflow=line.amount<0;
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:Math.abs(line.amount)}]).select().single();
+    // Posting a bank statement line never checked the account's own VAT
+    // settings at all — a locked, VAT-coded account (e.g. 7001 with a
+    // locked 25% code) posted with zero VAT every time through this path,
+    // even though the exact same account correctly applies its VAT when
+    // used from the manual entry forms. line.accountCode is whichever real
+    // expense/income account the line is being posted to, regardless of
+    // which side (debit/outflow or credit/inflow) it lands on.
+    const postedAccount=accounts.find(a=>a.code===line.accountCode);
+    const amount=Math.abs(line.amount);
+    const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
+    const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_pct:vatPct,vat_amount:vatAmount}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount:Math.abs(line.amount),contactId:null}]);
+    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount,vatPct,vatAmount,contactId:null}]);
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
     if(updErr)console.error("Bank line post-flag error:",updErr);
     setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:true,postedTxnId:data.id}:l));

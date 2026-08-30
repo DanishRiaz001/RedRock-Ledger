@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- user-scalable stays enabled (not "no") on purpose: the iOS app wraps
+         this same desktop-width layout verbatim (no separate mobile build),
+         so pinch-zoom is how a phone-sized screen actually reaches content
+         that's wider than the viewport. Harmless on desktop browsers, which
+         don't have a pinch/double-tap zoom gesture to begin with. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Redrock Danria Accountants</title>
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+      /* Keep this gradient in sync with T.bgGradient in src/lib/theme.js —
+         it's duplicated here (not read from JS) purely so the very first
+         paint, before React mounts, already matches instead of flashing a
+         flat color first. */
+      body{
+        margin:0;padding:0;font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+        background:
+          radial-gradient(900px 500px at 85% -10%, rgba(45,212,191,0.16), transparent 60%),
+          radial-gradient(700px 500px at -5% 30%, rgba(13,148,136,0.10), transparent 60%),
+          linear-gradient(160deg,#F3FAF9 0%,#F8FBFB 45%,#FCFEFE 100%);
+        background-attachment:fixed;
+      }
+      input,select,button{font-family:inherit;}
+      ::-webkit-scrollbar{display:none;}
+      .rr-table-row,.rr-reskontro-row{transition:background .12s ease;}
+      .rr-table-row:hover,.rr-table-row:active,.rr-reskontro-row:hover,.rr-reskontro-row:active{background:#E6F4F1!important;}
+      .ti{vertical-align:-2px;}
+      table{font-variant-numeric:tabular-nums;}
+      .rr-sticky-thead thead tr{position:sticky;top:58px;z-index:5;box-shadow:0 1px 0 rgba(0,0,0,0.04);}
+      .rr-sidebar-item:hover{background:#F5F9FA;}
+      .rr-set-card{transition:box-shadow .14s ease,border-color .14s ease,transform .14s ease;}
+      .rr-set-card:hover{box-shadow:0 6px 18px rgba(20,60,50,0.09);border-color:#CFE3E0!important;transform:translateY(-1px);}
+      .rr-set-card:active{transform:translateY(0);box-shadow:0 2px 6px rgba(20,60,50,0.08);}
+      .rr-sidebar-item .rr-sidebar-pin{opacity:0;transition:opacity .12s ease;}
+      .rr-sidebar-item:hover .rr-sidebar-pin{opacity:1;}
+      body.rr-panel-resizing{cursor:col-resize!important;user-select:none!important;}
+      body.rr-panel-resizing *{user-select:none!important;}
+      body.rr-panel-resizing img{transition:none!important;}
+      .rr-glass-btn{
+        background:rgba(255,255,255,0.45);
+        border:1px solid #E4EDED;
+        backdrop-filter:blur(8px);
+        -webkit-backdrop-filter:blur(8px);
+        color:#1F2937;
+        transition:background .15s ease,border-color .15s ease;
+      }
+      .rr-glass-btn:hover{background:#FFFFFF;border-color:#D1E2E2;}
+      .rr-glass-card{
+        background:rgba(255,255,255,0.75);
+        backdrop-filter:blur(12px);
+        -webkit-backdrop-filter:blur(12px);
+        border:1px solid #E4EDED;
+      }
+      .rr-btn-primary{
+        background:#FF5A1F;
+        color:#fff;
+        border:none;
+        box-shadow:0 1px 0 rgba(255,255,255,0.25) inset, 0 2px 6px rgba(255,90,31,0.25);
+        transition:background .15s ease;
+      }
+      .rr-btn-primary:hover{background:#E04810;}
+    </style>
+    <script type="module" crossorigin src="/assets/index-B39IYfVw.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

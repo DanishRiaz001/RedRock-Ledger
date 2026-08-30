@@ -696,15 +696,9 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
             <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional note" rows={2} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
-              <input value={saftCode13} onChange={e=>setSaftCode13(e.target.value)} placeholder="Optional" style={inp}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.2)</div>
-              <input value={saftCode12} onChange={e=>setSaftCode12(e.target.value)} placeholder="Optional" style={inp}/>
-            </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
+            <input value={saftCode13} onChange={e=>setSaftCode13(e.target.value)} placeholder="Optional" style={inp}/>
           </div>
           {vatDirection?(
             <div>
@@ -819,10 +813,6 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
               <input value={val("saftCode13",account.saftCode13||"")} onChange={set("saftCode13")} placeholder="Optional" style={inp}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.2)</div>
-              <input value={val("saftCode12",account.saftCode12||"")} onChange={set("saftCode12")} placeholder="Optional" style={inp}/>
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
@@ -4063,16 +4053,16 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const Row=({t,otherCode})=>{
     const controlled=controlledIds.has(t.id);
     return(
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderTop:`1px solid ${T.border}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderTop:`1px solid ${T.border}`}}>
         <input type="checkbox" checked={controlled} onChange={()=>{toggleControlled(termin.year,termin.n,t.id);forceTick(x=>x+1);}} title="Kontrollert"/>
         <div onClick={()=>setOpenTxn(t)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-          <span style={{color:T.accent,fontWeight:700,fontSize:12}}>{fmtB(t.bilag)}</span>{" "}
-          <span style={{fontSize:12,color:T.text}}>{t.description}</span>
-          <div style={{fontSize:10,color:T.muted,marginTop:1}}>{t.date} · {otherCode}</div>
+          <span style={{color:T.accent,fontWeight:700,fontSize:10.5}}>{fmtB(t.bilag)}</span>{" "}
+          <span style={{fontSize:10.5,color:T.text}}>{t.description}</span>
+          <div style={{fontSize:9,color:T.muted,marginTop:1}}>{t.date} · {otherCode}</div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(t.amount)}</div>
-          {t.vatAmount!=null&&t.vatAmount!==0&&<div style={{fontSize:10,color:T.accent}}>mva {fmt(t.vatAmount)}</div>}
+          <div style={{fontSize:10.5,fontWeight:700,color:T.text}}>{fmt(t.amount)}</div>
+          {t.vatAmount!=null&&t.vatAmount!==0&&<div style={{fontSize:9,color:T.accent}}>mva {fmt(t.vatAmount)}</div>}
         </div>
       </div>
     );
@@ -4211,10 +4201,10 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </table>
       </div>
 
-      <div style={{fontSize:12,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Ingen mva</div>
+      <div style={{fontSize:10.5,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Ingen mva</div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
         {nonVatTxns.map(t=><Row key={t.id} t={t} otherCode={`${getName(t.debitCode)} / ${getName(t.creditCode)}`}/>)}
-        {!nonVatTxns.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen transaksjoner uten mva denne perioden.</div>}
+        {!nonVatTxns.length&&<div style={{padding:"16px 0",textAlign:"center",color:T.muted,fontSize:10.5}}>Ingen transaksjoner uten mva denne perioden.</div>}
       </div>
       </div>
 
