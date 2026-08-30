@@ -760,19 +760,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
 
-  // Which VAT direction (if any) this entry actually carries — a P&L
-  // account on the debit side means input VAT (a purchase), one on the
-  // credit side means output VAT (a sale); a pure balance-sheet entry (e.g.
-  // a bank transfer) carries none. Same convention New entry uses, so an
-  // entry created there re-opens showing exactly what was picked, instead
-  // of this modal having no VAT field at all (which made every edited or
-  // re-opened entry look VAT-less regardless of what was actually saved).
-  const vatDirection=isExpenseSK(form.debitCode)?"input":isIncomeSK(form.creditCode)?"output":null;
-  const vatOptions=vatDirection?vatCodeOptions(vatDirection):[];
-  // txn.vatCode may not have been saved on older entries — fall back to
-  // reverse-deriving a code from the stored rate so it still shows correctly.
-  const initialVatCode=txn.vatCode||(txn.vatPct!=null&&vatDirection?((vatCodeForRate(txn.vatPct,vatDirection)||{}).code||""):"");
-  const[vatCode,setVatCode]=useState(initialVatCode);
+  // A P&L account on the debit side takes input VAT (a purchase); one on
+  // the credit side takes output VAT (a sale) — the two are independent,
+  // exactly like Register voucher's general-line editor (debitVatCode /
+  // creditVatCode), since either side, both, or neither can be a real P&L
+  // account. txn.vatCode may not have been saved on older entries — fall
+  // back to reverse-deriving a code from the stored rate so it still shows
+  // correctly, and only on whichever side it actually applies to.
+  const debitIsExpense=isExpenseSK(form.debitCode);
+  const creditIsIncome=isIncomeSK(form.creditCode);
+  const initialDebitVc=debitIsExpense?(txn.vatCode||(txn.vatPct!=null?((vatCodeForRate(txn.vatPct,"input")||{}).code||""):"")):"";
+  const initialCreditVc=creditIsIncome&&!debitIsExpense?(txn.vatCode||(txn.vatPct!=null?((vatCodeForRate(txn.vatPct,"output")||{}).code||""):"")):"";
+  const[debitVatCode,setDebitVatCode]=useState(initialDebitVc);
+  const[creditVatCode,setCreditVatCode]=useState(initialCreditVc);
 
   const attached=attachments[0]||null;
 
@@ -788,8 +788,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
         <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
         <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
       </div>
-      {vatDirection&&(
-        <div style={{maxWidth:280}}><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
+      {/* A VAT box under each side, in the same two columns as the account
+          row above it — matching Register voucher's per-side VAT pattern.
+          Each is a real dropdown with "— Select VAT code —" printed inside
+          the box itself, so picking a code is what makes that text go away,
+          not a separate label above the field. Slightly shorter than the
+          account dropdown above it since it's a secondary/auxiliary field,
+          not a fresh full-height input. An empty cell holds the column
+          steady on whichever side isn't a P&L account. */}
+      {(debitIsExpense||creditIsIncome)&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:-8}}>
+          <div>{debitIsExpense&&<VatDrop value={debitVatCode} onChange={setDebitVatCode} options={vatCodeOptions("input")}/>}</div>
+          <div>{creditIsIncome&&<VatDrop value={creditVatCode} onChange={setCreditVatCode} options={vatCodeOptions("output")}/>}</div>
+        </div>
       )}
       <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
       {moneySources&&moneySources.length>0&&(
@@ -807,8 +818,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
           if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
           const amountNum=parseFloat(form.amount);
-          const vc=vatDirection?findVatCode(vatCode,vatDirection):null;
-          const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:null;
+          // The transaction only has one vatCode/vatPct/vatAmount slot —
+          // debit takes priority when both sides somehow carry a code,
+          // same convention Register voucher's general lines use.
+          const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
+          const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
           onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
         }}>💾 Save</button>
         {confirmDel?(
