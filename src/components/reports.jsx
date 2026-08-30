@@ -2891,7 +2891,10 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell. Widths persist per-session via colgroup, not per-cell.
-  const[colWidths,setColWidths]=useState([36,90,90,90,300,110,120]);
+  // Closed folded into the checkbox column (a small padlock replaces the
+  // checkbox on a matched row, rather than its own dedicated column) —
+  // Voucher moves left into the space that freed up.
+  const[colWidths,setColWidths]=useState([36,95,90,300,100,110]);
   // View settings — matches Tripletex's gear-icon "Visningsvalg" panel on
   // Hovedbok, scoped to columns this app can actually populate on a
   // transaction (VAT code, linked customer/supplier, currency) rather than
@@ -2911,7 +2914,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
     colPrefs.showContact&&{key:"contact",label:"Customer/Supplier",width:180},
     colPrefs.showCurrency&&{key:"currency",label:"Currency",width:90},
   ].filter(Boolean);
-  const baseColCount=7,totalColCount=baseColCount+extraCols.length;
+  const baseColCount=6,totalColCount=baseColCount+extraCols.length;
   const resizeDragRef=React.useRef(null);
   const startColResize=(idx,e)=>{
     e.preventDefault();e.stopPropagation();
@@ -3043,60 +3046,61 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       )}
 
       <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
-      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
+      <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}{extraCols.map(c=><col key={c.key} style={{width:c.width}}/>)}</colgroup>
-        <thead><tr style={{color:T.muted,fontSize:11,background:T.bg,position:"sticky",top:0,zIndex:2}}>
-          <td style={{padding:"9px 14px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
-          <td style={{position:"relative",padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>Closed<ResizeHandle idx={1}/></td>
-          <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2}/>
-          <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3}/>
-          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={4}/>
-          <SortTh label="Amount" col="amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={5} align="right"/>
-          {colPrefs.showVat&&<td style={{padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>VAT code</td>}
-          {colPrefs.showContact&&<SortTh label="Customer/Supplier" col="contact" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}/>}
-          {colPrefs.showCurrency&&<td style={{padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>Currency</td>}
-          <td style={{textAlign:"right",padding:"9px 14px",position:"relative"}}>Balance</td>
+        <thead><tr style={{color:T.muted,fontSize:10.5,background:T.bg,position:"sticky",top:0,zIndex:2}}>
+          <td style={{padding:"8px 10px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
+          <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={1} align="center"/>
+          <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2} align="center"/>
+          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3} align="center"/>
+          <SortTh label="Amount" col="amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={4} align="center"/>
+          {colPrefs.showVat&&<td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center"}}>VAT code</td>}
+          {colPrefs.showContact&&<SortTh label="Customer/Supplier" col="contact" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="center"/>}
+          {colPrefs.showCurrency&&<td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center"}}>Currency</td>}
+          <td style={{textAlign:"center",padding:"8px 10px",position:"relative"}}>Balance</td>
         </tr></thead>
         <tbody>
           <tr style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-            <td colSpan={totalColCount} style={{padding:"9px 14px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
+            <td colSpan={totalColCount} style={{padding:"8px 10px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
           </tr>
           <tr style={{borderBottom:`1px solid ${T.border}`}}>
-            <td colSpan={6+extraCols.length} style={{padding:"9px 14px",color:T.text}}>Opening balance</td>
-            <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{fmt(openingBal)}</td>
+            <td colSpan={5+extraCols.length} style={{padding:"8px 10px",color:T.text}}>Opening balance</td>
+            <td style={{textAlign:"center",fontWeight:600,padding:"8px 10px",color:T.text}}>{fmt(openingBal)}</td>
           </tr>
           {sortedShownRows.map((r,i)=>{
             const isMatchedHere=!!r.matchedWith&&r.matchedAccount===currentCode;
             const rContact=r.contactId?contacts.find(c=>c.id===r.contactId):null;
             return(
               <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                <td style={{padding:"9px 14px"}}>
-                  {isMatchedHere?null:<input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)}/>}
-                </td>
-                <td style={{padding:"9px 8px"}}>
+                <td style={{padding:"7px 10px",textAlign:"center"}}>
+                  {/* "Closed" no longer has its own column — a small padlock
+                      replaces the checkbox itself on a matched row, still
+                      clickable to see who matched it and when. */}
                   {isMatchedHere?(
-                    <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} style={{color:T.accent,fontWeight:700,cursor:"pointer",fontSize:12}}>Closed</span>
-                  ):null}
+                    <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} title="Closed — click for match details" style={{cursor:"pointer",fontSize:13}}>🔒</span>
+                  ):(
+                    <input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)}/>
+                  )}
                 </td>
-                <td onClick={()=>setDetailTxn(r)} style={{padding:"9px 8px",color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(r.bilag)}</td>
-                <td style={{padding:"9px 8px",color:T.text}}>{r.date}</td>
-                <td style={{padding:"9px 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
-                <td style={{padding:"9px 8px",textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.movement)}</td>
-                {colPrefs.showVat&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
-                {colPrefs.showContact&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
-                {colPrefs.showCurrency&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",whiteSpace:"nowrap"}}>{r.currency||"—"}</td>}
-                <td style={{textAlign:"right",color:T.muted,padding:"9px 14px"}}>{fmt(r.balance)}</td>
+                <td onClick={()=>setDetailTxn(r)} style={{padding:"7px 6px",textAlign:"center",color:T.accent,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{fmtB(r.bilag)}</td>
+                <td style={{padding:"7px 6px",textAlign:"center",color:T.text,whiteSpace:"nowrap"}}>{r.date}</td>
+                <td style={{padding:"7px 6px",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
+                <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>{sign(r.movement)}</td>
+                {colPrefs.showVat&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
+                {colPrefs.showContact&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
+                {colPrefs.showCurrency&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.currency||"—"}</td>}
+                <td style={{textAlign:"center",color:T.muted,padding:"7px 10px",whiteSpace:"nowrap"}}>{fmt(r.balance)}</td>
               </tr>
             );
           })}
           {!shownRows.length&&<tr><td colSpan={totalColCount} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
           <tr style={{borderTop:`1px solid ${T.border}`}}>
-            <td colSpan={6+extraCols.length} style={{padding:"7px 0",color:T.text}}>Changes in period</td>
-            <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
+            <td colSpan={5+extraCols.length} style={{padding:"7px 0",color:T.text}}>Changes in period</td>
+            <td style={{textAlign:"center",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
           </tr>
           <tr style={{borderTop:`2px solid ${T.text}`,fontWeight:800}}>
-            <td colSpan={6+extraCols.length} style={{padding:"8px 0"}}>Closing balance</td>
-            <td style={{textAlign:"right"}}>{fmt(closingBal)}</td>
+            <td colSpan={5+extraCols.length} style={{padding:"8px 0"}}>Closing balance</td>
+            <td style={{textAlign:"center"}}>{fmt(closingBal)}</td>
           </tr>
         </tbody>
       </table>
@@ -4260,10 +4264,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     // that have nothing to do with each other). Saldo is now a running
     // subtotal PER account group instead of one continuous total across all
     // of them, with a grand total underneath.
+    // Kunde/Leverandør means an actual linked customer/supplier contact —
+    // a bank-direct posting with no contact attached isn't "from" whatever
+    // account it happened to clear through, so that must never be shown
+    // (or grouped) here as if it were the supplier's name.
+    const NO_CONTACT_KEY="— No customer/supplier linked —";
     const groupKeyOf=t=>{
       if(specView.direction==="none")return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
       const contact=contacts.find(c=>c.id===t.contactId);
-      return contact?contact.name:getName(t[specView.otherField]);
+      return contact?contact.name:NO_CONTACT_KEY;
     };
     const groups=[];
     const idxByKey={};
@@ -4303,7 +4312,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                       <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.date}</td>
                       <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                      <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key}</td>
+                      <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key===NO_CONTACT_KEY?"—":g.key}</td>
                       <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                       <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                       <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
