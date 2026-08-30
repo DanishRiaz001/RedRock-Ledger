@@ -631,12 +631,18 @@ function AppShell({user}){
     if(!canEdit)return;
     if(blockIfLocked(form.date))return;
     checkTxnLogic(form,"addTransaction");
-    // Use a ref (not the nextBilag state) so multiple entries saved back-to-back
-    // in the same tick (e.g. multi-line entries) each get a unique, correctly
-    // incrementing bilag instead of racing on a stale closure value.
-    const nb=bilagRef.current;
-    bilagRef.current=nb+1;
-    setNextBilag(bilagRef.current);
+    // form.bilag lets a caller deliberately reuse an already-reserved bilag
+    // number (a multi-line voucher's 2nd+ line) instead of always minting a
+    // new one — every multi-line entry point used to give each of its own
+    // lines a SEPARATE bilag despite being one logical voucher, so opening
+    // "the" bilag afterward only ever showed a single line. Omitted (the
+    // normal case), this reserves a fresh one exactly as before — use a ref
+    // (not the nextBilag state) so multiple entries saved back-to-back in
+    // the same tick each still get a unique, correctly incrementing bilag
+    // instead of racing on a stale closure value.
+    let nb;
+    if(form.bilag!=null){nb=form.bilag;}
+    else{nb=bilagRef.current;bilagRef.current=nb+1;setNextBilag(bilagRef.current);}
     const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");

@@ -3474,7 +3474,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       if(form.notes&&form.notes.trim()&&addEntryComment&&primaryResult&&primaryResult.id){
         addEntryComment(primaryResult.id,form.notes.trim());
       }
-      // Save each extra line as its own entry, linked via groupRef
+      // Save each extra line as its own row, sharing the SAME bilag as the
+      // primary line (was a separate bilag per line despite being one
+      // logical voucher — opening "the" bilag afterward only ever showed
+      // whichever single line happened to carry that number) plus groupRef
+      // for the same-browser linked-lines convenience view.
       for(const l of extraLines){
         const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
         const lAmount=parseFloat(l.amount);
@@ -3487,6 +3491,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           amount:lAmount,
           contactId:form.contactId||null,
           groupRef,
+          bilag:primaryResult?primaryResult.bilag:undefined,
           moneySourceId:form.moneySourceId||null,
           projectId:form.projectId||null,
           vatCode:(l.debitVatCode&&l.debitVatCode!=="0")?l.debitVatCode:(l.creditVatCode&&l.creditVatCode!=="0"?l.creditVatCode:null),
@@ -3579,6 +3584,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       // showed up in Mva-meldinger/VAT report no matter what was selected.
       const lineVc=l.vatCode?findVatCode(l.vatCode,invVatDirection):null;
       const lineVatAmount=lineVc&&lineVc.rate?Math.round((absAmt-(absAmt/(1+lineVc.rate/100)))*100)/100:null;
+      // Every line of one invoice used to get its own separate bilag despite
+      // being one logical voucher — every line here now shares whichever
+      // bilag the first line was actually assigned.
       const res=await onSave({
         date:form.date,
         debitCode,creditCode,
@@ -3588,6 +3596,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         invoiceNo:invoiceNo||null,
         dueDate:invDueDate||null,
         groupRef,
+        bilag:idx>0?firstBilag:undefined,
         vatCode:l.vatCode||null,
         vatPct:lineVc?lineVc.rate:null,
         vatAmount:lineVatAmount,
