@@ -332,15 +332,39 @@ function AppShell({user}){
         DEFAULT_ACCOUNTS.forEach(d=>{if(!existingCodes.has(d.code))merged.push(d);});
         merged.sort((a,b)=>a.code.localeCompare(b.code));
         setAccountsState(merged);
-        // Silently upsert any new defaults to Supabase
+        // Upsert any new defaults to Supabase — this used to be genuinely
+        // fire-and-forget (no await, no error check at all): for a brand
+        // new multi-company account, if the (user_id,company_id,code)
+        // onConflict target doesn't actually match a real unique constraint
+        // in the database, EVERY one of these silently fails — the chart of
+        // accounts still looks fully populated for the rest of this session
+        // (it's all in local state), but none of it persisted, and it comes
+        // back empty (or partially empty) on the very next reload. This is
+        // exactly "a new test company's data doesn't save" with zero visible
+        // cause. Now awaited with real failure reporting.
         const newDefaults=DEFAULT_ACCOUNTS.filter(d=>!existingCodes.has(d.code));
         if(newDefaults.length){
-          newDefaults.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"}));
+          (async()=>{
+            let firstError=null;
+            for(const a of newDefaults){
+              const{error}=await sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+              if(error&&!firstError){firstError=error;console.error("Default account seed error:",error);}
+            }
+            if(firstError)alert(`This company's chart of accounts isn't actually saving to the database — it'll disappear on reload until this is fixed:\n\n${firstError.message}`);
+          })();
         }
       } else {
-        // New user — load full default chart of accounts into Supabase
+        // New user/company — load full default chart of accounts into
+        // Supabase. Same fire-and-forget issue as above, same fix.
         setAccountsState(DEFAULT_ACCOUNTS);
-        DEFAULT_ACCOUNTS.forEach(a=>sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"}));
+        (async()=>{
+          let firstError=null;
+          for(const a of DEFAULT_ACCOUNTS){
+            const{error}=await sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),code:a.code,name:a.name,matchable:a.matchable||false},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+            if(error&&!firstError){firstError=error;console.error("Default account seed error:",error);}
+          }
+          if(firstError)alert(`This company's chart of accounts isn't actually saving to the database — it'll disappear on reload until this is fixed:\n\n${firstError.message}`);
+        })();
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
