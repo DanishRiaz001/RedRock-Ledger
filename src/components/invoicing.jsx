@@ -3237,9 +3237,24 @@ function AccountSwitcherDropdown({accounts,value,onChange}){
   );
 }
 
-function ContactSearchInline({contacts,value,onChange,type}){
+// Generates the next available C###/S### id and appends the new contact via
+// setContacts — shared by every ContactSearchInline call site so "+ New
+// customer/supplier" behaves identically wherever it appears, matching the
+// id scheme ContactSearch (ledger.jsx) and the SAF-T importer already use.
+const createContactInline=(contacts,setContacts,{name,type})=>{
+  if(!setContacts||!name.trim())return null;
+  const nextNum=Math.max(0,...contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0))+1;
+  const id=type==="customer"?`C${String(nextNum).padStart(3,"0")}`:`S${String(nextNum).padStart(3,"0")}`;
+  setContacts([...contacts,{id,type,name:name.trim(),paymentTermsDays:30}]);
+  return id;
+};
+
+function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
+  const[creating,setCreating]=useState(false);
+  const[newName,setNewName]=useState("");
+  const[newType,setNewType]=useState(type==="customer"?"customer":"supplier");
   const isAll=type==="all";
   const isC=type==="customer";
   const filtered=useMemo(()=>{
@@ -3247,6 +3262,13 @@ function ContactSearchInline({contacts,value,onChange,type}){
     const ql=q.toLowerCase();
     return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql)).slice(0,10);
   },[contacts,q]);
+  const startCreate=()=>{setNewName(q);setCreating(true);};
+  const submitCreate=()=>{
+    if(!newName.trim()||!onCreateContact)return;
+    const id=onCreateContact({name:newName.trim(),type:isAll?newType:type});
+    if(id){onChange(id);setOpen(false);setQ("");}
+    setCreating(false);setNewName("");
+  };
   return(
     <div style={{position:"relative"}}>
       <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
@@ -3265,6 +3287,20 @@ function ContactSearchInline({contacts,value,onChange,type}){
                   <span style={{fontSize:9,color:T.muted,fontWeight:700}}>{c.id}</span>
                 </div>
               );})}
+              {onCreateContact&&(creating?(
+                <div style={{padding:10,background:T.bg,display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${T.border}`}}>
+                  <input autoFocus placeholder="Name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    {isAll&&(<>
+                      <button onClick={()=>setNewType("customer")} style={{flex:1,padding:"6px",borderRadius:6,border:`1.5px solid ${newType==="customer"?T.blue:T.border}`,background:newType==="customer"?T.blueBg:"#fff",color:newType==="customer"?T.blue:T.sub,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Customer</button>
+                      <button onClick={()=>setNewType("supplier")} style={{flex:1,padding:"6px",borderRadius:6,border:`1.5px solid ${newType==="supplier"?T.red:T.border}`,background:newType==="supplier"?T.redLight:"#fff",color:newType==="supplier"?T.red:T.sub,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Supplier</button>
+                    </>)}
+                    <button onClick={submitCreate} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"0 14px",fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
+                  </div>
+                </div>
+              ):(
+                <div onClick={startCreate} style={{padding:"9px 12px",fontSize:11.5,fontWeight:700,color:T.accent,cursor:"pointer",background:"#fff",borderTop:`1px solid ${T.border}`}}>+ New {isAll?"customer or supplier":isC?"customer":"supplier"}{q?` "${q}"`:""}</div>
+              ))}
             </div>
           </div>
         </>
@@ -3982,7 +4018,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     <span style={{fontSize:10,color:T.muted}}>{form.contactId}</span>
                     <button onClick={()=>setForm(p=>({...p,contactId:""}))} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
                   </div>
-                );}return(<ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={reskontroMode?"all":contactMode}/>);})()}
+                );}return(<ContactSearchInline contacts={filteredContacts} value={form.contactId} onChange={v=>setForm(p=>({...p,contactId:v}))} type={reskontroMode?"all":contactMode} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>);})()}
               </div>
               <button onClick={()=>setShowAddContact(s=>!s)} style={{background:showAddContact?T.redLight:T.blueBg,color:showAddContact?T.red:T.blue,border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>+ Add</button>
             </div>
@@ -4054,7 +4090,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
                 </div>
               );})():(
-                <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"}/>
+                <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
               )}
             </div>
 
