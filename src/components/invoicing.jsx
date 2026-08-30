@@ -909,7 +909,14 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
     if(result.error){alert(result.error);return;}
     setRequestSent(true);
   };
-  const save=()=>{saveCompanyProfile(form);setSaved(true);setTimeout(()=>setSaved(false),1800);};
+  const save=async()=>{
+    const r=await saveCompanyProfile(form);
+    // saveCompanyProfile now reports whether the database write actually
+    // succeeded — only flash "Saved!" when it really did; a failed save
+    // already shows its own alert with the real error, so this just avoids
+    // ALSO claiming success on top of that.
+    if(!r||!r.error){setSaved(true);setTimeout(()=>setSaved(false),1800);}
+  };
   const set=(k)=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
   return(

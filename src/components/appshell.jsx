@@ -1011,7 +1011,19 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   const saveCompanyProfile=async(profile)=>{
     setCompanyProfile(profile);
     if(!canEdit)return;
-    await sb.from("company_profile").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
+    // This upsert's result was never checked — a failure (most likely: no
+    // unique constraint actually exists on (user_id,company_id) in the
+    // database for a multi-company account, so this onConflict target can't
+    // resolve) silently did nothing while the Company Information screen
+    // still flashed "Saved!" regardless, since that flash isn't wired to
+    // this call's outcome either. That's exactly "I set the country/name
+    // and it didn't save" with zero visible error. Now it actually surfaces.
+    const{error}=await sb.from("company_profile").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
+    if(error){
+      alert("Company information didn't save:\n\n"+error.message+"\n\nYour changes are shown here but will revert on reload until this is fixed.");
+      logBug&&logBug("DB_ERROR","Failed to save company_profile",error.message,"saveCompanyProfile");
+    }
+    return{error};
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
