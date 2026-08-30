@@ -152,7 +152,14 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       const doc=new DOMParser().parseFromString(xmlText,"text/xml");
       if(doc.getElementsByTagName("parsererror").length)throw new Error("Invalid XML");
 
-      const companyName=text(doc,"CompanyName")||text(doc,"CompanyID")||"Unknown company";
+      // The standard schema (OECD / Norwegian SAF-T Financial) puts the
+      // company's name inside Header/Company/Name — there's no top-level
+      // <CompanyName> or <CompanyID> tag at all, so this always fell
+      // through to "Unknown company" for a real, standards-compliant
+      // export. <CompanyName> is kept as a fallback in case some other
+      // system's export genuinely uses it.
+      const companyEl=doc.getElementsByTagName("Company")[0];
+      const companyName=(companyEl&&text(companyEl,"Name"))||text(doc,"CompanyName")||"Unknown company";
 
       const glAccounts=Array.from(doc.getElementsByTagName("Account")).map(a=>({
         code:text(a,"AccountID"),
@@ -161,29 +168,56 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
         openingCredit:num(a,"OpeningCreditBalance"),
       })).filter(a=>a.code&&a.name);
 
-      const parseParty=(tag)=>Array.from(doc.getElementsByTagName(tag)).map(c=>({
-        name:text(c,"CompanyName")||text(c,"Name"),
-        id:text(c,"CustomerID")||text(c,"SupplierID"),
+      const transactions=Array.from(doc.getElementsByTagName("Transaction")).map(t=>{
+        const date=text(t,"TransactionDate")||text(t,"GLPostingDate");
+        const description=text(t,"Description");
+        // DebitAmount/CreditAmount are always container elements with a
+        // nested <Amount> (plus siblings like CurrencyCode) — reading
+        // .textContent off the container itself (the old code's first
+        // branch) concatenates every descendant's text together, and only
+        // "worked" because parseFloat happens to stop at the first non-
+        // numeric character. Reading the nested <Amount> directly is the
+        // actually-correct extraction, not a lucky parse of a dirty string.
+        const lines=Array.from(t.getElementsByTagName("Line")).map(l=>{
+          const debitEl=l.getElementsByTagName("DebitAmount")[0];
+          const creditEl=l.getElementsByTagName("CreditAmount")[0];
+          return{
+            accountId:text(l,"AccountID"),
+            debit:(debitEl?num(debitEl,"Amount"):null)||0,
+            credit:(creditEl?num(creditEl,"Amount"):null)||0,
+          };
+        });
+        // CustomerID/SupplierID on the transaction itself is how the
+        // standard schema links a journal entry to a specific customer/
+        // supplier — used below to correctly detect which contacts
+        // actually have transactions.
+        return{date,description,lines,customerId:text(t,"CustomerID"),supplierId:text(t,"SupplierID")};
+      }).filter(t=>t.date&&t.lines.length);
+
+      const referencedCustomerIds=new Set(transactions.map(t=>t.customerId).filter(Boolean));
+      const referencedSupplierIds=new Set(transactions.map(t=>t.supplierId).filter(Boolean));
+
+      // The standard schema names this field <Name>, not <CompanyName> —
+      // and there's no <InvoiceNo> anywhere inside a Customer/Supplier
+      // record (SAF-T Financial is journal-entry based, not invoice-based;
+      // a contact's own record never embeds invoice numbers). The old
+      // hasTxns check could never be true for a real export, meaning
+      // "only import contacts referenced in transactions" silently
+      // imported nothing at all. Fixed by cross-referencing each
+      // contact's own ID against the CustomerID/SupplierID actually
+      // referenced on parsed transactions above.
+      const parseParty=(tag,idTag,referencedIds)=>Array.from(doc.getElementsByTagName(tag)).map(c=>({
+        name:text(c,"Name")||text(c,"CompanyName"),
+        id:text(c,idTag),
         address:text(c,"StreetName")||"",
         email:text(c,"Email")||"",
         phone:text(c,"Telephone")||"",
         openingDebit:num(c,"OpeningDebitBalance"),
         openingCredit:num(c,"OpeningCreditBalance"),
-        hasTxns:!!c.getElementsByTagName("InvoiceNo").length,
+        hasTxns:referencedIds.has(text(c,idTag)),
       })).filter(c=>c.name);
-      const customers=parseParty("Customer");
-      const suppliers=parseParty("Supplier");
-
-      const transactions=Array.from(doc.getElementsByTagName("Transaction")).map(t=>{
-        const date=text(t,"TransactionDate")||text(t,"PostingDate");
-        const description=text(t,"Description");
-        const lines=Array.from(t.getElementsByTagName("Line")).map(l=>({
-          accountId:text(l,"AccountID"),
-          debit:parseFloat(text(l,"DebitAmount")||text(l.getElementsByTagName("DebitAmount")[0],"Amount"))||0,
-          credit:parseFloat(text(l,"CreditAmount")||text(l.getElementsByTagName("CreditAmount")[0],"Amount"))||0,
-        }));
-        return{date,description,lines};
-      }).filter(t=>t.date&&t.lines.length);
+      const customers=parseParty("Customer","CustomerID",referencedCustomerIds);
+      const suppliers=parseParty("Supplier","SupplierID",referencedSupplierIds);
 
       const accountsWithTxns=new Set();
       transactions.forEach(t=>t.lines.forEach(l=>accountsWithTxns.add(l.accountId)));
