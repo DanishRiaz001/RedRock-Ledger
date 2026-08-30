@@ -3887,12 +3887,6 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
     return{...info,totalSales,totalExpenses,vatOut,vatIn,netVat,bilagCount,status};
   }),[transactions,year]);
 
-  const yearTotalSales=rows.reduce((s,r)=>s+r.totalSales,0);
-  const yearVatPayable=rows.reduce((s,r)=>s+Math.max(0,r.netVat),0);
-  const yearVatRefund=rows.reduce((s,r)=>s+Math.max(0,-r.netVat),0);
-  const pressing=rows.find(r=>!r.status.filed&&r.due>=today)||rows.find(r=>!r.status.filed);
-  const daysUntilDue=pressing?Math.ceil((new Date(pressing.due)-new Date(today))/86400000):null;
-  const needsReconcile=rows.find(r=>r.status.filed&&!r.status.reconciled);
 
   const statusLabel=(r)=>{
     if(r.status.filed&&r.status.paid)return{text:"Betalt · Sendt & Betalt",color:T.green,dot:T.green};
@@ -3914,93 +3908,55 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
   };
 
   return(
-    <div style={{maxWidth:1200}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:22,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
-        <button onClick={exportYearXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export {year}</button>
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
+        <button onClick={exportYearXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 11px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:12,marginRight:5}}/>Export {year}</button>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:20,alignItems:"start"}}>
-        <div>
-          <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:110,marginBottom:14}}>
-            {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
-          </select>
-          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Registrerte perioder</div>
-          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-              <thead><tr style={{color:T.muted,fontSize:11,textAlign:"left"}}>
-                <td style={{padding:"10px 16px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Bilagsnummer</td><td>Leveringsstatus</td><td>Betalingsstatus</td><td>Handlinger</td>
-              </tr></thead>
-              <tbody>
-                {rows.map(r=>{
-                  const deliveryDot=r.status.filed?T.green:(r.due<today?T.red:T.border);
-                  const deliveryText=r.status.filed?"Sendt til Skatteetaten":r.due<today?"Klar for innlevering":"Ikke sendt til Skatteetaten";
-                  const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
-                  const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
-                  return(
-                    <tr key={r.n} style={{borderTop:`1px solid ${T.border}`}}>
-                      <td style={{padding:"12px 16px",color:T.text,fontWeight:600}}>{r.label}</td>
-                      <td style={{color:T.sub}}>Alminnelig næring</td>
-                      <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
-                      <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(r.netVat)}</td>
-                      <td style={{color:T.muted}}>{r.bilagCount?<><i className="ti ti-paperclip" style={{fontSize:12,marginRight:4}}/>{r.bilagCount}</>:"Bilag ikke opprettet"}</td>
-                      <td>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{width:8,height:8,borderRadius:"50%",background:deliveryDot,flexShrink:0}}/>
-                          <span style={{fontSize:11,color:T.sub}}>{deliveryText}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{width:8,height:8,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
-                          <span style={{fontSize:11,color:T.sub}}>{paymentText}</span>
-                        </div>
-                      </td>
-                      <td style={{padding:"12px 16px"}}>
-                        <div style={{display:"flex",gap:6}}>
-                          <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
-                          <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit"}}>Avstem</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div>
-          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Aktivitetssentral</div>
-          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:18,marginBottom:16}}>
-            <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:14}}>Status for {year}</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:2}}>Total omsetning:</div>
-            <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:14}}>{fmt(yearTotalSales)} NOK</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:2}}>Mva å betale (Total):</div>
-            <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:14}}>{fmt(yearVatPayable)} NOK</div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:2}}>Mva tilgode (Total):</div>
-            <div style={{fontSize:18,fontWeight:800,color:T.text}}>{fmt(yearVatRefund)} NOK</div>
-          </div>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:10}}>Neste steg</div>
-          {pressing&&(
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:12}}>
-              <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Mest presserende periode:</div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:18,fontWeight:800,color:T.text}}>Termin {pressing.n}</div>
-                <button onClick={()=>onOpenTermin({year,n:pressing.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Start Innlevering</button>
-              </div>
-              <div style={{fontSize:11,color:daysUntilDue<0?T.red:T.muted,marginTop:4}}>{daysUntilDue<0?`Forfalt for ${Math.abs(daysUntilDue)} dager siden`:`Forfall om ${daysUntilDue} dager`}</div>
-            </div>
-          )}
-          {needsReconcile&&(
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16}}>
-              <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Mva-melding å avstemme:</div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:18,fontWeight:800,color:T.text}}>Termin {needsReconcile.n}</div>
-                <button onClick={()=>markReconciled(needsReconcile)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Avstem</button>
-              </div>
-            </div>
-          )}
-        </div>
+      <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:100,marginBottom:12,fontSize:12,padding:"6px 8px"}}>
+        {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
+      </select>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+        <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse"}}>
+          <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left"}}>
+            <td style={{padding:"8px 14px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Bilagsnummer</td><td>Leveringsstatus</td><td>Betalingsstatus</td><td>Handlinger</td>
+          </tr></thead>
+          <tbody>
+            {rows.map(r=>{
+              const deliveryDot=r.status.filed?T.green:(r.due<today?T.red:T.border);
+              const deliveryText=r.status.filed?"Sendt til Skatteetaten":r.due<today?"Klar for innlevering":"Ikke sendt til Skatteetaten";
+              const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
+              const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
+              return(
+                <tr key={r.n} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"9px 14px",color:T.text,fontWeight:600}}>{r.label}</td>
+                  <td style={{color:T.sub}}>Alminnelig næring</td>
+                  <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
+                  <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(r.netVat)}</td>
+                  <td style={{color:T.muted}}>{r.bilagCount?<><i className="ti ti-paperclip" style={{fontSize:11,marginRight:4}}/>{r.bilagCount}</>:"Bilag ikke opprettet"}</td>
+                  <td>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:deliveryDot,flexShrink:0}}/>
+                      <span style={{fontSize:10.5,color:T.sub}}>{deliveryText}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
+                      <span style={{fontSize:10.5,color:T.sub}}>{paymentText}</span>
+                    </div>
+                  </td>
+                  <td style={{padding:"9px 14px"}}>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
+                      <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px",fontSize:10.5,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit"}}>Avstem</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
