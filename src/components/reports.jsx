@@ -272,9 +272,9 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
         )}
 
         <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:`1px solid ${T.border}`}}>
-            <div style={{fontSize:15,fontWeight:800,color:T.text}}>Chart of accounts</div>
-            <div style={{display:"flex",gap:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Chart of accounts</div>
+            <div style={{display:"flex",gap:16}}>
               <span onClick={()=>{
                 const aoa=[["Code","Name","Type","Balance group","Description","SAF-T (v1.3)","Default VAT","Currency","Show at posting","Matchable","Inactive"],...list.map(a=>[a.code,a.name,parseInt(getSK(a.code))<3000?"Balance sheet":"Income statement",(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.saftCode13||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.currency||"PKR",a.showAtPosting!==false?"yes":"no",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
                 const wb=XLSX.utils.book_new();
@@ -313,18 +313,18 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
               <span onClick={()=>setShowNew(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
             </div>
           </div>
-          <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+          <table style={{width:"100%",fontSize:10.5,borderCollapse:"collapse"}}>
             <thead><tr style={{background:T.bg,color:T.sub}}>
-              <td style={{padding:"10px 14px",fontWeight:700,verticalAlign:"middle"}}>Account number</td>
-              <td style={{padding:"10px 0",fontWeight:700,verticalAlign:"middle"}}>Name</td>
-              <td style={{padding:"10px 0",fontWeight:700,verticalAlign:"middle"}}>Account type</td>
-              <td style={{padding:"10px 0",fontWeight:700,verticalAlign:"middle"}}>Balance group</td>
-              <td style={{padding:"10px 0",fontWeight:700,verticalAlign:"middle"}}>Description</td>
-              <td style={{padding:"10px 0",fontWeight:700,verticalAlign:"middle"}}>SAF-T (v1.3)</td>
-              <td style={{padding:"10px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>VAT code</td>
-              <td style={{padding:"10px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>Currency</td>
-              <td style={{padding:"10px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>Show at<br/>posting</td>
-              <td style={{textAlign:"center",fontWeight:700,padding:"10px 14px",verticalAlign:"middle"}}>Inactive</td>
+              <td style={{padding:"7px 12px",fontWeight:700,verticalAlign:"middle"}}>Account number</td>
+              <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>Name</td>
+              <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>Account type</td>
+              <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>Balance group</td>
+              <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>Description</td>
+              <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>SAF-T (v1.3)</td>
+              <td style={{padding:"7px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>VAT code</td>
+              <td style={{padding:"7px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>Currency</td>
+              <td style={{padding:"7px 0",textAlign:"center",fontWeight:700,verticalAlign:"middle"}}>Show at<br/>posting</td>
+              <td style={{textAlign:"center",fontWeight:700,padding:"7px 12px",verticalAlign:"middle"}}>Inactive</td>
             </tr></thead>
             <tbody>
               {Object.entries(SERIES).map(([key,s])=>{
@@ -332,21 +332,21 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                 if(!grp.length)return null;
                 return(
                   <React.Fragment key={key}>
-                    <tr style={{background:T.bg}}><td colSpan="10" style={{padding:"8px 14px",fontWeight:700,fontSize:11,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="10" style={{padding:"6px 12px",fontWeight:700,fontSize:10,color:s.color,textTransform:"uppercase",letterSpacing:0.3}}>{s.icon} {s.name}</td></tr>
                     {grp.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer",background:a.code===highlightCode?T.accentLight:undefined,transition:"background 0.4s"}}>
-                        <td style={{padding:"9px 14px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
+                        <td style={{padding:"7px 12px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{parseInt(key)<3000?"Balance sheet":"Income statement"}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{s.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.notes||"—"}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode13||"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{parseInt(key)<3000?"Balance sheet":"Income statement"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{s.name}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
                         <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
                         </td>
-                        <td style={{textAlign:"center",padding:"9px 14px"}} onClick={e=>e.stopPropagation()}>
+                        <td style={{textAlign:"center",padding:"7px 12px"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={!!a.inactive} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,inactive:e.target.checked})}/>
                         </td>
                       </tr>
@@ -364,21 +364,21 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                 if(!other.length)return null;
                 return(
                   <React.Fragment key="other">
-                    <tr style={{background:T.bg}}><td colSpan="10" style={{padding:"8px 14px",fontWeight:700,fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
+                    <tr style={{background:T.bg}}><td colSpan="10" style={{padding:"6px 12px",fontWeight:700,fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>❓ Other / Uncategorized</td></tr>
                     {other.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
-                        <td style={{padding:"9px 14px",color:T.text}}>{a.code}</td>
+                        <td style={{padding:"7px 12px",color:T.text}}>{a.code}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:12}}>—</td>
-                        <td style={{color:T.muted,fontSize:12}}>—</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.notes||"—"}</td>
-                        <td style={{color:T.muted,fontSize:12}}>{a.saftCode13||"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:12}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>—</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>—</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
                         <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
                         </td>
-                        <td style={{textAlign:"center",padding:"9px 14px"}} onClick={e=>e.stopPropagation()}>
+                        <td style={{textAlign:"center",padding:"7px 12px"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={!!a.inactive} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,inactive:e.target.checked})}/>
                         </td>
                       </tr>
