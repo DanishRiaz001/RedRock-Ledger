@@ -3898,9 +3898,21 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
 
   const markReconciled=(r)=>{setVatStatus(year,r.n,{reconciled:true});forceTick(x=>x+1);};
 
+  const exportYearXlsx=()=>{
+    const aoa=[["Periode","Meldingstype","Forfallsdato","Beløp","Bilagsnummer","Leveringsstatus","Betalingsstatus"]];
+    rows.forEach(r=>aoa.push([r.label,"Alminnelig næring",r.due,r.netVat,r.bilagCount,r.status.filed?"Sendt til Skatteetaten":"Ikke sendt til Skatteetaten",r.status.paid?"Betaling registrert":"Ikke betalt"]));
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Mva-meldinger");
+    XLSX.writeFile(wb,`Mva-meldinger_${year}.xlsx`);
+  };
+
   return(
     <div style={{maxWidth:1200}}>
-      <h1 style={{fontSize:22,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Mva-meldinger</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:22,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
+        <button onClick={exportYearXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export {year}</button>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:20,alignItems:"start"}}>
         <div>
           <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:110,marginBottom:14}}>
@@ -4038,6 +4050,30 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
 
   const getName=code=>{const a=accounts.find(x=>x.code===code);return a?`${a.code} ${a.name}`:code;};
 
+  // No Skatteetaten/Altinn filing integration — instead, an extractable
+  // report: the same Mva-kode/Sats/Grunnlag/Mva summary as a real filing,
+  // downloadable as PDF (for records/handing to an accountant) or Excel
+  // (for further work), same pattern General ledger's export uses.
+  const exportXlsx=()=>{
+    const aoa=[["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg av varer og tjenester i Norge","","","",""]];
+    salesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"output");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,g.net,g.vat]);});
+    aoa.push(["Kjøp av varer og tjenester i Norge","","","",""]);
+    purchasesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"input");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,-g.net,-g.vat]);});
+    aoa.push([],["Skyldig terminbeløp","","","",netVat]);
+    aoa.push([],["Spesifikasjon","","","",""],["Bilag","Dato","Beskrivelse","Konto","Beløp","Mva"]);
+    [...salesTxns,...purchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+      aoa.push([fmtB(t.bilag),t.date,t.description,getName(t.debitCode)+" / "+getName(t.creditCode),t.amount,t.vatAmount||0]);
+    });
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Mva-melding");
+    XLSX.writeFile(wb,`Mva-melding_${termin.year}_termin${termin.n}.xlsx`);
+  };
+  const exportPdf=()=>{
+    const el=document.getElementById("vatTermin-print-area");
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`Mva-melding_${termin.year}_termin${termin.n}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
+  };
+
   const Row=({t,otherCode})=>{
     const controlled=controlledIds.has(t.id);
     return(
@@ -4065,6 +4101,8 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           <div style={{fontSize:12,color:T.muted}}>Forfall {info.due}</div>
         </div>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>Last ned PDF</button>
+          <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
           {!status.filed?(
             <button onClick={markFiled} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Merk som sendt</button>
           ):!status.paid?(
@@ -4075,6 +4113,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </div>
       </div>
 
+      <div id="vatTermin-print-area">
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
           <div style={{fontSize:10,color:T.muted,textTransform:"uppercase"}}>Total salg</div>
@@ -4187,6 +4226,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
         {nonVatTxns.map(t=><Row key={t.id} t={t} otherCode={`${getName(t.debitCode)} / ${getName(t.creditCode)}`}/>)}
         {!nonVatTxns.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen transaksjoner uten mva denne perioden.</div>}
+      </div>
       </div>
 
       {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
