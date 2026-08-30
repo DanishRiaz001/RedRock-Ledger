@@ -3682,9 +3682,15 @@ function VATReportScreen({invoices,contacts,transactions}){
     return Object.values(m).sort((a,b)=>b.rate-a.rate);
   },[periodInvoices]);
 
-  // Purchase (input) VAT — captured on supplier invoice vouchers (Cr 2400
-  // with a vat_amount set). Closes the gap where only sales VAT was tracked.
-  const periodPurchases=useMemo(()=>(transactions||[]).filter(t=>inPeriod(t.date)&&t.vatAmount!=null&&t.creditCode==="2400").sort((a,b)=>a.date.localeCompare(b.date)),[transactions,viewMonth,fullYear]);
+  // Purchase (input) VAT — any expense-account entry with VAT entered, not
+  // only supplier invoices credited to Accounts Payable (2400). The old
+  // filter required creditCode==="2400" specifically, which silently
+  // excluded the most common case for a small business: a purchase paid
+  // straight from a bank account (fuel, parking, tolls, a card purchase) —
+  // those credit a bank account code, never 2400, so their input VAT never
+  // appeared here even after it was correctly captured on the entry itself.
+  // isExpenseSK(debitCode) matches Mva-meldinger's own purchase-VAT logic.
+  const periodPurchases=useMemo(()=>(transactions||[]).filter(t=>inPeriod(t.date)&&t.vatAmount!=null&&t.vatAmount!==0&&isExpenseSK(t.debitCode)).sort((a,b)=>a.date.localeCompare(b.date)),[transactions,viewMonth,fullYear]);
   const totalPurchaseVat=periodPurchases.reduce((s,t)=>s+(t.vatAmount||0),0);
   const totalPurchaseNet=periodPurchases.reduce((s,t)=>s+(t.amount-(t.vatAmount||0)),0);
   const netVatPosition=totalVat-totalPurchaseVat;
@@ -3703,7 +3709,7 @@ function VATReportScreen({invoices,contacts,transactions}){
             {showInfo&&(<>
               <div onClick={()=>setShowInfo(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
               <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",width:320,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:14,fontSize:11,color:T.sub,lineHeight:1.5}}>
-                <div style={{marginBottom:10}}>Sales VAT comes from invoices; purchase VAT comes from supplier vouchers where VAT was entered. Vouchers created before VAT capture was added, or without a VAT % set, won't appear on the purchase side.</div>
+                <div style={{marginBottom:10}}>Sales VAT comes from invoices; purchase VAT comes from any expense entry (voucher or direct bank payment) where a VAT code was selected. Entries with no VAT code chosen won't appear on the purchase side.</div>
                 <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
                   <i className="ti ti-building-bank" style={{fontSize:14,flexShrink:0,marginTop:1}}/>
                   <span>These are calculations only — direct e-filing to FBR (Pakistan) or Altinn (Norway) needs government API access, which is its own setup. Use the PDF export to file manually until then.</span>
