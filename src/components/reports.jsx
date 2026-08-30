@@ -3975,14 +3975,6 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
 function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps}){
   const info=terminInfo(termin.year,termin.n);
   const[openTxn,setOpenTxn]=useState(null);
-  // Which rate rows have their specification expanded inline — clicking the
-  // Grunnlag/Mva amount in the summary table toggles this, instead of the
-  // page always showing every code's account+transaction breakdown twice
-  // (once implicitly via the summary row, once via a whole separate
-  // "Spesifikasjon" section repeating the same code/rate/grunnlag/mva
-  // header) whether you wanted the detail or not.
-  const[expandedRates,setExpandedRates]=useState(new Set());
-  const toggleRate=(key)=>setExpandedRates(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const[,forceTick]=useState(0);
   const controlledIds=getControlledIds(termin.year,termin.n);
   const status=(getVatStatuses()[`${termin.year}-${termin.n}`])||{};
@@ -4025,6 +4017,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
 
   const getName=code=>{const a=accounts.find(x=>x.code===code);return a?`${a.code} ${a.name}`:code;};
 
+  // A real separate specification window (Mva-melding spesifikasjon), not
+  // the inline expand — matching Tripletex's own drill-down exactly:
+  // Bilagsnr / Dato / Beskrivelse / Leverandør or Kunde / Mva-kode /
+  // Mva-beløp / Beløp / a running Saldo down the group's own rows in date
+  // order. Opened by clicking the Grunnlag or Mva figure in the summary
+  // table below, closed with its own Back button — a real navigation, not
+  // a toggle on the same page.
+  const[specView,setSpecView]=useState(null); // {key,direction,rate,rows} | null
+
   // No Skatteetaten/Altinn filing integration — instead, an extractable
   // report: the same Mva-kode/Sats/Grunnlag/Mva summary as a real filing,
   // downloadable as PDF (for records/handing to an accountant) or Excel
@@ -4066,6 +4067,56 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
       </div>
     );
   };
+
+  // The actual "Mva-melding spesifikasjon" window — a real separate view,
+  // not an inline expand, matching Tripletex's own layout: Bilagsnr / Dato
+  // / Beskrivelse / Leverandør or Kunde / Mva-kode / Mva-beløp / Beløp /
+  // running Saldo, in date order down this one code's transactions.
+  if(specView){
+    const sorted=[...specView.rows].sort((a,b)=>a.date.localeCompare(b.date)||a.bilag-b.bilag);
+    let running=0;
+    const specRows=sorted.map(t=>{running+=t.amount;return{...t,saldo:running};});
+    return(
+      <div style={{maxWidth:1100}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:11,color:T.muted}}>
+          <span onClick={()=>setSpecView(null)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding</span>
+          <span>/</span><span>Mva-melding spesifikasjon</span>
+        </div>
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Mva-melding spesifikasjon <span style={{fontWeight:500,color:T.muted}}>{info.label} — {specView.vc?`${specView.vc.code}: (${specView.rate}%) ${specView.vc.name}`:`${specView.rate}% mva-sats`}</span></h1>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+          <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
+            <colgroup>
+              <col style={{width:"9%"}}/><col style={{width:"9%"}}/><col style={{width:"26%"}}/><col style={{width:"16%"}}/>
+              <col style={{width:"9%"}}/><col style={{width:"11%"}}/><col style={{width:"10%"}}/><col style={{width:"10%"}}/>
+            </colgroup>
+            <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>{specView.direction==="output"?"Kunde":"Leverandør"}</td>
+              <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
+            </tr></thead>
+            <tbody>
+              {specRows.map(t=>{
+                const contact=contacts.find(c=>c.id===t.contactId);
+                return(
+                  <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
+                    <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+                    <td style={{color:T.sub}}>{t.date}</td>
+                    <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
+                    <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact?contact.name:getName(t[specView.otherField])}</td>
+                    <td style={{color:T.sub}}>{specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
+                    <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
+                    <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
+                    <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:700}}>{fmt(t.saldo)}</td>
+                  </tr>
+                );
+              })}
+              {!specRows.length&&<tr><td colSpan="8" style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
+      </div>
+    );
+  }
 
   return(
     <div style={{maxWidth:1000}}>
@@ -4126,31 +4177,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             {salesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"output");
               const key="s"+g.rate;
-              const expanded=expandedRates.has(key);
+              const openSpec=()=>setSpecView({key,direction:"output",rate:g.rate,vc,rows:g.rows,otherField:"debitCode"});
               return(
-                <React.Fragment key={key}>
-                  <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
-                    <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
-                    <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
-                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
-                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.vat)}</td>
-                  </tr>
-                  {expanded&&(
-                    <tr>
-                      <td colSpan="5" style={{padding:0,background:T.bg}}>
-                        {groupByAccount(g.rows,"creditCode").map(acc=>(
-                          <div key={acc.code}>
-                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px",fontSize:10.5,fontWeight:700,color:T.sub}}>
-                              <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
-                            </div>
-                            {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.debitCode)}/>)}
-                          </div>
-                        ))}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.vat)}</td>
+                </tr>
               );
             })}
             {!salesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</td></tr>}
@@ -4158,31 +4193,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             {purchasesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"input");
               const key="p"+g.rate;
-              const expanded=expandedRates.has(key);
+              const openSpec=()=>setSpecView({key,direction:"input",rate:g.rate,vc,rows:g.rows,otherField:"creditCode"});
               return(
-                <React.Fragment key={key}>
-                  <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
-                    <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
-                    <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
-                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.net)}</td>
-                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.vat)}</td>
-                  </tr>
-                  {expanded&&(
-                    <tr>
-                      <td colSpan="5" style={{padding:0,background:T.bg}}>
-                        {groupByAccount(g.rows,"debitCode").map(acc=>(
-                          <div key={acc.code}>
-                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px",fontSize:10.5,fontWeight:700,color:T.sub}}>
-                              <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
-                            </div>
-                            {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.creditCode)}/>)}
-                          </div>
-                        ))}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.net)}</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.vat)}</td>
+                </tr>
               );
             })}
             {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
