@@ -4114,7 +4114,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const salesTxns=periodTxns.filter(t=>isIncomeSK(t.creditCode)&&t.vatAmount!=null&&t.vatAmount!==0);
   const purchaseTxns=periodTxns.filter(t=>isExpenseSK(t.debitCode)&&t.vatAmount!=null&&t.vatAmount!==0);
   const vatIds=new Set([...salesTxns,...purchaseTxns].map(t=>t.id));
-  const nonVatTxns=periodTxns.filter(t=>!vatIds.has(t.id));
+  // "Ingen avgiftsbehandling" is a P&L concept — a balance-sheet-only
+  // posting (a bank transfer, a loan repayment, moving money between
+  // 1900/1920/2xxx accounts) was never a VAT decision to begin with, so it
+  // doesn't belong in this bucket at all. Restricting to entries that
+  // actually touch a real income (credit side) or expense (debit side)
+  // account keeps this section to real "we chose not to apply VAT here"
+  // postings, e.g. a 7770 bank-fee or a 0%-rated sale.
+  const nonVatTxns=periodTxns.filter(t=>!vatIds.has(t.id)&&(isIncomeSK(t.creditCode)||isExpenseSK(t.debitCode)));
 
   const groupByRate=(rows)=>{
     const m={};

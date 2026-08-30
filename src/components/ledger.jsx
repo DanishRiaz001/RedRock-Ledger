@@ -531,16 +531,26 @@ function ContactSearch({contacts,value,onChange,onCreateContact}){
 // has, and a fake/non-functional "check credit" button would be worse than
 // not having one. Org number only shows for Norway-based books, since it's
 // meaningless for Pakistan-side clients and would just be visual noise there.
-function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onBulkImport}){
-  const[type,setType]=useState(defaultType);
-  const[name,setName]=useState("");
-  const[orgNumber,setOrgNumber]=useState("");
-  const[email,setEmail]=useState("");
-  const[phone,setPhone]=useState("");
-  const[address,setAddress]=useState("");
-  const[accountNo,setAccountNo]=useState("");
-  const[paymentTermsDays,setPaymentTermsDays]=useState("30");
-  const[creditLimit,setCreditLimit]=useState("");
+function NewContactModal({defaultType="customer",country="PK",initial=null,companyCurrency="",onSave,onClose,onBulkImport}){
+  const editing=!!initial;
+  const[type,setType]=useState(initial?initial.type:defaultType);
+  const[name,setName]=useState(initial?initial.name||"":"");
+  const[orgNumber,setOrgNumber]=useState(initial?initial.orgNumber||"":"");
+  const[email,setEmail]=useState(initial?initial.email||"":"");
+  const[phone,setPhone]=useState(initial?initial.phone||"":"");
+  const[address,setAddress]=useState(initial?initial.address||"":"");
+  const[accountNo,setAccountNo]=useState(initial?initial.accountNo||"":"");
+  const[paymentTermsDays,setPaymentTermsDays]=useState(initial&&initial.paymentTermsDays!=null?String(initial.paymentTermsDays):"30");
+  const[creditLimit,setCreditLimit]=useState(initial&&initial.creditLimit!=null?String(initial.creditLimit):"");
+  // The extra fields from the Tripletex "Kunde-/leverandørdetaljer" reference
+  // — scoped to what this app can genuinely populate and act on, unlike
+  // Kundeansvarlig (no staff-assignment model here) or Kredittsjekk (a real
+  // credit-bureau integration this app doesn't have) which are left out
+  // rather than shown as non-functional decoration.
+  const[isCompany,setIsCompany]=useState(initial?initial.isCompany!==false:true);
+  const[category,setCategory]=useState(initial?initial.category||"":"");
+  const[currency,setCurrency]=useState(initial&&initial.currency?initial.currency:companyCurrency||"");
+  const[inactive,setInactive]=useState(initial?!!initial.inactive:false);
 
   // Brønnøysundregisteret (Norwegian business registry) name search — live,
   // debounced, public API (no key, CORS-open). Only offered for NO companies
@@ -551,7 +561,10 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
   const[brregResults,setBrregResults]=useState([]);
   const[brregSearching,setBrregSearching]=useState(false);
   const[brregOpen,setBrregOpen]=useState(false);
-  const[brregPicked,setBrregPicked]=useState(false);
+  // Editing an existing contact starts with brregPicked=true so re-opening
+  // it for a quick phone-number fix doesn't immediately fire a live Brreg
+  // search against the name that's already there.
+  const[brregPicked,setBrregPicked]=useState(editing);
   const brregTimer=useRef(null);
   useEffect(()=>{
     if(country!=="NO"||brregPicked){setBrregResults([]);return;}
@@ -712,7 +725,7 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[]}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false}){
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
@@ -794,23 +807,55 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // matching New Entry's own attachment preview.
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,borderRadius:16,width:"100%",maxWidth:attached?1180:720,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 70px rgba(0,0,0,0.35)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,borderRadius:16,width:"100%",maxWidth:1180,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 70px rgba(0,0,0,0.35)"}}>
         <div style={{padding:"22px 24px 0"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
             <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
             <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:40,height:40}}>✕</button>
           </div>
         </div>
-        <div style={{padding:"0 24px 24px",display:attached?"grid":"block",gridTemplateColumns:attached?"1fr 1fr":undefined,gap:attached?20:0,alignItems:"start"}}>
+        {/* Always a two-column layout — form + document preview — matching
+            New Entry exactly, rather than only showing the preview column
+            when a file happens to already be attached. Without an
+            attachment yet, the right column shows the same "no document /
+            upload one" prompt New Entry shows, so you can attach a receipt
+            right from here instead of that only being possible elsewhere. */}
+        <div style={{padding:"0 24px 24px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
           {formCard}
-          {attached&&(
-            <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+            {attached?(<>
               <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
               <div style={{height:"calc(100% - 33px)"}}>
                 <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
               </div>
-            </div>
-          )}
+            </>):(
+              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center"}}>
+                <i className="ti ti-file-off" style={{fontSize:28}}/>
+                <div style={{fontSize:12}}>No document attached to this entry yet.</div>
+                {onUploadFile&&(
+                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
+                    <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
+                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file"}</span>
+                    <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
+                  </label>
+                )}
+                {onAttachExisting&&availableInboxFiles.length>0&&(
+                  <select value="" disabled={attUploading} onChange={e=>{
+                    // <select> options always come back as strings — match
+                    // that against the (possibly numeric) real id rather
+                    // than passing the string straight through, which would
+                    // silently fail the same way form.attachmentId's string/
+                    // number mismatch did in New Entry (see comment there).
+                    const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
+                    if(picked)onAttachExisting(picked.id);
+                  }} style={{...selSm,width:"100%",marginTop:2}}>
+                    <option value="">— or pick an existing Inbox file —</option>
+                    {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1029,7 +1074,9 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
   if(showEdit)return(
     <EditModal
       txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
-      attachments={attList}
+      attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
+      onUploadFile={uploadInboxFile?handleAttach:undefined}
+      onAttachExisting={attachFilesToTxnEntry?attachExistingFile:undefined}
       onSave={u=>{onEdit(u);setShowEdit(false);}}
       onDelete={id=>{onDelete(id);setShowEdit(false);onClose();}}
       onClose={()=>setShowEdit(false)}
@@ -1088,9 +1135,6 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
           <div style={{fontSize:11,color:T.sub,fontWeight:600,marginBottom:4}}>AMOUNT</div>
           <div style={{fontSize:28,fontWeight:900,color:isReversal?T.red:T.text}}>{fmt(txn.amount)}</div>
           <div style={{fontSize:11,color:T.sub,marginTop:4}}>{txn.date}{txn.invoiceNo?` · Invoice ${txn.invoiceNo}`:""}{txn.dueDate?` · Due ${txn.dueDate}`:""}</div>
-          {txn.vatAmount!=null&&txn.vatAmount!==0&&(
-            <div style={{fontSize:11,color:T.accent,fontWeight:700,marginTop:6}}>MVA {txn.vatPct!=null?`${txn.vatPct}% · `:""}{fmt(txn.vatAmount)}</div>
-          )}
         </div>
         {isReversal&&<div style={{background:T.redLight,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:T.red,fontWeight:600,textAlign:"center"}}>🔒 Reversal entries cannot be edited</div>}
         {contact&&(
@@ -1112,6 +1156,21 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
             <div style={{fontSize:11,color:T.sub,marginTop:2}}>{getName(txn.creditCode)}</div>
           </div>
         </div>
+        {/* A dedicated VAT box — same boxed treatment as Debit/Credit,
+            replacing the old one-line "MVA 25% · 123" text buried inside
+            the amount box above. Shown for any vat code actually recorded
+            on the entry, including code "0" (Ingen avgiftsbehandling),
+            since that's still meaningful information about how this entry
+            was treated for VAT, not just when the amount is non-zero. */}
+        {txn.vatCode!=null&&txn.vatCode!==""&&(
+          <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:12,padding:"12px 14px",marginTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:10,color:T.accent,fontWeight:800,marginBottom:4}}>MVA-KODE</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>{txn.vatCode}{txn.vatPct!=null?` (${txn.vatPct}%)`:""}</div>
+            </div>
+            <div style={{fontSize:15,fontWeight:800,color:T.accent}}>{fmt(txn.vatAmount||0)}</div>
+          </div>
+        )}
         {(()=>{
           const group=getGroupForTxn(txn.id);
           if(!group||group.lines.length<2)return null;
