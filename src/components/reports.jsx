@@ -317,7 +317,19 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
               <span onClick={()=>setShowNew(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
             </div>
           </div>
-          <table style={{width:"100%",fontSize:10.5,borderCollapse:"collapse"}}>
+          <table style={{width:"100%",fontSize:10.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
+            <colgroup>
+              <col style={{width:"8%"}}/>
+              <col style={{width:"20%"}}/>
+              <col style={{width:"13%"}}/>
+              <col style={{width:"16%"}}/>
+              <col style={{width:"9%"}}/>
+              <col style={{width:"8%"}}/>
+              <col style={{width:"7%"}}/>
+              <col style={{width:"7%"}}/>
+              <col style={{width:"7%"}}/>
+              <col style={{width:"5%"}}/>
+            </colgroup>
             <thead><tr style={{background:T.bg,color:T.sub}}>
               <td style={{padding:"7px 12px",fontWeight:700,verticalAlign:"middle"}}>Account number</td>
               <td style={{padding:"7px 0",fontWeight:700,verticalAlign:"middle"}}>Name</td>
@@ -340,12 +352,12 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                     {grp.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer",background:a.code===highlightCode?T.accentLight:undefined,transition:"background 0.4s"}}>
                         <td style={{padding:"7px 12px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
-                        <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.accountType||(parseInt(key)<3000?"Balance sheet":"Income statement")}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.balanceGroup||s.name}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
+                        <td style={{color:T.accent,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.name}>{a.name}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.accountType}>{a.accountType||(parseInt(key)<3000?"Balance sheet":"Income statement")}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.balanceGroup}>{a.balanceGroup||s.name}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.notes}>{a.notes||"—"}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
                         <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
@@ -372,12 +384,12 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                     {other.map(a=>(
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
                         <td style={{padding:"7px 12px",color:T.text}}>{a.code}</td>
-                        <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.accountType||"—"}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.balanceGroup||"—"}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
+                        <td style={{color:T.accent,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.name}>{a.name}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.accountType}>{a.accountType||"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.balanceGroup}>{a.balanceGroup||"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.notes}>{a.notes||"—"}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
-                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
+                        <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.currency&&a.currency!=="PKR"?a.currency:"—"}</td>
                         <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={a.showAtPosting!==false} onChange={e=>onUpdateAccount&&onUpdateAccount({...a,showAtPosting:e.target.checked})}/>
