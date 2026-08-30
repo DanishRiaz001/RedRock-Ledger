@@ -32,7 +32,11 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
     const currentCodes=new Set(list.map(a=>a.code));
     const restored=list.map(a=>{
       const d=defaultByCode.get(a.code);
-      return d?{...a,name:d.name}:a;
+      if(!d)return a;
+      // Only fills in a VAT code the account doesn't already have — never
+      // overwrites one that was deliberately set/customized, same rule the
+      // automatic backfill on login uses.
+      return a.defaultVatCode?{...a,name:d.name}:{...a,name:d.name,defaultVatCode:d.defaultVatCode||a.defaultVatCode,defaultVatPct:d.defaultVatCode?d.defaultVatPct:a.defaultVatPct};
     });
     const missing=DEFAULT_ACCOUNTS.filter(d=>!currentCodes.has(d.code));
     const merged=[...restored,...missing].sort((a,b)=>a.code.localeCompare(b.code));
@@ -337,8 +341,8 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer",background:a.code===highlightCode?T.accentLight:undefined,transition:"background 0.4s"}}>
                         <td style={{padding:"7px 12px",color:T.text}}>{a.code}{a.code===highlightCode&&<span style={{marginLeft:6,fontSize:9,background:T.accent,color:"#fff",borderRadius:5,padding:"1px 6px",fontWeight:700}}>NEW</span>}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{parseInt(key)<3000?"Balance sheet":"Income statement"}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>{s.name}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.accountType||(parseInt(key)<3000?"Balance sheet":"Income statement")}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.balanceGroup||s.name}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>
@@ -369,8 +373,8 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                       <tr key={a.code} className="rr-table-row" onClick={()=>openAccount(a.code)} style={{borderBottom:`1px solid ${T.border}`,opacity:a.inactive?0.5:1,cursor:"pointer"}}>
                         <td style={{padding:"7px 12px",color:T.text}}>{a.code}</td>
                         <td style={{color:T.accent,fontWeight:600}}>{a.name}</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>—</td>
-                        <td style={{color:T.muted,fontSize:10.5}}>—</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.accountType||"—"}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{a.balanceGroup||"—"}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.notes||"—"}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{a.saftCode13||"—"}</td>
                         <td style={{textAlign:"center",color:T.muted,fontSize:10.5}}>{a.defaultVatCode?`${a.defaultVatCode} (${a.defaultVatPct}%)`:"—"}</td>

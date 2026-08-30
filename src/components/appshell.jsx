@@ -325,13 +325,50 @@ function AppShell({user}){
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
-        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,defaultVatCode:a.default_vat_code||null,vatLocked:!!a.vat_locked,inactive:!!a.inactive,currency:a.currency||"PKR",customCategory:a.custom_category||"",depreciationCode:a.depreciation_code||"",showAtPosting:a.show_at_posting!==false,saftCode13:a.saft_code_13||"",saftCode12:a.saft_code_12||""}));
+        const existing=accs.map(a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",defaultVatPct:a.default_vat_pct!=null?parseFloat(a.default_vat_pct):null,defaultVatCode:a.default_vat_code||null,vatLocked:!!a.vat_locked,inactive:!!a.inactive,currency:a.currency||"PKR",customCategory:a.custom_category||"",depreciationCode:a.depreciation_code||"",showAtPosting:a.show_at_posting!==false,saftCode13:a.saft_code_13||"",saftCode12:a.saft_code_12||"",accountType:a.account_type||"",balanceGroup:a.balance_group||""}));
         const existingCodes=new Set(existing.map(a=>a.code));
+        const defaultByCode=new Map(DEFAULT_ACCOUNTS.map(d=>[d.code,d]));
+        // Backfill defaultVatCode/defaultVatPct onto accounts that already
+        // exist but were seeded before that data existed in the default
+        // chart (e.g. every account added earlier this session, before VAT
+        // codes were linked) — the merge below only ever ADDED brand-new
+        // codes, never refreshed already-existing ones, so this data could
+        // never reach an existing company no matter how much the default
+        // chart improved. Only fills a gap (no defaultVatCode set at all);
+        // never overwrites one that was deliberately set or customized.
+        const backfills=[];
+        const existingPatched=existing.map(a=>{
+          const d=defaultByCode.get(a.code);
+          if(!d)return a;
+          const patch={};
+          if(!a.defaultVatCode&&d.defaultVatCode){patch.defaultVatCode=d.defaultVatCode;patch.defaultVatPct=d.defaultVatPct;}
+          // Same gap-fill rule for the real Kontotype/Saldogruppe labels
+          // pulled from actual client kontoplan exports — an already-
+          // existing account only gets these if it doesn't have them yet.
+          if(!a.accountType&&d.accountType)patch.accountType=d.accountType;
+          if(!a.balanceGroup&&d.balanceGroup)patch.balanceGroup=d.balanceGroup;
+          if(!Object.keys(patch).length)return a;
+          backfills.push({code:a.code,...patch});
+          return{...a,...patch};
+        });
         // Add default accounts that don't exist yet (new standard accounts)
-        const merged=[...existing];
+        const merged=[...existingPatched];
         DEFAULT_ACCOUNTS.forEach(d=>{if(!existingCodes.has(d.code))merged.push(d);});
         merged.sort((a,b)=>a.code.localeCompare(b.code));
         setAccountsState(merged);
+        if(backfills.length){
+          (async()=>{
+            for(const b of backfills){
+              const patch={};
+              if(b.defaultVatCode!=null){patch.default_vat_code=b.defaultVatCode;patch.default_vat_pct=b.defaultVatPct;}
+              if(b.accountType!=null)patch.account_type=b.accountType;
+              if(b.balanceGroup!=null)patch.balance_group=b.balanceGroup;
+              let q=sb.from("accounts").update(patch).eq("user_id",viewingUserId).eq("code",b.code);
+              q=cid?q.eq("company_id",cid):q.is("company_id",null);
+              await q;
+            }
+          })();
+        }
         // Upsert any new defaults to Supabase — this used to be genuinely
         // fire-and-forget (no await, no error check at all): for a brand
         // new multi-company account, if the (user_id,company_id,code)
@@ -421,7 +458,7 @@ function AppShell({user}){
   // Single source of truth for the account row shape sent to Supabase —
   // used by every account save path (full-list, single-add, single-update)
   // so a field added here never has to be remembered in three places.
-  const accountRow=a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR",custom_category:a.customCategory||null,depreciation_code:a.depreciationCode||null,show_at_posting:a.showAtPosting!==false,saft_code_13:a.saftCode13||null,saft_code_12:a.saftCode12||null});
+  const accountRow=a=>({code:a.code,name:a.name,matchable:a.matchable||false,notes:a.notes||"",default_vat_pct:a.defaultVatPct!=null?a.defaultVatPct:null,default_vat_code:a.defaultVatCode||null,vat_locked:a.vatLocked||false,inactive:a.inactive||false,currency:a.currency||"PKR",custom_category:a.customCategory||null,depreciation_code:a.depreciationCode||null,show_at_posting:a.showAtPosting!==false,saft_code_13:a.saftCode13||null,saft_code_12:a.saftCode12||null,account_type:a.accountType||null,balance_group:a.balanceGroup||null});
 
   const setAccounts=async(list,deletedCode=null,newCode=null)=>{
     setAccountsState(list);
