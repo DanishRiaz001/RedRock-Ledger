@@ -4014,6 +4014,14 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
 function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps}){
   const info=terminInfo(termin.year,termin.n);
   const[openTxn,setOpenTxn]=useState(null);
+  // Which rate rows have their specification expanded inline — clicking the
+  // Grunnlag/Mva amount in the summary table toggles this, instead of the
+  // page always showing every code's account+transaction breakdown twice
+  // (once implicitly via the summary row, once via a whole separate
+  // "Spesifikasjon" section repeating the same code/rate/grunnlag/mva
+  // header) whether you wanted the detail or not.
+  const[expandedRates,setExpandedRates]=useState(new Set());
+  const toggleRate=(key)=>setExpandedRates(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const[,forceTick]=useState(0);
   const controlledIds=getControlledIds(termin.year,termin.n);
   const status=(getVatStatuses()[`${termin.year}-${termin.n}`])||{};
@@ -4065,7 +4073,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     salesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"output");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,g.net,g.vat]);});
     aoa.push(["Kjøp av varer og tjenester i Norge","","","",""]);
     purchasesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"input");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,-g.net,-g.vat]);});
-    aoa.push([],["Skyldig terminbeløp","","","",netVat]);
+    aoa.push([],[netVat>=0?"Skyldig terminbeløp":"Terminbeløp til gode","","","",Math.abs(netVat)]);
     aoa.push([],["Spesifikasjon","","","",""],["Bilag","Dato","Beskrivelse","Konto","Beløp","Mva"]);
     [...salesTxns,...purchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
       aoa.push([fmtB(t.bilag),t.date,t.description,getName(t.debitCode)+" / "+getName(t.creditCode),t.amount,t.vatAmount||0]);
@@ -4142,10 +4150,11 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
       {/* Mva-kode / Sats / Grunnlag / Mva summary — matching the real
           Skatteetaten mva-melding structure (and Tripletex's own layout for
           it): one row per VAT code actually used this period, grouped under
-          "Salg" and "Kjøp" section headers, ending in the net amount owed —
-          this is the actual filing summary; the account/transaction
-          breakdown below it is supporting detail (spesifikasjon), not the
-          filing itself. */}
+          "Salg" and "Kjøp" section headers, ending in the net amount owed.
+          Grunnlag/Mva are clickable — they expand that one row's account +
+          transaction specification right underneath, instead of the page
+          always showing the same code/rate/grunnlag/mva numbers a second
+          (and third) time in a separate always-visible section below. */}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
           <thead><tr style={{color:T.muted,fontSize:11,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
@@ -4155,77 +4164,79 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Salg av varer og tjenester i Norge</td></tr>
             {salesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"output");
+              const key="s"+g.rate;
+              const expanded=expandedRates.has(key);
               return(
-                <tr key={"s"+g.rate} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
-                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
-                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
-                  <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(g.net)}</td>
-                  <td style={{textAlign:"right",padding:"8px 14px",color:T.text,fontWeight:700}}>{fmt(g.vat)}</td>
-                </tr>
+                <React.Fragment key={key}>
+                  <tr style={{borderTop:`1px solid ${T.border}`}}>
+                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                    <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                    <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
+                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.vat)}</td>
+                  </tr>
+                  {expanded&&(
+                    <tr>
+                      <td colSpan="5" style={{padding:0,background:T.bg}}>
+                        {groupByAccount(g.rows,"creditCode").map(acc=>(
+                          <div key={acc.code}>
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px",fontSize:10.5,fontWeight:700,color:T.sub}}>
+                              <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
+                            </div>
+                            {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.debitCode)}/>)}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
             {!salesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</td></tr>}
             <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Kjøp av varer og tjenester i Norge</td></tr>
             {purchasesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"input");
+              const key="p"+g.rate;
+              const expanded=expandedRates.has(key);
               return(
-                <tr key={"p"+g.rate} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
-                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
-                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
-                  <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(-g.net)}</td>
-                  <td style={{textAlign:"right",padding:"8px 14px",color:T.text,fontWeight:700}}>{fmt(-g.vat)}</td>
-                </tr>
+                <React.Fragment key={key}>
+                  <tr style={{borderTop:`1px solid ${T.border}`}}>
+                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                    <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                    <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.net)}</td>
+                    <td onClick={()=>toggleRate(key)} title="Vis spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-g.vat)}</td>
+                  </tr>
+                  {expanded&&(
+                    <tr>
+                      <td colSpan="5" style={{padding:0,background:T.bg}}>
+                        {groupByAccount(g.rows,"debitCode").map(acc=>(
+                          <div key={acc.code}>
+                            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px",fontSize:10.5,fontWeight:700,color:T.sub}}>
+                              <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
+                            </div>
+                            {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.creditCode)}/>)}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
             {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
             <tr style={{borderTop:`2px solid ${T.border}`}}>
-              <td colSpan="4" style={{padding:"10px 14px",fontWeight:800,color:T.text}}>Skyldig terminbeløp</td>
-              <td style={{textAlign:"right",padding:"10px 14px",fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(netVat)}</td>
+              {/* Skyldig (owed to Skatteetaten) when net VAT is positive,
+                  Til gode (refund/credit) when purchases' input VAT exceeds
+                  sales' output VAT — was a fixed "Skyldig terminbeløp"
+                  label regardless of sign, which is simply wrong half the
+                  time (exactly Tripletex's own "Terminbeløp til gode" vs.
+                  "Skyldig terminbeløp" distinction). */}
+              <td colSpan="4" style={{padding:"10px 14px",fontWeight:800,color:T.text}}>{netVat>=0?"Skyldig terminbeløp":"Terminbeløp til gode"}</td>
+              <td style={{textAlign:"right",padding:"10px 14px",fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(Math.abs(netVat))}</td>
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div style={{fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Spesifikasjon — Salg (kode 3) — utgående mva</div>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
-        {salesByRate.map(g=>(
-          <div key={g.rate}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",background:T.bg,fontSize:11,fontWeight:700,color:T.text}}>
-              <span>{(()=>{const vc=vatCodeForRate(g.rate,"output");return vc?`Kode ${vc.code} · ${vc.name}`:`${g.rate}% mva-sats`;})()}</span><span>Grunnlag {fmt(g.net)} · Mva {fmt(g.vat)}</span>
-            </div>
-            {groupByAccount(g.rows,"creditCode").map(acc=>(
-              <div key={acc.code}>
-                <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px 6px 24px",borderTop:`1px solid ${T.border}`,fontSize:10.5,fontWeight:700,color:T.sub}}>
-                  <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
-                </div>
-                {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.debitCode)}/>)}
-              </div>
-            ))}
-          </div>
-        ))}
-        {!salesByRate.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</div>}
-      </div>
-
-      <div style={{fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Spesifikasjon — Kjøp (kode 1) — inngående mva</div>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
-        {purchasesByRate.map(g=>(
-          <div key={g.rate}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",background:T.bg,fontSize:11,fontWeight:700,color:T.text}}>
-              <span>{(()=>{const vc=vatCodeForRate(g.rate,"input");return vc?`Kode ${vc.code} · ${vc.name}`:`${g.rate}% mva-sats`;})()}</span><span>Grunnlag {fmt(g.net)} · Mva {fmt(g.vat)}</span>
-            </div>
-            {groupByAccount(g.rows,"debitCode").map(acc=>(
-              <div key={acc.code}>
-                <div style={{display:"flex",justifyContent:"space-between",padding:"6px 14px 6px 24px",borderTop:`1px solid ${T.border}`,fontSize:10.5,fontWeight:700,color:T.sub}}>
-                  <span>{getName(acc.code)}</span><span>Grunnlag {fmt(acc.net)} · Mva {fmt(acc.vat)}</span>
-                </div>
-                {acc.rows.map(t=><Row key={t.id} t={t} otherCode={getName(t.creditCode)}/>)}
-              </div>
-            ))}
-          </div>
-        ))}
-        {!purchasesByRate.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</div>}
       </div>
 
       <div style={{fontSize:12,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Ingen mva</div>
