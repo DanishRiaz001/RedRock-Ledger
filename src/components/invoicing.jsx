@@ -142,7 +142,18 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
   const[importResult,setImportResult]=useState(null);
   const[accountMap,setAccountMap]=useState({}); // importedCode -> existing account code to post against instead
 
-  const text=(el,tag)=>{const n=el.getElementsByTagName(tag)[0];return n?n.textContent.trim():"";};
+  // A REAL Visma SAF-T export puts a namespace PREFIX on every single
+  // element (<n1:Company>, <n1:AccountID>, <n1:Transaction>...) — plain
+  // getElementsByTagName("Company") matches by the literal qualified tag
+  // name, so "n1:Company" never matches "Company" at all. That silently
+  // found zero of everything (0 accounts, 0 contacts, 0 vouchers), not a
+  // parsing error, which is why it looked like a clean "successful" import
+  // of nothing. localName strips any prefix automatically (a browser DOM
+  // node always exposes it, prefixed or not), so this matches real
+  // Visma/Tripletex-style prefixed exports and plain unprefixed ones the
+  // same way.
+  const byTag=(el,tag)=>Array.from(el.getElementsByTagName("*")).filter(n=>n.localName===tag);
+  const text=(el,tag)=>{const arr=byTag(el,tag);return arr.length?arr[0].textContent.trim():"";};
   const num=(el,tag)=>{const v=text(el,tag);return v?parseFloat(v):null;};
 
   const parseFile=async(file)=>{
@@ -158,19 +169,23 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       // through to "Unknown company" for a real, standards-compliant
       // export. <CompanyName> is kept as a fallback in case some other
       // system's export genuinely uses it.
-      const companyEl=doc.getElementsByTagName("Company")[0];
+      const companyEl=byTag(doc,"Company")[0];
       const companyName=(companyEl&&text(companyEl,"Name"))||text(doc,"CompanyName")||"Unknown company";
 
-      const glAccounts=Array.from(doc.getElementsByTagName("Account")).map(a=>({
+      const glAccounts=byTag(doc,"Account").map(a=>({
         code:text(a,"AccountID"),
         name:text(a,"AccountDescription")||text(a,"AccountName"),
         openingDebit:num(a,"OpeningDebitBalance"),
         openingCredit:num(a,"OpeningCreditBalance"),
       })).filter(a=>a.code&&a.name);
 
-      const transactions=Array.from(doc.getElementsByTagName("Transaction")).map(t=>{
+      const transactions=byTag(doc,"Transaction").map(t=>{
         const date=text(t,"TransactionDate")||text(t,"GLPostingDate");
-        const description=text(t,"Description");
+        // Real exports (confirmed against an actual Visma file) often leave
+        // the per-transaction <Description> genuinely empty and put the
+        // meaningful text in <VoucherDescription> instead (e.g. "Bank") —
+        // falling back to that instead of a blank description.
+        const description=text(t,"Description")||text(t,"VoucherDescription");
         // DebitAmount/CreditAmount are always container elements with a
         // nested <Amount> (plus siblings like CurrencyCode) — reading
         // .textContent off the container itself (the old code's first
@@ -178,9 +193,9 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
         // "worked" because parseFloat happens to stop at the first non-
         // numeric character. Reading the nested <Amount> directly is the
         // actually-correct extraction, not a lucky parse of a dirty string.
-        const lines=Array.from(t.getElementsByTagName("Line")).map(l=>{
-          const debitEl=l.getElementsByTagName("DebitAmount")[0];
-          const creditEl=l.getElementsByTagName("CreditAmount")[0];
+        const lines=byTag(t,"Line").map(l=>{
+          const debitEl=byTag(l,"DebitAmount")[0];
+          const creditEl=byTag(l,"CreditAmount")[0];
           return{
             accountId:text(l,"AccountID"),
             debit:(debitEl?num(debitEl,"Amount"):null)||0,
@@ -206,7 +221,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       // imported nothing at all. Fixed by cross-referencing each
       // contact's own ID against the CustomerID/SupplierID actually
       // referenced on parsed transactions above.
-      const parseParty=(tag,idTag,referencedIds)=>Array.from(doc.getElementsByTagName(tag)).map(c=>({
+      const parseParty=(tag,idTag,referencedIds)=>byTag(doc,tag).map(c=>({
         name:text(c,"Name")||text(c,"CompanyName"),
         id:text(c,idTag),
         address:text(c,"StreetName")||"",
