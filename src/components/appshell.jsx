@@ -5,7 +5,7 @@ import {
   isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,
   vatCodeOptions, findVatCode, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE,
   getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr,
-  bankToNum, buildBankRows, fmtB,
+  bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText,
 } from "../lib/utils.js";
 import { logBug, ADMIN_KEY, USER_FEATS_KEY } from "./ledger.jsx";
 import { uploadFileToStorage, deleteFileFromStorage, getSignedUrl } from "../lib/storage.js";
@@ -620,24 +620,49 @@ function AppShell({user}){
   // Parses a bank statement file and returns the detected rows WITHOUT
   // saving anything — lets the UI show a preview before committing.
   const parseBankStatementFile=async(file)=>{
-    const isCsv=/\.csv$/i.test(file.name)||file.type==="text/csv";
-    const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+    // .txt is just as common as .csv for a real bank export (Norwegian bank
+    // portals in particular tend to hand out .txt) — both are delimited
+    // text, never treated as a real spreadsheet binary.
+    const isDelimited=/\.(csv|txt)$/i.test(file.name)||file.type==="text/csv"||file.type==="text/plain";
+    let json;
+    if(isDelimited){
+      // Read as raw bytes so encoding can be detected properly (a UTF-8-only
+      // decode silently corrupts Nordic characters in non-UTF-8 exports),
+      // and parse with our own delimiter-aware reader instead of handing
+      // the text to XLSX's CSV path — a semicolon-delimited file (standard
+      // for Norwegian exports) with comma-decimal numbers like "4.402,36"
+      // must never be split on commas.
+      const text=decodeTextSmart(await file.arrayBuffer());
+      const delim=detectDelimiter(text);
+      json=parseDelimitedText(text,delim);
+    } else {
+      const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      json=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+    }
     if(!json.length)return{error:"That file appears to be empty."};
 
-    let headerRow=null,dataStart=0;
-    const firstRowText=json[0].map(c=>String(c).toLowerCase().trim());
-    if(firstRowText.some(c=>["date","description","amount","balance","narrative","details","debit","credit"].includes(c))){
-      headerRow=firstRowText;dataStart=1;
+    // Real exports (this one included) often carry a few preamble rows
+    // before the actual column header — account number, account name, an
+    // opening/closing balance summary row — so the header can land several
+    // rows down, not necessarily row 0. Scan the first ~15 rows for one that
+    // actually looks like a transaction header, in English OR Norwegian
+    // (Bokført dato / Forklarende tekst / Ut / Inn / Rentedato are the
+    // standard Norwegian bank statement column names).
+    const HEADER_WORDS=["date","description","amount","balance","narrative","details","debit","credit","withdrawal","deposit",
+      "dato","bokført dato","bokfort dato","forklarende tekst","beskrivelse","rentedato","transaksjonstype","ut","inn","saldo","arkivref.","arkivref","referanse"];
+    let headerRow=null,dataStart=0,headerRowIdx=0;
+    for(let i=0;i<Math.min(json.length,15);i++){
+      const rowText=json[i].map(c=>String(c).toLowerCase().trim());
+      if(rowText.some(c=>HEADER_WORDS.includes(c))){headerRow=rowText;dataStart=i+1;headerRowIdx=i;break;}
     }
     const findCol=(names)=>headerRow?headerRow.findIndex(h=>names.includes(h)):-1;
-    let dateCol=headerRow?findCol(["date","transaction date","value date"]):0;
-    let descCol=headerRow?findCol(["description","narrative","details","particulars"]):1;
-    let amountCol=headerRow?findCol(["amount"]):2;
-    let debitCol=headerRow?findCol(["debit","withdrawal"]):-1;
-    let creditCol=headerRow?findCol(["credit","deposit"]):-1;
-    let balanceCol=headerRow?findCol(["balance","running balance","closing balance"]):-1;
+    let dateCol=headerRow?findCol(["date","transaction date","value date","dato","bokført dato","bokfort dato","rentedato"]):0;
+    let descCol=headerRow?findCol(["description","narrative","details","particulars","forklarende tekst","beskrivelse","transaksjonstype"]):1;
+    let amountCol=headerRow?findCol(["amount","beløp","belop"]):2;
+    let debitCol=headerRow?findCol(["debit","withdrawal","ut"]):-1;
+    let creditCol=headerRow?findCol(["credit","deposit","inn"]):-1;
+    let balanceCol=headerRow?findCol(["balance","running balance","closing balance","saldo"]):-1;
     if(dateCol<0)dateCol=0;
     if(descCol<0)descCol=1;
 
@@ -646,7 +671,7 @@ function AppShell({user}){
     // back so the UI can offer a manual remap without re-reading the file.
     const rawRows=json.slice(dataStart);
     const colCount=Math.max(...json.slice(0,20).map(r=>r.length),1);
-    const columnHeaders=Array.from({length:colCount},(_,i)=>headerRow&&headerRow[i]?json[0][i]:`Column ${i+1}`);
+    const columnHeaders=Array.from({length:colCount},(_,i)=>headerRow&&headerRow[i]?json[headerRowIdx][i]:`Column ${i+1}`);
     const guessedCols={dateCol,descCol,amountCol,debitCol,creditCol,balanceCol};
 
     const detectedColumns={

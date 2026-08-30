@@ -508,9 +508,17 @@ const DEFAULT_ACCOUNTS=[
   {code:"2981",name:"Audit Fee Accrual"},
   {code:"2982",name:"Accounting Fee Accrual"},
   {code:"2989",name:"Other Liabilities Accrual"},
-  {code:"3001",name:"Sales Revenue, Taxable, Medium Rate",defaultVatCode:"12"},
-  {code:"3002",name:"Sales Revenue, Taxable, Low Rate",defaultVatCode:"6"},
-  {code:"3011",name:"Sales Revenue — Raw Fish",defaultVatCode:"3"},
+  // "12" and "6" below were invalid/wrong MVA codes — "12" doesn't exist in
+  // MVA_CODES at all (silently produced 0% VAT on any sale posted here
+  // instead of erroring), and "6" is "outside VAT scope" (also 0%) when
+  // this account is actually a normal 15% output sale. Corrected to the
+  // real codes (31 = 15% output, 33 = 12% output) from utils.js MVA_CODES.
+  {code:"3001",name:"Sales Revenue, Taxable, Medium Rate",defaultVatCode:"31"},
+  {code:"3002",name:"Sales Revenue, Taxable, Low Rate",defaultVatCode:"33"},
+  // Raw fish sales use Norway's special 11.11% rate (mva-kode 32), which
+  // isn't modeled in this app's MVA_CODES list — left with no default
+  // rather than a wrong one; whoever posts here picks the rate manually.
+  {code:"3011",name:"Sales Revenue — Raw Fish"},
   {code:"3060",name:"Withdrawal of Goods/Services (Sales)"},
   {code:"3061",name:"Withdrawal of Goods/Services, Medium Rate"},
   {code:"3062",name:"Withdrawal of Goods/Services, Low Rate"},

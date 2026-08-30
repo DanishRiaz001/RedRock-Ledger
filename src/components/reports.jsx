@@ -5079,7 +5079,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           )}
           <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
             {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:11,marginRight:5}}/>Upload</>)}
-            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
+            <input type="file" accept=".csv,.txt,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
           </label>
         </div>
       </div>

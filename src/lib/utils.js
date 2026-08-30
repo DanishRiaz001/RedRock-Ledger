@@ -147,14 +147,52 @@ const fmtRs=(n)=>new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",
 const bankToDateStr=(d)=>{
   if(typeof d==="number"){const dt=XLSX.SSF.parse_date_code(d);return`${dt.y}-${String(dt.m).padStart(2,"0")}-${String(dt.d).padStart(2,"0")}`;}
   const s=String(d).trim();
+  // Real Norwegian bank exports (Bokført dato / Rentedato) write dates as
+  // dd.mm.yyyy — e.g. "01.07.2026". Date.parse on that format is NOT
+  // standardized: V8 silently accepts it but as something else entirely
+  // (observed: "01.07.2026" → 2026-01-06, i.e. it got read as some other
+  // field order, not July 1st) — no error, just a wrong date shipped into
+  // every transaction. Matching the explicit dd.mm.yyyy/dd.mm.yy or
+  // dd/mm/yyyy pattern FIRST avoids ever handing an ambiguous string like
+  // that to Date.parse; only a genuinely unrecognized format falls through
+  // to the old behavior.
+  let m=s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/);
+  if(m)return`${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  m=s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2})$/);
+  if(m)return`20${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
   const parsed=Date.parse(s);
   return isNaN(parsed)?null:new Date(parsed).toISOString().slice(0,10);
 };
 const bankToNum=(v)=>{
   if(typeof v==="number")return v;
-  const cleaned=String(v).replace(/[, ]/g,"").replace(/^\((.*)\)$/,"-$1");
-  const n=parseFloat(cleaned);
-  return isNaN(n)?null:n;
+  let s=String(v).trim();
+  if(!s)return null;
+  let neg=false;
+  if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1);}
+  if(s.startsWith("-")){neg=true;s=s.slice(1);}
+  s=s.replace(/[^\d.,]/g,"");
+  if(!s)return null;
+  // Real bank exports mix both conventions: "1,234.56" (US/UK — comma
+  // thousands, dot decimal) and "1.234,56" (Norwegian and most of Europe —
+  // dot thousands, comma decimal). The old version only ever stripped
+  // commas and left dots alone, which is exactly backwards for a Norwegian
+  // file: "4.402,36" became "4.40236" (a hundredth of the real value), and
+  // "-100.000,00" became "-100" (a thousandth). Detect which mark is
+  // actually acting as the decimal separator — whichever one appears LAST
+  // in the string is the decimal point; the other, if present, is a
+  // thousands separator and gets dropped. Same convention-detection
+  // parseAmountToken (used for manual entry) already gets right.
+  const lastComma=s.lastIndexOf(","),lastDot=s.lastIndexOf(".");
+  let decimalSep=null;
+  if(lastComma>-1&&lastDot>-1)decimalSep=lastComma>lastDot?",":".";
+  else if(lastComma>-1)decimalSep=(s.length-lastComma-1)===2?",":null;
+  else if(lastDot>-1)decimalSep=(s.length-lastDot-1)===2?".":null;
+  let intPart=s,fracPart="";
+  if(decimalSep){const idx=s.lastIndexOf(decimalSep);intPart=s.slice(0,idx);fracPart=s.slice(idx+1);}
+  intPart=intPart.replace(/[.,]/g,"");
+  const n=parseFloat(intPart+(fracPart?"."+fracPart:""));
+  if(isNaN(n))return null;
+  return neg?-n:n;
 };
 // Turns raw sheet rows + a column mapping into the {date,description,amount,balance}
 // rows the import preview/commit expects. cols uses -1 for "not selected".
@@ -184,4 +222,58 @@ const buildBankRows=(rawRows,cols,dataStart=0)=>{
 };
 const fmtB=(n)=>`B${String(n).padStart(3,"0")}`;
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB };
+// Real bank exports are rarely comma-CSV in practice — Norwegian bank
+// portals (and most of Europe) export semicolon-delimited text, and browser
+// File.text() always decodes as UTF-8, which silently mangles Nordic
+// characters (ø/å/æ) into replacement characters (�) when the actual file
+// is Windows-1252/ISO-8859-1 encoded (extremely common for these exports).
+// Neither of those was previously handled: comma-only delimiter detection
+// meant a semicolon file's numeric fields (which use "." for thousands and
+// "," for decimals, e.g. "4.402,36") would get shredded at every comma, and
+// UTF-8-only decoding corrupted description text. This decodes the raw
+// bytes, detects mojibake, and falls back to Windows-1252 automatically.
+const decodeTextSmart=(buf)=>{
+  const utf8=new TextDecoder("utf-8",{fatal:false}).decode(buf);
+  if(utf8.includes("�")){
+    try{return new TextDecoder("windows-1252").decode(buf);}catch{}
+  }
+  return utf8;
+};
+// Detects which of comma/semicolon/tab is actually acting as the field
+// separator by counting occurrences in the first non-empty line — semicolon
+// wins whenever a file's numbers use commas as decimal separators (as here),
+// since those commas would otherwise be mistaken for the delimiter itself.
+const detectDelimiter=(text)=>{
+  const firstLine=(text.split(/\r\n|\n/).find(l=>l.trim())||"");
+  const counts={",":(firstLine.match(/,/g)||[]).length,";":(firstLine.match(/;/g)||[]).length,"\t":(firstLine.match(/\t/g)||[]).length};
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][1]>0?Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0]:",";
+};
+// A small RFC4180-aware delimited-text parser (quoted fields, "" as an
+// escaped quote, delimiter of choice) — used instead of handing raw text to
+// XLSX's CSV reader so the actual delimiter is never guessed wrong. Returns
+// an array of rows, each an array of cell strings, matching the shape
+// XLSX.utils.sheet_to_json(ws,{header:1}) already returns elsewhere.
+const parseDelimitedText=(text,delim)=>{
+  const rows=[];
+  let row=[],cell="",inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQuotes){
+      if(c==='"'){
+        if(text[i+1]==='"'){cell+='"';i++;}
+        else inQuotes=false;
+      } else cell+=c;
+    } else if(c==='"')inQuotes=true;
+    else if(c===delim){row.push(cell);cell="";}
+    else if(c==="\n"||c==="\r"){
+      if(c==="\r"&&text[i+1]==="\n")i++;
+      row.push(cell);cell="";
+      if(row.some(v=>v!=="")||rows.length)rows.push(row);
+      row=[];
+    } else cell+=c;
+  }
+  if(cell!==""||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(v=>v.trim()!==""));
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText };
