@@ -194,6 +194,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     });
   };
   const[profileMenuOpen,setProfileMenuOpen]=useState(false);
+  // Interface language — persisted locally so it stays put across sessions
+  // until the user changes it again. This only drives the label shown here
+  // for now; wiring it to actually translate the app's UI strings is a
+  // separate, much larger follow-up (every screen is hardcoded English).
+  const[uiLanguage,setUiLanguage]=useState(()=>{try{return localStorage.getItem("redrock_ui_language")||"en";}catch{return "en";}});
+  const[languageMenuOpen,setLanguageMenuOpen]=useState(false);
+  const LANGUAGES={en:"English",no:"Norsk (Norwegian)"};
+  const chooseLanguage=code=>{setUiLanguage(code);try{localStorage.setItem("redrock_ui_language",code);}catch{}setLanguageMenuOpen(false);setProfileMenuOpen(false);};
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
   // Save notifications — shown via the bell icon. A real, lightweight toast
@@ -595,6 +603,22 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <div style={{position:"absolute",right:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:500,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
               <div onClick={()=>{setProfileMenuOpen(false);setTab("Profile");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-user" style={{fontSize:13,marginRight:6}}/>Profile</div>
               <div onClick={()=>{setProfileMenuOpen(false);setTab("Settings");}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600}}><i className="ti ti-settings" style={{fontSize:13,marginRight:6}}/>Settings</div>
+              <div style={{position:"relative"}}>
+                <div onClick={()=>setLanguageMenuOpen(o=>!o)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.border}`,color:T.text,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <span><i className="ti ti-language" style={{fontSize:13,marginRight:6}}/>Language</span>
+                  <span style={{color:T.muted,fontWeight:500,fontSize:11}}>{LANGUAGES[uiLanguage]}</span>
+                </div>
+                {languageMenuOpen&&(
+                  <div style={{position:"absolute",right:"100%",top:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,minWidth:170,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+                    {Object.entries(LANGUAGES).map(([code,label])=>(
+                      <div key={code} onClick={()=>chooseLanguage(code)} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:code===uiLanguage?T.accent:T.text,fontWeight:code===uiLanguage?700:600,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        {label}
+                        {code===uiLanguage&&<i className="ti ti-check" style={{fontSize:13}}/>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div onClick={()=>{setProfileMenuOpen(false);onSignOut();}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",color:T.red,fontWeight:600}}><i className="ti ti-logout" style={{fontSize:13,marginRight:6}}/>Sign out</div>
             </div>
           </>)}
