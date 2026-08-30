@@ -3910,25 +3910,36 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
           <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
             <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
               <thead><tr style={{color:T.muted,fontSize:11,textAlign:"left"}}>
-                <td style={{padding:"10px 16px"}}>Status</td><td>Periode</td><td>Forfallsdato</td><td>Bilag</td><td>Handlinger</td>
+                <td style={{padding:"10px 16px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Bilagsnummer</td><td>Leveringsstatus</td><td>Betalingsstatus</td><td>Handlinger</td>
               </tr></thead>
               <tbody>
                 {rows.map(r=>{
-                  const st=statusLabel(r);
+                  const deliveryDot=r.status.filed?T.green:(r.due<today?T.red:T.border);
+                  const deliveryText=r.status.filed?"Sendt til Skatteetaten":r.due<today?"Klar for innlevering":"Ikke sendt til Skatteetaten";
+                  const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
+                  const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
                   return(
                     <tr key={r.n} style={{borderTop:`1px solid ${T.border}`}}>
-                      <td style={{padding:"12px 16px"}}>
+                      <td style={{padding:"12px 16px",color:T.text,fontWeight:600}}>{r.label}</td>
+                      <td style={{color:T.sub}}>Alminnelig næring</td>
+                      <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
+                      <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(r.netVat)}</td>
+                      <td style={{color:T.muted}}>{r.bilagCount?<><i className="ti ti-paperclip" style={{fontSize:12,marginRight:4}}/>{r.bilagCount}</>:"Bilag ikke opprettet"}</td>
+                      <td>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{width:9,height:9,borderRadius:"50%",background:st.dot,flexShrink:0}}/>
-                          <span style={{fontSize:11,fontWeight:700,color:st.color}}>{st.text}</span>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:deliveryDot,flexShrink:0}}/>
+                          <span style={{fontSize:11,color:T.sub}}>{deliveryText}</span>
                         </div>
                       </td>
-                      <td style={{color:T.text,fontWeight:600}}>{r.label}</td>
-                      <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
-                      <td style={{color:T.muted}}><i className="ti ti-paperclip" style={{fontSize:12,marginRight:4}}/>{r.bilagCount}</td>
+                      <td>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
+                          <span style={{fontSize:11,color:T.sub}}>{paymentText}</span>
+                        </div>
+                      </td>
                       <td style={{padding:"12px 16px"}}>
                         <div style={{display:"flex",gap:6}}>
-                          <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Start innlevering</button>
+                          <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
                           <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit"}}>Avstem</button>
                         </div>
                       </td>
@@ -4083,7 +4094,56 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </div>
       </div>
 
-      <div style={{fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Salg (kode 3) — utgående mva</div>
+      {/* Mva-kode / Sats / Grunnlag / Mva summary — matching the real
+          Skatteetaten mva-melding structure (and Tripletex's own layout for
+          it): one row per VAT code actually used this period, grouped under
+          "Salg" and "Kjøp" section headers, ending in the net amount owed —
+          this is the actual filing summary; the account/transaction
+          breakdown below it is supporting detail (spesifikasjon), not the
+          filing itself. */}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
+        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+          <thead><tr style={{color:T.muted,fontSize:11,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+            <td style={{padding:"10px 14px"}}>Mva-kode</td><td>Beskrivelse</td><td style={{textAlign:"right"}}>Sats</td><td style={{textAlign:"right"}}>Grunnlag</td><td style={{textAlign:"right",padding:"10px 14px"}}>Mva</td>
+          </tr></thead>
+          <tbody>
+            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Salg av varer og tjenester i Norge</td></tr>
+            {salesByRate.map(g=>{
+              const vc=vatCodeForRate(g.rate,"output");
+              return(
+                <tr key={"s"+g.rate} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                  <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(g.net)}</td>
+                  <td style={{textAlign:"right",padding:"8px 14px",color:T.text,fontWeight:700}}>{fmt(g.vat)}</td>
+                </tr>
+              );
+            })}
+            {!salesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</td></tr>}
+            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Kjøp av varer og tjenester i Norge</td></tr>
+            {purchasesByRate.map(g=>{
+              const vc=vatCodeForRate(g.rate,"input");
+              return(
+                <tr key={"p"+g.rate} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{vc?vc.code:"—"}</td>
+                  <td style={{color:T.text}}>{vc?vc.name:`${g.rate}% mva-sats`}</td>
+                  <td style={{textAlign:"right",color:T.sub}}>{g.rate.toFixed(2)} %</td>
+                  <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(-g.net)}</td>
+                  <td style={{textAlign:"right",padding:"8px 14px",color:T.text,fontWeight:700}}>{fmt(-g.vat)}</td>
+                </tr>
+              );
+            })}
+            {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
+            <tr style={{borderTop:`2px solid ${T.border}`}}>
+              <td colSpan="4" style={{padding:"10px 14px",fontWeight:800,color:T.text}}>Skyldig terminbeløp</td>
+              <td style={{textAlign:"right",padding:"10px 14px",fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(netVat)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Spesifikasjon — Salg (kode 3) — utgående mva</div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
         {salesByRate.map(g=>(
           <div key={g.rate}>
@@ -4103,7 +4163,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         {!salesByRate.length&&<div style={{padding:"20px 0",textAlign:"center",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</div>}
       </div>
 
-      <div style={{fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Kjøp (kode 1) — inngående mva</div>
+      <div style={{fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Spesifikasjon — Kjøp (kode 1) — inngående mva</div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
         {purchasesByRate.map(g=>(
           <div key={g.rate}>
