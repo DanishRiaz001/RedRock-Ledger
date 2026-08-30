@@ -3356,8 +3356,17 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       const groupRef=extraLines.length>0?`grp-${Date.now()}`:null;
       const line0=lines[0]||{};
       const vc0=findVatCode(line0.debitVatCode,"input")||findVatCode(line0.creditVatCode,"output");
+      // The VAT reports (Mva-meldinger, VAT report) sum tx.vatAmount, not
+      // tx.vatPct/vatCode — those two alone were being saved here while
+      // vatAmount was left null, so picking a VAT code on a normal two-line
+      // entry never showed up anywhere in VAT reporting even though the
+      // code/rate themselves were stored correctly. `amount` here is the
+      // full (VAT-inclusive) entry amount, same convention used everywhere
+      // else in this file — extract the VAT portion out of it exactly like
+      // the invoice/expense forms above do.
+      const vatAmount0=vc0&&vc0.rate?Math.round((amount-(amount/(1+vc0.rate/100)))*100)/100:null;
       // Save primary entry
-      const primaryResult=await onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null});
+      const primaryResult=await onSave({...form,amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode:(line0.debitVatCode&&line0.debitVatCode!=="0")?line0.debitVatCode:(line0.creditVatCode!=="0"?line0.creditVatCode:null),vatPct:vc0?vc0.rate:null,vatAmount:vatAmount0});
       // A comment is extra context on top of the required description — saved
       // as an entry comment (same thread DetailModal shows later) instead of
       // a new column, so it's visible wherever comments already render.
@@ -3367,18 +3376,21 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       // Save each extra line as its own entry, linked via groupRef
       for(const l of extraLines){
         const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
+        const lAmount=parseFloat(l.amount);
+        const lVatAmount=vc&&vc.rate?Math.round((lAmount-(lAmount/(1+vc.rate/100)))*100)/100:null;
         await onSave({
           date:l.date||form.date,
           debitCode:l.debitCode,
           creditCode:l.creditCode,
           description:l.description||form.description,
-          amount:parseFloat(l.amount),
+          amount:lAmount,
           contactId:form.contactId||null,
           groupRef,
           moneySourceId:form.moneySourceId||null,
           projectId:form.projectId||null,
           vatCode:(l.debitVatCode&&l.debitVatCode!=="0")?l.debitVatCode:(l.creditVatCode&&l.creditVatCode!=="0"?l.creditVatCode:null),
           vatPct:vc?vc.rate:null,
+          vatAmount:lVatAmount,
         });
       }
       if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
@@ -671,6 +671,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
 
+  // Which VAT direction (if any) this entry actually carries — a P&L
+  // account on the debit side means input VAT (a purchase), one on the
+  // credit side means output VAT (a sale); a pure balance-sheet entry (e.g.
+  // a bank transfer) carries none. Same convention New entry uses, so an
+  // entry created there re-opens showing exactly what was picked, instead
+  // of this modal having no VAT field at all (which made every edited or
+  // re-opened entry look VAT-less regardless of what was actually saved).
+  const vatDirection=isExpenseSK(form.debitCode)?"input":isIncomeSK(form.creditCode)?"output":null;
+  const vatOptions=vatDirection?vatCodeOptions(vatDirection):[];
+  // txn.vatCode may not have been saved on older entries — fall back to
+  // reverse-deriving a code from the stored rate so it still shows correctly.
+  const initialVatCode=txn.vatCode||(txn.vatPct!=null&&vatDirection?((vatCodeForRate(txn.vatPct,vatDirection)||{}).code||""):"");
+  const[vatCode,setVatCode]=useState(initialVatCode);
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div style={{background:T.bg,borderRadius:"20px 20px 0 0",padding:20,width:"100%",maxWidth:430,maxHeight:"92vh",overflowY:"auto"}}>
@@ -686,6 +700,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
             <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
           </div>
+          {vatDirection&&(
+            <div><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
+          )}
           <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
           {moneySources&&moneySources.length>0&&(
             <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
@@ -701,7 +718,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
               if(!valid)return;
               if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
               if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
-              onSave({...form,amount:parseFloat(form.amount)});
+              const amountNum=parseFloat(form.amount);
+              const vc=vatDirection?findVatCode(vatCode,vatDirection):null;
+              const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:null;
+              onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
             }}>💾 Save</button>
             {confirmDel?(
               <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
@@ -986,6 +1006,9 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
           <div style={{fontSize:11,color:T.sub,fontWeight:600,marginBottom:4}}>AMOUNT</div>
           <div style={{fontSize:28,fontWeight:900,color:isReversal?T.red:T.text}}>{fmt(txn.amount)}</div>
           <div style={{fontSize:11,color:T.sub,marginTop:4}}>{txn.date}{txn.invoiceNo?` · Invoice ${txn.invoiceNo}`:""}{txn.dueDate?` · Due ${txn.dueDate}`:""}</div>
+          {txn.vatAmount!=null&&txn.vatAmount!==0&&(
+            <div style={{fontSize:11,color:T.accent,fontWeight:700,marginTop:6}}>MVA {txn.vatPct!=null?`${txn.vatPct}% · `:""}{fmt(txn.vatAmount)}</div>
+          )}
         </div>
         {isReversal&&<div style={{background:T.redLight,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:T.red,fontWeight:600,textAlign:"center"}}>🔒 Reversal entries cannot be edited</div>}
         {contact&&(

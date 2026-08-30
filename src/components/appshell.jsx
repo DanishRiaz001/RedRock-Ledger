@@ -1218,7 +1218,12 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     checkTxnLogic(u,"saveEdit");
     setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
     if(!canEdit)return;
-    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null}).eq("id",u.id);
+    // vat_pct/vat_amount were missing here entirely — editing any entry
+    // (even just to add or change its VAT code, per EditModal above) never
+    // actually persisted that to the database, so it silently reverted to
+    // whatever it was before on the next reload and never appeared in VAT
+    // reporting no matter what was picked in the edit dialog.
+    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null}).eq("id",u.id);
     if(error)logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
     else if(original)logAudit("transaction",u.id,u.bilag,"update",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},{date:u.date,debitCode:u.debitCode,creditCode:u.creditCode,description:u.description,amount:u.amount});
   };
