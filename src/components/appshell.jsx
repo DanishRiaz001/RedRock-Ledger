@@ -929,12 +929,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       setBankStatementLines(p=>[...p,...(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}))]);
     }catch(e){alert("Couldn't read that file: "+e.message);}
   };
-  const postBankStatementLine=async(line,offsetCode)=>{
-    if(!canEdit)return null;
-    if(blockIfLocked(line.date))return null;
-    const nb=bilagRef.current;
-    bilagRef.current=nb+1;
-    setNextBilag(bilagRef.current);
+  // Shared insert used by both the single-line and bulk posting paths below —
+  // takes an explicit bilag number (and optional groupRef) so a caller can
+  // decide whether several lines share one bilag or each gets its own.
+  const insertBankLineTxn=async(line,offsetCode,bilagNum,groupRef)=>{
     const isOutflow=line.amount<0;
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
@@ -949,23 +947,43 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const amount=Math.abs(line.amount);
     const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
     const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_pct:vatPct,vat_amount:vatAmount}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_pct:vatPct,vat_amount:vatAmount}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:line.date,debitCode,creditCode,description:line.description,amount,vatPct,vatAmount,contactId:null}]);
+    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount,vatPct,vatAmount,contactId:null}]);
+    if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount,debitCode,creditCode});
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
     if(updErr)console.error("Bank line post-flag error:",updErr);
     setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:true,postedTxnId:data.id}:l));
     return data.id;
   };
+  const postBankStatementLine=async(line,offsetCode)=>{
+    if(!canEdit)return null;
+    if(blockIfLocked(line.date))return null;
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+    return insertBankLineTxn(line,offsetCode,nb);
+  };
   // Posts several selected statement lines at once against one chosen
-  // account (the "Bokfør" flow when more than one line is ticked) — each
-  // line still gets its own bilag/transaction, but they all share whatever
-  // proof file is passed in (the bank statement attached to that account's
-  // period, if one's been uploaded — see bankAttachments).
+  // account (the "Bokfør" flow when more than one line is ticked). These
+  // used to each get their own separate bilag number — selecting, say, 5
+  // matching lines by description and booking them together produced 5
+  // scattered vouchers instead of one combined entry, so opening "the"
+  // bilag afterward only ever showed one line, not the whole group. Now
+  // every selected line shares ONE bilag number (reserved once, up front)
+  // plus a groupRef, so opening that bilag shows all of them together,
+  // exactly like a real multi-line voucher.
   const postBankStatementLinesBulk=async(lines,offsetCode,proofFileId)=>{
+    if(!canEdit||!lines.length)return[];
+    const blocked=lines.find(l=>blockIfLocked(l.date));
+    if(blocked)return[];
+    const nb=bilagRef.current;
+    bilagRef.current=nb+1;
+    setNextBilag(bilagRef.current);
+    const groupRef=lines.length>1?`bank-${Date.now()}`:null;
     const newTxnIds=[];
     for(const line of lines){
-      const txnId=await postBankStatementLine(line,offsetCode);
+      const txnId=await insertBankLineTxn(line,offsetCode,nb,groupRef);
       if(txnId)newTxnIds.push(txnId);
     }
     if(proofFileId&&newTxnIds.length)for(const txnId of newTxnIds)await attachFilesToTxnEntry(txnId,[proofFileId]);

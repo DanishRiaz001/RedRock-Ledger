@@ -4687,9 +4687,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const allRightSelected=filterMode!=="matched"&&displayRightRows.length>0&&displayRightRows.every(l=>selectedLineIds.has(l.id));
   const toggleSelectAllLeft=()=>setSelectedTxnIds(allLeftSelected?new Set():new Set(displayLeftRows.map(t=>t.id)));
   const toggleSelectAllRight=()=>setSelectedLineIds(allRightSelected?new Set():new Set(displayRightRows.map(l=>l.id)));
-  // Multi-line "Bokfør" — every ticked statement line posts as its own
-  // bilag against the chosen account, all sharing the uploaded bank
-  // statement (if any) as proof.
+  // Multi-line "Bokfør" — every ticked statement line posts against the
+  // chosen account under ONE shared bilag (not one bilag each), all sharing
+  // the uploaded bank statement (if any) as proof.
   const runBulkPost=async()=>{
     if(!bulkOffsetCode||!selectedLines.length||bulkPosting)return;
     setBulkPosting(true);
