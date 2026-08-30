@@ -246,15 +246,6 @@ function AppShell({user}){
           }catch(e){/* ignore — falls back to defaults, same as before this system existed */}
         }
       }
-      if(data&&data.is_admin){
-        sb.from("profiles").select("*").then(({data:all})=>{
-          if(!all)return;
-          setProfiles(all);
-          const merged={...getUserFeaturesCache()};
-          all.forEach(p=>{if(p.feature_overrides&&Object.keys(p.feature_overrides).length)merged[p.id]=p.feature_overrides;});
-          setUserFeaturesCache(merged);
-        });
-      }
       setProfileLoading(false);
     });
     // Global admin toggles — one row, same migration pattern as above.
@@ -276,6 +267,27 @@ function AppShell({user}){
       }
     });
   },[user.id]);
+
+  // Was folded into the profile-loading effect above, keyed only to
+  // [user.id] — meaning an admin who was already logged in when a new
+  // person signed up would NEVER see them appear in Admin Panel without a
+  // full page reload, since that effect only ever runs once per session.
+  // A brand-new signup sitting invisible on "pending approval" with no way
+  // for the admin to notice is exactly the kind of thing that erodes
+  // trust, so this now rides the same tab-focus refetch as the rest of the
+  // app's data (loadRetryCount) — coming back to this tab picks up any
+  // signups that happened while it was in the background, same as it
+  // already does for transactions/accounts/etc.
+  useEffect(()=>{
+    if(!profile||!profile.is_admin)return;
+    sb.from("profiles").select("*").then(({data:all})=>{
+      if(!all)return;
+      setProfiles(all);
+      const merged={...getUserFeaturesCache()};
+      all.forEach(p=>{if(p.feature_overrides&&Object.keys(p.feature_overrides).length)merged[p.id]=p.feature_overrides;});
+      setUserFeaturesCache(merged);
+    });
+  },[profile&&profile.is_admin,loadRetryCount]);
 
   useEffect(()=>{
     if(!activeCompanyId)return; // don't fetch until we know which company's data to load

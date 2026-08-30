@@ -178,7 +178,11 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     return(userFeats[userId]||{})[id]!==false;
   };
 
-  const filteredProfiles=profiles.filter(p=>!search||(p.email?p.email.toLowerCase():undefined).includes(search.toLowerCase())||(p.display_name||"").toLowerCase().includes(search.toLowerCase()));
+  // A profile with no email (undefined ? undefined : ...) used to crash
+  // this whole screen the moment anyone typed into the search box, since
+  // .includes() was called directly on `undefined` instead of falling
+  // back to an empty string first.
+  const filteredProfiles=profiles.filter(p=>!search||(p.email||"").toLowerCase().includes(search.toLowerCase())||(p.display_name||"").toLowerCase().includes(search.toLowerCase()));
 
   const Toggle=({on,onClick,disabled})=>(
     <div onClick={disabled?undefined:onClick} style={{width:44,height:24,borderRadius:12,background:disabled?"#e5e7eb":on?T.accent:"#D1D5DB",cursor:disabled?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:disabled?0.4:1}}>
