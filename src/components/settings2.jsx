@@ -1531,65 +1531,11 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   const[viewMode,setViewMode]=useState("active"); // "active" | "deleted"
   const[filterOpen,setFilterOpen]=useState(false);
   const[typeFilter,setTypeFilter]=useState(""); // "" | "image" | "pdf"
-  // Folders — "General" always exists; empty ones a person creates (with no
-  // file in them yet) are remembered locally so they don't vanish, since the
-  // backend only knows about a folder once a file is actually filed into it.
-  const[folderFilter,setFolderFilter]=useState(""); // "" = all folders
-  const[customFolders,setCustomFolders]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_custom_folders")||"[]");}catch{return[];}});
-  const allFolders=useMemo(()=>{
-    const fromFiles=new Set(files.map(f=>f.folder||"General"));
-    customFolders.forEach(f=>fromFiles.add(f));
-    fromFiles.add("General");
-    return[...fromFiles].sort((a,b)=>a==="General"?-1:b==="General"?1:a.localeCompare(b));
-  },[files,customFolders]);
-  const createFolder=()=>{
-    const name=window.prompt("New folder name:");
-    if(!name||!name.trim())return;
-    setCustomFolders(p=>{
-      const next=[...new Set([...p,name.trim()])];
-      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
-      return next;
-    });
-    setFolderFilter(name.trim());
-  };
-  const moveFile=async(id)=>{
-    const target=window.prompt(`Move to which folder? (existing: ${allFolders.join(", ")})`,folderFilter||"General");
-    if(!target||!target.trim()||!onMove)return;
-    setBusy(true);await onMove(id,target.trim());setBusy(false);
-  };
-  const moveSelected=async()=>{
-    const target=window.prompt(`Move ${selected.length} file(s) to which folder? (existing: ${allFolders.join(", ")})`,folderFilter||"General");
-    if(!target||!target.trim()||!onMove)return;
-    setBusy(true);for(const id of selected)await onMove(id,target.trim());setSelected([]);setBusy(false);
-  };
+  // Folders were removed entirely per request — same underlying files,
+  // Copy no longer files into one.
   const copyFile=async(id)=>{
     if(!onCopy)return;
-    setBusy(true);await onCopy(id,folderFilter||undefined);setBusy(false);
-  };
-  const renameFolder=(oldName)=>{
-    if(oldName==="General")return;
-    const newName=window.prompt("Rename folder to:",oldName);
-    if(!newName||!newName.trim()||newName===oldName)return;
-    const trimmed=newName.trim();
-    setBusy(true);
-    Promise.all(files.filter(f=>(f.folder||"General")===oldName).map(f=>onMove(f.id,trimmed))).then(()=>setBusy(false));
-    setCustomFolders(p=>{
-      const next=[...new Set(p.filter(f=>f!==oldName).concat(trimmed))];
-      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
-      return next;
-    });
-    if(folderFilter===oldName)setFolderFilter(trimmed);
-  };
-  const deleteFolder=(name)=>{
-    if(name==="General")return;
-    const count=files.filter(f=>(f.folder||"General")===name&&!f.deletedAt).length;
-    if(count>0){alert(`"${name}" has ${count} file${count===1?"":"s"} in it — move or delete them first.`);return;}
-    setCustomFolders(p=>{
-      const next=p.filter(f=>f!==name);
-      try{localStorage.setItem("rr_custom_folders",JSON.stringify(next));}catch{}
-      return next;
-    });
-    if(folderFilter===name)setFolderFilter("");
+    setBusy(true);await onCopy(id);setBusy(false);
   };
 
   const addFile=async(file)=>{setBusy(true);await onUpload(file);setBusy(false);};
@@ -1639,7 +1585,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
     .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
     .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
-    .filter(f=>!folderFilter||(f.folder||"General")===folderFilter)
     .filter(f=>!suggestionFilter||(suggestionFilter==="with"?hasSuggestion(f):!hasSuggestion(f)));
   // Default to previewing the first file in the current list — an empty
   // preview pane on open just wastes a click most of the time. Re-syncs
@@ -1699,8 +1644,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               // itself, so switching tabs doesn't change the other tabs' own counts.
               const base=files.filter(f=>!f.deletedAt)
                 .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
-                .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
-                .filter(f=>!folderFilter||(f.folder||"General")===folderFilter);
+                .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")));
               const withCount=base.filter(hasSuggestion).length;
               const withoutCount=base.length-withCount;
               return(
@@ -1712,20 +1656,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               );
             })()}
 
-            <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
-              <button onClick={()=>setFolderFilter("")} style={{background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All folders</button>
-              {allFolders.map(name=>(
-                <div key={name} style={{position:"relative",display:"flex",alignItems:"center"}}>
-                  <button onClick={()=>setFolderFilter(name)} onDoubleClick={()=>name!=="General"&&renameFolder(name)} title={name!=="General"?"Double-click to rename":undefined} style={{background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
-                    <i className="ti ti-folder" style={{fontSize:12}}/>{name}
-                  </button>
-                  {name!=="General"&&folderFilter===name&&(
-                    <button onClick={()=>deleteFolder(name)} title="Delete empty folder" style={{background:"none",border:"none",color:folderFilter===name?"#fff":T.muted,cursor:"pointer",fontSize:11,marginLeft:2}}>✕</button>
-                  )}
-                </div>
-              ))}
-              <button onClick={createFolder} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New folder</button>
-            </div>
 
             {/* A select-all checkbox is always visible on the left. When
                 nothing's selected, the search box fills the row. Once
@@ -1741,7 +1671,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                     <button onClick={startRegistration} disabled={busy} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Start registration</button>
                     <Menu3 items={[
                       ...(selectedImageIds.length>=2?[{label:"Merge",action:mergeSelected}]:[]),
-                      {label:"Move to folder…",action:moveSelected},
                       {label:"Delete",color:T.red,action:deleteSelected},
                     ]}/>
                   </>):(
@@ -1779,7 +1708,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
               {filtered.map((f,i)=>{
                 const isFocused=previewFile&&previewFile.id===f.id;
                 return(
-                  <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
+                  <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
                     <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
                     <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
                       {editingFileId===f.id?(
@@ -1793,14 +1722,14 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                           style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
                         />
                       ):(
-                        <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||f.name}</div>
+                        <div style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||f.name}</div>
                       )}
                       <div style={{fontSize:10,color:T.muted,marginTop:2,display:"flex",gap:6,alignItems:"center",overflow:"hidden"}}>
                         {hasSuggestion(f)?(<>
                           {f.aiAmount!=null&&<span style={{fontWeight:700,color:T.text}}>{fmt(f.aiAmount)}</span>}
                           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
                         </>):(
-                          <span>{f.month} {f.year} · {f.folder}</span>
+                          <span>{f.month} {f.year}</span>
                         )}
                         {f.aiAnalyzed&&!hasSuggestion(f)&&<span style={{color:T.muted}}>· no suggestion</span>}
                         {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<span style={{color:T.accent}}>· analyzing…</span>}
@@ -1814,7 +1743,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                       {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
                     ]:[
                       {label:"Rename",action:()=>renameFile(f.id)},
-                      {label:"Move to folder…",action:()=>moveFile(f.id)},
                       {label:"Copy",action:()=>copyFile(f.id)},
                       {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                     ]}/>
@@ -1899,15 +1827,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
           <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
         </div>
 
-        {/* Folders */}
-        <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
-          <button onClick={()=>setFolderFilter("")} style={{flexShrink:0,background:!folderFilter?T.accent:"none",color:!folderFilter?"#fff":T.sub,border:`1px solid ${!folderFilter?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
-          {allFolders.map(name=>(
-            <button key={name} onClick={()=>setFolderFilter(name)} style={{flexShrink:0,background:folderFilter===name?T.accent:"none",color:folderFilter===name?"#fff":T.sub,border:`1px solid ${folderFilter===name?T.accent:T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📁 {name}</button>
-          ))}
-          <button onClick={createFolder} style={{flexShrink:0,background:"none",border:`1px dashed ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ New</button>
-        </div>
-
         {/* Selection bar */}
         {selected.length>0&&(
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"8px 12px",marginBottom:10}}>
@@ -1915,7 +1834,6 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>setSelected([])} style={{...btnSm,background:T.border,color:T.sub}}>Clear</button>
               {selectedImageIds.length>=2&&<button onClick={mergeSelected} disabled={busy} style={{...btnSm,background:T.accent,color:"#fff"}}>📄 Merge</button>}
-              <button onClick={moveSelected} disabled={busy} style={{...btnSm,background:"#fff",border:`1px solid ${T.border}`,color:T.sub}}>📁 Move</button>
               <button onClick={deleteSelected} disabled={busy} style={{...btnSm,background:T.redLight,color:T.red}}>🗑 Delete</button>
             </div>
           </div>
@@ -1932,13 +1850,12 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                   <button onClick={()=>setInlinePreview(p=>p===f.id?null:f.id)} title="Preview" style={{background:inlinePreview===f.id?T.accentLight:"none",border:"none",cursor:"pointer",color:T.accent,fontSize:14,padding:"3px 5px",borderRadius:6,flexShrink:0}}>👁</button>
                   <div onDoubleClick={()=>renameFile(f.id)} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
                     <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year} · {f.folder}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year}</div>
                   </div>
                   <button onClick={()=>registerEntry(f.id)} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Register</button>
                   <Menu3 items={[
                     {label:"View",action:()=>setViewing(f)},
                     {label:"Rename",action:()=>renameFile(f.id)},
-                    {label:"Move to folder…",action:()=>moveFile(f.id)},
                     {label:"Copy",action:()=>copyFile(f.id)},
                     {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
                   ]}/>
