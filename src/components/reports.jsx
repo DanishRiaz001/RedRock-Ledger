@@ -2863,6 +2863,26 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell. Widths persist per-session via colgroup, not per-cell.
   const[colWidths,setColWidths]=useState([36,90,90,90,300,110,120]);
+  // View settings — matches Tripletex's gear-icon "Visningsvalg" panel on
+  // Hovedbok, scoped to columns this app can actually populate on a
+  // transaction (VAT code, linked customer/supplier, currency) rather than
+  // faking toggles for dimensions (Prosjekt/Produkt/Ansatt) nothing here
+  // tracks yet. Persisted per-browser so the choice sticks between visits.
+  const[viewMenuOpen,setViewMenuOpen]=useState(false);
+  const[colPrefs,setColPrefs]=useState(()=>{
+    try{return{showVat:false,showContact:false,showCurrency:false,...JSON.parse(localStorage.getItem("rr_ledger_view_prefs")||"")};}catch{return{showVat:false,showContact:false,showCurrency:false};}
+  });
+  const toggleColPref=key=>{
+    const next={...colPrefs,[key]:!colPrefs[key]};
+    setColPrefs(next);
+    try{localStorage.setItem("rr_ledger_view_prefs",JSON.stringify(next));}catch{}
+  };
+  const extraCols=[
+    colPrefs.showVat&&{key:"vat",label:"VAT code",width:80},
+    colPrefs.showContact&&{key:"contact",label:"Customer/Supplier",width:150},
+    colPrefs.showCurrency&&{key:"currency",label:"Currency",width:70},
+  ].filter(Boolean);
+  const baseColCount=7,totalColCount=baseColCount+extraCols.length;
   const resizeDragRef=React.useRef(null);
   const startColResize=(idx,e)=>{
     e.preventDefault();e.stopPropagation();
@@ -2928,6 +2948,20 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{currentCode} — {(accounts.find(a=>a.code===currentCode)||{}).name||""}</h1>
         </div>
         <div style={{display:"flex",gap:8}}>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setViewMenuOpen(o=>!o)} title="View settings" style={{background:viewMenuOpen?T.bg:"none",border:`1px solid ${T.border}`,borderRadius:8,width:34,height:34,fontSize:14,color:T.sub,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-settings"/></button>
+            {viewMenuOpen&&(<>
+              <div onClick={()=>setViewMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:390}}/>
+              <div style={{position:"absolute",right:0,top:40,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:400,minWidth:210,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",padding:"10px 0"}}>
+                <div style={{padding:"4px 14px 8px",fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>Columns</div>
+                {[["showVat","VAT code"],["showContact","Customer/Supplier"],["showCurrency","Currency"]].map(([key,label])=>(
+                  <label key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",fontSize:12.5,color:T.text,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!colPrefs[key]} onChange={()=>toggleColPref(key)}/>{label}
+                  </label>
+                ))}
+              </div>
+            </>)}
+          </div>
           <button onClick={printLedgerPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
           <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
         </div>
@@ -2967,7 +3001,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
 
       <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
-        <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+        <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}{extraCols.map(c=><col key={c.key} style={{width:c.width}}/>)}</colgroup>
         <thead><tr style={{color:T.muted,fontSize:11,background:T.bg,position:"sticky",top:0,zIndex:2}}>
           <td style={{padding:"9px 14px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
           <td style={{position:"relative"}}>Closed<ResizeHandle idx={1}/></td>
@@ -2975,18 +3009,20 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
           <td style={{position:"relative"}}>Date<ResizeHandle idx={3}/></td>
           <td style={{position:"relative"}}>Description<ResizeHandle idx={4}/></td>
           <td style={{textAlign:"right",position:"relative"}}>Amount<ResizeHandle idx={5}/></td>
+          {extraCols.map(c=><td key={c.key} style={{fontSize:11}}>{c.label}</td>)}
           <td style={{textAlign:"right",padding:"9px 14px",position:"relative"}}>Balance</td>
         </tr></thead>
         <tbody>
           <tr style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-            <td colSpan="7" style={{padding:"9px 14px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
+            <td colSpan={totalColCount} style={{padding:"9px 14px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
           </tr>
           <tr style={{borderBottom:`1px solid ${T.border}`}}>
-            <td colSpan="6" style={{padding:"9px 14px",color:T.text}}>Opening balance</td>
+            <td colSpan={6+extraCols.length} style={{padding:"9px 14px",color:T.text}}>Opening balance</td>
             <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{fmt(openingBal)}</td>
           </tr>
           {shownRows.map((r,i)=>{
             const isMatchedHere=!!r.matchedWith&&r.matchedAccount===currentCode;
+            const rContact=r.contactId?contacts.find(c=>c.id===r.contactId):null;
             return(
               <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:"9px 14px"}}>
@@ -3001,17 +3037,20 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                 <td style={{color:T.text}}>{r.date}</td>
                 <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}}>{r.description}</td>
                 <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.movement)}</td>
+                {colPrefs.showVat&&<td style={{color:T.sub,fontSize:12}}>{r.vatCode||"—"}</td>}
+                {colPrefs.showContact&&<td style={{color:T.sub,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rContact?rContact.name:"—"}</td>}
+                {colPrefs.showCurrency&&<td style={{color:T.sub,fontSize:12}}>{r.currency||"—"}</td>}
                 <td style={{textAlign:"right",color:T.muted,padding:"9px 14px"}}>{fmt(r.balance)}</td>
               </tr>
             );
           })}
-          {!shownRows.length&&<tr><td colSpan="7" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
+          {!shownRows.length&&<tr><td colSpan={totalColCount} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
           <tr style={{borderTop:`1px solid ${T.border}`}}>
-            <td colSpan="6" style={{padding:"7px 0",color:T.text}}>Changes in period</td>
+            <td colSpan={6+extraCols.length} style={{padding:"7px 0",color:T.text}}>Changes in period</td>
             <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
           </tr>
           <tr style={{borderTop:`2px solid ${T.text}`,fontWeight:800}}>
-            <td colSpan="6" style={{padding:"8px 0"}}>Closing balance</td>
+            <td colSpan={6+extraCols.length} style={{padding:"8px 0"}}>Closing balance</td>
             <td style={{textAlign:"right"}}>{fmt(closingBal)}</td>
           </tr>
         </tbody>
