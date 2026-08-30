@@ -712,7 +712,7 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[]}){
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
@@ -731,58 +731,86 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const initialVatCode=txn.vatCode||(txn.vatPct!=null&&vatDirection?((vatCodeForRate(txn.vatPct,vatDirection)||{}).code||""):"");
   const[vatCode,setVatCode]=useState(initialVatCode);
 
-  return(
-    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:400,overflowY:"auto"}}>
-      <div style={{maxWidth:720,margin:"0 auto",padding:"28px 20px 60px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
-          <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:40,height:40}}>✕</button>
+  const attached=attachments[0]||null;
+
+  const formCard=(
+    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp}/></div>
+        <div><SL>Amount</SL><input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp}/></div>
+      </div>
+      <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
+        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
+      </div>
+      {vatDirection&&(
+        <div style={{maxWidth:280}}><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
+      )}
+      <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
+      {moneySources&&moneySources.length>0&&(
+        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
+          <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
+          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+            <option value="">— Select source (optional) —</option>
+            {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
         </div>
-        {/* Same "posting a voucher" visual weight as New Entry — a real
-            full page, not a small bottom-sheet popup capped at 430px, which
-            looked and felt completely different from the screen this entry
-            was originally created on. */}
-        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp}/></div>
-            <div><SL>Amount</SL><input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp}/></div>
+      )}
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>{
+          if(!valid)return;
+          if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
+          if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
+          const amountNum=parseFloat(form.amount);
+          const vc=vatDirection?findVatCode(vatCode,vatDirection):null;
+          const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:null;
+          onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+        }}>💾 Save</button>
+        {confirmDel?(
+          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
+        ):(
+          <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑</button>
+        )}
+        <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDel(false);onClose();}}>✕</button>
+      </div>
+    </div>
+  );
+
+  // Was a `position:fixed;inset:0` solid-background full-viewport takeover —
+  // that painted directly over the app's own fixed top bar and sidebar
+  // (both siblings elsewhere in the DOM, not inside this component), so
+  // instead of "a full page like posting a voucher" it looked like the
+  // whole app chrome had vanished, and the close button — sitting right at
+  // the same y-position the real top bar occupies — was covered by it and
+  // unclickable, forcing a hard refresh to escape. Back to the same dimmed-
+  // backdrop + centered-card pattern every other modal in this app already
+  // uses successfully (BulkEditPostsModal, NewContactModal, MatchDetailModal
+  // …), just sized large — that keeps the app chrome visible (dimmed) behind
+  // it and keeps every button reachable, while still reading as a real,
+  // spacious "voucher" layout instead of a small bottom sheet. A document
+  // attached to this entry now shows in a preview pane alongside the form,
+  // matching New Entry's own attachment preview.
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,borderRadius:16,width:"100%",maxWidth:attached?1180:720,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 70px rgba(0,0,0,0.35)"}}>
+        <div style={{padding:"22px 24px 0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
+            <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:40,height:40}}>✕</button>
           </div>
-          <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
-            <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
-          </div>
-          {vatDirection&&(
-            <div style={{maxWidth:280}}><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
-          )}
-          <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
-          {moneySources&&moneySources.length>0&&(
-            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
-              <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
-              <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
-                <option value="">— Select source (optional) —</option>
-                {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+        </div>
+        <div style={{padding:"0 24px 24px",display:attached?"grid":"block",gridTemplateColumns:attached?"1fr 1fr":undefined,gap:attached?20:0,alignItems:"start"}}>
+          {formCard}
+          {attached&&(
+            <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+              <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
+              <div style={{height:"calc(100% - 33px)"}}>
+                <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
+              </div>
             </div>
           )}
-          <div style={{display:"flex",gap:6,marginTop:4}}>
-            <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>{
-              if(!valid)return;
-              if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
-              if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
-              const amountNum=parseFloat(form.amount);
-              const vc=vatDirection?findVatCode(vatCode,vatDirection):null;
-              const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:null;
-              onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
-            }}>💾 Save</button>
-            {confirmDel?(
-              <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
-            ):(
-              <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑</button>
-            )}
-            <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDel(false);onClose();}}>✕</button>
-          </div>
         </div>
       </div>
     </div>
@@ -1001,6 +1029,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
   if(showEdit)return(
     <EditModal
       txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
+      attachments={attList}
       onSave={u=>{onEdit(u);setShowEdit(false);}}
       onDelete={id=>{onDelete(id);setShowEdit(false);onClose();}}
       onClose={()=>setShowEdit(false)}

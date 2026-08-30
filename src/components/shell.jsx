@@ -229,7 +229,17 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             position:sticky keeps the dot near the top of the viewport no
             matter how tall the content grows; the draggable strip itself
             still spans the full height, so grabbing it anywhere still works. */}
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,alignSelf:"stretch",position:"relative",cursor:"col-resize",flexShrink:0,zIndex:overlapping?61:62,background:"#F5F9FA"}}>
+        {/* In normal (non-overlapping) flex flow this strip sits naturally
+            between `left` and `right`. Once `right` switches to
+            position:fixed (overlap mode) it's taken out of flex flow
+            entirely, so `left`'s flex:1 expands to fill the space that
+            freed up — dragging this strip along with it, in flex flow,
+            all the way to the true right edge of the viewport, landing on
+            top of the preview's OWN toolbar (e.g. right next to its
+            download icon) instead of staying at the preview's left edge.
+            Anchoring it to `right:rightWidth` (fixed, same as the panel
+            it borders) keeps it glued to that seam regardless. */}
+        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={overlapping?{width:14,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}:{width:14,alignSelf:"stretch",position:"relative",cursor:"col-resize",flexShrink:0,zIndex:62,background:"#F5F9FA"}}>
           <div style={{position:"sticky",top:90,width:4,height:44,margin:"0 auto",borderRadius:2,background:overlapping?T.accent:"#C9D6D6"}}/>
         </div>
         <div style={overlapping?{

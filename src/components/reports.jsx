@@ -4162,8 +4162,30 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // running Saldo, in date order down this one code's transactions.
   if(specView){
     const sorted=[...specView.rows].sort((a,b)=>a.date.localeCompare(b.date)||a.bilag-b.bilag);
+    // Grouped by whatever the Konto/Kunde/Leverandør column actually shows —
+    // a flat, date-only ordering mixed entirely unrelated accounts together
+    // (e.g. bank fees, taxi purchases, and a sale all interleaved under one
+    // running Saldo, which was meaningless since it summed across accounts
+    // that have nothing to do with each other). Saldo is now a running
+    // subtotal PER account group instead of one continuous total across all
+    // of them, with a grand total underneath.
+    const groupKeyOf=t=>{
+      if(specView.direction==="none")return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
+      const contact=contacts.find(c=>c.id===t.contactId);
+      return contact?contact.name:getName(t[specView.otherField]);
+    };
+    const groups=[];
+    const idxByKey={};
+    sorted.forEach(t=>{
+      const key=groupKeyOf(t);
+      if(idxByKey[key]==null){idxByKey[key]=groups.length;groups.push({key,rows:[]});}
+      groups[idxByKey[key]].rows.push(t);
+    });
+    groups.sort((a,b)=>a.key.localeCompare(b.key));
     let running=0;
-    const specRows=sorted.map(t=>{running+=t.amount;return{...t,saldo:running};});
+    groups.forEach(g=>{running=0;g.rows=g.rows.map(t=>{running+=t.amount;return{...t,saldo:running};});g.vatSum=g.rows.reduce((s,t)=>s+(t.vatAmount||0),0);g.amountSum=g.rows.reduce((s,t)=>s+t.amount,0);});
+    const grandVat=groups.reduce((s,g)=>s+g.vatSum,0);
+    const grandAmount=groups.reduce((s,g)=>s+g.amountSum,0);
     return(
       <div style={{maxWidth:1100}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:11,color:T.muted}}>
@@ -4182,22 +4204,38 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
             </tr></thead>
             <tbody>
-              {specRows.map(t=>{
-                const contact=specView.direction!=="none"?contacts.find(c=>c.id===t.contactId):null;
-                return(
-                  <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
-                    <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
-                    <td style={{color:T.sub}}>{t.date}</td>
-                    <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                    <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{specView.direction==="none"?`${getName(t.debitCode)} / ${getName(t.creditCode)}`:contact?contact.name:getName(t[specView.otherField])}</td>
-                    <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
-                    <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
-                    <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
-                    <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:700}}>{fmt(t.saldo)}</td>
+              {groups.map(g=>(
+                <React.Fragment key={g.key}>
+                  <tr><td colSpan="8" style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  {g.rows.map(t=>(
+                    <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
+                      <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+                      <td style={{color:T.sub}}>{t.date}</td>
+                      <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
+                      <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key}</td>
+                      <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
+                      <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
+                      <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
+                      <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:700}}>{fmt(t.saldo)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{borderTop:`1px solid ${T.border}`}}>
+                    <td colSpan="5" style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Sum {g.key}</td>
+                    <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
+                    <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
+                    <td style={{padding:"6px 12px"}}></td>
                   </tr>
-                );
-              })}
-              {!specRows.length&&<tr><td colSpan="8" style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+                </React.Fragment>
+              ))}
+              {!groups.length&&<tr><td colSpan="8" style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+              {groups.length>1&&(
+                <tr style={{borderTop:`2px solid ${T.border}`}}>
+                  <td colSpan="5" style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
+                  <td style={{textAlign:"right",fontWeight:800,color:T.accent}}>{fmt(grandVat)}</td>
+                  <td style={{textAlign:"right",fontWeight:800,color:T.text}}>{fmt(grandAmount)}</td>
+                  <td style={{padding:"9px 12px"}}></td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
