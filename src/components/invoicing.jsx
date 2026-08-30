@@ -975,6 +975,20 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
             </select>
             <div style={{fontSize:10,color:T.muted,marginTop:4}}>{form.country==="NO"?"VAT/MVA features are enabled.":"VAT features are hidden — Pakistani tax filing isn't built yet."}</div>
           </div>
+          {form.country==="NO"&&(<>
+            {/* Municipality (kommune) + the date the company registered there —
+                Norwegian company-info screens (e.g. Tripletex) always carry
+                these since municipal business tax/reporting is tied to it;
+                left out entirely for other countries where it isn't relevant. */}
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Municipality (kommune)</div>
+              <input value={form.municipality||""} onChange={set("municipality")} placeholder="e.g. Bærum" style={inp}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Municipality start date</div>
+              <input type="date" value={form.municipalityStartDate||""} onChange={set("municipalityStartDate")} style={inp}/>
+            </div>
+          </>)}
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Default VAT %</div>
             <input type="number" value={form.vatPct} onChange={e=>setForm(p=>({...p,vatPct:parseFloat(e.target.value)||0}))} style={inp}/>

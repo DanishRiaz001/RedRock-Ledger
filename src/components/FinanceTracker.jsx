@@ -456,17 +456,21 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         <div style={{position:"relative"}}>
           {(()=>{
             const activeCompany=viewingUserId===user.id?companies.find(c=>c.id===activeCompanyId):null;
+            // Prefer the real name from Company Information (companyProfile.
+            // companyName) over the multi-company record's own name — the
+            // two are separate fields (one's a simple label for switching
+            // between books, the other is the actual registered company
+            // name someone filled in on the Company Information screen),
+            // and the switcher used to only ever show the former, so it
+            // could keep saying a generic placeholder like "My Company"
+            // even after someone had already set their real name elsewhere.
             const pillLabel=viewingUserId===user.id
-              ?(activeCompany?activeCompany.name:"Redrock Ledger")
+              ?((activeCompany&&companyProfile&&companyProfile.companyName)||(activeCompany?activeCompany.name:"Redrock Ledger"))
               :((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client");
             return(
               <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
                 <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
                 <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{pillLabel}</span>
-                {companies.length>1&&viewingUserId===user.id&&<span style={{fontSize:9,background:T.border,color:T.sub,borderRadius:10,padding:"1px 6px",fontWeight:700}}>{companies.length}</span>}
-                {viewingUserId===user.id&&(
-                  <span onClick={e=>{e.stopPropagation();setTab("CompanyInfo");}} title="Edit company information" style={{color:T.sub,fontSize:11,marginLeft:2,display:"flex",alignItems:"center"}}><i className="ti ti-settings" style={{fontSize:12}}/></span>
-                )}
                 <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
               </div>
             );
