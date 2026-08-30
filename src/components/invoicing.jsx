@@ -569,7 +569,6 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   const[editingId,setEditingId]=useState(null);
   const[showNew,setShowNew]=useState(false);
   useEffect(()=>{if(autoOpenNew)setShowNew(true);},[autoOpenNew]);
-  const[form,setForm]=useState({name:"",email:"",phone:"",address:"",accountNo:"",paymentTermsDays:"30",creditLimit:""});
 
   const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())));
   const code=type==="customer"?"1500":"2400";
@@ -580,21 +579,9 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
     const nums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
     return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
   };
-
-  const startEdit=(c)=>{setEditingId(c.id);setForm({name:c.name||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.accountNo||"",paymentTermsDays:c.paymentTermsDays!=null?String(c.paymentTermsDays):"30",creditLimit:c.creditLimit!=null?String(c.creditLimit):""});setShowNew(false);};
-  const startNew=()=>{setEditingId(null);setForm({name:"",email:"",phone:"",address:"",accountNo:"",paymentTermsDays:"30",creditLimit:""});setShowNew(true);};
-  const save=()=>{
-    if(!form.name.trim())return;
-    const cleaned={...form,paymentTermsDays:parseInt(form.paymentTermsDays)||30,creditLimit:form.creditLimit===""?null:parseFloat(form.creditLimit)};
-    if(editingId){
-      setContacts(contacts.map(c=>c.id===editingId?{...c,...cleaned}:c));
-      setEditingId(null);
-    }else{
-      setContacts([...contacts,{id:nextId(),type,...cleaned}]);
-      setShowNew(false);
-    }
-  };
-  const cancel=()=>{setEditingId(null);setShowNew(false);};
+  const startEdit=(c)=>{setEditingId(c.id);setShowNew(false);};
+  const startNew=()=>{setEditingId(null);setShowNew(true);};
+  const cancelContactModal=()=>{setEditingId(null);setShowNew(false);};
 
   const exportContacts=()=>{
     const aoa=[["Type","Name","Email","Phone","Address","Account no.","Payment terms (days)","Credit limit"],
@@ -847,47 +834,19 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <input placeholder="Search name or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
       </div>
 
-      {showNew&&(
+      {(showNew||editingId)&&(
         <NewContactModal
           defaultType={type}
           country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
-          onSave={contact=>{setContacts([...contacts,{id:nextId(),...contact}]);setShowNew(false);}}
-          onClose={()=>setShowNew(false)}
-          onBulkImport={onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
+          initial={editingId?contacts.find(c=>c.id===editingId):null}
+          companyCurrency={companyProfile&&companyProfile.currency}
+          onSave={contact=>{
+            if(editingId){setContacts(contacts.map(c=>c.id===editingId?{...c,...contact}:c));setEditingId(null);}
+            else{setContacts([...contacts,{id:nextId(),...contact}]);setShowNew(false);}
+          }}
+          onClose={cancelContactModal}
+          onBulkImport={!editingId&&onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
         />
-      )}
-      {editingId&&(
-        <div onClick={cancel} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)",padding:20}}>
-            <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:14}}>Edit {type}</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <input placeholder="Name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
-              <input placeholder="Email" type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} style={inp}/>
-              <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
-              <input placeholder="Account no. / IBAN (optional)" value={form.accountNo} onChange={e=>setForm(p=>({...p,accountNo:e.target.value}))} style={inp}/>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <input placeholder="Address" value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={inp}/>
-              <div>
-                <select value={form.paymentTermsDays} onChange={e=>setForm(p=>({...p,paymentTermsDays:e.target.value}))} style={inp}>
-                  <option value="0">Due immediately</option>
-                  <option value="7">Net 7</option>
-                  <option value="15">Net 15</option>
-                  <option value="30">Net 30</option>
-                  <option value="45">Net 45</option>
-                  <option value="60">Net 60</option>
-                </select>
-              </div>
-            </div>
-            {type==="customer"&&(
-              <input type="number" placeholder="Credit limit (optional — warns before invoicing past it)" value={form.creditLimit} onChange={e=>setForm(p=>({...p,creditLimit:e.target.value}))} style={{...inp,marginBottom:10}}/>
-            )}
-            <div style={{display:"flex",gap:8,marginTop:6}}>
-              <button onClick={save} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
-              <button onClick={cancel} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-            </div>
-          </div>
-        </div>
       )}
 
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -901,7 +860,11 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
             <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1fr 90px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
               <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content"}}>{c.id}</div>
               <div>
-                <div onClick={()=>onOpenReskontro&&onOpenReskontro(type)} style={{cursor:"pointer",fontWeight:700,fontSize:13,color:T.text}}>{c.name}</div>
+                {/* Opens this contact's own settings/details now — it used
+                    to jump straight to their ledger, which meant there was
+                    no way to just look at or fix a supplier's details
+                    without going through the reskontro screen instead. */}
+                <div onClick={()=>startEdit(c)} title="Open settings" style={{cursor:"pointer",fontWeight:700,fontSize:13,color:T.text}}>{c.name}</div>
                 {c.address&&<div style={{fontSize:11,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.address}</div>}
               </div>
               <div style={{fontSize:12,color:T.sub}}>
@@ -914,7 +877,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
                 {type==="customer"&&c.creditLimit!=null&&<div style={{color:T.muted,marginTop:1}}>Limit {fmt(c.creditLimit)}</div>}
               </div>
               <div style={{textAlign:"right",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
-                <span style={{fontWeight:700,fontSize:12,color:bal>=0?T.green:T.red}}>{sign(bal)}</span>
+                <span onClick={()=>onOpenReskontro&&onOpenReskontro(type)} title="View ledger" style={{fontWeight:700,fontSize:12,color:bal>=0?T.green:T.red,cursor:onOpenReskontro?"pointer":"default",textDecoration:onOpenReskontro?"underline":"none",textDecorationStyle:"dotted"}}>{sign(bal)}</span>
                 <button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",padding:2}}><i className="ti ti-pencil" style={{fontSize:13}}/></button>
               </div>
             </div>
