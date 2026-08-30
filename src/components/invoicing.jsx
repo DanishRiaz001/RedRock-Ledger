@@ -304,14 +304,47 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
     }
 
     if(opts.createVouchers){
+      const debitLines0=t=>t.lines.filter(l=>l.debit>0);
+      const creditLines0=t=>t.lines.filter(l=>l.credit>0);
       for(const t of parsed.transactions){
-        const debitLine=t.lines.find(l=>l.debit>0);
-        const creditLine=t.lines.find(l=>l.credit>0);
-        if(!debitLine||!creditLine)continue;
-        const amount=debitLine.debit||creditLine.credit;
-        if(!amount)continue;
-        await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(debitLine.accountId),creditCode:resolveCode(creditLine.accountId),description:t.description||"Imported from SAF-T",amount});
-        txnsAdded++;
+        const debitLines=debitLines0(t),creditLines=creditLines0(t);
+        const desc=t.description||"Imported from SAF-T";
+        if(debitLines.length===1&&creditLines.length===1){
+          // The simple, common case — one debit account, one credit
+          // account — posts directly as one voucher, same as before.
+          const amount=debitLines[0].debit;
+          if(!amount||Math.abs(amount-creditLines[0].credit)>0.01)continue; // guards against a malformed 2-line entry that doesn't actually balance
+          await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(debitLines[0].accountId),creditCode:resolveCode(creditLines[0].accountId),description:desc,amount});
+          txnsAdded++;
+        } else if(debitLines.length+creditLines.length>2){
+          // A genuine multi-line journal entry (this app's transaction
+          // model only supports simple two-account vouchers) — used to
+          // silently keep only the FIRST debit and FIRST credit line via
+          // .find(), discarding every other line and even posting the
+          // wrong amount (whichever of the two picked lines happened to be
+          // larger), instead of erroring or actually importing it. Every
+          // line is now posted individually against a shared clearing
+          // account, exactly like the existing opening-balance import
+          // already does — the group always nets to zero since the source
+          // entry was already balanced, and groupRef keeps all the lines
+          // visibly linked as one import instead of scattering unrelated-
+          // looking entries.
+          currentAccounts=await ensureOpeningBalanceAccount(currentAccounts);
+          const groupRef=`saft-${t.date}-${Math.random().toString(36).slice(2,8)}`;
+          for(const l of debitLines){
+            if(!l.debit)continue;
+            await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(l.accountId),creditCode:OPENING_BALANCE_CODE,description:desc,amount:l.debit,groupRef});
+            txnsAdded++;
+          }
+          for(const l of creditLines){
+            if(!l.credit)continue;
+            await addTransaction({date:t.date.slice(0,10),debitCode:OPENING_BALANCE_CODE,creditCode:resolveCode(l.accountId),description:desc,amount:l.credit,groupRef});
+            txnsAdded++;
+          }
+        }
+        // A transaction with only one line total (all-debit or all-credit,
+        // no offsetting side at all) isn't a valid double-entry record —
+        // skipped, same as before.
       }
     }
 

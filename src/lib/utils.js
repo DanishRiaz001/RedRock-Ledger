@@ -206,7 +206,15 @@ const buildBankRows=(rawRows,cols,dataStart=0)=>{
     else if(debitCol>=0||creditCol>=0){
       const dr=debitCol>=0?bankToNum(r[debitCol]):null;
       const cr=creditCol>=0?bankToNum(r[creditCol]):null;
-      amount=(cr||0)-(dr||0);
+      // Math.abs on both sides — a real Norwegian export's "Ut" (outgoing)
+      // column already writes its own values as negative (e.g. "-179,75"),
+      // while an English "Debit" column is conventionally an unsigned
+      // magnitude. Without normalizing both to a positive magnitude first,
+      // an already-negative "Ut" value flipped this formula's sign: an
+      // outgoing payment came out positive instead of negative. Money out
+      // is always subtracted, money in always added, regardless of which
+      // sign convention the source file itself used.
+      amount=Math.abs(cr||0)-Math.abs(dr||0);
     }
     return{rowNum:dataStart+i+1,date,description,amount,balance:balanceCol>=0?bankToNum(r[balanceCol]):null,raw:r};
   });
