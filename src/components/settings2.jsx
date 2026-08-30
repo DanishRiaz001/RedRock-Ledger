@@ -1769,7 +1769,10 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                     <span onDoubleClick={()=>startInlineRename(previewFile)} title="Double-click to rename" style={{fontSize:13,color:T.text,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",flex:1,minWidth:0}}>{previewFile.name}</span>
                   )}
                 </div>
-                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"flex-end",overflow:"hidden",background:"#fafafa"}}>
+                {/* Was justifyContent:"flex-end" — the one thing that made this
+                    preview pane look mis-aligned next to Register-voucher's
+                    (and New Entry's) matching panel, which both center it. */}
+                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",background:"#fafafa"}}>
                   <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%"}}/>
                 </div>
               </>

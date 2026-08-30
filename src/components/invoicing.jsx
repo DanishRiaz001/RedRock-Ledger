@@ -3340,10 +3340,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
-    // File ids are UUIDs (e.g. "a1b2c3d4-...") — parseInt() used to silently
-    // truncate them to garbage (stops at the first non-digit character),
-    // breaking the attachment link without any visible error.
+    // localStorage always hands back a string, but inbox_files.id is a
+    // numeric column — every OTHER place in this form (the two "pick an
+    // existing file" <select>s below) reads it back with parseInt() for
+    // exactly that reason. Leaving this one as a raw string meant
+    // `inboxFiles.find(f=>f.id===form.attachmentId)` never matched
+    // ("5"!==5), so the Register-from-Inbox flow opened a form with the
+    // attachment silently missing from the preview panel.
     if(pending){
+      const asNum=Number(pending);
+      if(!Number.isNaN(asNum))pending=asNum;
       try{localStorage.removeItem("rr_pending_attachment");}catch{}
       let suggestion=null;
       try{
@@ -3721,7 +3727,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 <div onClick={()=>setShowAttachPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
                 <div style={{position:"absolute",right:0,top:46,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:230}}>
                   {form.attachmentId?(()=>{
-                    const f=inboxFiles.find(x=>x.id===form.attachmentId);
+                    const f=inboxFiles.find(x=>String(x.id)===String(form.attachmentId));
                     return(
                       <div style={{display:"flex",alignItems:"center",gap:8,background:T.bg,border:`1px solid ${T.accent}`,borderRadius:9,padding:"7px 9px"}}>
                         <span style={{fontSize:12,fontWeight:600,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f?f.name:"Attachment"}</span>
@@ -4288,7 +4294,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     // version of the same idea, which meant the one place attachments
     // matter most (a brand-new entry) looked and behaved differently from
     // everywhere else a document preview appears in the app.
-    const attached=form.attachmentId?inboxFiles.find(f=>f.id===form.attachmentId):null;
+    const attached=form.attachmentId?inboxFiles.find(f=>String(f.id)===String(form.attachmentId)):null;
     return(
       <ResizableSplit
         // Capped to 60% of the screen width regardless of whether the

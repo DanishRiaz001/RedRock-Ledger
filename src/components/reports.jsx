@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab } from "../lib/utils.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, SaveFlashButton } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton } from "./ledger.jsx";
 import { ResizableSplit } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -2730,6 +2730,92 @@ function MonthYearJump({year,month,onPick}){
 // account switcher (jump between accounts without closing), All/Open entries
 // toggle, a period picker, and the grouped opening/entries/changes/closing
 // table with a "closed" (matched) indicator per line.
+// Bulk-edit a batch of selected general-ledger rows at once — matches the
+// "Endre poster" pattern from Tripletex's Hovedbok. Each toggled field is
+// applied to EVERY selected row, but the account-swap only ever touches
+// the leg that matches `currentCode` (the account this ledger is scoped
+// to) — the transaction's other leg is left exactly as posted, since a
+// bilag's two sides are still two separate real postings.
+function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose}){
+  const[changeAccount,setChangeAccount]=useState(false);
+  const[newAccountCode,setNewAccountCode]=useState("");
+  const[changeVat,setChangeVat]=useState(false);
+  const[vatCode,setVatCode]=useState("");
+  const[changeContact,setChangeContact]=useState(false);
+  const[contactId,setContactId]=useState("");
+
+  const vatDirection=isExpenseSK(currentCode)?"input":isIncomeSK(currentCode)?"output":null;
+  const vatOptions=vatDirection?vatCodeOptions(vatDirection):[];
+  const sortedAccounts=useMemo(()=>[...accounts].sort((a,b)=>a.code.localeCompare(b.code)),[accounts]);
+  const anyChange=(changeAccount&&newAccountCode)||changeVat||changeContact;
+
+  const apply=()=>{
+    rows.forEach(r=>{
+      const isDr=r.debitCode===currentCode;
+      let u={...r};
+      if(changeAccount&&newAccountCode){
+        if(isDr)u.debitCode=newAccountCode;else u.creditCode=newAccountCode;
+      }
+      if(changeVat){
+        const vc=vatDirection?findVatCode(vatCode,vatDirection):null;
+        const amt=parseFloat(r.amount)||0;
+        u.vatCode=vc?vc.code:null;
+        u.vatPct=vc?vc.rate:null;
+        u.vatAmount=vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:(vc?0:null);
+      }
+      if(changeContact)u.contactId=contactId||null;
+      onSave(u);
+    });
+    onClose();
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"#fff",borderRadius:16,padding:24,width:420,maxWidth:"92vw",maxHeight:"88vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div style={{fontSize:17,fontWeight:800,color:T.text}}>Change entries</div>
+          <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,color:T.sub,fontSize:16,cursor:"pointer",width:32,height:32}}>✕</button>
+        </div>
+        <div style={{fontSize:12,color:T.muted,marginBottom:16}}>{rows.length} selected · changes apply only to the {currentCode} side of each entry — the other account on the bilag stays as posted.</div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+            <input type="checkbox" checked={changeAccount} onChange={e=>setChangeAccount(e.target.checked)}/>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>Change account ({currentCode} side)</span>
+          </label>
+          {changeAccount&&(
+            <select value={newAccountCode} onChange={e=>setNewAccountCode(e.target.value)} style={{...selSm,width:"100%"}}>
+              <option value="">— Select account —</option>
+              {sortedAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+            </select>
+          )}
+
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:vatDirection?"pointer":"default",opacity:vatDirection?1:0.45}}>
+            <input type="checkbox" checked={changeVat} disabled={!vatDirection} onChange={e=>setChangeVat(e.target.checked)}/>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>Change VAT code</span>
+          </label>
+          {changeVat&&vatDirection&&(
+            <VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/>
+          )}
+
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+            <input type="checkbox" checked={changeContact} onChange={e=>setChangeContact(e.target.checked)}/>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>Link customer/supplier</span>
+          </label>
+          {changeContact&&(
+            <ContactSearch contacts={contacts} value={contactId} onChange={setContactId}/>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:8,marginTop:22}}>
+          <button onClick={apply} disabled={!anyChange} style={{flex:1,background:anyChange?T.accent:T.border,color:"#fff",border:"none",borderRadius:9,padding:"11px",fontWeight:700,fontSize:13,cursor:anyChange?"pointer":"default",fontFamily:"inherit"}}>Save</button>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:9,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
@@ -2740,6 +2826,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   const[selected,setSelected]=useState([]);
   const[periodPickerOpen,setPeriodPickerOpen]=useState(false);
   const[detailTxn,setDetailTxn]=useState(null);
+  const[bulkEditOpen,setBulkEditOpen]=useState(false);
 
   const currentAccount=accounts.find(a=>a.code===currentCode)||account;
   const periodLabel=filterFrom.slice(0,4)===filterTo.slice(0,4)&&filterFrom.slice(5)==="01-01"&&filterTo.slice(5)==="12-31"?filterFrom.slice(0,4):`${filterFrom} – ${filterTo}`;
@@ -2868,11 +2955,15 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
               <span style={{fontSize:11,color:T.sub}}>{selected.length} selected · Net: <span style={{fontWeight:700,color:Math.abs(selSum)<1?T.green:T.red}}>{sign(selSum)}</span></span>
               <button onClick={()=>setSelected([])} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>
+              <button onClick={()=>setBulkEditOpen(true)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✎ Change</button>
               <button onClick={doMatch} disabled={Math.abs(selSum)>=1} style={{background:Math.abs(selSum)<1?T.green:T.border,color:Math.abs(selSum)<1?"#fff":T.muted,border:"none",borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:Math.abs(selSum)<1?"pointer":"default",fontFamily:"inherit"}}>Match ✓</button>
             </div>
           )}
         </div>
       </div>
+      {bulkEditOpen&&(
+        <BulkEditPostsModal accounts={accounts} contacts={contacts} currentCode={currentCode} rows={shownRows.filter(r=>selected.includes(r.id))} onSave={onEditTxn} onClose={()=>{setBulkEditOpen(false);setSelected([]);}}/>
+      )}
 
       <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",tableLayout:"fixed"}}>
@@ -3976,7 +4067,6 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const info=terminInfo(termin.year,termin.n);
   const[openTxn,setOpenTxn]=useState(null);
   const[,forceTick]=useState(0);
-  const controlledIds=getControlledIds(termin.year,termin.n);
   const status=(getVatStatuses()[`${termin.year}-${termin.n}`])||{};
   const markFiled=()=>{setVatStatus(termin.year,termin.n,{filed:true,filedDate:new Date().toISOString().slice(0,10)});forceTick(x=>x+1);};
   const markPaid=()=>{setVatStatus(termin.year,termin.n,{paid:true});forceTick(x=>x+1);};
@@ -3994,6 +4084,22 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   };
   const salesByRate=groupByRate(salesTxns);
   const purchasesByRate=groupByRate(purchaseTxns);
+  // "Ingen avgiftsbehandling" used to be one flat, always-expanded list of
+  // every no-VAT entry dumped below the real Mva-kode/Sats/Grunnlag/Mva
+  // table. Grouping it by the entry's own vatCode (defaulting untagged rows
+  // to "0", same convention already used elsewhere) and rendering it as
+  // real rows in that same table — clickable Grunnlag/Mva opening the same
+  // spec window every other code uses — makes it "category 0" exactly like
+  // the 25%/15%/etc. rows above it, instead of a visually different bucket.
+  const noVatByCode=useMemo(()=>{
+    const m={};
+    nonVatTxns.forEach(t=>{
+      const code=t.vatCode||"0";
+      if(!m[code])m[code]={code,rows:[],net:0};
+      m[code].rows.push(t);m[code].net+=t.amount;
+    });
+    return Object.values(m).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+  },[nonVatTxns]);
   // Further breakdown within each rate group — which actual income/expense
   // account the VAT base came from, not just the total for the rate. Sales
   // group by the credit side (the revenue account itself); purchases group
@@ -4050,24 +4156,6 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`Mva-melding_${termin.year}_termin${termin.n}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
   };
 
-  const Row=({t,otherCode})=>{
-    const controlled=controlledIds.has(t.id);
-    return(
-      <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderTop:`1px solid ${T.border}`}}>
-        <input type="checkbox" checked={controlled} onChange={()=>{toggleControlled(termin.year,termin.n,t.id);forceTick(x=>x+1);}} title="Kontrollert"/>
-        <div onClick={()=>setOpenTxn(t)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-          <span style={{color:T.accent,fontWeight:700,fontSize:10.5}}>{fmtB(t.bilag)}</span>{" "}
-          <span style={{fontSize:10.5,color:T.text}}>{t.description}</span>
-          <div style={{fontSize:9,color:T.muted,marginTop:1}}>{t.date} · {otherCode}</div>
-        </div>
-        <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontSize:10.5,fontWeight:700,color:T.text}}>{fmt(t.amount)}</div>
-          <div style={{fontSize:9,color:t.vatAmount?T.accent:T.muted}}>mva {fmt(t.vatAmount||0)}</div>
-        </div>
-      </div>
-    );
-  };
-
   // The actual "Mva-melding spesifikasjon" window — a real separate view,
   // not an inline expand, matching Tripletex's own layout: Bilagsnr / Dato
   // / Beskrivelse / Leverandør or Kunde / Mva-kode / Mva-beløp / Beløp /
@@ -4082,7 +4170,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           <span onClick={()=>setSpecView(null)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding</span>
           <span>/</span><span>Mva-melding spesifikasjon</span>
         </div>
-        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Mva-melding spesifikasjon <span style={{fontWeight:500,color:T.muted}}>{info.label} — {specView.vc?`${specView.vc.code}: (${specView.rate}%) ${specView.vc.name}`:`${specView.rate}% mva-sats`}</span></h1>
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Mva-melding spesifikasjon <span style={{fontWeight:500,color:T.muted}}>{info.label} — {specView.direction==="none"?`Mva-kode ${specView.code} · Ingen avgiftsbehandling`:specView.vc?`${specView.vc.code}: (${specView.rate}%) ${specView.vc.name}`:`${specView.rate}% mva-sats`}</span></h1>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
             <colgroup>
@@ -4090,19 +4178,19 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               <col style={{width:"9%"}}/><col style={{width:"11%"}}/><col style={{width:"10%"}}/><col style={{width:"10%"}}/>
             </colgroup>
             <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>{specView.direction==="output"?"Kunde":"Leverandør"}</td>
+              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>{specView.direction==="output"?"Kunde":specView.direction==="input"?"Leverandør":"Konto"}</td>
               <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
             </tr></thead>
             <tbody>
               {specRows.map(t=>{
-                const contact=contacts.find(c=>c.id===t.contactId);
+                const contact=specView.direction!=="none"?contacts.find(c=>c.id===t.contactId):null;
                 return(
                   <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
                     <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                     <td style={{color:T.sub}}>{t.date}</td>
                     <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                    <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact?contact.name:getName(t[specView.otherField])}</td>
-                    <td style={{color:T.sub}}>{specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
+                    <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{specView.direction==="none"?`${getName(t.debitCode)} / ${getName(t.creditCode)}`:contact?contact.name:getName(t[specView.otherField])}</td>
+                    <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                     <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                     <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
                     <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:700}}>{fmt(t.saldo)}</td>
@@ -4205,6 +4293,22 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               );
             })}
             {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
+            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Uten avgiftsbehandling</td></tr>
+            {noVatByCode.map(g=>{
+              const vc=findVatCode(g.code,"output")||findVatCode(g.code,"input");
+              const key="n"+g.code;
+              const openSpec=()=>setSpecView({key,direction:"none",rate:0,code:g.code,vc,rows:g.rows});
+              return(
+                <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
+                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{g.code}</td>
+                  <td style={{color:T.text}}>{vc?vc.name:"Ingen avgiftsbehandling"}</td>
+                  <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
+                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(0)}</td>
+                </tr>
+              );
+            })}
+            {!noVatByCode.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen posteringer uten avgift denne perioden.</td></tr>}
             <tr style={{borderTop:`2px solid ${T.border}`}}>
               {/* Skyldig (owed to Skatteetaten) when net VAT is positive,
                   Til gode (refund/credit) when purchases' input VAT exceeds
@@ -4219,11 +4323,6 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </table>
       </div>
 
-      <div style={{fontSize:10.5,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Mva-kode 0 · Ingen avgiftsbehandling</div>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-        {nonVatTxns.map(t=><Row key={t.id} t={t} otherCode={`${getName(t.debitCode)} / ${getName(t.creditCode)}`}/>)}
-        {!nonVatTxns.length&&<div style={{padding:"16px 0",textAlign:"center",color:T.muted,fontSize:10.5}}>Ingen transaksjoner uten mva denne perioden.</div>}
-      </div>
       </div>
 
       {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}

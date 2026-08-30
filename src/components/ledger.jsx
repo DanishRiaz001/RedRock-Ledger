@@ -6,6 +6,13 @@ import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilen
 import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
 
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
+// A tiny cross-component navigation hook — set once by FinanceTracker on
+// mount, called by VatDrop's "Aktiver flere mva-koder" link below. Avoids
+// threading an onOpenVatSettings callback through every one of VatDrop's
+// many call sites across the app just for this one link.
+let openVatSettingsNav=null;
+const setOpenVatSettingsNav=(fn)=>{openVatSettingsNav=fn;};
+
 const appendGroupLine=(groupRef,line)=>{
   const map=getGroupLinesMap();
   const arr=map[groupRef]||[];
@@ -385,12 +392,28 @@ function AccDropFlat({value,onChange,accounts}){
 
 function Menu3({items}){
   const[open,setOpen]=useState(false);
+  const[pos,setPos]=useState(null);
+  const btnRef=React.useRef(null);
+  // Several call sites (Inbox's file list among them) put this button inside
+  // a container with `overflow:hidden` for its own rounded corners — with the
+  // dropdown positioned `absolute` relative to that ancestor, it was clipped
+  // to invisible the moment it extended past the row, which is exactly what
+  // looked like "clicking ⋮ shows no options". Positioning it `fixed` from
+  // the button's own screen coordinates escapes any ancestor's overflow/
+  // rounded-corner clipping, wherever this menu is used.
+  const openMenu=e=>{
+    e.stopPropagation();
+    if(open){setOpen(false);return;}
+    const r=btnRef.current.getBoundingClientRect();
+    setPos({top:r.bottom+4,right:Math.max(4,window.innerWidth-r.right)});
+    setOpen(true);
+  };
   return(
     <div style={{position:"relative"}}>
-      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>⋮</button>
-      {open&&(<>
-        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:90}}/>
-        <div style={{position:"absolute",right:0,top:28,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:100,minWidth:130,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
+      <button ref={btnRef} onClick={openMenu} style={{background:T.border,border:"none",borderRadius:7,color:T.sub,fontSize:12,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>⋮</button>
+      {open&&pos&&(<>
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:390}}/>
+        <div style={{position:"fixed",top:pos.top,right:pos.right,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,zIndex:400,minWidth:130,boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
           {items.map((item,i)=>(
             <div key={i} onClick={()=>{if(!item.disabled){setOpen(false);item.action();}}}
               style={{padding:"9px 12px",fontSize:12,cursor:item.disabled?"not-allowed":"pointer",color:item.disabled?T.muted:item.color||T.text,fontWeight:500,borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:item.icon?6:0,opacity:item.disabled?0.5:1,whiteSpace:"nowrap"}}>
@@ -709,26 +732,33 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const[vatCode,setVatCode]=useState(initialVatCode);
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div style={{background:T.bg,borderRadius:"20px 20px 0 0",padding:20,width:"100%",maxWidth:430,maxHeight:"92vh",overflowY:"auto"}}>
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:400,overflowY:"auto"}}>
+      <div style={{maxWidth:720,margin:"0 auto",padding:"28px 20px 60px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:18,fontWeight:800}}>{fmtB(txn.bilag)}</div></div>
-          <button onClick={onClose} style={{background:T.border,border:"none",borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:36,height:36}}>✕</button>
+          <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
+          <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:40,height:40}}>✕</button>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp}/></div>
+        {/* Same "posting a voucher" visual weight as New Entry — a real
+            full page, not a small bottom-sheet popup capped at 430px, which
+            looked and felt completely different from the screen this entry
+            was originally created on. */}
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp}/></div>
+            <div><SL>Amount</SL><input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp}/></div>
+          </div>
           <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
-          <div><SL>Amount (PKR)</SL><input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
             <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
             <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
           </div>
           {vatDirection&&(
-            <div><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
+            <div style={{maxWidth:280}}><SL>VAT code</SL><VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/></div>
           )}
           <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
           {moneySources&&moneySources.length>0&&(
-            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
               <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
               <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
                 <option value="">— Select source (optional) —</option>
