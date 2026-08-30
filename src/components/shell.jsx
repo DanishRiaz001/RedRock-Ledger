@@ -164,12 +164,12 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
   const rafRef=React.useRef(null);
-  // Past this width, the preview stops squeezing the entry form further and
-  // instead floats over it, anchored to the true right edge of the screen —
-  // this is what makes dragging the splitter left past the midpoint feel
-  // like "make the preview bigger" instead of "crush everything else."
-  const overlapAt=Math.round(maxRightWidth*0.72);
-  const overlapping=rightWidth>=overlapAt;
+  // Always anchored to the true right edge of the browser window — not
+  // "immediately right of whatever's on the left," and not something that
+  // only kicks in once you've dragged past some width threshold. The
+  // preview's right edge never moves; dragging the splitter only moves its
+  // LEFT edge (by changing rightWidth), which is exactly "move the splitter
+  // toward the file list to make the preview bigger."
   const startDrag=(e)=>{
     e.preventDefault();
     draggingRef.current={startX:e.clientX,startWidth:rightWidth};
@@ -229,28 +229,24 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             position:sticky keeps the dot near the top of the viewport no
             matter how tall the content grows; the draggable strip itself
             still spans the full height, so grabbing it anywhere still works. */}
-        {/* In normal (non-overlapping) flex flow this strip sits naturally
-            between `left` and `right`. Once `right` switches to
-            position:fixed (overlap mode) it's taken out of flex flow
-            entirely, so `left`'s flex:1 expands to fill the space that
-            freed up — dragging this strip along with it, in flex flow,
-            all the way to the true right edge of the viewport, landing on
-            top of the preview's OWN toolbar (e.g. right next to its
-            download icon) instead of staying at the preview's left edge.
-            Anchoring it to `right:rightWidth` (fixed, same as the panel
-            it borders) keeps it glued to that seam regardless. */}
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={overlapping?{width:14,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}:{width:14,alignSelf:"stretch",position:"relative",cursor:"col-resize",flexShrink:0,zIndex:62,background:"#F5F9FA"}}>
-          <div style={{position:"sticky",top:90,width:4,height:44,margin:"0 auto",borderRadius:2,background:overlapping?T.accent:"#C9D6D6"}}/>
+        {/* Anchored via position:fixed to `right:rightWidth` — the left
+            edge of the (also fixed) preview panel — rather than sitting in
+            normal flex flow, since the panel it borders isn't in flex flow
+            either; a flex-flow handle would drift to wherever `left`'s
+            flex:1 happens to end, not to the actual seam. */}
+        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}}>
+          <div style={{position:"sticky",top:90,width:4,height:44,margin:"0 auto",borderRadius:2,background:T.accent}}/>
         </div>
-        <div style={overlapping?{
-          // Overlap mode: anchored to the actual right edge of the viewport
-          // via position:fixed, so it's genuinely screen-edge-aligned no
-          // matter what padding the page around it has — and it floats over
-          // the entry form rather than continuing to squeeze it.
+        <div style={{
+          // Anchored to the actual right edge of the viewport via
+          // position:fixed, so it's genuinely screen-edge-aligned no matter
+          // what padding the page around it has — and it floats over
+          // whatever's on the left rather than squeezing it. `left`'s own
+          // flex:1 fills the freed-up space underneath it.
           position:"fixed",top:60,right:0,bottom:0,width:rightWidth,
           boxShadow:"-8px 0 24px rgba(0,0,0,0.12)",background:"#fff",zIndex:60,
           transition:draggingRef.current?"none":"box-shadow .15s ease",
-        }:{width:rightWidth,flexShrink:0,minWidth:minRightWidth,position:"relative"}}>
+        }}>
           {right}
           {collapsible&&(
             <div onClick={()=>setCollapsed(true)} title={collapseLabel} style={{position:"absolute",left:-15,top:70,transform:"translateX(-100%)",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",writingMode:"vertical-rl",display:"flex",alignItems:"center",gap:6,userSelect:"none",whiteSpace:"nowrap",zIndex:59}}>

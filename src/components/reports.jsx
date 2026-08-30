@@ -2846,6 +2846,35 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   const closingBal=allRows.length?allRows[allRows.length-1].balance:openingBal;
   const periodMovement=allRows.reduce((s,r)=>s+r.movement,0);
 
+  // Click a column header to sort by it; click again to flip direction —
+  // same pattern the mobile ledger already has, just missing here. Sorting
+  // is view-only (doesn't touch the running Saldo, which stays meaningful
+  // only in date order, so Balance itself is deliberately not sortable).
+  const[sortBy,setSortBy]=useState(null); // null | "bilag" | "date" | "description" | "amount" | "contact"
+  const[sortDir,setSortDir]=useState("asc");
+  const toggleSort=col=>{
+    if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");
+    else{setSortBy(col);setSortDir("asc");}
+  };
+  const sortedShownRows=useMemo(()=>{
+    if(!sortBy)return shownRows;
+    const mul=sortDir==="asc"?1:-1;
+    const arr=[...shownRows];
+    arr.sort((a,b)=>{
+      if(sortBy==="amount")return(a.movement-b.movement)*mul;
+      if(sortBy==="bilag")return(a.bilag-b.bilag)*mul;
+      if(sortBy==="date")return a.date.localeCompare(b.date)*mul;
+      if(sortBy==="description")return(a.description||"").localeCompare(b.description||"")*mul;
+      if(sortBy==="contact"){
+        const an=(contacts.find(c=>c.id===a.contactId)||{}).name||"";
+        const bn=(contacts.find(c=>c.id===b.contactId)||{}).name||"";
+        return an.localeCompare(bn)*mul;
+      }
+      return 0;
+    });
+    return arr;
+  },[shownRows,sortBy,sortDir,contacts]);
+
   const toggleSel=(id)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const selSum=selected.reduce((s,id)=>{const r=shownRows.find(x=>x.id===id);return r?s+r.movement:s;},0);
   const doMatch=()=>{
@@ -2878,9 +2907,9 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
     try{localStorage.setItem("rr_ledger_view_prefs",JSON.stringify(next));}catch{}
   };
   const extraCols=[
-    colPrefs.showVat&&{key:"vat",label:"VAT code",width:80},
-    colPrefs.showContact&&{key:"contact",label:"Customer/Supplier",width:150},
-    colPrefs.showCurrency&&{key:"currency",label:"Currency",width:70},
+    colPrefs.showVat&&{key:"vat",label:"VAT code",width:110},
+    colPrefs.showContact&&{key:"contact",label:"Customer/Supplier",width:180},
+    colPrefs.showCurrency&&{key:"currency",label:"Currency",width:90},
   ].filter(Boolean);
   const baseColCount=7,totalColCount=baseColCount+extraCols.length;
   const resizeDragRef=React.useRef(null);
@@ -2900,6 +2929,20 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   const ResizeHandle=({idx})=>(
     <div onMouseDown={e=>startColResize(idx,e)} style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:3}}/>
   );
+  // A clickable header cell that toggles sort on this column — the label
+  // itself is the click target (not the whole <td>), so it never competes
+  // with a ResizeHandle's own draggable strip sharing the same cell.
+  const SortTh=({label,col,idx,align})=>{
+    const active=sortBy===col;
+    return(
+      <td style={{position:"relative",padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap",textAlign:align||"left"}}>
+        <span onClick={()=>toggleSort(col)} style={{cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4,userSelect:"none"}}>
+          {label}<span style={{fontSize:9,opacity:active?1:0.3}}>{active&&sortDir==="desc"?"▼":"▲"}</span>
+        </span>
+        {idx!=null&&<ResizeHandle idx={idx}/>}
+      </td>
+    );
+  };
 
   const printLedgerPdf=()=>{
     const rows=shownRows.map(r=>{
@@ -3004,12 +3047,14 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}{extraCols.map(c=><col key={c.key} style={{width:c.width}}/>)}</colgroup>
         <thead><tr style={{color:T.muted,fontSize:11,background:T.bg,position:"sticky",top:0,zIndex:2}}>
           <td style={{padding:"9px 14px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
-          <td style={{position:"relative"}}>Closed<ResizeHandle idx={1}/></td>
-          <td style={{position:"relative"}}>Voucher<ResizeHandle idx={2}/></td>
-          <td style={{position:"relative"}}>Date<ResizeHandle idx={3}/></td>
-          <td style={{position:"relative"}}>Description<ResizeHandle idx={4}/></td>
-          <td style={{textAlign:"right",position:"relative"}}>Amount<ResizeHandle idx={5}/></td>
-          {extraCols.map(c=><td key={c.key} style={{fontSize:11}}>{c.label}</td>)}
+          <td style={{position:"relative",padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>Closed<ResizeHandle idx={1}/></td>
+          <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2}/>
+          <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3}/>
+          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={4}/>
+          <SortTh label="Amount" col="amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={5} align="right"/>
+          {colPrefs.showVat&&<td style={{padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>VAT code</td>}
+          {colPrefs.showContact&&<SortTh label="Customer/Supplier" col="contact" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}/>}
+          {colPrefs.showCurrency&&<td style={{padding:"9px 8px",overflow:"hidden",whiteSpace:"nowrap"}}>Currency</td>}
           <td style={{textAlign:"right",padding:"9px 14px",position:"relative"}}>Balance</td>
         </tr></thead>
         <tbody>
@@ -3020,7 +3065,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
             <td colSpan={6+extraCols.length} style={{padding:"9px 14px",color:T.text}}>Opening balance</td>
             <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text}}>{fmt(openingBal)}</td>
           </tr>
-          {shownRows.map((r,i)=>{
+          {sortedShownRows.map((r,i)=>{
             const isMatchedHere=!!r.matchedWith&&r.matchedAccount===currentCode;
             const rContact=r.contactId?contacts.find(c=>c.id===r.contactId):null;
             return(
@@ -3028,18 +3073,18 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                 <td style={{padding:"9px 14px"}}>
                   {isMatchedHere?null:<input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)}/>}
                 </td>
-                <td>
+                <td style={{padding:"9px 8px"}}>
                   {isMatchedHere?(
                     <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} style={{color:T.accent,fontWeight:700,cursor:"pointer",fontSize:12}}>Closed</span>
                   ):null}
                 </td>
-                <td onClick={()=>setDetailTxn(r)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(r.bilag)}</td>
-                <td style={{color:T.text}}>{r.date}</td>
-                <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}}>{r.description}</td>
-                <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.movement)}</td>
-                {colPrefs.showVat&&<td style={{color:T.sub,fontSize:12}}>{r.vatCode||"—"}</td>}
-                {colPrefs.showContact&&<td style={{color:T.sub,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rContact?rContact.name:"—"}</td>}
-                {colPrefs.showCurrency&&<td style={{color:T.sub,fontSize:12}}>{r.currency||"—"}</td>}
+                <td onClick={()=>setDetailTxn(r)} style={{padding:"9px 8px",color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(r.bilag)}</td>
+                <td style={{padding:"9px 8px",color:T.text}}>{r.date}</td>
+                <td style={{padding:"9px 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
+                <td style={{padding:"9px 8px",textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.movement)}</td>
+                {colPrefs.showVat&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
+                {colPrefs.showContact&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
+                {colPrefs.showCurrency&&<td style={{padding:"9px 8px",color:T.sub,fontSize:12,overflow:"hidden",whiteSpace:"nowrap"}}>{r.currency||"—"}</td>}
                 <td style={{textAlign:"right",color:T.muted,padding:"9px 14px"}}>{fmt(r.balance)}</td>
               </tr>
             );

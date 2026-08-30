@@ -620,14 +620,15 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   const valid=name.trim().length>0;
   const submit=()=>{
     if(!valid)return;
-    onSave({type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null});
+    onSave({type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
   };
+  const CURRENCIES=["NOK","USD","EUR","GBP","AED","SAR","PKR"];
 
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
         <div style={{position:"sticky",top:0,background:"#fff",zIndex:1,padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:16,fontWeight:800,color:T.text}}>New customer / supplier</div>
+          <div style={{fontSize:16,fontWeight:800,color:T.text}}>{editing?"Customer / supplier details":"New customer / supplier"}</div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {onBulkImport&&<button onClick={onBulkImport} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bulk import instead →</button>}
             <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
@@ -635,9 +636,18 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
         </div>
 
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{fontSize:11,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>Customer / supplier details</div>
           <div style={{display:"flex",gap:8}}>
             {["customer","supplier"].map(t=>(
               <button key={t} onClick={()=>setType(t)} style={{flex:1,background:type===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:type===t?(t==="customer"?T.blue:T.red):T.sub,border:`1.5px solid ${type===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:8,padding:"9px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:16}}>
+            {[[true,"Company"],[false,"Individual"]].map(([val,label])=>(
+              <label key={label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:T.text,cursor:"pointer"}}>
+                <input type="radio" checked={isCompany===val} onChange={()=>setIsCompany(val)}/>{label}
+              </label>
             ))}
           </div>
 
@@ -671,6 +681,26 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
               {brregOrgError&&<div style={{fontSize:10.5,color:T.red,marginTop:4}}>{brregOrgError}</div>}
             </div>
           )}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={inp}>
+                <option value="">— Not set —</option>
+                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Category (optional)</div>
+              <input value={category} onChange={e=>setCategory(e.target.value)} style={inp}/>
+            </div>
+          </div>
+
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:T.text,cursor:"pointer"}}>
+            <input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/>Inactive
+          </label>
+
+          <div style={{fontSize:11,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,borderTop:`1px solid ${T.border}`,paddingTop:14,marginTop:2}}>Contact information</div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div>
@@ -714,7 +744,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
           )}
 
           <div style={{display:"flex",gap:8,marginTop:6}}>
-            <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
+            <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>{editing?"Save":"Create"}</button>
             <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           </div>
         </div>
