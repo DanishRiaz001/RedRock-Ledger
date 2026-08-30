@@ -49,6 +49,13 @@ const EXPENSE_SK=new Set(["4000","5000","6000","6100","6200","6300","6400","6500
 // taken directly from a real Regnskapsregler export so the numbers are
 // verified against an actual company's setup, not guessed.
 const MVA_CODES=[
+  // Real accounting systems (Tripletex included) always offer an explicit
+  // "0" code for "no VAT treatment" in both the sales and purchase
+  // dropdowns — this app previously had no such option at all, leaving
+  // "no VAT" as an unlabeled blank/placeholder state instead of a real,
+  // selectable code like every other choice.
+  {code:"0",name:"Ingen avgiftsbehandling",direction:"output",rate:0,settleAccount:null},
+  {code:"0",name:"Ingen avgiftsbehandling",direction:"input",rate:0,settleAccount:null},
   {code:"3",name:"Utgående avgift, høy sats",direction:"output",rate:25,settleAccount:"2700"},
   {code:"31",name:"Utgående avgift, middels sats",direction:"output",rate:15,settleAccount:"2701"},
   {code:"33",name:"Utgående avgift, lav sats",direction:"output",rate:12,settleAccount:"2702"},

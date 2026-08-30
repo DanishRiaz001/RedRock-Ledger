@@ -3905,8 +3905,8 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
   const markReconciled=(r)=>{setVatStatus(year,r.n,{reconciled:true});forceTick(x=>x+1);};
 
   const exportYearXlsx=()=>{
-    const aoa=[["Periode","Meldingstype","Forfallsdato","Beløp","Bilagsnummer","Leveringsstatus","Betalingsstatus"]];
-    rows.forEach(r=>aoa.push([r.label,"Alminnelig næring",r.due,r.netVat,r.bilagCount,r.status.filed?"Sendt til Skatteetaten":"Ikke sendt til Skatteetaten",r.status.paid?"Betaling registrert":"Ikke betalt"]));
+    const aoa=[["Periode","Meldingstype","Forfallsdato","Beløp","Betalingsstatus"]];
+    rows.forEach(r=>aoa.push([r.label,"Alminnelig næring",r.due,r.netVat,r.status.paid?"Betaling registrert":"Ikke betalt"]));
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(aoa);
     XLSX.utils.book_append_sheet(wb,ws,"Mva-meldinger");
@@ -3923,33 +3923,32 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
         {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
       </select>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-        <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse"}}>
+        <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
+          <colgroup>
+            <col style={{width:"22%"}}/>
+            <col style={{width:"18%"}}/>
+            <col style={{width:"14%"}}/>
+            <col style={{width:"14%"}}/>
+            <col style={{width:"14%"}}/>
+            <col style={{width:"18%"}}/>
+          </colgroup>
           <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left"}}>
-            <td style={{padding:"8px 14px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Bilagsnummer</td><td>Leveringsstatus</td><td>Betalingsstatus</td><td>Handlinger</td>
+            <td style={{padding:"8px 14px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Betalingsstatus</td><td>Handlinger</td>
           </tr></thead>
           <tbody>
             {rows.map(r=>{
-              const deliveryDot=r.status.filed?T.green:(r.due<today?T.red:T.border);
-              const deliveryText=r.status.filed?"Sendt til Skatteetaten":r.due<today?"Klar for innlevering":"Ikke sendt til Skatteetaten";
               const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
               const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
               return(
                 <tr key={r.n} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"9px 14px",color:T.text,fontWeight:600}}>{r.label}</td>
-                  <td style={{color:T.sub}}>Alminnelig næring</td>
+                  <td style={{padding:"9px 14px",color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label}</td>
+                  <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Alminnelig næring</td>
                   <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
                   <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(r.netVat)}</td>
-                  <td style={{color:T.muted}}>{r.bilagCount?<><i className="ti ti-paperclip" style={{fontSize:11,marginRight:4}}/>{r.bilagCount}</>:"Bilag ikke opprettet"}</td>
-                  <td>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{width:7,height:7,borderRadius:"50%",background:deliveryDot,flexShrink:0}}/>
-                      <span style={{fontSize:10.5,color:T.sub}}>{deliveryText}</span>
-                    </div>
-                  </td>
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
-                      <span style={{fontSize:10.5,color:T.sub}}>{paymentText}</span>
+                      <span style={{fontSize:10.5,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{paymentText}</span>
                     </div>
                   </td>
                   <td style={{padding:"9px 14px"}}>
@@ -4062,7 +4061,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
           <div style={{fontSize:10.5,fontWeight:700,color:T.text}}>{fmt(t.amount)}</div>
-          {t.vatAmount!=null&&t.vatAmount!==0&&<div style={{fontSize:9,color:T.accent}}>mva {fmt(t.vatAmount)}</div>}
+          <div style={{fontSize:9,color:t.vatAmount?T.accent:T.muted}}>mva {fmt(t.vatAmount||0)}</div>
         </div>
       </div>
     );
@@ -4201,7 +4200,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         </table>
       </div>
 
-      <div style={{fontSize:10.5,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Ingen mva</div>
+      <div style={{fontSize:10.5,fontWeight:800,color:T.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Mva-kode 0 · Ingen avgiftsbehandling</div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
         {nonVatTxns.map(t=><Row key={t.id} t={t} otherCode={`${getName(t.debitCode)} / ${getName(t.creditCode)}`}/>)}
         {!nonVatTxns.length&&<div style={{padding:"16px 0",textAlign:"center",color:T.muted,fontSize:10.5}}>Ingen transaksjoner uten mva denne perioden.</div>}

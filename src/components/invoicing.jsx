@@ -3374,7 +3374,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
   const[invRegisterPayment,setInvRegisterPayment]=useState(""); // "" = no payment (AP/AR open item), else account code (Cash or a bank) to settle against
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");};
+  const[invPaymentAmount,setInvPaymentAmount]=useState(""); // blank = settle the full invoice total; can be overridden for a partial payment
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -3605,16 +3606,18 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       if(idx===0&&res&&res.bilag!=null)firstBilag=res.bilag;
     }
     if(hasPayment){
-      // Payment leg, settling the full invoice total on the same date —
-      // purchase → Supplier debited / Bank or Cash credited.
-      // sale → Bank or Cash debited / Customer credited.
+      // Payment leg — settles either the full invoice total or, if the
+      // amount was overridden, just a partial payment (the rest stays open
+      // on the AR/AP ledger). purchase → Supplier debited / Bank or Cash
+      // credited. sale → Bank or Cash debited / Customer credited.
       const debitCode=invIsCustomer?invRegisterPayment:contactCode;
       const creditCode=invIsCustomer?contactCode:invRegisterPayment;
+      const payAmount=Math.min(Math.abs(parseFloat(invPaymentAmount)||Math.abs(invTotal)),Math.abs(invTotal));
       await onSave({
         date:form.date,
         debitCode,creditCode,
         description:`Payment${invoiceNo?" · "+invoiceNo:""}`,
-        amount:Math.abs(invTotal),
+        amount:payAmount,
         contactId:invContactId,
         groupRef,
       });
@@ -4127,7 +4130,14 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           ?accounts.filter(a=>a.code.startsWith("3"))
           :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
         const invVatDirection=invIsCustomer?"output":"input";
-        const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
+        // Default payment-account choices restricted to Cash, the main
+        // bank account, and Owner's Drawings (paid personally) — was every
+        // 1900-series account (every bank, including obscure ones like
+        // withholding-tax deposit accounts that should never be a payment
+        // destination), which cluttered the dropdown with irrelevant
+        // choices for the common case.
+        const bankAccounts=accounts.filter(a=>["1900","1920","2060"].includes(a.code));
+        const invTotalPreview=[{amount:invAmount},...invExtraLines].reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
         return(
           <div style={{display:"flex",flexDirection:"column",gap:isDesktop?7:10}}>
@@ -4246,19 +4256,24 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 plain open item to Accounts Payable/Receivable. Pick Cash or a
                 bank → settles the full amount immediately against that account,
                 same date as the invoice. */}
-            <div>
-              <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
-              <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
-                <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
-                {accounts.filter(a=>a.code==="1001").map(a=><option key={a.code} value={a.code}>{isDesktop?"":"💵 "}{a.name}</option>)}
-                {bankAccounts.map(a=><option key={a.code} value={a.code}>{isDesktop?"":"🏦 "}{a.code} {a.name}</option>)}
-              </select>
+            <div style={{display:"flex",gap:8}}>
+              <div style={{flex:7}}>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
+                <select value={invRegisterPayment} onChange={e=>{setInvRegisterPayment(e.target.value);if(e.target.value&&!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));if(!e.target.value)setInvPaymentAmount("");}} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
+                  <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
+                  {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                </select>
+              </div>
               {invRegisterPayment&&(
-                <div style={{fontSize:10,color:T.muted,marginTop:5}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."} Same date as the invoice, full amount.</div>
+                <div style={{flex:3}}>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
+                  <input type="number" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
+                </div>
               )}
             </div>
-
-            {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
+            {invRegisterPayment&&(
+              <div style={{fontSize:10,color:T.muted,marginTop:-3}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."} Same date as the invoice{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" — partial; the rest stays open.":", full amount."}</div>
+            )}
             <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
           </div>
         );
