@@ -3367,13 +3367,14 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[invDueDate,setInvDueDate]=useState("");
   const[invAmount,setInvAmount]=useState("");
   const[invAccountCode,setInvAccountCode]=useState("");
+  const[invVatCode,setInvVatCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
   const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount}]
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
   const[invRegisterPayment,setInvRegisterPayment]=useState(""); // "" = no payment (AP/AR open item), else account code (Cash or a bank) to settle against
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -3552,7 +3553,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     }
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const invVatDirection=invIsCustomer?"output":"input";
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
@@ -3572,6 +3574,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         debitCode=isReverse?contactCode:l.accountCode;
         creditCode=isReverse?l.accountCode:contactCode;
       }
+      // Same gap this screen had for VAT entirely — a code picked in the
+      // dropdown was never turned into an actual vatAmount, so it never
+      // showed up in Mva-meldinger/VAT report no matter what was selected.
+      const lineVc=l.vatCode?findVatCode(l.vatCode,invVatDirection):null;
+      const lineVatAmount=lineVc&&lineVc.rate?Math.round((absAmt-(absAmt/(1+lineVc.rate/100)))*100)/100:null;
       const res=await onSave({
         date:form.date,
         debitCode,creditCode,
@@ -3581,6 +3588,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         invoiceNo:invoiceNo||null,
         dueDate:invDueDate||null,
         groupRef,
+        vatCode:l.vatCode||null,
+        vatPct:lineVc?lineVc.rate:null,
+        vatAmount:lineVatAmount,
         attachmentIds:idx===0?invAttachmentIds:undefined,
       });
       if(idx===0&&res&&res.bilag!=null)firstBilag=res.bilag;
@@ -4099,7 +4109,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
 
       {entryMode!=="receipt"&&(()=>{
         const contactList=contacts.filter(c=>c.type===(invIsCustomer?"customer":"supplier")&&!c.inactive);
-        const filteredAccounts=accounts; // show the full chart of accounts (all series, incl. 2xxx) so any account can be picked as the offsetting line
+        // Was the full, unfiltered chart of accounts for both directions —
+        // a supplier invoice's account picker offered every 3xxx sales
+        // account too, and a customer invoice offered every 4-7xxx expense
+        // account. Restricted to the direction that actually makes sense,
+        // same as every other entry form in the app already does.
+        const filteredAccounts=invIsCustomer
+          ?accounts.filter(a=>a.code.startsWith("3"))
+          :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+        const invVatDirection=invIsCustomer?"output":"input";
         const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
         return(
@@ -4133,25 +4151,53 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               </div>
             </div>
 
-            {/* Account (70%) + Amount (30%) — same row, no separate date/description per line */}
+            {/* Account (55%) + VAT code (20%) + Amount (25%) — the VAT box
+                was missing entirely on this screen (supplier/customer
+                invoice entry), unlike every other entry form in the app.
+                Picking an account with a locked default VAT code locks
+                this dropdown to it, same convention used elsewhere. */}
+            {(()=>{
+              const invSelectedAcc=accounts.find(a=>a.code===invAccountCode);
+              const invVatLocked=!!(invSelectedAcc&&invSelectedAcc.vatLocked&&invSelectedAcc.defaultVatCode);
+              return(
             <div style={{display:"flex",gap:8}}>
-              <div style={{flex:7}}>
+              <div style={{flex:5}}>
                 <div style={{fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                <AccDrop value={invAccountCode} onChange={setInvAccountCode} accounts={filteredAccounts}/>
+                <AccDrop value={invAccountCode} onChange={code=>{
+                  setInvAccountCode(code);
+                  const acc=accounts.find(a=>a.code===code);
+                  setInvVatCode(acc&&acc.defaultVatCode?acc.defaultVatCode:"");
+                }} accounts={filteredAccounts}/>
+              </div>
+              <div style={{flex:3}}>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>VAT code{invVatLocked&&<i className="ti ti-lock" style={{fontSize:8,marginLeft:3}}/>}</div>
+                <VatDrop value={invVatCode} onChange={setInvVatCode} disabled={invVatLocked} options={vatCodeOptions(invVatDirection)}/>
               </div>
               <div style={{flex:3}}>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount{invAmount&&parseFloat(invAmount)<0?" (cr.note)":""}</div>
                 <input placeholder="0" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 8px":"7px 8px"}}/>
               </div>
             </div>
+              );
+            })()}
             <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
 
-            {/* Additional lines — account (70%) + amount (30%) only, no date/description per line */}
-            {invExtraLines.map((l,li)=>(
+            {/* Additional lines — account + VAT code + amount */}
+            {invExtraLines.map((l,li)=>{
+              const lAcc=accounts.find(a=>a.code===l.accountCode);
+              const lVatLocked=!!(lAcc&&lAcc.vatLocked&&lAcc.defaultVatCode);
+              return(
               <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
-                <div style={{flex:7}}>
+                <div style={{flex:5}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Account</div>
-                  <AccDrop value={l.accountCode} onChange={v=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,accountCode:v}:x))} accounts={filteredAccounts}/>
+                  <AccDrop value={l.accountCode} onChange={v=>{
+                    const acc=accounts.find(a=>a.code===v);
+                    setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,accountCode:v,vatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:""}:x));
+                  }} accounts={filteredAccounts}/>
+                </div>
+                <div style={{flex:3}}>
+                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>VAT{lVatLocked&&<i className="ti ti-lock" style={{fontSize:7,marginLeft:2}}/>}</div>
+                  <VatDrop value={l.vatCode||""} onChange={v=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,vatCode:v}:x))} disabled={lVatLocked} options={vatCodeOptions(invVatDirection)}/>
                 </div>
                 <div style={{flex:3}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>
@@ -4159,8 +4205,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 </div>
                 <button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,width:30,height:34,cursor:"pointer",fontWeight:800,flexShrink:0}}>−</button>
               </div>
-            ))}
-            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:""}])} style={{...btnGhost,padding:"7px",fontSize:11,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+              );
+            })}
+            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"7px",fontSize:11,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
 
             {/* Running Debit / Credit / Difference — debit is what's entered across the
                 cost-account line(s) above; credit is the same total, since that's exactly
