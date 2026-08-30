@@ -562,6 +562,25 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
     if(e.telefon||e.mobil)setPhone(e.telefon||e.mobil);
   };
 
+  // The reverse lookup — org number known, look up the company directly
+  // instead of searching by (possibly ambiguous) name. Same public,
+  // no-key Brreg endpoint, just addressed by org number directly.
+  const[brregOrgLookup,setBrregOrgLookup]=useState(false);
+  const[brregOrgError,setBrregOrgError]=useState("");
+  const fetchByOrgNumber=async()=>{
+    const num=orgNumber.trim();
+    if(num.length!==9)return;
+    setBrregOrgLookup(true);setBrregOrgError("");
+    try{
+      const res=await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${num}`,{headers:{Accept:"application/json"}});
+      if(!res.ok){setBrregOrgError(res.status===404?"No company found with that org number.":"Lookup failed — try again.");setBrregOrgLookup(false);return;}
+      const e=await res.json();
+      setBrregPicked(true);
+      pickBrregResult(e);
+    }catch{setBrregOrgError("Lookup failed — check your connection.");}
+    setBrregOrgLookup(false);
+  };
+
   const valid=name.trim().length>0;
   const submit=()=>{
     if(!valid)return;
@@ -609,7 +628,11 @@ function NewContactModal({defaultType="customer",country="PK",onSave,onClose,onB
           {country==="NO"&&(
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Organisasjonsnummer (9 digits)</div>
-              <input value={orgNumber} onChange={e=>setOrgNumber(e.target.value.replace(/[^\d]/g,"").slice(0,9))} placeholder="e.g. 923456789" style={inp}/>
+              <div style={{display:"flex",gap:6}}>
+                <input value={orgNumber} onChange={e=>{setOrgNumber(e.target.value.replace(/[^\d]/g,"").slice(0,9));setBrregOrgError("");}} onKeyDown={e=>{if(e.key==="Enter"&&orgNumber.trim().length===9){e.preventDefault();fetchByOrgNumber();}}} placeholder="e.g. 923456789" style={{...inp,flex:1}}/>
+                <button onClick={fetchByOrgNumber} disabled={orgNumber.trim().length!==9||brregOrgLookup} title="Look up this org number on Brønnøysundregisteret" style={{background:orgNumber.trim().length===9?T.accent:T.border,color:orgNumber.trim().length===9?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 14px",fontWeight:700,fontSize:12,cursor:orgNumber.trim().length===9?"pointer":"default",fontFamily:"inherit",whiteSpace:"nowrap"}}>{brregOrgLookup?"…":"Fetch"}</button>
+              </div>
+              {brregOrgError&&<div style={{fontSize:10.5,color:T.red,marginTop:4}}>{brregOrgError}</div>}
             </div>
           )}
 

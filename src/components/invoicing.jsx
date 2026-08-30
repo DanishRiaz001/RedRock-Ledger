@@ -3241,11 +3241,11 @@ function AccountSwitcherDropdown({accounts,value,onChange}){
 // setContacts — shared by every ContactSearchInline call site so "+ New
 // customer/supplier" behaves identically wherever it appears, matching the
 // id scheme ContactSearch (ledger.jsx) and the SAF-T importer already use.
-const createContactInline=(contacts,setContacts,{name,type})=>{
+const createContactInline=(contacts,setContacts,{name,type,orgNumber})=>{
   if(!setContacts||!name.trim())return null;
   const nextNum=Math.max(0,...contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0))+1;
   const id=type==="customer"?`C${String(nextNum).padStart(3,"0")}`:`S${String(nextNum).padStart(3,"0")}`;
-  setContacts([...contacts,{id,type,name:name.trim(),paymentTermsDays:30}]);
+  setContacts([...contacts,{id,type,name:name.trim(),orgNumber:orgNumber||"",paymentTermsDays:30}]);
   return id;
 };
 
@@ -3254,6 +3254,7 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   const[open,setOpen]=useState(false);
   const[creating,setCreating]=useState(false);
   const[newName,setNewName]=useState("");
+  const[newOrgNumber,setNewOrgNumber]=useState("");
   const[newType,setNewType]=useState(type==="customer"?"customer":"supplier");
   const isAll=type==="all";
   const isC=type==="customer";
@@ -3263,11 +3264,29 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
     return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql)).slice(0,10);
   },[contacts,q]);
   const startCreate=()=>{setNewName(q);setCreating(true);};
+  // Same public, no-key Brønnøysundregisteret lookup as the full New
+  // customer/supplier modal — kept here too so this quicker inline path
+  // doesn't lose the "type an org number, get the real registered name"
+  // capability just because it's the compact version of the form.
+  const[brregLookup,setBrregLookup]=useState(false);
+  const[brregError,setBrregError]=useState("");
+  const fetchByOrgNumber=async()=>{
+    const num=newOrgNumber.trim();
+    if(num.length!==9)return;
+    setBrregLookup(true);setBrregError("");
+    try{
+      const res=await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${num}`,{headers:{Accept:"application/json"}});
+      if(!res.ok){setBrregError(res.status===404?"No company found.":"Lookup failed.");setBrregLookup(false);return;}
+      const e=await res.json();
+      if(e.navn)setNewName(e.navn);
+    }catch{setBrregError("Lookup failed.");}
+    setBrregLookup(false);
+  };
   const submitCreate=()=>{
     if(!newName.trim()||!onCreateContact)return;
-    const id=onCreateContact({name:newName.trim(),type:isAll?newType:type});
+    const id=onCreateContact({name:newName.trim(),type:isAll?newType:type,orgNumber:newOrgNumber.trim()});
     if(id){onChange(id);setOpen(false);setQ("");}
-    setCreating(false);setNewName("");
+    setCreating(false);setNewName("");setNewOrgNumber("");
   };
   return(
     <div style={{position:"relative"}}>
@@ -3289,7 +3308,12 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
               );})}
               {onCreateContact&&(creating?(
                 <div style={{padding:10,background:T.bg,display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${T.border}`}}>
-                  <input autoFocus placeholder="Name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
+                  <input autoFocus placeholder="Name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!newOrgNumber)submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    <input placeholder="Org number (optional)" value={newOrgNumber} onChange={e=>{setNewOrgNumber(e.target.value.replace(/[^\d]/g,"").slice(0,9));setBrregError("");}} onKeyDown={e=>{if(e.key==="Enter"&&newOrgNumber.trim().length===9){e.preventDefault();fetchByOrgNumber();}}} style={{...inp,flex:1,fontSize:12,padding:"6px 9px"}}/>
+                    <button onClick={fetchByOrgNumber} disabled={newOrgNumber.trim().length!==9||brregLookup} title="Look up on Brønnøysundregisteret" style={{background:newOrgNumber.trim().length===9?T.accent:T.border,color:newOrgNumber.trim().length===9?"#fff":T.muted,border:"none",borderRadius:6,padding:"0 12px",fontWeight:700,fontSize:10.5,cursor:newOrgNumber.trim().length===9?"pointer":"default",fontFamily:"inherit",whiteSpace:"nowrap"}}>{brregLookup?"…":"Fetch"}</button>
+                  </div>
+                  {brregError&&<div style={{fontSize:10,color:T.red}}>{brregError}</div>}
                   <div style={{display:"flex",gap:6}}>
                     {isAll&&(<>
                       <button onClick={()=>setNewType("customer")} style={{flex:1,padding:"6px",borderRadius:6,border:`1.5px solid ${newType==="customer"?T.blue:T.border}`,background:newType==="customer"?T.blueBg:"#fff",color:newType==="customer"?T.blue:T.sub,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Customer</button>

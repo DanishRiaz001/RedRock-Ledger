@@ -405,7 +405,7 @@ function AppShell({user}){
           if(firstError)alert(`This company's chart of accounts isn't actually saving to the database — it'll disappear on reload until this is fixed:\n\n${firstError.message}`);
         })();
       }
-      setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive})));
+      setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",orgNumber:c.org_number||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive})));
       const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,reconciled:!!t.reconciled,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
@@ -545,7 +545,7 @@ function AppShell({user}){
       if(error){console.error("Contact delete error:",error);failures.push(`Removing ${removedIds.length} contact(s): ${error.message}`);}
     }
     for(const c of list){
-      const{error}=await sb.from("contacts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null,inactive:c.inactive||false},{onConflict:cid?"user_id,company_id,contact_id":"user_id,contact_id"});
+      const{error}=await sb.from("contacts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",org_number:c.orgNumber||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null,inactive:c.inactive||false},{onConflict:cid?"user_id,company_id,contact_id":"user_id,contact_id"});
       if(error){console.error(`Contact save error (${c.name||c.id}):`,error);failures.push(`${c.name||c.id}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} contact change${failures.length===1?"":"s"} didn't save to the database:\n\n${failures.join("\n")}`);
