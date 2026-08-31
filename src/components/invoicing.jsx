@@ -3849,152 +3849,164 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         // parent, and the table's fixed-width columns rarely need to scroll
         // on a real desktop window, so it's a fair trade for search actually
         // working.
-        <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
-          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub,borderRadius:"10px 10px 0 0"}}>Postings</div>
-          <div style={{padding:"12px 14px 14px"}}>
-          {/* Date and Description stack into ONE column (date on top,
-              description below) instead of sitting side by side — frees
-              real width for Debit/Credit/Amount, which is where an account
-              name actually needs the room to not get truncated. Matches how
-              a real double-entry voucher table typically groups "when/what"
-              as one combined column separate from "where the money moves". */}
-          <div style={{display:"flex",gap:6,marginBottom:8,minWidth:578,paddingBottom:6,borderBottom:`1px solid ${T.border}`}}>
-            <div style={{flex:"0 0 190px",fontSize:10,color:T.muted,fontWeight:700}}>Date / Description</div>
-            <div style={{flex:"0 0 140px",fontSize:10,color:T.muted,fontWeight:700}}>Debit</div>
-            <div style={{flex:"0 0 140px",fontSize:10,color:T.muted,fontWeight:700}}>Credit</div>
-            <div style={{flex:"0 0 90px",fontSize:10,color:T.muted,fontWeight:700}}>Amount</div>
-          </div>
-          {(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]).map((line,li)=>(
-            <div key={li} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,minWidth:578}}>
-              <div style={{flex:"0 0 190px",minWidth:0,display:"flex",flexDirection:"column",gap:4}}>
-                <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
-                  if(li===0){setForm(p=>({...p,date:v}));return;}
-                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],date:v};
-                  setForm(p=>({...p,lines}));
-                }} style={{width:100}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
-                <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
-                  if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
-                  const lines=[...(form.lines||[])];
-                  lines[li]={...lines[li],description:e.target.value};
-                  setForm(p=>({...p,lines}));
-                }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
-              </div>
-              {(()=>{
-                // Auto-fill AND lock VAT from the account's own settings the
-                // moment it's picked — every other entry screen already does
-                // this; this multi-line editor was the one place a VAT-
-                // locked account's line could still be posted with whatever
-                // code (or none) happened to be sitting in the dropdown.
-                const debitAcc=accounts.find(a=>a.code===line.debitCode);
-                const creditAcc=accounts.find(a=>a.code===line.creditCode);
-                const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
-                const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
-                // "mode" lets this line post to only one side (see
-                // lineModeOf above) — the inactive side's fields are greyed
-                // out and inert rather than removed, so switching back
-                // brings the previous value straight back.
-                const mode=lineModeOf(li,line);
-                const debitOn=mode!=="credit",creditOn=mode!=="debit";
-                return(<>
-              <div style={{flex:"0 0 140px",minWidth:0,opacity:debitOn?1:0.35,pointerEvents:debitOn?"auto":"none"}}>
-                <AccDrop value={line.debitCode||""} onChange={v=>{
-                  const acc=accounts.find(a=>a.code===v);
-                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
-                  setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
-                <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
-                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],debitVatCode:code};
-                  setForm(p=>({...p,lines}));
-                }} options={vatCodeOptions("input")} disabled={debitLocked}/>
-              </div>
-              <div style={{flex:"0 0 140px",minWidth:0,opacity:creditOn?1:0.35,pointerEvents:creditOn?"auto":"none"}}>
-                <AccDrop value={line.creditCode||""} onChange={v=>{
-                  const acc=accounts.find(a=>a.code===v);
-                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
-                  setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
-                <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
-                  const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],creditVatCode:code};
-                  setForm(p=>({...p,lines}));
-                }} options={vatCodeOptions("output")} disabled={creditLocked}/>
-              </div>
-                </>);
-              })()}
-              <div style={{flex:"0 0 90px",minWidth:0,display:"flex",gap:4,alignItems:"flex-start"}}>
-                {li===0?(
-                  <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
-                ):(
-                  <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
-                    const lines=[...(form.lines||[])];
-                    lines[li]={...lines[li],amount:e.target.value};
+        // A real grid — one shared gridTemplateColumns for the header AND
+        // every row's cells (all siblings of the same grid container, not
+        // nested per-row divs) — is what actually keeps a column's header
+        // sitting directly above its own inputs, row after row, the way the
+        // reference voucher table does. The previous flex-row-per-line
+        // version could drift out of alignment the moment one row's content
+        // (e.g. a VAT dropdown) rendered wider than its neighbor's, since
+        // each row measured its own columns independently instead of
+        // sharing one column grid with the header.
+        (()=>{
+          const GRID_COLS="160px minmax(180px,1fr) minmax(180px,1fr) 110px 28px";
+          const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+          const vDivider={borderRight:`1px solid ${T.border}`};
+          const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+          return(
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflowX:"auto"}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+          <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:660}}>
+            {/* Header — same GRID_COLS as every row below, so each label
+                sits exactly above its own column no matter what a row's
+                content measures. */}
+            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
+            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
+            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
+            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
+            <div style={{...cellBase,background:T.bg}}/>
+            {linesArr.map((line,li)=>{
+              // Auto-fill AND lock VAT from the account's own settings the
+              // moment it's picked — every other entry screen already does
+              // this; this multi-line editor was the one place a VAT-
+              // locked account's line could still be posted with whatever
+              // code (or none) happened to be sitting in the dropdown.
+              const debitAcc=accounts.find(a=>a.code===line.debitCode);
+              const creditAcc=accounts.find(a=>a.code===line.creditCode);
+              const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
+              const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+              // "mode" lets this line post to only one side (see
+              // lineModeOf above) — the inactive side's fields are greyed
+              // out and inert rather than removed, so switching back
+              // brings the previous value straight back.
+              const mode=lineModeOf(li,line);
+              const debitOn=mode!=="credit",creditOn=mode!=="debit";
+              const isLast=li===linesArr.length-1;
+              const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
+              return(<React.Fragment key={li}>
+                <div style={{...rowCell,...vDivider,display:"flex",flexDirection:"column",gap:4}}>
+                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                    if(li===0){setForm(p=>({...p,date:v}));return;}
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],date:v};
                     setForm(p=>({...p,lines}));
-                  }} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
-                )}
-                {/* One ⋮ menu instead of a lone delete button — Duplicate
-                    always available, Delete only for lines after the first
-                    (line 0 is the entry's own primary debit/credit, not a
-                    removable extra line), plus a Debit/Credit/Both mode
-                    switch on every line so one-sided lines (see #7) can be
-                    combined against each other and still balance overall. */}
-                <div style={{position:"relative",flexShrink:0}}>
-                  <button onClick={()=>setLineMenuOpen(o=>o===li?null:li)} title="Line options" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",width:22,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,fontFamily:"inherit"}}>
-                    <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
-                  </button>
-                  {lineMenuOpen===li&&(
-                    <>
-                      <div onClick={()=>setLineMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                      <div style={{position:"absolute",right:0,top:34,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:170}}>
-                        <button onClick={()=>{duplicateLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
-                          <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
-                        </button>
-                        {li>0&&(
-                          <button onClick={()=>{deleteLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
-                            <i className="ti ti-trash" style={{fontSize:14}}/>Delete
-                          </button>
-                        )}
-                        <div style={{borderTop:`1px solid ${T.border}`,margin:"4px 0"}}/>
-                        <div style={{padding:"4px 10px 2px",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>This line posts to</div>
-                        {[["both","Debit + Credit"],["debit","Debit only"],["credit","Credit only"]].map(([m,label])=>(
-                          <button key={m} onClick={()=>{
-                            if(li===0){
-                              setForm(p=>({...p,mode:m,...(m==="debit"?{creditCode:""}:{}),...(m==="credit"?{debitCode:""}:{})}));
-                            } else {
-                              const lines=[...(form.lines||[])];
-                              const upd={...lines[li],mode:m};
-                              if(m==="debit")upd.creditCode="";
-                              if(m==="credit")upd.debitCode="";
-                              lines[li]=upd;
-                              setForm(p=>({...p,lines}));
-                            }
-                            setLineMenuOpen(null);
-                          }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:mode===m?T.accent:T.text,fontWeight:mode===m?700:400,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
-                            <i className={mode===m?"ti ti-circle-check-filled":"ti ti-circle"} style={{fontSize:14}}/>{label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
+                  }} style={{width:100}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
+                  <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
+                    if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                    const lines=[...(form.lines||[])];
+                    lines[li]={...lines[li],description:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
+                </div>
+                <div style={{...rowCell,...vDivider,minWidth:0,opacity:debitOn?1:0.35,pointerEvents:debitOn?"auto":"none"}}>
+                  <AccDrop value={line.debitCode||""} onChange={v=>{
+                    const acc=accounts.find(a=>a.code===v);
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
+                    setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
+                  }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
+                  <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],debitVatCode:code};
+                    setForm(p=>({...p,lines}));
+                  }} options={vatCodeOptions("input")} disabled={debitLocked}/>
+                </div>
+                <div style={{...rowCell,...vDivider,minWidth:0,opacity:creditOn?1:0.35,pointerEvents:creditOn?"auto":"none"}}>
+                  <AccDrop value={line.creditCode||""} onChange={v=>{
+                    const acc=accounts.find(a=>a.code===v);
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
+                    setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
+                  }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
+                  <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],creditVatCode:code};
+                    setForm(p=>({...p,lines}));
+                  }} options={vatCodeOptions("output")} disabled={creditLocked}/>
+                </div>
+                <div style={{...rowCell,...vDivider,minWidth:0}}>
+                  {li===0?(
+                    <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                  ):(
+                    <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
+                      const lines=[...(form.lines||[])];
+                      lines[li]={...lines[li],amount:e.target.value};
+                      setForm(p=>({...p,lines}));
+                    }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   )}
                 </div>
-              </div>
-            </div>
-          ))}
-          </div>
-          {/* Running totals — a plain entry (every line "Debit + Credit")
-              always has Debit total = Credit total; once a line is switched
-              to one-sided, this is the real balance check, and Save stays
-              disabled until it reads Balanced. */}
-          <div style={{display:"flex",gap:6,padding:"9px 14px",borderTop:`1px solid ${T.border}`,background:linesBalanced?T.bg:T.redLight,minWidth:578,borderRadius:"0 0 10px 10px"}}>
-            <div style={{flex:"0 0 190px",fontSize:10,fontWeight:700,color:T.red}}>{linesBalanced?"":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
-            <div style={{flex:"0 0 140px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
-            <div style={{flex:"0 0 140px",fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
-            <div style={{flex:"0 0 90px",fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700}}>{linesBalanced?"Balanced":"Unbalanced"}</div>
+                <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+                  {/* One ⋮ menu instead of a lone delete button — Duplicate
+                      always available, Delete only for lines after the first
+                      (line 0 is the entry's own primary debit/credit, not a
+                      removable extra line), plus a Debit/Credit/Both mode
+                      switch on every line so one-sided lines (see #7) can be
+                      combined against each other and still balance overall. */}
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <button onClick={()=>setLineMenuOpen(o=>o===li?null:li)} title="Line options" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",width:22,height:26,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,fontFamily:"inherit"}}>
+                      <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
+                    </button>
+                    {lineMenuOpen===li&&(
+                      <>
+                        <div onClick={()=>setLineMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                        <div style={{position:"absolute",right:0,top:28,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:170}}>
+                          <button onClick={()=>{duplicateLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                            <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
+                          </button>
+                          {li>0&&(
+                            <button onClick={()=>{deleteLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                              <i className="ti ti-trash" style={{fontSize:14}}/>Delete
+                            </button>
+                          )}
+                          <div style={{borderTop:`1px solid ${T.border}`,margin:"4px 0"}}/>
+                          <div style={{padding:"4px 10px 2px",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>This line posts to</div>
+                          {[["both","Debit + Credit"],["debit","Debit only"],["credit","Credit only"]].map(([m,label])=>(
+                            <button key={m} onClick={()=>{
+                              if(li===0){
+                                setForm(p=>({...p,mode:m,...(m==="debit"?{creditCode:""}:{}),...(m==="credit"?{debitCode:""}:{})}));
+                              } else {
+                                const lines=[...(form.lines||[])];
+                                const upd={...lines[li],mode:m};
+                                if(m==="debit")upd.creditCode="";
+                                if(m==="credit")upd.debitCode="";
+                                lines[li]=upd;
+                                setForm(p=>({...p,lines}));
+                              }
+                              setLineMenuOpen(null);
+                            }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:mode===m?T.accent:T.text,fontWeight:mode===m?700:400,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                              <i className={mode===m?"ti ti-circle-check-filled":"ti ti-circle"} style={{fontSize:14}}/>{label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </React.Fragment>);
+            })}
+            {/* Running totals — a plain entry (every line "Debit + Credit")
+                always has Debit total = Credit total; once a line is
+                switched to one-sided, this is the real balance check, and
+                Save stays disabled until it reads Balanced. */}
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:10,fontWeight:700,color:T.red}}>{linesBalanced?"":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":"Unbalanced"}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?T.bg:T.redLight}}/>
           </div>
         </div>
+          );
+        })()
         ):(
         // No overflow:hidden here — it clipped AccDrop's own account-search
         // dropdown (position:absolute) the moment a line's dropdown needed
