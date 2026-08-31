@@ -661,8 +661,8 @@ function AppShell({user}){
   };
 
   const addTransaction=async(form)=>{
-    if(!canEdit)return;
-    if(blockIfLocked(form.date))return;
+    if(!canEdit)return{error:"You don't have permission to add entries."};
+    if(blockIfLocked(form.date))return{error:"This period is closed."};
     checkTxnLogic(form,"addTransaction");
     // form.bilag lets a caller deliberately reuse an already-reserved bilag
     // number (a multi-line voucher's 2nd+ line) instead of always minting a
@@ -679,7 +679,7 @@ function AppShell({user}){
     const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
-      return;
+      return{error:error.message};
     }
     if(data){
       if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,...form.attachmentIds]));}
@@ -689,6 +689,7 @@ function AppShell({user}){
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
       return{id:data.id,bilag:nb,description:form.description,amount:form.amount};
     }
+    return{error:"No data returned from the database."};
   };
 
   // Bank statement lines — manual CSV/Excel upload only (no live bank API).
@@ -1383,10 +1384,17 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
 
   const saveEdit=async(u)=>{
     const original=transactions.find(t=>t.id===u.id);
-    if(blockIfLocked(u.date)||(original&&blockIfLocked(original.date)))return;
+    // Used to update local state optimistically BEFORE the DB write (and
+    // even before the canEdit permission check) and never rolled that back
+    // if the write then failed — the editor would show the edit as saved
+    // and close normally while the database silently kept the old row, only
+    // ever surfacing as a stale re-fetch later or (in a multi-line save
+    // loop) as some lines of a voucher simply never landing. Local state
+    // now only updates once the write has actually succeeded, and every
+    // caller gets a real result back to check.
+    if(blockIfLocked(u.date)||(original&&blockIfLocked(original.date)))return{error:"This period is closed."};
+    if(!canEdit)return{error:"You don't have permission to edit entries."};
     checkTxnLogic(u,"saveEdit");
-    setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
-    if(!canEdit)return;
     // vat_pct/vat_amount were missing here entirely — editing any entry
     // (even just to add or change its VAT code, per EditModal above) never
     // actually persisted that to the database, so it silently reverted to
@@ -1398,17 +1406,31 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // simply gone anywhere that reads vatCode directly, like the General
     // ledger's own VAT code column.
     const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_code:u.vatCode!=null?u.vatCode:null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null}).eq("id",u.id);
-    if(error)logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
-    else if(original)logAudit("transaction",u.id,u.bilag,"update",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},{date:u.date,debitCode:u.debitCode,creditCode:u.creditCode,description:u.description,amount:u.amount});
+    if(error){
+      logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
+      return{error:error.message};
+    }
+    setTransactionsState(p=>p.map(t=>t.id===u.id?u:t));
+    if(original)logAudit("transaction",u.id,u.bilag,"update",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},{date:u.date,debitCode:u.debitCode,creditCode:u.creditCode,description:u.description,amount:u.amount});
+    return{id:u.id};
   };
 
   const deleteTxn=async(id)=>{
     const original=transactions.find(t=>t.id===id);
-    if(original&&blockIfLocked(original.date))return;
+    // Same fix as saveEdit above — used to remove the row from local state
+    // BEFORE the DB delete had actually happened (or even succeeded), so a
+    // failed delete still looked like it worked. Local state only updates
+    // once the delete is confirmed.
+    if(original&&blockIfLocked(original.date))return{error:"This period is closed."};
+    if(!canEdit)return{error:"You don't have permission to delete entries."};
+    const{error}=await sb.from("transactions").delete().eq("id",id);
+    if(error){
+      logBug("DB_ERROR","Failed to delete transaction",error.message,"deleteTxn");
+      return{error:error.message};
+    }
     setTransactionsState(p=>p.filter(t=>t.id!==id));
-    if(!canEdit)return;
-    await sb.from("transactions").delete().eq("id",id);
     if(original)logAudit("transaction",id,original.bilag,"delete",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},null);
+    return{ok:true};
   };
 
   const reverseTransaction=async(t)=>{

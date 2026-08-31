@@ -3008,7 +3008,9 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+          onEdit={u=>onEditTxn(u)}
+          onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
@@ -5808,8 +5810,16 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         // the editor vanished. onClose (called once, explicitly, from
         // inside the editor at the right moment) is what actually closes
         // it now.
-        onEdit={u=>{if(onEditTxn)onEditTxn(u);}}
-        onDelete={id=>{if(onDeleteTxn)onDeleteTxn(id);}}
+        // Must actually return onEditTxn/onDeleteTxn's own promise — the
+        // multi-line save/delete loops in EditModal await this per line to
+        // serialize the saves/deletes and check each one really succeeded;
+        // an `if(x)x(u);` wrapper with no `return` resolves instantly
+        // instead of waiting for the real database write, so the loop
+        // (and the modal's close-on-completion) raced ahead of the actual
+        // saves — this is what let a multi-line entry look saved and closed
+        // while some of its lines silently never made it to the database.
+        onEdit={u=>onEditTxn&&onEditTxn(u)}
+        onDelete={id=>onDeleteTxn&&onDeleteTxn(id)}
         onReverse={tx=>{if(onReverseTxn)onReverseTxn(tx);setDetailTxn(null);}}
         onClose={()=>{setDetailTxn(null);setDetailTxnShowComments(false);}}/>}
     </div>
@@ -6139,8 +6149,14 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       )}
       {detailTxn&&(
         <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
-          onEdit={u=>{onEditTxn&&onEditTxn(u);}}
-          onDelete={id=>{onDeleteTxn&&onDeleteTxn(id);}}
+          // Must return the inner promise — see the matching comment on
+          // BankReconciliationScreen's DetailModal above; a bare
+          // `x&&x(u);` wrapper here resolves before the actual database
+          // write finishes, which is what let a multi-line save/delete
+          // race ahead of itself and close looking "done" while some
+          // lines silently never persisted.
+          onEdit={u=>onEditTxn&&onEditTxn(u)}
+          onDelete={id=>onDeleteTxn&&onDeleteTxn(id)}
           onReverse={tx=>{onReverseTxn&&onReverseTxn(tx);setDetailTxn(null);}}
           onClose={()=>setDetailTxn(null)}/>
       )}

@@ -3553,11 +3553,22 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const vatCode=(r.debitVatCode&&r.debitVatCode!=="0")?r.debitVatCode:(r.creditVatCode&&r.creditVatCode!=="0"?r.creditVatCode:null);
         if(ri===0){
           primaryResult=await onSave({...form,date:r.date,description:r.description,debitCode:r.debitCode,creditCode:r.creditCode,amount:r.amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode,vatPct:vc?vc.rate:null,vatAmount});
+          // Used to plow ahead regardless — a failed first row still tried
+          // to save every remaining line (each minting its OWN fresh bilag
+          // instead of sharing the failed row's, since there was no bilag
+          // to share), then flashed "saved" and wiped the form as if
+          // nothing were wrong. Now a failure here stops immediately, tells
+          // the user why, and leaves the form exactly as they had it so
+          // nothing typed is lost.
+          if(!primaryResult||primaryResult.error||primaryResult.id==null){
+            alert(`Couldn't save this entry:\n\n${(primaryResult&&primaryResult.error)||"Unknown error."}\n\nNothing was saved — your entry is still here, try again.`);
+            return;
+          }
           // A comment is extra context on top of the required description —
           // saved as an entry comment (same thread DetailModal shows later)
           // instead of a new column, so it's visible wherever comments
           // already render.
-          if(form.notes&&form.notes.trim()&&addEntryComment&&primaryResult&&primaryResult.id){
+          if(form.notes&&form.notes.trim()&&addEntryComment){
             addEntryComment(primaryResult.id,form.notes.trim());
           }
         } else {
@@ -3566,7 +3577,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           // voucher — opening "the" bilag afterward only ever showed
           // whichever single line happened to carry that number) plus
           // groupRef for the same-browser linked-lines convenience view.
-          await onSave({date:r.date,debitCode:r.debitCode,creditCode:r.creditCode,description:r.description,amount:r.amount,contactId:form.contactId||null,groupRef,bilag:primaryResult?primaryResult.bilag:undefined,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,vatCode,vatPct:vc?vc.rate:null,vatAmount});
+          const lineResult=await onSave({date:r.date,debitCode:r.debitCode,creditCode:r.creditCode,description:r.description,amount:r.amount,contactId:form.contactId||null,groupRef,bilag:primaryResult.bilag,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,vatCode,vatPct:vc?vc.rate:null,vatAmount});
+          if(!lineResult||lineResult.error||lineResult.id==null){
+            alert(`Saved ${ri} of ${rows.length} line(s) of ${fmtB(primaryResult.bilag)}, then line ${ri+1} failed to save:\n\n${(lineResult&&lineResult.error)||"Unknown error."}\n\nThat voucher is left partially saved — check it in Voucher overview (you can add the missing line(s) there with "+ Add line") before entering anything else.`);
+            return;
+          }
         }
       }
       if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);

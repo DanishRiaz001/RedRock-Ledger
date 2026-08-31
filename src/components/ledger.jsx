@@ -947,6 +947,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   };
   const[groupLinesState,setGroupLinesState]=useState(()=>groupLines.map(l=>({...l,amount:String(l.amount),...deriveLineVat(l)})));
   const[savingGroup,setSavingGroup]=useState(false);
+  const[savingSingle,setSavingSingle]=useState(false);
   const[confirmDelGroup,setConfirmDelGroup]=useState(false);
   const[confirmDelLine,setConfirmDelLine]=useState(null);
   const updateGroupLine=(li,patch)=>setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,...patch}:l));
@@ -970,22 +971,46 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     if(!groupValid||!groupBalanced||savingGroup)return;
     if(groupLinesState.some(l=>isDateClosed(l.date))){alert(`Period closed up to ${getPeriodClose()}. Edit the date(s) first.`);return;}
     setSavingGroup(true);
-    for(const l of groupLinesState){
+    // Each line's save is awaited AND checked before moving to the next —
+    // onSave now genuinely returns once the database write has actually
+    // finished (see the call-site comments on DetailModal), and returns
+    // {error} instead of silently "succeeding" when it hasn't. Stopping on
+    // the first failure (rather than plowing through the rest of the
+    // lines, or closing regardless) is what turns a silent partial save
+    // into something the user can actually see and act on.
+    for(let li=0;li<groupLinesState.length;li++){
+      const l=groupLinesState[li];
       const amountNum=parseFloat(l.amount);
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
       const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
-      await onSave({...l,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+      const res=await onSave({...l,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+      if(res&&res.error){
+        setSavingGroup(false);
+        alert(`Saved ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to save:\n\n${res.error}\n\nThis voucher is left partially saved — please check it before continuing.`);
+        return;
+      }
     }
     setSavingGroup(false);
     onClose();
   };
   const deleteGroupLine=async(id)=>{
-    await onDelete(id);
+    const res=await onDelete(id);
+    if(res&&res.error){
+      alert(`Couldn't delete this line:\n\n${res.error}`);
+      setConfirmDelLine(null);
+      return;
+    }
     setGroupLinesState(p=>p.filter(l=>l.id!==id));
     setConfirmDelLine(null);
   };
   const deleteWholeGroup=async()=>{
-    for(const l of groupLinesState)await onDelete(l.id);
+    for(let li=0;li<groupLinesState.length;li++){
+      const res=await onDelete(groupLinesState[li].id);
+      if(res&&res.error){
+        alert(`Deleted ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to delete:\n\n${res.error}\n\nThis voucher is left partially deleted — please check it before continuing.`);
+        return;
+      }
+    }
     onClose();
   };
   const[addingLine,setAddingLine]=useState(false);
@@ -1002,6 +1027,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     const res=await onAddLine({date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:0,bilag});
     setAddingLine(false);
     if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
+    else if(res&&res.error)alert(`Couldn't add a new line:\n\n${res.error}`);
   };
 
   // Tripletex's own voucher screen: a "Details" tab holding the Voucher
@@ -1027,10 +1053,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   };
   const isRowValid=l=>l.debitCode&&l.creditCode&&l.description&&parseFloat(l.amount)>0;
   const rowsValid=gridRows.every(isRowValid);
-  const savingAny=isGroup?savingGroup:false;
+  const savingAny=isGroup?savingGroup:savingSingle;
   const saveAll=async()=>{
     if(isGroup){await saveGroup();return;}
-    if(!valid)return;
+    if(!valid||savingSingle)return;
     if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
     if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
     const amountNum=parseFloat(form.amount);
@@ -1039,7 +1065,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     // convention Register voucher's general lines use.
     const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
     const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
-    onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+    setSavingSingle(true);
+    // onSave used to fire without being awaited at all, with onClose()
+    // called right on the next line regardless — the save request was
+    // barely even sent before the modal unmounted. Now it's awaited and
+    // checked: only a confirmed success closes the editor; a failure stays
+    // open and tells the user what happened instead of silently vanishing
+    // the entry.
+    const res=await onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+    setSavingSingle(false);
+    if(res&&res.error){alert(`Couldn't save this entry:\n\n${res.error}`);return;}
     onClose();
   };
 
@@ -1137,7 +1172,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           )
         ):(
           confirmDel?(
-            <button onClick={()=>{onDelete(txn.id);onClose();}} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete</button>
+            <button onClick={async()=>{
+              // Same fix as saveAll — wait for the delete to actually
+              // finish and check it worked before closing, instead of
+              // firing it and closing on the same tick.
+              const res=await onDelete(txn.id);
+              if(res&&res.error){alert(`Couldn't delete this entry:\n\n${res.error}`);return;}
+              onClose();
+            }} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete</button>
           ):(
             <button onClick={()=>setConfirmDel(true)} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
           )
@@ -1658,8 +1700,16 @@ function TxnCard({t,accounts,contacts,transactions=[],addTransaction,attachedTxn
       {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransaction}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
-        onEdit={u=>{onEdit(u);setDetail(false);}}
-        onDelete={id=>{onDelete(id);setDetail(false);}}
+        // Must return the promise, and must not auto-close on every call —
+        // same fix as the desktop DetailModal call sites: a multi-line
+        // save/delete loop inside EditModal calls these once per line and
+        // awaits each one, so a wrapper that resolves early (no `return`)
+        // or closes the whole card on line 1 breaks anything past the
+        // first line. onClose (passed separately below) is what actually
+        // closes it now, called explicitly once by EditModal when it's
+        // really done.
+        onEdit={u=>onEdit(u)}
+        onDelete={id=>onDelete(id)}
         onReverse={tx=>{onReverse(tx);setDetail(false);}}
         onDuplicate={onDuplicate}
         onClose={()=>setDetail(false)}/>}
@@ -1940,8 +1990,10 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
-        onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
-        onDelete={id=>{onDeleteTxn(id);setDetailTxn(null);}}
+        // Must return the promise and not auto-close per call — see the
+        // matching comment on TxnCard's DetailModal above.
+        onEdit={u=>onEditTxn(u)}
+        onDelete={id=>onDeleteTxn(id)}
         onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}}
         onClose={()=>setDetailTxn(null)}/>}
       <BackHeader title={account.name} sub={`${(series&&series.icon)||""} ${(series&&series.name)||""} · ${account.code}`} color={series&&series.color} onBack={onBack}
@@ -2631,8 +2683,10 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
         {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
           fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
           auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
-          onEdit={u=>{editTxn(u);setDetailTxn(null);}}
-          onDelete={id=>{deleteTxn(id);setDetailTxn(null);}}
+          // Must return the promise and not auto-close per call — see the
+          // matching comment on TxnCard's DetailModal above.
+          onEdit={u=>editTxn(u)}
+          onDelete={id=>deleteTxn(id)}
           onReverse={()=>{}} onClose={()=>setDetailTxn(null)}/>}
 
         {/* Header */}

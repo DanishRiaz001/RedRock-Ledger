@@ -113,8 +113,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // registering vouchers from the Inbox, and the plain New Entry form.
   const addTransactionNotified=async(form)=>{
     const result=await addTransaction(form);
-    pushToast(`Saved: ${form.description||"New entry"} — ${fmt(form.amount)}`);
-    if(result&&result.id)showUndoSnackbar({id:result.id,bilag:result.bilag,description:result.description||"New entry"});
+    // Used to toast "Saved" unconditionally, even when addTransaction
+    // returned an error — a failed save looked exactly like a successful
+    // one, with no visible sign anything went wrong.
+    if(result&&result.id){
+      pushToast(`Saved: ${form.description||"New entry"} — ${fmt(form.amount)}`);
+      showUndoSnackbar({id:result.id,bilag:result.bilag,description:result.description||"New entry"});
+    }
     return result;
   };
   useEffect(()=>{if(logUsageEvent)logUsageEvent(tab);},[tab]);
@@ -267,8 +272,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const deleteTxnWithUndo=(id)=>{
     const txn=transactions.find(t=>t.id===id);
     if(txn)setLastDeleted(txn);
-    deleteTxn(id);
     setTimeout(()=>setLastDeleted(null),6000);
+    // Must return deleteTxn's own promise — a multi-line delete loop
+    // (EditModal's deleteWholeGroup/deleteGroupLine) awaits this per line
+    // to serialize the deletes and check each one actually succeeded
+    // before moving on or closing; without returning it here, that await
+    // resolved instantly regardless of whether the delete had even
+    // reached the database yet.
+    return deleteTxn(id);
   };
   const undoDelete=()=>{
     if(!lastDeleted)return;
