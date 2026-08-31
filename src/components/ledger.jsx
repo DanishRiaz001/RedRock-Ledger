@@ -120,12 +120,20 @@ function BackHeader({title,sub,onBack}){
 const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"6px 8px",width:"100%",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
-function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick}){
+function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const[creating,setCreating]=useState(false);
   const[newCode,setNewCode]=useState("");
   const[newName,setNewName]=useState("");
+  // Quick-create a customer/supplier right from this same dropdown, same
+  // idea as "+ New account" below but for a contact instead — onCreateContact
+  // does the actual creating (nextContactId + setContacts) and hands back
+  // the new id, so this can route the field to 1500/2400 and call
+  // onContactPick exactly like picking an existing contact would.
+  const[creatingContact,setCreatingContact]=useState(false);
+  const[newContactName,setNewContactName]=useState("");
+  const[newContactType,setNewContactType]=useState("supplier");
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const sel=accounts.find(a=>a.code===value);
@@ -166,7 +174,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   };
 
   const openAndSearch=()=>{setOpen(true);setQ("");};
-  const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");setCreatingContact(false);setNewContactName("");};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. If it's just moving to the code/name inputs inside the
   // "new account" mini-form (still within containerRef), closing here would
@@ -190,6 +198,16 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     if(accounts.some(a=>a.code===newCode.trim())){alert("That account code already exists.");return;}
     onCreateAccount&&onCreateAccount({code:newCode.trim(),name:newName.trim()});
     onChange(newCode.trim());
+    closeAndRevert();
+  };
+  const startCreateContact=()=>{setCreatingContact(true);setNewContactName(q);};
+  const submitCreateContact=()=>{
+    if(!newContactName.trim()||!onCreateContact)return;
+    const newId=onCreateContact(newContactName.trim(),newContactType);
+    if(newId){
+      onChange(newContactType==="customer"?"1500":"2400");
+      onContactPick&&onContactPick(newId);
+    }
     closeAndRevert();
   };
 
@@ -262,6 +280,24 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               </div>
             ):(
               <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
+            ))}
+            {/* Same idea, for a brand-new customer/supplier — only where a
+                caller actually wants contact-picking in the first place
+                (onContactPick) AND supplies a way to create one
+                (onCreateContact); every plain account-only AccDrop use is
+                unaffected. */}
+            {onContactPick&&onCreateContact&&(creatingContact?(
+              <div style={{padding:"10px",borderTop:`1px solid ${T.border}`,background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:6}}>
+                  {["customer","supplier"].map(t=>(
+                    <button key={t} onMouseDown={e=>{e.preventDefault();setNewContactType(t);}} style={{flex:1,background:newContactType===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:newContactType===t?(t==="customer"?T.blue:T.red):T.sub,border:`1px solid ${newContactType===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:6,padding:"5px 6px",fontWeight:700,fontSize:10,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+                  ))}
+                </div>
+                <input autoFocus placeholder="Name" value={newContactName} onChange={e=>setNewContactName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreateContact();if(e.key==="Escape")setCreatingContact(false);}} style={{...selSm,fontSize:11}}/>
+                <button onMouseDown={e=>{e.preventDefault();submitCreateContact();}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Add {newContactType}</button>
+              </div>
+            ):(
+              <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
             ))}
           </div>
         </>
