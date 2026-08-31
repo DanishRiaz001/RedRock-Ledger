@@ -3002,7 +3002,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction} onEdit={u=>{onEditTxn(u);setDetailTxn(null);}} onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
@@ -4359,7 +4359,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             </tbody>
           </table>
         </div>
-        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
+        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
       </div>
     );
   }
@@ -4483,7 +4483,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
 
       </div>
 
-      {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
+      {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
     </div>
   );
 }
@@ -5740,7 +5740,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
         return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef]}/>;
       })()}
-      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
+      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         initialShowComments={detailTxnShowComments}
@@ -6052,7 +6052,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           onEdit={u=>{onEditTxn&&onEditTxn(u);setDetailTxn(null);}}
           onDelete={id=>{onDeleteTxn&&onDeleteTxn(id);setDetailTxn(null);}}
           onReverse={tx=>{onReverseTxn&&onReverseTxn(tx);setDetailTxn(null);}}

@@ -1047,7 +1047,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               </>);
             })()}
             {entriesDetailTxn&&(
-              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}
+              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} transactions={transactions} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}
                 fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
                 onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
                 onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}

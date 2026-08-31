@@ -877,7 +877,14 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false,groupLines=[]}){
+  // A bilag saved with more than one line (New Entry's flexible multi-line
+  // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
+  // show/edit whichever ONE row you happened to click — opening "the" bilag
+  // never actually showed the whole voucher together the way it was posted.
+  // groupLines is every transaction row sharing this bilag, including this
+  // one; more than one flips this modal into a real multi-line editor.
+  const isGroup=groupLines&&groupLines.length>1;
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
@@ -920,6 +927,112 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   };
 
   const attached=attachments[0]||null;
+
+  // Same VAT-code derivation the single-line form above uses, generalized
+  // to any line — reverse-derives a code from the stored rate when an
+  // older row never had vatCode saved.
+  const deriveLineVat=l=>{
+    const dExp=isExpenseSK(l.debitCode);
+    const cInc=isIncomeSK(l.creditCode);
+    return{
+      debitVatCode:dExp?(l.vatCode||(l.vatPct!=null?((vatCodeForRate(l.vatPct,"input")||{}).code||""):"")):"",
+      creditVatCode:(cInc&&!dExp)?(l.vatCode||(l.vatPct!=null?((vatCodeForRate(l.vatPct,"output")||{}).code||""):"")):"",
+    };
+  };
+  const[groupLinesState,setGroupLinesState]=useState(()=>groupLines.map(l=>({...l,amount:String(l.amount),...deriveLineVat(l)})));
+  const[savingGroup,setSavingGroup]=useState(false);
+  const[confirmDelGroup,setConfirmDelGroup]=useState(false);
+  const[confirmDelLine,setConfirmDelLine]=useState(null);
+  const updateGroupLine=(li,patch)=>setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,...patch}:l));
+  const groupValid=groupLinesState.every(l=>l.debitCode&&l.creditCode&&l.description&&parseFloat(l.amount)>0);
+  const saveGroup=async()=>{
+    if(!groupValid||savingGroup)return;
+    if(groupLinesState.some(l=>isDateClosed(l.date))){alert(`Period closed up to ${getPeriodClose()}. Edit the date(s) first.`);return;}
+    setSavingGroup(true);
+    for(const l of groupLinesState){
+      const amountNum=parseFloat(l.amount);
+      const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
+      const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
+      await onSave({...l,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+    }
+    setSavingGroup(false);
+    onClose();
+  };
+  const deleteGroupLine=async(id)=>{
+    await onDelete(id);
+    setGroupLinesState(p=>p.filter(l=>l.id!==id));
+    setConfirmDelLine(null);
+  };
+  const deleteWholeGroup=async()=>{
+    for(const l of groupLinesState)await onDelete(l.id);
+    onClose();
+  };
+
+  const multiFormCard=(
+    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details — {groupLinesState.length} lines</div>
+      {(()=>{
+        const GRID_COLS="120px 1.3fr 1.3fr 1.3fr 100px 26px";
+        const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+        const vDivider={borderRight:`1px solid ${T.border}`};
+        return(
+          <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
+            <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
+              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
+              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
+              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
+              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
+              <div style={cellBase}/>
+              {groupLinesState.map((l,li)=>{
+                const isLast=li===groupLinesState.length-1;
+                const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
+                const debitAcc=accounts.find(a=>a.code===l.debitCode);
+                const creditAcc=accounts.find(a=>a.code===l.creditCode);
+                const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
+                const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+                return(<React.Fragment key={l.id}>
+                  <div style={{...rowCell,...vDivider}}>
+                    <input type="date" value={l.date} onChange={e=>updateGroupLine(li,{date:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 6px"}}/>
+                  </div>
+                  <div style={{...rowCell,...vDivider}}>
+                    <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateGroupLine(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} onContactPick={id=>updateGroupLine(li,{contactId:id})}/>
+                    <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateGroupLine(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked}/></div>
+                  </div>
+                  <div style={{...rowCell,...vDivider}}>
+                    <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateGroupLine(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} onContactPick={id=>updateGroupLine(li,{contactId:id})}/>
+                    <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateGroupLine(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
+                  </div>
+                  <div style={{...rowCell,...vDivider}}>
+                    <input value={l.description} onChange={e=>updateGroupLine(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 6px"}}/>
+                  </div>
+                  <div style={{...rowCell,...vDivider}}>
+                    <input type="number" value={l.amount} onChange={e=>updateGroupLine(li,{amount:e.target.value})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 6px",textAlign:"right"}}/>
+                  </div>
+                  <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+                    {confirmDelLine===l.id?(
+                      <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
+                    ):(
+                      <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>🗑</button>
+                    )}
+                  </div>
+                </React.Fragment>);
+              })}
+            </div>
+          </div>
+        );
+      })()}
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:groupValid&&!savingGroup?1:0.5}} onClick={saveGroup}>{savingGroup?"Saving…":"💾 Save all lines"}</button>
+        {confirmDelGroup?(
+          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={deleteWholeGroup}>Confirm delete whole bilag</button>
+        ):(
+          <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDelGroup(true)}>🗑</button>
+        )}
+        <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDelGroup(false);onClose();}}>✕</button>
+      </div>
+    </div>
+  );
 
   const formCard=(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
@@ -970,9 +1083,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
           const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
           onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+          onClose();
         }}>💾 Save</button>
         {confirmDel?(
-          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>onDelete(txn.id)}>Confirm Delete</button>
+          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>{onDelete(txn.id);onClose();}}>Confirm Delete</button>
         ):(
           <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑</button>
         )}
@@ -1011,7 +1125,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             upload one" prompt New Entry shows, so you can attach a receipt
             right from here instead of that only being possible elsewhere. */}
         <div style={{padding:"0 24px 24px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
-          {formCard}
+          {isGroup?multiFormCard:formCard}
           <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
             {attached?(<>
               <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
@@ -1188,8 +1302,15 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
   const[showEdit,setShowEdit]=useState(false);
+  // Every OTHER row sharing this bilag — a real multi-line voucher (New
+  // Entry's flexible balancing, a bulk bank post, a multi-line invoice, …)
+  // saves as several transaction rows under one shared bilag number. Only
+  // matters when a `transactions` list was actually passed in; callers that
+  // don't (a handful of lighter-weight call sites) just get single-line
+  // behavior exactly as before.
+  const groupTxnLines=useMemo(()=>transactions.length?transactions.filter(t=>t.bilag===txn.bilag).sort((a,b)=>(a.id>b.id?1:-1)):[txn],[transactions,txn.id,txn.bilag]);
   const[showChangeLog,setShowChangeLog]=useState(false);
   const[showComments,setShowComments]=useState(initialShowComments);
   const[attViewer,setAttViewer]=useState(null);
@@ -1271,8 +1392,21 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
       onUploadFile={uploadInboxFile?handleAttach:undefined}
       onAttachExisting={attachFilesToTxnEntry?attachExistingFile:undefined}
-      onSave={u=>{onEdit(u);setShowEdit(false);}}
-      onDelete={id=>{onDelete(id);setShowEdit(false);onClose();}}
+      groupLines={groupTxnLines}
+      // Closing is now EditModal's own call — the single-line Save button
+      // closes right after its one save, same as before; the multi-line
+      // Save button stays open across every line's own save call in its
+      // loop and only closes once, at the very end. Auto-closing here on
+      // every onSave call (the old behavior) flipped back to the detail
+      // view after just the FIRST line of a multi-line save.
+      onSave={u=>onEdit(u)}
+      // Closing on delete is now each mode's own responsibility inside
+      // EditModal (single-line closes right after its one delete;
+      // multi-line's per-row delete does NOT close, only "delete whole
+      // bilag" does) — auto-closing here on every call used to close the
+      // whole modal the instant just ONE line of a multi-line group was
+      // deleted, when only that line should have disappeared.
+      onDelete={id=>onDelete(id)}
       onClose={()=>setShowEdit(false)}
     />
   );
@@ -1727,7 +1861,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
-      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
+      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         onEdit={u=>{onEditTxn(u);setDetailTxn(null);}}
@@ -2418,7 +2552,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
-        {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
+        {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
           fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
           auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           onEdit={u=>{editTxn(u);setDetailTxn(null);}}
