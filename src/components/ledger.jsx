@@ -886,7 +886,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // one; more than one flips this modal into a real multi-line editor.
   const isGroup=groupLines&&groupLines.length>1;
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
-  const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
+  // At least one side, not both required — a line saved through New
+  // Entry's flexible multi-line balancing (or a bulk bank post) can
+  // legitimately have only a debit or only a credit account, its other
+  // side supplied by a different line in the same bilag. Requiring both
+  // here made Save permanently disabled the moment any such line showed
+  // up in this editor, with no way to tell why.
+  const valid=(form.debitCode||form.creditCode)&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
   const[dropHover,setDropHover]=useState(false);
 
@@ -944,9 +950,24 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const[confirmDelGroup,setConfirmDelGroup]=useState(false);
   const[confirmDelLine,setConfirmDelLine]=useState(null);
   const updateGroupLine=(li,patch)=>setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,...patch}:l));
-  const groupValid=groupLinesState.every(l=>l.debitCode&&l.creditCode&&l.description&&parseFloat(l.amount)>0);
+  // At least one side per line (see the single-line `valid` above for
+  // why), plus a real balance check across the whole group — editing
+  // amounts/accounts here can break a voucher that balanced exactly at
+  // save time, and unlike New Entry's own flexible balancing there was
+  // previously no check or warning if it did.
+  const groupValid=groupLinesState.every(l=>(l.debitCode||l.creditCode)&&l.description&&parseFloat(l.amount)>0);
+  const groupTotals=(()=>{
+    let totalDebit=0,totalCredit=0;
+    groupLinesState.forEach(l=>{
+      const amt=parseFloat(l.amount)||0;
+      if(l.debitCode)totalDebit+=amt;
+      if(l.creditCode)totalCredit+=amt;
+    });
+    return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100};
+  })();
+  const groupBalanced=Math.abs(groupTotals.totalDebit-groupTotals.totalCredit)<0.01;
   const saveGroup=async()=>{
-    if(!groupValid||savingGroup)return;
+    if(!groupValid||!groupBalanced||savingGroup)return;
     if(groupLinesState.some(l=>isDateClosed(l.date))){alert(`Period closed up to ${getPeriodClose()}. Edit the date(s) first.`);return;}
     setSavingGroup(true);
     for(const l of groupLinesState){
@@ -983,133 +1004,186 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
   };
 
-  const multiFormCard=(
-    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details — {groupLinesState.length} lines</div>
-      {(()=>{
-        const GRID_COLS="120px 1.3fr 1.3fr 1.3fr 100px 26px";
-        const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-        const vDivider={borderRight:`1px solid ${T.border}`};
-        return(
-          <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
-            <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
-              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
-              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
-              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
-              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
-              <div style={{...cellBase,...vDivider,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
-              <div style={cellBase}/>
-              {groupLinesState.map((l,li)=>{
-                const isLast=li===groupLinesState.length-1;
-                const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
-                const debitAcc=accounts.find(a=>a.code===l.debitCode);
-                const creditAcc=accounts.find(a=>a.code===l.creditCode);
-                const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
-                const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
-                return(<React.Fragment key={l.id}>
-                  <div style={{...rowCell,...vDivider}}>
-                    <input type="date" value={l.date} onChange={e=>updateGroupLine(li,{date:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 6px"}}/>
-                  </div>
-                  <div style={{...rowCell,...vDivider}}>
-                    <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateGroupLine(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} onContactPick={id=>updateGroupLine(li,{contactId:id})}/>
-                    <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateGroupLine(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked}/></div>
-                  </div>
-                  <div style={{...rowCell,...vDivider}}>
-                    <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateGroupLine(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} onContactPick={id=>updateGroupLine(li,{contactId:id})}/>
-                    <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateGroupLine(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
-                  </div>
-                  <div style={{...rowCell,...vDivider}}>
-                    <input value={l.description} onChange={e=>updateGroupLine(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 6px"}}/>
-                  </div>
-                  <div style={{...rowCell,...vDivider}}>
-                    <input type="number" value={l.amount} onChange={e=>updateGroupLine(li,{amount:e.target.value})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 6px",textAlign:"right"}}/>
-                  </div>
-                  <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
-                    {confirmDelLine===l.id?(
-                      <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
-                    ):(
-                      <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>🗑</button>
-                    )}
-                  </div>
-                </React.Fragment>);
-              })}
-            </div>
+  // Tripletex's own voucher screen: a "Details" tab holding the Voucher
+  // details box + Postings grid, and a SEPARATE "Attachments" tab for the
+  // document — not a permanent side-by-side split. Matches that instead.
+  const[activeTab,setActiveTab]=useState("details");
+  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode}];
+  // Single-line mode still keeps its own separate state (form/debitVatCode/
+  // creditVatCode) rather than groupLinesState — this routes a grid edit
+  // back to whichever state actually owns that field, so the same grid
+  // markup below works for both without duplicating it.
+  const updateRow=(li,patch)=>{
+    if(isGroup){updateGroupLine(li,patch);return;}
+    const formPatch={};
+    if("date"in patch)formPatch.date=patch.date;
+    if("description"in patch)formPatch.description=patch.description;
+    if("debitCode"in patch)formPatch.debitCode=patch.debitCode;
+    if("creditCode"in patch)formPatch.creditCode=patch.creditCode;
+    if("amount"in patch)formPatch.amount=patch.amount;
+    if(Object.keys(formPatch).length)setForm(f=>({...f,...formPatch}));
+    if("debitVatCode"in patch)setDebitVatCode(patch.debitVatCode);
+    if("creditVatCode"in patch)setCreditVatCode(patch.creditVatCode);
+  };
+  const isRowValid=l=>l.debitCode&&l.creditCode&&l.description&&parseFloat(l.amount)>0;
+  const rowsValid=gridRows.every(isRowValid);
+  const savingAny=isGroup?savingGroup:false;
+  const saveAll=async()=>{
+    if(isGroup){await saveGroup();return;}
+    if(!valid)return;
+    if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
+    if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
+    const amountNum=parseFloat(form.amount);
+    // The transaction only has one vatCode/vatPct/vatAmount slot — debit
+    // takes priority when both sides somehow carry a code, same
+    // convention Register voucher's general lines use.
+    const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
+    const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
+    onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+    onClose();
+  };
+
+  const postingsGrid=(()=>{
+    const GRID_COLS="150px 1.3fr 1.3fr 130px 60px";
+    const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+    const vDivider={borderRight:`1px solid ${T.border}`};
+    return(
+      <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+        <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
+          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
+          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
+          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
+          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount (NOK)</div>
+          <div style={{...cellBase,background:"#fff"}}/>
+          {gridRows.map((l,li)=>{
+            const isLast=li===gridRows.length-1;
+            const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
+            const debitAcc=accounts.find(a=>a.code===l.debitCode);
+            const creditAcc=accounts.find(a=>a.code===l.creditCode);
+            const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
+            const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+            return(<React.Fragment key={l.id}>
+              <div style={{...rowCell,...vDivider,display:"flex",flexDirection:"column",gap:4}}>
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
+                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 7px"}}/>
+              </div>
+              <div style={{...rowCell,...vDivider}}>
+                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
+                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked}/></div>
+              </div>
+              <div style={{...rowCell,...vDivider}}>
+                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
+                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
+              </div>
+              <div style={{...rowCell,...vDivider}}>
+                <input type="number" value={l.amount} onChange={e=>updateRow(li,{amount:e.target.value})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 7px",textAlign:"right"}}/>
+              </div>
+              <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
+                {isGroup&&(confirmDelLine===l.id?(
+                  <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
+                ):(
+                  <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
+                ))}
+              </div>
+            </React.Fragment>);
+          })}
+        </div>
+      </div>
+    );
+  })();
+
+  const detailsTab=(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+        <div style={{padding:"14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <div><SL>Voucher number</SL><div style={{...inp,background:T.bg,color:T.sub}}>{fmtB(txn.bilag)}</div></div>
+          <div><SL>Linked customer / supplier</SL><ContactSearch contacts={contacts} value={isGroup?"":form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
+        </div>
+        {moneySources&&moneySources.length>0&&(
+          <div style={{padding:"0 14px 14px"}}>
+            <SL>Whose</SL>
+            <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+              <option value="">— Select source (optional) —</option>
+              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
           </div>
-        );
-      })()}
-      {onAddLine&&(
-        <button onClick={addGroupLine} disabled={addingLine} style={{...btnGhost,padding:"6px 12px",fontSize:11,color:T.accent,borderColor:T.accent,alignSelf:"flex-start"}}>{addingLine?"Adding…":"+ Add line"}</button>
-      )}
-      <div style={{display:"flex",gap:6,marginTop:4}}>
-        <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:groupValid&&!savingGroup?1:0.5}} onClick={saveGroup}>{savingGroup?"Saving…":"💾 Save all lines"}</button>
-        {confirmDelGroup?(
-          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={deleteWholeGroup}>Confirm delete whole bilag</button>
-        ):(
-          <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDelGroup(true)}>🗑</button>
         )}
-        <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDelGroup(false);onClose();}}>✕</button>
+      </div>
+      {postingsGrid}
+      {isGroup&&!groupBalanced&&(
+        <div style={{fontSize:11,fontWeight:700,color:T.red,background:T.redLight,borderRadius:8,padding:"7px 12px"}}>
+          Off by {fmt(Math.abs(groupTotals.totalDebit-groupTotals.totalCredit))} — total debit {fmt(groupTotals.totalDebit)} vs total credit {fmt(groupTotals.totalCredit)}. Save is disabled until these match.
+        </div>
+      )}
+      {isGroup&&onAddLine&&(
+        <button onClick={addGroupLine} disabled={addingLine} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>{addingLine?"Adding…":"+ New row"}</button>
+      )}
+      <div style={{display:"flex",gap:16,alignItems:"center"}}>
+        <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:(isGroup?groupValid&&groupBalanced:valid)&&!savingAny?1:0.5}} onClick={saveAll}>{savingAny?"Saving…":"Save"}</button>
+        {/* Text-link secondary actions — matches Tripletex's own row of
+            plain Delete/Copy/Reverse links under the Save button, instead
+            of every action being its own colored box. */}
+        {isGroup?(
+          confirmDelGroup?(
+            <button onClick={deleteWholeGroup} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete whole bilag</button>
+          ):(
+            <button onClick={()=>setConfirmDelGroup(true)} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+          )
+        ):(
+          confirmDel?(
+            <button onClick={()=>{onDelete(txn.id);onClose();}} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete</button>
+          ):(
+            <button onClick={()=>setConfirmDel(true)} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+          )
+        )}
       </div>
     </div>
   );
 
-  const formCard=(
-    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{fontSize:14,fontWeight:800,color:T.text}}>Voucher details</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div><SL>Date</SL><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp}/></div>
-        <div><SL>Amount</SL><input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp}/></div>
-      </div>
-      <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={pickDebitAccount} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(f=>({...f,contactId:id}))}/></div>
-        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={pickCreditAccount} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(f=>({...f,contactId:id}))}/></div>
-      </div>
-      {/* A VAT box under each side, in the same two columns as the account
-          row above it — matching Register voucher's per-side VAT pattern.
-          Each is a real dropdown with "— Select VAT code —" printed inside
-          the box itself, so picking a code is what makes that text go away,
-          not a separate label above the field. Slightly shorter than the
-          account dropdown above it since it's a secondary/auxiliary field,
-          not a fresh full-height input. An empty cell holds the column
-          steady on whichever side isn't a P&L account. Locked exactly like
-          every other entry screen when the account itself is VAT-locked. */}
-      {(debitIsExpense||creditIsIncome)&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:-8}}>
-          <div>{debitIsExpense&&<VatDrop value={debitVatCode} onChange={setDebitVatCode} options={vatCodeOptions("input")} disabled={debitVatLocked}/>}</div>
-          <div>{creditIsIncome&&<VatDrop value={creditVatCode} onChange={setCreditVatCode} options={vatCodeOptions("output")} disabled={creditVatLocked}/>}</div>
+  const attachmentsTab=(
+    <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:600,background:"#fff"}}>
+      {attached?(<>
+        {/* A dark toolbar strip, same idea as Tripletex's own file-viewer
+            chrome, instead of a bare filename label above the preview. */}
+        <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</span>
+        </div>
+        <div style={{height:"calc(100% - 38px)"}}>
+          <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
+        </div>
+      </>):(
+        <div
+          onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
+          onDragLeave={()=>setDropHover(false)}
+          onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
+          style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
+          <i className="ti ti-file-off" style={{fontSize:28}}/>
+          <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
+          {onUploadFile&&(
+            <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
+              <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
+              <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
+              <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
+            </label>
+          )}
+          {onAttachExisting&&availableInboxFiles.length>0&&(
+            <select value="" disabled={attUploading} onChange={e=>{
+              // <select> options always come back as strings — match that
+              // against the (possibly numeric) real id rather than
+              // passing the string straight through, which would silently
+              // fail the same way form.attachmentId's string/number
+              // mismatch did in New Entry (see comment there).
+              const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
+              if(picked)onAttachExisting(picked.id);
+            }} style={{...selSm,width:"100%",maxWidth:320,marginTop:2}}>
+              <option value="">— or pick an existing Inbox file —</option>
+              {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+            </select>
+          )}
         </div>
       )}
-      <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
-      {moneySources&&moneySources.length>0&&(
-        <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
-          <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
-          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
-            <option value="">— Select source (optional) —</option>
-            {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
-      )}
-      <div style={{display:"flex",gap:6,marginTop:4}}>
-        <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:valid?1:0.5}} onClick={()=>{
-          if(!valid)return;
-          if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
-          if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
-          const amountNum=parseFloat(form.amount);
-          // The transaction only has one vatCode/vatPct/vatAmount slot —
-          // debit takes priority when both sides somehow carry a code,
-          // same convention Register voucher's general lines use.
-          const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
-          const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
-          onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
-          onClose();
-        }}>💾 Save</button>
-        {confirmDel?(
-          <button style={{background:T.red,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit"}} onClick={()=>{onDelete(txn.id);onClose();}}>Confirm Delete</button>
-        ):(
-          <button style={{background:T.redLight,color:T.red,border:`1px solid ${T.redMid}`,borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>setConfirmDel(true)}>🗑</button>
-        )}
-        <button style={{background:T.bg,color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px",fontWeight:600,fontSize:13,cursor:"pointer",flex:1,fontFamily:"inherit"}} onClick={()=>{setConfirmDel(false);onClose();}}>✕</button>
-      </div>
     </div>
   );
 
@@ -1121,62 +1195,24 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // backdrop, no fixed positioning, no click-outside-to-close; scrolls
   // itself into view on open since wherever this renders in the page
   // (right where the row that opened it lives) might not already be at
-  // the top of the viewport.
+  // the top of the viewport. Details/Attachments as real tabs (not a
+  // permanent side-by-side split) matches Tripletex's own voucher screen.
   const rootRef=useRef(null);
   useEffect(()=>{rootRef.current&&rootRef.current.scrollIntoView({behavior:"smooth",block:"start"});},[]);
   return(
-    <div ref={rootRef} style={{maxWidth:1400}}>
+    <div ref={rootRef} style={{maxWidth:1000}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
         <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
       </div>
-      {/* Always a two-column layout — form + document preview — matching
-          New Entry exactly, rather than only showing the preview column
-          when a file happens to already be attached. Without an
-          attachment yet, the right column shows the same "no document /
-          upload one" prompt New Entry shows, so you can attach a receipt
-          right from here instead of that only being possible elsewhere. */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
-        {isGroup?multiFormCard:formCard}
-        <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
-          {attached?(<>
-            <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
-            <div style={{height:"calc(100% - 33px)"}}>
-              <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
-            </div>
-          </>):(
-            <div
-              onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
-              onDragLeave={()=>setDropHover(false)}
-              onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
-              style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
-              <i className="ti ti-file-off" style={{fontSize:28}}/>
-              <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
-              {onUploadFile&&(
-                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
-                  <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
-                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
-                </label>
-              )}
-              {onAttachExisting&&availableInboxFiles.length>0&&(
-                <select value="" disabled={attUploading} onChange={e=>{
-                  // <select> options always come back as strings — match
-                  // that against the (possibly numeric) real id rather
-                  // than passing the string straight through, which would
-                  // silently fail the same way form.attachmentId's string/
-                  // number mismatch did in New Entry (see comment there).
-                  const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
-                  if(picked)onAttachExisting(picked.id);
-                }} style={{...selSm,width:"100%",marginTop:2}}>
-                  <option value="">— or pick an existing Inbox file —</option>
-                  {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                </select>
-              )}
-            </div>
-          )}
-        </div>
+      <div style={{display:"flex",gap:20,borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
+        {[["details","Details"],["attachments","Attachments"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setActiveTab(id)} style={{background:"none",border:"none",borderBottom:activeTab===id?`2px solid ${T.accent}`:"2px solid transparent",padding:"0 2px 10px",fontSize:13,fontWeight:activeTab===id?700:500,color:activeTab===id?T.accent:T.sub,cursor:"pointer",fontFamily:"inherit"}}>
+            {label}{id==="attachments"&&attached?" •":""}
+          </button>
+        ))}
       </div>
+      {activeTab==="details"?detailsTab:attachmentsTab}
     </div>
   );
 }
