@@ -5428,16 +5428,20 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         </div>
       )}
 
-      {/* Month tabs — click to jump, ✓ = fully reconciled, clock = pending */}
-      <div style={{display:"flex",gap:2,marginBottom:16,borderBottom:`1px solid ${T.border}`,overflowX:"auto"}}>
+      {/* Month tabs — click to jump, ✓ = fully reconciled, clock = pending.
+          Rebuilt as a horizontal pill strip (icon beside label, not stacked
+          above it) with a filled active pill instead of a bare underline —
+          reads as one cohesive segmented control rather than 12 separate
+          icon-over-text buttons competing for vertical space. */}
+      <div style={{display:"flex",gap:3,marginBottom:16,padding:4,background:T.bg,border:`1px solid ${T.border}`,borderRadius:11,overflowX:"auto"}}>
         {monthTabs.map(mt=>{
           const active=mt.key===month;
           return(
-            <button key={mt.key} onClick={()=>{setMonth(mt.key);clearSelection();}} style={{background:"none",border:"none",borderBottom:active?`2px solid ${T.accent}`:"2px solid transparent",padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0}}>
+            <button key={mt.key} onClick={()=>{setMonth(mt.key);clearSelection();}} style={{background:active?"#fff":"none",border:"none",boxShadow:active?"0 1px 4px rgba(20,60,50,0.1)":"none",borderRadius:8,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,flexShrink:0,transition:"background .12s"}}>
               {mt.hasActivity?(
-                mt.done?<i className="ti ti-circle-check" style={{fontSize:15,color:T.green}}/>:<i className="ti ti-clock" style={{fontSize:15,color:T.muted}}/>
-              ):<i className="ti ti-clock" style={{fontSize:15,color:T.border}}/>}
-              <span style={{fontSize:11,fontWeight:active?700:500,color:active?T.accent:T.sub}}>{mt.label}</span>
+                mt.done?<i className="ti ti-circle-check-filled" style={{fontSize:12,color:T.green}}/>:<i className="ti ti-clock" style={{fontSize:12,color:active?T.accent:T.muted}}/>
+              ):<i className="ti ti-point" style={{fontSize:12,color:T.border}}/>}
+              <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.text:T.sub}}>{mt.label}</span>
             </button>
           );
         })}
@@ -5455,16 +5459,30 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const diff=card1Value-card2Value;
         const hasSelection=selectedLines.length>0||selectedTxnsArr.length>0;
         const readyToBokfor=selectedLines.length>0&&!selectedTxnsArr.length;
+        // A shared card shell for all three — same glass surface, same
+        // corner radius, same icon-badge-then-figure anatomy — so the
+        // Difference card reads as one member of the set instead of a
+        // jarring full-bleed color block sitting next to two quiet white
+        // ones. Only a slim left accent bar and the icon badge carry the
+        // color now; the surface itself stays consistent.
+        const cardShell=accent=>({background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderLeft:accent?`3px solid ${accent}`:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"16px 20px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)",display:"flex",alignItems:"center",gap:14});
+        const iconBadge=(icon,bg,fg)=>(<div style={{width:38,height:38,borderRadius:11,background:bg,color:fg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className={`ti ${icon}`} style={{fontSize:17}}/></div>);
         return(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:16}}>
-            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 22px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
-              <div style={{fontSize:11,color:T.sub,marginBottom:6}}>Entered in ledger{selectedTxnsArr.length>0&&<span style={{color:T.accent,fontWeight:700}}> · {selectedTxnsArr.length} selected</span>}</div>
-              <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmtBal(card1Value)}</div>
+            <div style={cardShell(T.accent)}>
+              {iconBadge("ti-book-2",T.accentLight,T.accent)}
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:10.5,color:T.sub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3,marginBottom:4}}>Entered in ledger{selectedTxnsArr.length>0&&<span style={{color:T.accent,fontWeight:700}}> · {selectedTxnsArr.length} selected</span>}</div>
+                <div style={{fontSize:18,fontWeight:800,color:T.text,fontVariantNumeric:"tabular-nums"}}>{fmtBal(card1Value)}</div>
+              </div>
             </div>
-            <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:"18px 22px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-              <div>
-                <div style={{fontSize:11,color:T.sub,marginBottom:6}}>{selectedLines.length>0?<span style={{color:T.accent,fontWeight:700}}>Selected · {selectedLines.length}</span>:"From bank statement"}</div>
-                <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmtBal(card2Value)}</div>
+            <div style={{...cardShell(T.accent),justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,minWidth:0}}>
+                {iconBadge("ti-building-bank",T.accentLight,T.accent)}
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:10.5,color:T.sub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3,marginBottom:4}}>{selectedLines.length>0?<span style={{color:T.accent,fontWeight:700}}>Selected · {selectedLines.length}</span>:"From bank statement"}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:T.text,fontVariantNumeric:"tabular-nums"}}>{fmtBal(card2Value)}</div>
+                </div>
               </div>
               {hasSelection&&(
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
@@ -5474,13 +5492,20 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               )}
             </div>
             {readyToBokfor?(
-              <div style={{background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"18px 22px",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:8}}>
-                <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit",width:"100%"}}>Post ({selectedLines.length})</button>
+              <div style={cardShell(T.accent)}>
+                {iconBadge("ti-checkbox",T.accentLight,T.accent)}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10.5,color:T.sub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3,marginBottom:4}}>Ready to book</div>
+                  <button onClick={()=>setBulkPostOpen(true)} disabled={isApproved} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 16px",fontSize:11.5,fontWeight:700,cursor:isApproved?"not-allowed":"pointer",fontFamily:"inherit"}}>Post ({selectedLines.length})</button>
+                </div>
               </div>
             ):(
-              <div style={{background:Math.abs(diff)>0.01?T.redLight:T.greenBg,border:`1px solid ${Math.abs(diff)>0.01?T.red:T.green}`,borderRadius:10,padding:"18px 22px"}}>
-                <div style={{fontSize:11,color:Math.abs(diff)>0.01?T.red:T.green,marginBottom:6}}>Difference</div>
-                <div style={{fontSize:17,fontWeight:800,color:Math.abs(diff)>0.01?T.red:T.green}}>{fmtBal(diff)}</div>
+              <div style={cardShell(Math.abs(diff)>0.01?T.red:T.green)}>
+                {iconBadge(Math.abs(diff)>0.01?"ti-alert-triangle":"ti-circle-check",Math.abs(diff)>0.01?T.redLight:T.greenBg,Math.abs(diff)>0.01?T.red:T.green)}
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:10.5,color:T.sub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3,marginBottom:4}}>Difference</div>
+                  <div style={{fontSize:18,fontWeight:800,color:Math.abs(diff)>0.01?T.red:T.green,fontVariantNumeric:"tabular-nums"}}>{fmtBal(diff)}</div>
+                </div>
               </div>
             )}
           </div>
