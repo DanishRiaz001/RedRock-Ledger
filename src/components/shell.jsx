@@ -163,53 +163,50 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   const[rightWidth,setRightWidth]=useState(defaultRightWidth);
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
-  const rafRef=React.useRef(null);
+  const panelRef=React.useRef(null);
+  const handleRef=React.useRef(null);
   // Always anchored to the true right edge of the browser window — not
   // "immediately right of whatever's on the left," and not something that
   // only kicks in once you've dragged past some width threshold. The
   // preview's right edge never moves; dragging the splitter only moves its
   // LEFT edge (by changing rightWidth), which is exactly "move the splitter
   // toward the file list to make the preview bigger."
+  //
+  // Routing every mousemove through setRightWidth (even rAF-throttled) put
+  // a full React re-render on the critical path of every frame — on a page
+  // with any real amount of content that's enough overhead to visibly lag
+  // behind the cursor, which is what still read as "not smooth" after the
+  // earlier fix. This now writes the panel/handle's width straight to the
+  // DOM via refs on every frame (no React render involved at all during
+  // the drag itself) and only commits the final value to React state once,
+  // on mouseup — the same technique real resizable-panel libraries use.
   const startDrag=(e)=>{
     e.preventDefault();
     draggingRef.current={startX:e.clientX,startWidth:rightWidth};
-    // Mark the body while dragging so preview content (esp. the image's
-    // transform transition) doesn't animate — without this the document
-    // preview visibly "zooms" as the panel width changes mid-drag.
+    let pending=rightWidth,frame=null;
     document.body.classList.add("rr-panel-resizing");
     const onMove=(ev)=>{
       if(!draggingRef.current)return;
-      // Only apply the resize once per animation frame — applying it on
-      // every raw mousemove event causes rapid, jittery reflows of the
-      // preview content that read as "zooming" rather than a smooth resize.
-      if(rafRef.current)cancelAnimationFrame(rafRef.current);
-      rafRef.current=requestAnimationFrame(()=>{
-        if(!draggingRef.current)return;
-        const delta=draggingRef.current.startX-ev.clientX;
-        const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
-        setRightWidth(next);
+      const delta=draggingRef.current.startX-ev.clientX;
+      pending=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
+      if(frame)return;
+      frame=requestAnimationFrame(()=>{
+        frame=null;
+        if(panelRef.current)panelRef.current.style.width=pending+"px";
+        if(handleRef.current)handleRef.current.style.right=pending+"px";
       });
     };
-    const onUp=(ev)=>{
-      // The rAF-throttled onMove above always has, at most, one frame's
-      // worth of movement still "in flight" (scheduled but not yet
-      // applied). Cancelling that frame here — as this used to do —
-      // silently dropped the very last bit of mouse movement, so the
-      // splitter could end up a few pixels behind wherever you actually
-      // released the mouse instead of tracking it exactly: it "stuck"
-      // just short of where you dragged it to. Applying the release
-      // position directly, from the real mouseup coordinates, guarantees
-      // the panel ends up exactly where the mouse was let go.
-      if(draggingRef.current){
-        const delta=draggingRef.current.startX-ev.clientX;
-        const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
-        setRightWidth(next);
-      }
+    const onUp=()=>{
+      if(frame){cancelAnimationFrame(frame);frame=null;}
       draggingRef.current=null;
-      if(rafRef.current){cancelAnimationFrame(rafRef.current);rafRef.current=null;}
       document.body.classList.remove("rr-panel-resizing");
       window.removeEventListener("mousemove",onMove);
       window.removeEventListener("mouseup",onUp);
+      // Commit the real final value to React state now that the drag is
+      // over — this is the one point a render is actually needed, so
+      // reflowing/repainting the panel's own children (which may depend
+      // on rightWidth, e.g. a percentage-based child) happens exactly once.
+      setRightWidth(pending);
     };
     window.addEventListener("mousemove",onMove);
     window.addEventListener("mouseup",onUp);
@@ -248,10 +245,10 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             normal flex flow, since the panel it borders isn't in flex flow
             either; a flex-flow handle would drift to wherever `left`'s
             flex:1 happens to end, not to the actual seam. */}
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}}>
+        <div ref={handleRef} onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}}>
           <div style={{position:"sticky",top:90,width:4,height:44,margin:"0 auto",borderRadius:2,background:T.accent}}/>
         </div>
-        <div style={{
+        <div ref={panelRef} style={{
           // Anchored to the actual right edge of the viewport via
           // position:fixed, so it's genuinely screen-edge-aligned no matter
           // what padding the page around it has — and it floats over
