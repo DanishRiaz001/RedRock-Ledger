@@ -5690,10 +5690,17 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,tagTransaction}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
+  // Clicking a bilag here used to only navigate away to the General ledger
+  // for its control account — this screen itself had no edit/delete
+  // affordance at all, which is what looked like "this entry can't be
+  // edited or removed" for anyone who never realized the click had
+  // silently jumped them to a different screen. Opens the same DetailModal
+  // every other ledger view uses instead.
+  const[detailTxn,setDetailTxn]=useState(null);
   const[search,setSearch]=useState("");
   const[contactFilter,setContactFilter]=useState("");
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
@@ -5926,7 +5933,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                             <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
                           )}
                         </td>
-                        <td onClick={()=>onOpenLedger&&onOpenLedger({code,name:getName(code)},t.date,t.date)} style={{width:90,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
+                        <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{width:90,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
                         <td style={{width:100,color:T.sub}}>{t.invoiceNo||"—"}</td>
                         <td style={{width:100,color:T.text}}>{t.date}</td>
                         <td style={{width:100,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
@@ -5975,6 +5982,13 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       </div>
       {matchDetailGroupId&&(
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
+      )}
+      {detailTxn&&(
+        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+          onEdit={u=>{onEditTxn&&onEditTxn(u);setDetailTxn(null);}}
+          onDelete={id=>{onDeleteTxn&&onDeleteTxn(id);setDetailTxn(null);}}
+          onReverse={tx=>{onReverseTxn&&onReverseTxn(tx);setDetailTxn(null);}}
+          onClose={()=>setDetailTxn(null)}/>
       )}
     </div>
   );

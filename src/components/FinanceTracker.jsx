@@ -1135,7 +1135,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
