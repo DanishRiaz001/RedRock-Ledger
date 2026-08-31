@@ -3737,18 +3737,24 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               button itself once the entry is really saved, instead of
               claiming a number up front. */}
           <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap",alignItems:"flex-start"}}>
-            <div>
-              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
-              <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
-            </div>
-            <div>
-              <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Entry type</div>
-              <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px"}}>
-                <option value="receipt">Receipt</option>
-                <option value="supplier">Supplier Invoice</option>
-                <option value="customer">Customer Sale</option>
-              </select>
-            </div>
+            {/* Date only lives here for a plain Receipt entry — Supplier
+                Invoice/Customer Sale move it into their own Invoice details
+                section below (alongside Due date) instead of showing it
+                twice. */}
+            {entryMode==="receipt"&&(
+              <div>
+                <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
+                <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
+              </div>
+            )}
+            {/* No "Entry type" caption above this — it's the only control in
+                the Voucher details box besides Date, so the section header
+                already says what it is. */}
+            <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px",alignSelf:entryMode==="receipt"?"flex-end":"auto"}}>
+              <option value="receipt">Receipt</option>
+              <option value="supplier">Supplier Invoice</option>
+              <option value="customer">Customer Sale</option>
+            </select>
             {/* Comment lives here as an icon, not a permanent full-width row
                 — a filled dot marks when one's actually been typed, and it
                 only shows for Receipt entries since that's the only mode a
@@ -4265,26 +4271,39 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             <div style={sectionBox}>
               <div style={sectionHead}>Invoice details</div>
               <div style={sectionBody}>
-                <div>
-                  <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
-                  {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
-                    <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
-                      <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
-                      <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
-                    </div>
-                  );})():(
-                    <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
-                  )}
-                </div>
+                {/* Two columns: Supplier + Invoice No stacked on the left,
+                    Date + Due date stacked on the right — same box sizing
+                    in both rows of each column, rather than the date living
+                    up in Voucher details while everything else about this
+                    invoice sits down here. */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <div>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div>
+                      <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
+                      {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
+                        <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8,boxSizing:"border-box",minHeight:36}}>
+                          <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
+                          <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
+                          <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+                        </div>
+                      );})():(
+                        <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
+                      <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                    <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
+                      <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",minHeight:36}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
+                      <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -4301,7 +4320,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               <div style={sectionHead}>{invIsCustomer?"Sales lines":"Costs"}</div>
               <div style={{padding:isDesktop?"10px 14px 14px":"10px 14px 14px"}}>
               {(()=>{
-                const GRID_COLS="1.6fr 110px 110px 26px";
+                // Account narrower, VAT wider (its own text — code, rate,
+                // and name — was cramped at the old width) — plus a live
+                // Excl. VAT / VAT amount breakdown next to the editable
+                // Incl. VAT amount, so it's never ambiguous which figure
+                // you're typing.
+                const GRID_COLS="1.1fr 150px 90px 90px 100px 26px";
                 const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
                 const vDivider={borderRight:`1px solid ${T.border}`};
                 const rows=[
@@ -4310,10 +4334,12 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 ];
                 return(
               <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8}}>
-                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?520:0,overflowX:isDesktop?"visible":"auto"}}>
+                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?660:0,overflowX:isDesktop?"visible":"auto"}}>
                   <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
                   <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Excl. VAT</div>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>VAT amt</div>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Incl. VAT</div>
                   <div style={{...cellBase,background:"#fff"}}/>
                   {rows.map((r,idx)=>{
                     const acc=accounts.find(a=>a.code===r.accountCode);
@@ -4329,6 +4355,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                         setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                       }
                     };
+                    // The one editable amount is Incl. VAT (the gross figure
+                    // a supplier invoice actually states) — Excl. VAT and
+                    // VAT amt are just its breakdown by this line's own VAT
+                    // code, shown read-only so there's never a question of
+                    // which figure the Amount box holds.
+                    const rowVc=findVatCode(r.vatCode,invVatDirection);
+                    const gross=Math.abs(parseFloat(r.amount)||0);
+                    const rowVatAmt=rowVc&&rowVc.rate?Math.round((gross-(gross/(1+rowVc.rate/100)))*100)/100:0;
+                    const rowNet=Math.round((gross-rowVatAmt)*100)/100;
+                    const readOnlyCell={fontSize:12,color:T.muted,textAlign:"right",padding:"6px 7px"};
                     return(<React.Fragment key={idx}>
                       <div style={{...rowCell,...vDivider}}>
                         <AccDrop value={r.accountCode||""} onChange={code=>{
@@ -4339,6 +4375,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                       <div style={{...rowCell,...vDivider}}>
                         <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
                       </div>
+                      <div style={{...rowCell,...vDivider,...readOnlyCell}}>{gross?fmt(rowNet):"—"}</div>
+                      <div style={{...rowCell,...vDivider,...readOnlyCell}}>{gross?fmt(rowVatAmt):"—"}</div>
                       <div style={{...rowCell,...vDivider}}>
                         {/* Tabbing out of the last row's Amount box starts a
                             new line automatically — matches the quick-entry
@@ -4357,7 +4395,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               </div>
                 );
               })()}
-              <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"4px 9px",fontSize:10,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+              <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"3px 7px",fontSize:9,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
 
               {/* Running Debit / Credit / VAT / Difference — debit is what's
                   entered across the cost-account line(s) above; credit is the
