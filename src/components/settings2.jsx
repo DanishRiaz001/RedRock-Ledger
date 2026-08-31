@@ -645,13 +645,14 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
   const[rows,setRows]=useState([]);
   const[status,setStatus]=useState("idle"); // idle | preview | importing | done | error
+  const[dropHover,setDropHover]=useState(false);
   const[progress,setProgress]=useState(0);
   const[total,setTotal]=useState(0);
   const[errMsg,setErrMsg]=useState("");
   const[imported,setImported]=useState(0);
 
-  const handleFile=e=>{
-    const file=e.target.files[0];
+  const handleFile=e=>processFile(e.target.files[0]);
+  const processFile=file=>{
     if(!file)return;
     if(typeof XLSX==="undefined"){setErrMsg("Excel reader not loaded. Please refresh the page and try again.");setStatus("error");return;}
     setStatus("idle");setRows([]);setErrMsg("");
@@ -737,9 +738,13 @@ function ImportScreen({accounts,addTransaction,nextBilag,onBack}){
           <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.6}}>
             Upload your Excel file. It must have a sheet named <em>Import Entries</em> with columns: Date, Debit Code, Credit Code, Description, Amount, Contact ID (optional).
           </div>
-          <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:T.bg,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"22px 16px",textAlign:"center",cursor:"pointer"}}>
+          <label
+            onDragOver={e=>{e.preventDefault();setDropHover(true);}}
+            onDragLeave={()=>setDropHover(false)}
+            onDrop={e=>{e.preventDefault();setDropHover(false);processFile(e.dataTransfer.files[0]);}}
+            style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:dropHover?T.accentLight:T.bg,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"22px 16px",textAlign:"center",cursor:"pointer"}}>
             <i className="ti ti-upload" style={{fontSize:22,color:T.accent}}/>
-            <div style={{fontSize:13,fontWeight:700,color:T.accent}}>Click to choose an Excel file</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.accent}}>{dropHover?"Drop to upload":"Click to choose an Excel file, or drag one here"}</div>
             <div style={{fontSize:11,color:T.muted}}>.xlsx files only</div>
             <input type="file" accept=".xlsx" onChange={handleFile} style={{display:"none"}}/>
           </label>

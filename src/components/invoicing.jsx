@@ -4,7 +4,7 @@ import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeO
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal, VatDrop, SaveFlashButton } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
-import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
+import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { BankAccountDetailsModal, ConicChart } from "./reports.jsx";
 
 function VATCodesScreen({accounts}){
@@ -129,6 +129,7 @@ function POSSettingsScreen({accounts}){
 // MasterFiles/Suppliers, GeneralLedgerEntries/Journal/Transaction/Line.
 function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransaction}){
   const[parsing,setParsing]=useState(false);
+  const[dropHover,setDropHover]=useState(false);
   const[parseError,setParseError]=useState("");
   const[parsed,setParsed]=useState(null); // {companyName, accounts, customers, suppliers, transactions}
   const[opts,setOpts]=useState({
@@ -393,9 +394,13 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
 
       {!parsed&&(
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
-          <label style={{display:"block",border:`2px dashed ${T.border}`,borderRadius:10,padding:"40px 16px",textAlign:"center",cursor:parsing?"wait":"pointer",background:T.bg}}>
+          <label
+            onDragOver={e=>{e.preventDefault();if(!parsing)setDropHover(true);}}
+            onDragLeave={()=>setDropHover(false)}
+            onDrop={e=>{e.preventDefault();setDropHover(false);if(!parsing&&e.dataTransfer.files[0])parseFile(e.dataTransfer.files[0]);}}
+            style={{display:"block",border:`2px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"40px 16px",textAlign:"center",cursor:parsing?"wait":"pointer",background:dropHover?T.accentLight:T.bg}}>
             <i className="ti ti-file-upload" style={{fontSize:28,color:T.muted,display:"block",marginBottom:8}}/>
-            <div style={{fontSize:13,color:T.sub,fontWeight:600}}>{parsing?"Reading file…":"Choose SAF-T file (.xml)"}</div>
+            <div style={{fontSize:13,color:T.sub,fontWeight:600}}>{parsing?"Reading file…":dropHover?"Drop to upload":"Choose SAF-T file (.xml), or drag one here"}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:4}}>Exported from your previous accounting system</div>
             <input type="file" accept=".xml" disabled={parsing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])parseFile(e.target.files[0]);e.target.value="";}}/>
           </label>
@@ -588,6 +593,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
     XLSX.writeFile(wb,"Contacts.xlsx");
   };
   const[importing,setImporting]=useState(false);
+  const[showImportModal,setShowImportModal]=useState(false);
   const[importError,setImportError]=useState("");
   const[showMerge,setShowMerge]=useState(false);
   const[mergeKeepId,setMergeKeepId]=useState("");
@@ -778,10 +784,14 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Customers and suppliers</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={exportContacts} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export</button>
-          <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>
+          <button onClick={()=>setShowImportModal(true)} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>
             <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>{importing?"Importing…":"Import"}
-            <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])importContacts(e.target.files[0]);e.target.value="";}}/>
-          </label>
+          </button>
+          {showImportModal&&(
+            <UploadDropModal title="Import customers/suppliers" accept=".csv,.xlsx,.xls" busy={importing}
+              onFiles={files=>{if(files[0])importContacts(files[0]);setShowImportModal(false);}}
+              onClose={()=>setShowImportModal(false)}/>
+          )}
           {mergeContacts&&<button onClick={()=>setShowMerge(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-git-merge" style={{fontSize:13,marginRight:5}}/>Merge</button>}
           <button onClick={startNew} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-plus" style={{fontSize:13,marginRight:5}}/>New {type==="customer"?"customer":"supplier"}</button>
         </div>
@@ -4378,9 +4388,21 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               })}
             </div>
           )}
-          <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:T.bg}}>
+          <label
+            onDragOver={e=>{e.preventDefault();if(!uploadingInvAtt)setDropHover(true);}}
+            onDragLeave={()=>setDropHover(false)}
+            onDrop={async e=>{
+              e.preventDefault();setDropHover(false);
+              const file=e.dataTransfer.files[0];
+              if(!file||uploadingInvAtt)return;
+              setUploadingInvAtt(true);
+              const newFile=await uploadInboxFile(file);
+              if(newFile){setInvAttachmentIds(p=>[...p,newFile.id]);setInvAttOpen(true);}
+              setUploadingInvAtt(false);
+            }}
+            style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:8,padding:"20px 9px",cursor:uploadingInvAtt?"wait":"pointer",background:dropHover?T.accentLight:T.bg}}>
             <span style={{fontSize:22}}>{uploadingInvAtt?"⏳":"📎"}</span>
-            <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":"Tap to upload a file"}</span>
+            <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingInvAtt?"Uploading…":dropHover?"Drop to upload":"Tap to upload a file, or drag one here"}</span>
             <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingInvAtt} style={{display:"none"}} onChange={async e=>{
               if(!e.target.files[0])return;
               setUploadingInvAtt(true);

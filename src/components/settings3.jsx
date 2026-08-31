@@ -2,11 +2,12 @@ import { useState } from "react";
 import { T, inp } from "../lib/theme.js";
 import { getAnthropicKey, setAnthropicKey, fmt } from "../lib/utils.js";
 import { AccDrop, FlexDateInput, ContactSearch } from "./ledger.jsx";
-import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
+import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 
 function CustomerImportScreen({contacts,setContacts}){
   const[importType,setImportType]=useState(null); // null | "customer" | "supplier"
   const[importing,setImporting]=useState(false);
+  const[dropHover,setDropHover]=useState(false);
   const[importError,setImportError]=useState("");
   const[importResult,setImportResult]=useState(null);
   const[howTab,setHowTab]=useState("read");
@@ -115,9 +116,13 @@ function CustomerImportScreen({contacts,setContacts}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:14}}>Choose import file</div>
-          <label style={{display:"block",border:`2px dashed ${T.border}`,borderRadius:10,padding:"36px 16px",textAlign:"center",cursor:importing?"wait":"pointer",background:T.bg}}>
+          <label
+            onDragOver={e=>{e.preventDefault();if(!importing)setDropHover(true);}}
+            onDragLeave={()=>setDropHover(false)}
+            onDrop={e=>{e.preventDefault();setDropHover(false);if(!importing&&e.dataTransfer.files[0])doImport(e.dataTransfer.files[0],importType);}}
+            style={{display:"block",border:`2px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"36px 16px",textAlign:"center",cursor:importing?"wait":"pointer",background:dropHover?T.accentLight:T.bg}}>
             <i className="ti ti-cloud-upload" style={{fontSize:26,color:T.muted,display:"block",marginBottom:8}}/>
-            <div style={{fontSize:12,color:T.sub}}>{importing?"Importing…":"Allowed formats are text/csv, .xls and .xlsx."}</div>
+            <div style={{fontSize:12,color:T.sub}}>{importing?"Importing…":dropHover?"Drop to upload":"Allowed formats are text/csv, .xls and .xlsx — or drag a file here."}</div>
             <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])doImport(e.target.files[0],importType);e.target.value="";}}/>
           </label>
           {importError&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"10px 14px",fontSize:12,marginTop:14}}>{importError}</div>}
@@ -262,6 +267,8 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
   const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:""});
   const[rows,setRows]=useState([newRow()]);
   const[importing,setImporting]=useState(false);
+  const[showImportModal,setShowImportModal]=useState(false);
+  const[showAttachModal,setShowAttachModal]=useState(false);
   const[importError,setImportError]=useState("");
   const[posting,setPosting]=useState(false);
   const[posted,setPosted]=useState(false);
@@ -447,15 +454,23 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
           <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>As-of date</div>
           <FlexDateInput value={asOfDate} onChange={setAsOfDate}/>
         </div>
-        <label style={{marginTop:17,background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+        <button onClick={()=>setShowImportModal(true)} disabled={importing} style={{marginTop:17,background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
           <i className="ti ti-upload" style={{fontSize:14}}/>{importing?"Reading…":"Import CSV / Excel"}
-          <input type="file" accept=".csv,.xlsx,.xls" disabled={importing} style={{display:"none"}} onChange={e=>{if(e.target.files[0])doImport(e.target.files[0]);e.target.value="";}}/>
-        </label>
+        </button>
+        {showImportModal&&(
+          <UploadDropModal title="Import trial balance" accept=".csv,.xlsx,.xls" busy={importing}
+            onFiles={files=>{if(files[0])doImport(files[0]);setShowImportModal(false);}}
+            onClose={()=>setShowImportModal(false)}/>
+        )}
         {uploadInboxFile&&(
-          <label style={{marginTop:17,background:"#fff",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:uploadingAttachment?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setShowAttachModal(true)} disabled={uploadingAttachment} style={{marginTop:17,background:"#fff",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:12,fontWeight:700,cursor:uploadingAttachment?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
             <i className="ti ti-paperclip" style={{fontSize:14}}/>{uploadingAttachment?"Uploading…":attachment?"Replace reference file":"Attach reference file"}
-            <input type="file" disabled={uploadingAttachment} style={{display:"none"}} onChange={e=>{if(e.target.files[0])doUploadAttachment(e.target.files[0]);e.target.value="";}}/>
-          </label>
+          </button>
+        )}
+        {showAttachModal&&(
+          <UploadDropModal title="Attach reference file" busy={uploadingAttachment}
+            onFiles={files=>{if(files[0])doUploadAttachment(files[0]);setShowAttachModal(false);}}
+            onClose={()=>setShowAttachModal(false)}/>
         )}
         {attachment&&(
           <button onClick={()=>setShowPreview(s=>!s)} style={{marginTop:17,background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>

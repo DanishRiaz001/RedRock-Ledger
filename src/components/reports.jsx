@@ -13,6 +13,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
   const[origCode,setOrigCode]=useState("");
   const[showNew,setShowNew]=useState(false);
   const[acctImporting,setAcctImporting]=useState(false);
+  const[showAcctImportModal,setShowAcctImportModal]=useState(false);
   const[search,setSearch]=useState("");
   const[highlightCode,setHighlightCode]=useState(null); // briefly flash a just-created account so it's obvious it landed
   const[showDupes,setShowDupes]=useState(false);
@@ -286,34 +287,39 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                 XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
                 XLSX.writeFile(wb,"ChartOfAccounts.xlsx");
               }} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>Export</span>
-              <label style={{fontSize:12,color:T.accent,fontWeight:600,cursor:acctImporting?"wait":"pointer"}}>
+              <span onClick={()=>setShowAcctImportModal(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:acctImporting?"wait":"pointer"}}>
                 {acctImporting?"Importing…":"Import account information"}
-                <input type="file" accept=".csv,.xlsx,.xls" disabled={acctImporting} style={{display:"none"}} onChange={async e=>{
-                  const file=e.target.files[0];e.target.value="";
-                  if(!file)return;
-                  setAcctImporting(true);
-                  try{
-                    const isCsv=/\.csv$/i.test(file.name);
-                    const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
-                    const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
-                    const existingCodes=new Set(list.map(a=>a.code));
-                    const newAccts=[];let skipped=0;
-                    json.forEach(row=>{
-                      const code=String(row.Code||row.code||"").trim();
-                      const name=String(row.Name||row.name||"").trim();
-                      if(!code||!name||existingCodes.has(code)){skipped++;return;}
-                      existingCodes.add(code);
-                      newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
-                    });
-                    if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
-                    const updated=[...list,...newAccts];
-                    setList(updated);
-                    onSave(updated,null);
-                    alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
-                  }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
-                  setAcctImporting(false);
-                }}/>
-              </label>
+              </span>
+              {showAcctImportModal&&(
+                <UploadDropModal title="Import account information" accept=".csv,.xlsx,.xls" busy={acctImporting}
+                  onClose={()=>setShowAcctImportModal(false)}
+                  onFiles={async files=>{
+                    const file=files[0];
+                    if(!file)return;
+                    setShowAcctImportModal(false);
+                    setAcctImporting(true);
+                    try{
+                      const isCsv=/\.csv$/i.test(file.name);
+                      const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+                      const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+                      const existingCodes=new Set(list.map(a=>a.code));
+                      const newAccts=[];let skipped=0;
+                      json.forEach(row=>{
+                        const code=String(row.Code||row.code||"").trim();
+                        const name=String(row.Name||row.name||"").trim();
+                        if(!code||!name||existingCodes.has(code)){skipped++;return;}
+                        existingCodes.add(code);
+                        newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
+                      });
+                      if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
+                      const updated=[...list,...newAccts];
+                      setList(updated);
+                      onSave(updated,null);
+                      alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
+                    }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+                    setAcctImporting(false);
+                  }}/>
+              )}
               <span onClick={()=>setShowNew(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
             </div>
           </div>
@@ -442,34 +448,39 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
               XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
               XLSX.writeFile(wb,"ChartOfAccounts.xlsx");
             }} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Export</button>
-            <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:acctImporting?"wait":"pointer",fontFamily:"inherit"}}>
+            <button onClick={()=>setShowAcctImportModal(true)} disabled={acctImporting} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:acctImporting?"wait":"pointer",fontFamily:"inherit"}}>
               <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>{acctImporting?"Importing…":"Import"}
-              <input type="file" accept=".csv,.xlsx,.xls" disabled={acctImporting} style={{display:"none"}} onChange={async e=>{
-                const file=e.target.files[0];e.target.value="";
-                if(!file)return;
-                setAcctImporting(true);
-                try{
-                  const isCsv=/\.csv$/i.test(file.name);
-                  const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
-                  const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
-                  const existingCodes=new Set(list.map(a=>a.code));
-                  const newAccts=[];let skipped=0;
-                  json.forEach(row=>{
-                    const code=String(row.Code||row.code||"").trim();
-                    const name=String(row.Name||row.name||"").trim();
-                    if(!code||!name||existingCodes.has(code)){skipped++;return;}
-                    existingCodes.add(code);
-                    newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
-                  });
-                  if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
-                  const updated=[...list,...newAccts];
-                  setList(updated);
-                  onSave(updated,null);
-                  alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
-                }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
-                setAcctImporting(false);
-              }}/>
-            </label>
+            </button>
+            {showAcctImportModal&&(
+              <UploadDropModal title="Import chart of accounts" accept=".csv,.xlsx,.xls" busy={acctImporting}
+                onClose={()=>setShowAcctImportModal(false)}
+                onFiles={async files=>{
+                  const file=files[0];
+                  if(!file)return;
+                  setShowAcctImportModal(false);
+                  setAcctImporting(true);
+                  try{
+                    const isCsv=/\.csv$/i.test(file.name);
+                    const wb=isCsv?XLSX.read(await file.text(),{type:"string"}):XLSX.read(await file.arrayBuffer(),{type:"array"});
+                    const json=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+                    const existingCodes=new Set(list.map(a=>a.code));
+                    const newAccts=[];let skipped=0;
+                    json.forEach(row=>{
+                      const code=String(row.Code||row.code||"").trim();
+                      const name=String(row.Name||row.name||"").trim();
+                      if(!code||!name||existingCodes.has(code)){skipped++;return;}
+                      existingCodes.add(code);
+                      newAccts.push({code,name,matchable:String(row.Matchable||row.matchable||"").toLowerCase()==="yes"});
+                    });
+                    if(!newAccts.length){alert(`No new accounts to import${skipped?` (${skipped} skipped — missing data or already exists)`:""}.`);setAcctImporting(false);return;}
+                    const updated=[...list,...newAccts];
+                    setList(updated);
+                    onSave(updated,null);
+                    alert(`Imported ${newAccts.length} account${newAccts.length===1?"":"s"}${skipped?` (${skipped} skipped)`:""}.`);
+                  }catch(err){alert("Couldn't read that file. Make sure it's a CSV or Excel export.");}
+                  setAcctImporting(false);
+                }}/>
+            )}
             <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
           </div>
         </div>
@@ -879,6 +890,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
   const[showNew,setShowNew]=useState(false);
+  const[showRestoreModal,setShowRestoreModal]=useState(false);
 
   // The Chart of Accounts table has too many columns to be usable inside
   // Settings' normal narrow max-width — it needs the full screen. Every
@@ -1204,35 +1216,40 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>📥 Restore from Backup</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>Select a previously exported JSON backup file. This will restore accounts, contacts, sinking funds, budgets and profile.</div>
-          <label style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accentMid}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",fontSize:13,color:T.accent,fontWeight:600}}>
+          <button onClick={()=>setShowRestoreModal(true)} style={{display:"flex",alignItems:"center",gap:8,background:T.accentLight,border:`1px solid ${T.accentMid}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",fontSize:13,color:T.accent,fontWeight:600,fontFamily:"inherit"}}>
             📂 Choose backup file
-            <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{
-              const file=e.target.files[0];if(!file)return;
-              const r=new FileReader();
-              r.onload=ev=>{
-                try{
-                  const data=JSON.parse(ev.target.result);
-                  if(!data.version)throw new Error("Not a valid backup file");
-                  if(!window.confirm(`Restore backup from ${(data.date?data.date.slice(0,10):undefined)}?\nThis will overwrite current accounts, contacts, budgets, sinking funds and profile.`))return;
-                  if(data.accounts&&data.accounts.length){onSave(data.accounts);}
-                  if(data.contacts&&data.contacts.length){setContacts(data.contacts);}
-                  if(data.budgets&&restoreBudgets){
-                    if(Array.isArray(data.budgets)){
-                      restoreBudgets(data.budgets);
-                    } else if(typeof data.budgets==="object"&&Object.keys(data.budgets).length){
-                      // Legacy backup format had no year/month — nothing reliable to restore from it.
-                      console.warn("Skipped legacy-format budgets in backup (no year/month data to restore).");
+          </button>
+          {showRestoreModal&&(
+            <UploadDropModal title="Restore from backup" accept=".json"
+              onClose={()=>setShowRestoreModal(false)}
+              onFiles={files=>{
+                const file=files[0];if(!file)return;
+                setShowRestoreModal(false);
+                const r=new FileReader();
+                r.onload=ev=>{
+                  try{
+                    const data=JSON.parse(ev.target.result);
+                    if(!data.version)throw new Error("Not a valid backup file");
+                    if(!window.confirm(`Restore backup from ${(data.date?data.date.slice(0,10):undefined)}?\nThis will overwrite current accounts, contacts, budgets, sinking funds and profile.`))return;
+                    if(data.accounts&&data.accounts.length){onSave(data.accounts);}
+                    if(data.contacts&&data.contacts.length){setContacts(data.contacts);}
+                    if(data.budgets&&restoreBudgets){
+                      if(Array.isArray(data.budgets)){
+                        restoreBudgets(data.budgets);
+                      } else if(typeof data.budgets==="object"&&Object.keys(data.budgets).length){
+                        // Legacy backup format had no year/month — nothing reliable to restore from it.
+                        console.warn("Skipped legacy-format budgets in backup (no year/month data to restore).");
+                      }
                     }
-                  }
-                  if(data.sinkingFunds&&saveSinkingFunds){saveSinkingFunds(data.sinkingFunds);}
-                  if(data.profile){try{localStorage.setItem("rr_profile",JSON.stringify(data.profile));}catch{}}
-                  alert("✅ Restore complete! Accounts, contacts, budgets and profile restored.");
-                  setScreen(null);
-                }catch(err){alert("Restore failed: "+err.message);}
-              };
-              r.readAsText(file);
-            }}/>
-          </label>
+                    if(data.sinkingFunds&&saveSinkingFunds){saveSinkingFunds(data.sinkingFunds);}
+                    if(data.profile){try{localStorage.setItem("rr_profile",JSON.stringify(data.profile));}catch{}}
+                    alert("✅ Restore complete! Accounts, contacts, budgets and profile restored.");
+                    setScreen(null);
+                  }catch(err){alert("Restore failed: "+err.message);}
+                };
+                r.readAsText(file);
+              }}/>
+          )}
         </div>
       </div>
     </div>
@@ -4737,6 +4754,8 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[postMenu,setPostMenu]=useState(null); // {lineId, x, y} — right-click "Select account" context menu
   const[uploading,setUploading]=useState(false);
   const[readingPdf,setReadingPdf]=useState(false);
+  const[showPdfUploadModal,setShowPdfUploadModal]=useState(false);
+  const[showStatementUploadModal,setShowStatementUploadModal]=useState(false);
   const[preview,setPreview]=useState(null); // {rows, detectedColumns, skippedNoDate, skippedZeroOrBad, error, fileName, isPdf}
   const[importing,setImporting]=useState(false);
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
@@ -5313,16 +5332,24 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </button>
           <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-history" style={{fontSize:15}}/></button>
           <button onClick={()=>{setExportScope("period");setShowExportModal(true);}} title="Send or download" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-download" style={{fontSize:15}}/></button>
-          {parseBankStatementPDF&&(
-            <label title="Read a bank statement PDF and turn it into importable rows" style={{background:"#fff",color:isApproved?T.muted:T.accent,border:`1px solid ${isApproved?T.border:T.accent}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(readingPdf?"wait":"pointer"),fontFamily:"inherit",opacity:readingPdf?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
+          {parseBankStatementPDF&&(<>
+            <button onClick={()=>setShowPdfUploadModal(true)} disabled={isApproved||readingPdf} title="Read a bank statement PDF and turn it into importable rows" style={{background:"#fff",color:isApproved?T.muted:T.accent,border:`1px solid ${isApproved?T.border:T.accent}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(readingPdf?"wait":"pointer"),fontFamily:"inherit",opacity:readingPdf?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
               {readingPdf?"Reading PDF…":(<><i className="ti ti-file-text-ai" style={{fontSize:13,marginRight:5}}/>Read PDF</>)}
-              <input type="file" accept=".pdf,application/pdf" disabled={readingPdf||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handlePdfUpload(e.target.files[0]);e.target.value="";}}/>
-            </label>
-          )}
-          <label style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
+            </button>
+            {showPdfUploadModal&&(
+              <UploadDropModal title="Read bank statement PDF" accept=".pdf,application/pdf" busy={readingPdf}
+                onClose={()=>setShowPdfUploadModal(false)}
+                onFiles={files=>{if(files[0])handlePdfUpload(files[0]);setShowPdfUploadModal(false);}}/>
+            )}
+          </>)}
+          <button onClick={()=>setShowStatementUploadModal(true)} disabled={isApproved||uploading} style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
             {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:11,marginRight:5}}/>Upload</>)}
-            <input type="file" accept=".csv,.txt,.xlsx,.xls" disabled={uploading||isApproved} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
-          </label>
+          </button>
+          {showStatementUploadModal&&(
+            <UploadDropModal title="Upload bank statement" accept=".csv,.txt,.xlsx,.xls" busy={uploading}
+              onClose={()=>setShowStatementUploadModal(false)}
+              onFiles={files=>{if(files[0])handleUpload(files[0]);setShowStatementUploadModal(false);}}/>
+          )}
         </div>
       </div>
 
@@ -5973,6 +6000,7 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
   const[period,setPeriod]=useState(()=>new Date().toISOString().slice(0,7));
   const[allFilesFor,setAllFilesFor]=useState(null);
   const[uploadingFor,setUploadingFor]=useState(null);
+  const[uploadModalFor,setUploadModalFor]=useState(null); // account code, or null
   const[expandedRow,setExpandedRow]=useState(null);
   const[collapsedGroups,setCollapsedGroups]=useState({});
 
@@ -6097,10 +6125,14 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
                           {RECON_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
                         </select>
                         <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
-                          <label title="Upload for this period" style={{cursor:uploadingFor===r.code?"wait":"pointer",color:T.sub}}>
+                          <button onClick={()=>setUploadModalFor(r.code)} disabled={uploadingFor===r.code} title="Upload for this period" style={{background:"none",border:"none",padding:0,cursor:uploadingFor===r.code?"wait":"pointer",color:T.sub,fontFamily:"inherit"}}>
                             <i className="ti ti-paperclip" style={{fontSize:15}}/>
-                            <input type="file" style={{display:"none"}} disabled={uploadingFor===r.code} onChange={e=>{if(e.target.files[0])doUpload(r.code,e.target.files[0]);e.target.value="";}}/>
-                          </label>
+                          </button>
+                          {uploadModalFor===r.code&&(
+                            <UploadDropModal title={`Upload for ${r.code} ${r.name}`} busy={uploadingFor===r.code}
+                              onClose={()=>setUploadModalFor(null)}
+                              onFiles={files=>{if(files[0])doUpload(r.code,files[0]);setUploadModalFor(null);}}/>
+                          )}
                           <span onClick={()=>setAllFilesFor(r.code)} title="View all periods' files for this account" style={{fontSize:11,fontWeight:700,color:r.files.length?T.accent:T.muted,cursor:"pointer"}}>{r.files.length||0}</span>
                         </div>
                       </div>

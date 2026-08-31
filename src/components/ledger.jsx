@@ -3,7 +3,7 @@ import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js"
 import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
-import { SignedFileViewer, ResizableSplit, Spinner } from "./shell.jsx";
+import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
 
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 // A tiny cross-component navigation hook — set once by FinanceTracker on
@@ -2105,6 +2105,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
   const[viewing,setViewing]=useState(null);
   const[extractedText,setExtractedText]=useState("");
   const[extracting,setExtracting]=useState(false);
+  const[attachModalFor,setAttachModalFor]=useState(null); // account code, or null
   const banks=accounts.filter(a=>getSK(a.code)==="1900");
 
   const getBal=(code,beforeDate)=>transactions
@@ -2185,10 +2186,14 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
                 <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>{a.name}</div>
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <label style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                <button onClick={()=>setAttachModalFor(a.code)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}>
                   📎 {att?"Replace":"Attach"}
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttach(a.code,e.target.files[0]);}}/>
-                </label>
+                </button>
+                {attachModalFor===a.code&&(
+                  <UploadDropModal title={`Attach statement — ${a.name}`} accept=".pdf,.jpg,.jpeg,.png"
+                    onFiles={files=>{if(files[0])handleAttach(a.code,files[0]);setAttachModalFor(null);}}
+                    onClose={()=>setAttachModalFor(null)}/>
+                )}
                 {att&&<button onClick={()=>{setViewing(att);setExtractedText("");}} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"5px 10px",fontWeight:600}}>👁 View</button>}
                 <button style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px"}} onClick={()=>onOpenLedger(a)}>Ledger ›</button>
               </div>
