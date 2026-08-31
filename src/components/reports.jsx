@@ -4818,6 +4818,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[bulkOffsetCode,setBulkOffsetCode]=useState("");
   const[bulkPosting,setBulkPosting]=useState(false);
   const[uploadingProof,setUploadingProof]=useState(false);
+  const[syncingProof,setSyncingProof]=useState(false);
   const[showAttachUpload,setShowAttachUpload]=useState(false);
 
   const attachKey=`${selectedAccount}_${month}`;
@@ -4876,6 +4877,21 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       setUploadingProof(false);
       return null;
     }
+  };
+  // Backfills THIS attachment onto every already-posted entry for this
+  // exact account/month — for a statement that was attached before this
+  // fix existed (so posting never picked it up automatically) or just to
+  // re-sync after the fact, without needing to re-upload the same file
+  // through "Replace" to trigger it.
+  const syncAttachmentToEntries=async()=>{
+    if(!attachFilesToTxnEntry||!currentAttachment)return;
+    setSyncingProof(true);
+    const proofFileId=await ensureProofFileId();
+    if(proofFileId){
+      for(const t of ledgerEntries)await attachFilesToTxnEntry(t.id,[proofFileId]);
+    }
+    setSyncingProof(false);
+    alert(proofFileId?`Synced to ${ledgerEntries.length} entr${ledgerEntries.length===1?"y":"ies"} from this period.`:"Couldn't read this attachment — try Replace instead.");
   };
   // Left column: what's actually in the ledger for this account and month.
   const ledgerEntries=useMemo(()=>transactions.filter(t=>(t.debitCode===selectedAccount||t.creditCode===selectedAccount)&&t.date.slice(0,7)===month).sort((a,b)=>a.date.localeCompare(b.date)),[transactions,selectedAccount,month]);
@@ -5726,6 +5742,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <button onClick={()=>setShowAttachUpload(true)} disabled={uploadingProof} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:uploadingProof?T.muted:T.sub,cursor:uploadingProof?"wait":"pointer",fontFamily:"inherit"}}>
                 {uploadingProof?"Uploading…":currentAttachment?"Replace":"Attach file"}
               </button>
+              {currentAttachment&&(
+                <button onClick={syncAttachmentToEntries} disabled={syncingProof} title="Link this statement to every entry already posted for this account and month — for a statement attached before an entry existed, or just to re-sync" style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:syncingProof?T.muted:T.sub,cursor:syncingProof?"wait":"pointer",fontFamily:"inherit"}}>
+                  {syncingProof?"Syncing…":"Sync to entries"}
+                </button>
+              )}
               {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
               {showAttachUpload&&(
                 <UploadDropModal title="Attach bank statement" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" busy={uploadingProof}
