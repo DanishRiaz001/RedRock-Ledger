@@ -190,9 +190,23 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
         setRightWidth(next);
       });
     };
-    const onUp=()=>{
+    const onUp=(ev)=>{
+      // The rAF-throttled onMove above always has, at most, one frame's
+      // worth of movement still "in flight" (scheduled but not yet
+      // applied). Cancelling that frame here — as this used to do —
+      // silently dropped the very last bit of mouse movement, so the
+      // splitter could end up a few pixels behind wherever you actually
+      // released the mouse instead of tracking it exactly: it "stuck"
+      // just short of where you dragged it to. Applying the release
+      // position directly, from the real mouseup coordinates, guarantees
+      // the panel ends up exactly where the mouse was let go.
+      if(draggingRef.current){
+        const delta=draggingRef.current.startX-ev.clientX;
+        const next=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
+        setRightWidth(next);
+      }
       draggingRef.current=null;
-      if(rafRef.current)cancelAnimationFrame(rafRef.current);
+      if(rafRef.current){cancelAnimationFrame(rafRef.current);rafRef.current=null;}
       document.body.classList.remove("rr-panel-resizing");
       window.removeEventListener("mousemove",onMove);
       window.removeEventListener("mouseup",onUp);
