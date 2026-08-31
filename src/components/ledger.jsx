@@ -1321,7 +1321,7 @@ function DetailModal({txn,accounts,contacts,fetchTxnAttachments,uploadInboxFile,
         >
           <label style={{flex:1,display:"flex",alignItems:"center",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px",cursor:attUploading?"wait":"pointer",fontSize:12,color:T.blue,fontWeight:600,opacity:attUploading?0.6:1}}>
             📎 {attUploading?"Uploading…":dragOver?"Drop to attach":attList.length?`Add another file (${attList.length} attached)`:"Attach file, or drag one here"}
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleAttach(Array.from(e.target.files));e.target.value="";}}/>
+            <input type="file" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" multiple disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleAttach(Array.from(e.target.files));e.target.value="";}}/>
           </label>
           {inboxFiles.length>0&&(
             <button onClick={()=>setShowInboxPicker(true)} title="Attach from Inbox" style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:16,cursor:"pointer",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-inbox" style={{fontSize:16}}/></button>
@@ -2190,7 +2190,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
                   📎 {att?"Replace":"Attach"}
                 </button>
                 {attachModalFor===a.code&&(
-                  <UploadDropModal title={`Attach statement — ${a.name}`} accept=".pdf,.jpg,.jpeg,.png"
+                  <UploadDropModal title={`Attach statement — ${a.name}`} accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png"
                     onFiles={files=>{if(files[0])handleAttach(a.code,files[0]);setAttachModalFor(null);}}
                     onClose={()=>setAttachModalFor(null)}/>
                 )}

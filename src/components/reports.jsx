@@ -4801,6 +4801,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   };
   const[monthDropdownOpen,setMonthDropdownOpen]=useState(false);
   const[showAttachPanel,setShowAttachPanel]=useState(false);
+  // The filter bar's right-aligned icon/upload cluster sits above the
+  // matching grid and outside the split's own `left` content — without this
+  // it stayed pinned to the true screen edge and ended up hidden behind the
+  // attachment panel once it opened. ResizableSplit narrows it in lockstep
+  // via extraMarginRefs (see below).
+  const toolbarActionsRef=React.useRef(null);
   const[bulkPostOpen,setBulkPostOpen]=useState(false);
   const[bulkOffsetCode,setBulkOffsetCode]=useState("");
   const[bulkPosting,setBulkPosting]=useState(false);
@@ -5326,7 +5332,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"0 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",height:"100%"}}>{label}</button>
           ))}
         </div>
-        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+        <div ref={toolbarActionsRef} style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
           {lastImport&&lastImport.accountCode===selectedAccount&&(
             <button onClick={doUndoImport} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Undo import ({lastImport.count})</button>
           )}
@@ -5651,7 +5657,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               </button>
               {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
               {showAttachUpload&&(
-                <UploadDropModal title="Attach bank statement" accept=".pdf,.jpg,.jpeg,.png" busy={uploadingProof}
+                <UploadDropModal title="Attach bank statement" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" busy={uploadingProof}
                   onFiles={files=>{if(files[0])handleAttachStatement(files[0]);setShowAttachUpload(false);}}
                   onClose={()=>setShowAttachUpload(false)}/>
               )}
@@ -5674,7 +5680,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </div>
         );
 
-        return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900}/>;
+        return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef]}/>;
       })()}
       {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}

@@ -29,6 +29,7 @@ function SignedFileViewer({storagePath,type,name,style}){
     return()=>{alive=false;};
   },[storagePath]);
   const isImage=type&&type.startsWith("image");
+  const isPdf=!isImage&&(type||"").includes("pdf");
   const extractText=async()=>{
     if(!url)return;
     setExtracting(true);
@@ -159,7 +160,7 @@ function SignedFileViewer({storagePath,type,name,style}){
 
 // A real resizable split — drag the divider with the mouse to widen either
 // side. Used anywhere a form sits next to a document/image preview.
-function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxRightWidth=640,collapsible=false,collapseLabel="Hide attachment",expandLabel="Show attachment"}){
+function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxRightWidth=640,collapsible=false,collapseLabel="Hide attachment",expandLabel="Show attachment",extraMarginRefs=[]}){
   const[rightWidth,setRightWidth]=useState(defaultRightWidth);
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
@@ -196,6 +197,13 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
         frame=null;
         if(handleRef.current)handleRef.current.style.right=pending+"px";
         if(leftRef.current)leftRef.current.style.marginRight=(pending+HANDLE_W)+"px";
+        // Some screens keep a right-aligned toolbar OUTSIDE the split's own
+        // `left` content (e.g. a filter bar's action-button cluster sitting
+        // above the split) — that cluster would otherwise sit at the true
+        // screen edge same as before and end up hidden behind the panel.
+        // extraMarginRefs lets the caller keep those elements in sync with
+        // the exact same live width during drag, not just on mount/commit.
+        extraMarginRefs.forEach(r=>{if(r&&r.current)r.current.style.marginRight=(pending+HANDLE_W)+"px";});
       });
     };
     const onUp=()=>{
@@ -211,6 +219,14 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   };
   const tabStyle={writingMode:"vertical-rl",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,flexShrink:0,userSelect:"none",whiteSpace:"nowrap"};
   const effectiveRightWidth=collapsible&&collapsed?0:rightWidth+HANDLE_W;
+  // Keep any caller-supplied elements outside `left` (e.g. a toolbar's
+  // right-aligned button cluster) narrowed by the same amount whenever the
+  // committed width changes — mount, drag-release, or collapse/expand.
+  // The live-drag write above handles the in-between frames.
+  React.useEffect(()=>{
+    extraMarginRefs.forEach(r=>{if(r&&r.current)r.current.style.marginRight=effectiveRightWidth+"px";});
+    return()=>{extraMarginRefs.forEach(r=>{if(r&&r.current)r.current.style.marginRight="";});};
+  },[effectiveRightWidth]);
   return(
     <div style={{display:"flex",alignItems:"stretch",gap:0,minWidth:0,minHeight:"calc(100vh - 90px)",position:"relative"}}>
       <div ref={leftRef} style={{flex:1,minWidth:0,marginRight:effectiveRightWidth}}>{left}</div>
