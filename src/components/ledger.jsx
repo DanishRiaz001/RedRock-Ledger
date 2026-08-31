@@ -224,6 +224,20 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               </div>
             )}
             <div style={{overflowY:"auto",maxHeight:230}}>
+              {/* Pinned at the top so a debit/credit field can be deliberately
+                  left empty from the dropdown itself, not just by never
+                  picking anything — lets a line intentionally post to just
+                  one side (see the flexible multi-line balancing feature)
+                  without hunting for a way to clear an already-picked
+                  account. Hidden while actively searching so it doesn't
+                  compete with real matches. */}
+              {!qTrim&&(
+                <div onMouseDown={e=>{e.preventDefault();onChange("");closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:!value?"#EBF4FF":"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
+                  <span style={{fontSize:11,color:T.muted}}>—</span>
+                  <span style={{fontSize:11,color:T.muted}}>—</span>
+                  <span style={{fontSize:11,color:T.muted,fontStyle:"italic",fontWeight:!value?700:400}}>No account</span>
+                </div>
+              )}
               {filtered.length===0&&contactMatches.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {contactMatches.map((c,i)=>(
                 <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
@@ -423,6 +437,11 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick}){
               <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
             </div>
             <div style={{overflowY:"auto",maxHeight:175}}>
+              {/* Pinned so an already-picked account can be deliberately
+                  cleared from the dropdown, same as AccDrop. */}
+              {!qTrim&&(
+                <div onClick={()=>{onChange("");setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:!value?"#EBF4FF":"#fff",fontWeight:!value?700:400,color:T.muted,fontStyle:"italic",borderBottom:`0.5px solid ${T.border}`}}>No account</div>
+              )}
               {contactMatches.map(c=>(
                 <div key={"c"+c.id} onClick={()=>pickContact(c)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:"#fff",color:c.type==="customer"?T.blue:T.red,borderBottom:`0.5px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
                   <span style={{fontWeight:700,minWidth:32,flexShrink:0}}>{c.type==="customer"?"1500":"2400"}</span>

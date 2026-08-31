@@ -5028,6 +5028,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     const result=await parseBankStatementPDF(file);
     setReadingPdf(false);
     setPreview({...result,fileName:file.name});
+    // The PDF just read for its rows IS the actual bank statement — it used
+    // to just sit in memory for parsing and then be discarded, so posting
+    // straight from it (Bokfør) never had anything to attach as proof
+    // unless you separately, manually attached the same file again via the
+    // paperclip. Only fills in if this period doesn't already have an
+    // attachment, so a deliberate earlier choice is never silently replaced.
+    if(!currentAttachment)handleAttachStatement(file);
   };
   // Preview rows are editable before commit (date/description/amount only —
   // everything else about a bank statement line is fixed by the schema) so
