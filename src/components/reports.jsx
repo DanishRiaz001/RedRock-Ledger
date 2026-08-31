@@ -5642,7 +5642,26 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                     <div key={l.id}
                       className="rr-table-row"
                       onClick={()=>!isMatchedMode&&toggleLineSel(l.id)}
-                      onContextMenu={e=>{if(isMatchedMode)return;e.preventDefault();if(isApproved)return;setSelectedLineIds(new Set([l.id]));setSelectedTxnIds(new Set());setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});}}
+                      onContextMenu={e=>{
+                        if(isMatchedMode)return;
+                        e.preventDefault();
+                        if(isApproved)return;
+                        // Right-clicking a row that's already part of a
+                        // multi-selection (ticked checkboxes) opens the
+                        // quick "Select account…" menu for THAT WHOLE
+                        // selection — it used to always collapse down to
+                        // just this one row first, silently discarding
+                        // every other ticked line before Post even ran,
+                        // which is why several same-account lines each
+                        // ended up as their own separate bilag instead of
+                        // one shared one. Right-clicking a row NOT already
+                        // selected still acts on just that row, unchanged.
+                        if(!selectedLineIds.has(l.id)){
+                          setSelectedLineIds(new Set([l.id]));
+                          setSelectedTxnIds(new Set());
+                        }
+                        setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});
+                      }}
                       style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
                       {!isMatchedMode&&<input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/>}
                       {isMatchedMode&&<span style={{width:13}}/>}
