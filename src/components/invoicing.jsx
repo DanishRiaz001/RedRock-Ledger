@@ -3699,7 +3699,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           icon, which fits its single-line header better. */}
       {isDesktop?(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
-          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
           {/* Guessing one fixed pixel height for all three was the bug —
               the real date <input> (styled via the shared `inp` object)
               renders at whatever height its own font-size/padding/border
@@ -3864,17 +3864,23 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           const vDivider={borderRight:`1px solid ${T.border}`};
           const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
           return(
-        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflowX:"auto"}}>
-          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg,fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+          {/* No overflowX:auto here — even set alone, it makes the browser
+              compute overflow-y as auto too, which clipped the ⋮ line-menu
+              dropdown (and AccDrop's own search popup) the moment either
+              extended below this box. Same trade-off the table already
+              accepted before this rewrite: real columns over horizontal
+              scrolling on a very narrow window. */}
           <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:660}}>
             {/* Header — same GRID_COLS as every row below, so each label
                 sits exactly above its own column no matter what a row's
                 content measures. */}
-            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
-            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
-            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
-            <div style={{...cellBase,...vDivider,background:T.bg,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
-            <div style={{...cellBase,background:T.bg}}/>
+            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
+            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
+            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
+            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
+            <div style={{...cellBase,background:"#fff"}}/>
             {linesArr.map((line,li)=>{
               // Auto-fill AND lock VAT from the account's own settings the
               // moment it's picked — every other entry screen already does
@@ -3900,7 +3906,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],date:v};
                     setForm(p=>({...p,lines}));
-                  }} style={{width:100}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
+                  }} style={{width:"100%"}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
                   <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
                     if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
                     const lines=[...(form.lines||[])];
@@ -3998,11 +4004,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 always has Debit total = Credit total; once a line is
                 switched to one-sided, this is the real balance check, and
                 Save stays disabled until it reads Balanced. */}
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:10,fontWeight:700,color:T.red}}>{linesBalanced?"":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?T.bg:T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":"Unbalanced"}</div>
-            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?T.bg:T.redLight}}/>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:10,fontWeight:700,color:T.red}}>{linesBalanced?"":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
+            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":"Unbalanced"}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}/>
           </div>
         </div>
           );
@@ -4115,20 +4121,19 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
             </div>
           ))}
           {/* Same balance check as the desktop table — see the note there. */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",borderTop:`1px solid #F0F4F3`,background:linesBalanced?T.bg:T.redLight,borderRadius:"0 0 14px 14px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",borderTop:`1px solid #F0F4F3`,background:linesBalanced?"#fff":T.redLight,borderRadius:"0 0 14px 14px"}}>
             <span style={{fontSize:10,fontWeight:700,color:linesBalanced?T.muted:T.red}}>{linesBalanced?"Balanced":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</span>
             <span style={{fontSize:11,color:T.muted}}>Dr {fmt(lineTotals.totalDebit)} · Cr {fmt(lineTotals.totalCredit)}</span>
           </div>
         </div>
         )}
-        {/* Desktop: Tags and Whose sit right under the Date/Description
-            columns instead of as separate full-width rows near the bottom —
-            same width as those two columns (96+150+gap), so they read as
-            "extra detail on this line" rather than two more free-floating
-            fields competing with Debit/Credit/Amount for attention. */}
-        {isDesktop&&(feat.tags!==false||(moneySources&&moneySources.length>0))&&(
+        {/* Desktop: Whose sits right under the Date/Description columns
+            instead of as a separate full-width row near the bottom — same
+            width as those two columns, so it reads as "extra detail on this
+            line" rather than a free-floating field competing with
+            Debit/Credit/Amount for attention. Tags removed per feedback. */}
+        {isDesktop&&moneySources&&moneySources.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:190,marginBottom:4}}>
-            {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>}
             {moneySources&&moneySources.length>0&&(
               <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,padding:"7px 8px"}}>
                 <option value="">— Whose (optional) —</option>
@@ -4230,11 +4235,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
           </div>
         )}
 
-        {/* Desktop: Tags and Whose already rendered right under the
-            Postings table's Date/Description columns above — this spot is
-            mobile-only now. */}
+        {/* Desktop: Whose already rendered right under the Postings table's
+            Date/Description columns above — this spot is mobile-only now.
+            Tags removed per feedback. */}
         {!isDesktop&&<>
-        {feat.tags!==false&&<input placeholder="Tags (optional): rent, office, client-a" value={form.tags||""} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} style={{...inpSm,fontSize:13}}/>}
         {moneySources&&moneySources.length>0&&(
           <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
             <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
