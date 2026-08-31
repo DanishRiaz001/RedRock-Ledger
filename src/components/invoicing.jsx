@@ -3890,7 +3890,15 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         // each row measured its own columns independently instead of
         // sharing one column grid with the header.
         (()=>{
-          const GRID_COLS="160px minmax(180px,1fr) minmax(180px,1fr) 110px 28px";
+          // Column floors kept low deliberately — this grid sits in the left
+          // pane of a resizable split, and widening the document preview
+          // narrows the left pane in turn. At the old, wider floors, a
+          // sufficiently wide preview squeezed the left pane below the
+          // grid's own minimum, and since there's no horizontal scroll here
+          // (see the note below), the grid just overflowed silently behind
+          // the fixed-position preview panel — the Amount column, and part
+          // of Credit, vanished under it instead of scrolling into view.
+          const GRID_COLS="130px minmax(130px,1fr) minmax(130px,1fr) 90px 26px";
           const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
           const vDivider={borderRight:`1px solid ${T.border}`};
           const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
@@ -3903,7 +3911,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               extended below this box. Same trade-off the table already
               accepted before this rewrite: real columns over horizontal
               scrolling on a very narrow window. */}
-          <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:660}}>
+          <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:506}}>
             {/* Header — same GRID_COLS as every row below, so each label
                 sits exactly above its own column no matter what a row's
                 content measures. */}
@@ -4501,6 +4509,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         defaultRightWidth={400}
         minRightWidth={300}
         maxRightWidth={640}
+        minLeftWidth={580}
         right={(
           <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
             {!attached?(

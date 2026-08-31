@@ -160,7 +160,7 @@ function SignedFileViewer({storagePath,type,name,style}){
 
 // A real resizable split — drag the divider with the mouse to widen either
 // side. Used anywhere a form sits next to a document/image preview.
-function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxRightWidth=640,collapsible=false,collapseLabel="Hide attachment",expandLabel="Show attachment",extraMarginRefs=[]}){
+function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxRightWidth=640,minLeftWidth=0,collapsible=false,collapseLabel="Hide attachment",expandLabel="Show attachment",extraMarginRefs=[]}){
   const[rightWidth,setRightWidth]=useState(defaultRightWidth);
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
@@ -186,6 +186,18 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
       if(!draggingRef.current)return;
       const delta=draggingRef.current.startX-ev.clientX;
       pending=Math.min(maxRightWidth,Math.max(minRightWidth,draggingRef.current.startWidth+delta));
+      // Dragging the panel wider narrows the left pane in turn — without
+      // this, a caller whose left content has its own real minimum (a
+      // table that can only compress so far) could still be squeezed
+      // narrower than that, and since there's deliberately no horizontal
+      // scroll on this split (it would clip dropdown popups), the content
+      // just silently overflows behind the fixed-position panel instead of
+      // staying visible. Caps how far the panel can be dragged based on
+      // the actual current window width, not a fixed guess.
+      if(minLeftWidth>0){
+        const maxAllowedByLeft=window.innerWidth-minLeftWidth-HANDLE_W;
+        pending=Math.min(pending,Math.max(minRightWidth,maxAllowedByLeft));
+      }
       if(frame)return;
       // Writing the width straight to the DOM (not through React state) on
       // every frame is what makes the drag itself feel smooth — routing it
