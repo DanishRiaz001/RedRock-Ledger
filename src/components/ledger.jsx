@@ -1113,75 +1113,68 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     </div>
   );
 
-  // Was a `position:fixed;inset:0` solid-background full-viewport takeover —
-  // that painted directly over the app's own fixed top bar and sidebar
-  // (both siblings elsewhere in the DOM, not inside this component), so
-  // instead of "a full page like posting a voucher" it looked like the
-  // whole app chrome had vanished, and the close button — sitting right at
-  // the same y-position the real top bar occupies — was covered by it and
-  // unclickable, forcing a hard refresh to escape. Back to the same dimmed-
-  // backdrop + centered-card pattern every other modal in this app already
-  // uses successfully (BulkEditPostsModal, NewContactModal, MatchDetailModal
-  // …), just sized large — that keeps the app chrome visible (dimmed) behind
-  // it and keeps every button reachable, while still reading as a real,
-  // spacious "voucher" layout instead of a small bottom sheet. A document
-  // attached to this entry now shows in a preview pane alongside the form,
-  // matching New Entry's own attachment preview.
+  // Used to be a dimmed-backdrop + centered-card popup (before that, an
+  // even worse full-viewport takeover that painted over the app's own top
+  // bar/sidebar). Per feedback, editing shouldn't be a popup at all — it
+  // should read as a real page, the same way New Entry does: sidebar and
+  // page chrome untouched, the editor just IS the page content. No
+  // backdrop, no fixed positioning, no click-outside-to-close; scrolls
+  // itself into view on open since wherever this renders in the page
+  // (right where the row that opened it lives) might not already be at
+  // the top of the viewport.
+  const rootRef=useRef(null);
+  useEffect(()=>{rootRef.current&&rootRef.current.scrollIntoView({behavior:"smooth",block:"start"});},[]);
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,borderRadius:16,width:"100%",maxWidth:1180,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 70px rgba(0,0,0,0.35)"}}>
-        <div style={{padding:"22px 24px 0"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-            <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
-            <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:18,cursor:"pointer",width:40,height:40}}>✕</button>
-          </div>
-        </div>
-        {/* Always a two-column layout — form + document preview — matching
-            New Entry exactly, rather than only showing the preview column
-            when a file happens to already be attached. Without an
-            attachment yet, the right column shows the same "no document /
-            upload one" prompt New Entry shows, so you can attach a receipt
-            right from here instead of that only being possible elsewhere. */}
-        <div style={{padding:"0 24px 24px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
-          {isGroup?multiFormCard:formCard}
-          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
-            {attached?(<>
-              <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
-              <div style={{height:"calc(100% - 33px)"}}>
-                <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
-              </div>
-            </>):(
-              <div
-                onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
-                onDragLeave={()=>setDropHover(false)}
-                onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
-                style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
-                <i className="ti ti-file-off" style={{fontSize:28}}/>
-                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
-                {onUploadFile&&(
-                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
-                    <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
-                    <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
-                  </label>
-                )}
-                {onAttachExisting&&availableInboxFiles.length>0&&(
-                  <select value="" disabled={attUploading} onChange={e=>{
-                    // <select> options always come back as strings — match
-                    // that against the (possibly numeric) real id rather
-                    // than passing the string straight through, which would
-                    // silently fail the same way form.attachmentId's string/
-                    // number mismatch did in New Entry (see comment there).
-                    const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
-                    if(picked)onAttachExisting(picked.id);
-                  }} style={{...selSm,width:"100%",marginTop:2}}>
-                    <option value="">— or pick an existing Inbox file —</option>
-                    {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                  </select>
-                )}
-              </div>
-            )}
-          </div>
+    <div ref={rootRef} style={{maxWidth:1400}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
+        <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
+      </div>
+      {/* Always a two-column layout — form + document preview — matching
+          New Entry exactly, rather than only showing the preview column
+          when a file happens to already be attached. Without an
+          attachment yet, the right column shows the same "no document /
+          upload one" prompt New Entry shows, so you can attach a receipt
+          right from here instead of that only being possible elsewhere. */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
+        {isGroup?multiFormCard:formCard}
+        <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+          {attached?(<>
+            <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
+            <div style={{height:"calc(100% - 33px)"}}>
+              <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
+            </div>
+          </>):(
+            <div
+              onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
+              onDragLeave={()=>setDropHover(false)}
+              onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
+              style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
+              <i className="ti ti-file-off" style={{fontSize:28}}/>
+              <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
+              {onUploadFile&&(
+                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
+                  <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
+                </label>
+              )}
+              {onAttachExisting&&availableInboxFiles.length>0&&(
+                <select value="" disabled={attUploading} onChange={e=>{
+                  // <select> options always come back as strings — match
+                  // that against the (possibly numeric) real id rather
+                  // than passing the string straight through, which would
+                  // silently fail the same way form.attachmentId's string/
+                  // number mismatch did in New Entry (see comment there).
+                  const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
+                  if(picked)onAttachExisting(picked.id);
+                }} style={{...selSm,width:"100%",marginTop:2}}>
+                  <option value="">— or pick an existing Inbox file —</option>
+                  {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                </select>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1441,7 +1434,11 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       // whole modal the instant just ONE line of a multi-line group was
       // deleted, when only that line should have disappeared.
       onDelete={id=>onDelete(id)}
-      onClose={()=>setShowEdit(false)}
+      // Goes all the way back to the list (the same onClose this DetailModal
+      // itself was given), not just back to DetailModal's own popup "view"
+      // step — since editing no longer shows as a popup, closing it should
+      // never re-materialize one behind it.
+      onClose={onClose}
     />
   );
   return(
