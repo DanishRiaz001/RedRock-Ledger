@@ -759,6 +759,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   const valid=form.debitCode&&form.creditCode&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
+  const[dropHover,setDropHover]=useState(false);
 
   // A P&L account on the debit side takes input VAT (a purchase); one on
   // the credit side takes output VAT (a sale) — the two are independent,
@@ -774,6 +775,28 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const[debitVatCode,setDebitVatCode]=useState(initialDebitVc);
   const[creditVatCode,setCreditVatCode]=useState(initialCreditVc);
 
+  // Whichever account is actually selected right now — not just at mount —
+  // decides both the code shown and whether it can be changed at all. Every
+  // other entry screen (New Entry, Register voucher, Supplier/Customer
+  // invoice) already auto-fills and locks VAT from the account's own
+  // settings the moment that account is picked; this modal never did, so
+  // re-pointing a debit/credit account at a VAT-locked one here silently
+  // kept whatever code the line started with instead of the account's own.
+  const debitAccount=accounts.find(a=>a.code===form.debitCode);
+  const creditAccount=accounts.find(a=>a.code===form.creditCode);
+  const debitVatLocked=!!(debitAccount&&debitAccount.vatLocked&&debitAccount.defaultVatCode);
+  const creditVatLocked=!!(creditAccount&&creditAccount.vatLocked&&creditAccount.defaultVatCode);
+  const pickDebitAccount=v=>{
+    const acc=accounts.find(a=>a.code===v);
+    setForm(f=>({...f,debitCode:v}));
+    if(acc&&acc.defaultVatCode)setDebitVatCode(acc.defaultVatCode);
+  };
+  const pickCreditAccount=v=>{
+    const acc=accounts.find(a=>a.code===v);
+    setForm(f=>({...f,creditCode:v}));
+    if(acc&&acc.defaultVatCode)setCreditVatCode(acc.defaultVatCode);
+  };
+
   const attached=attachments[0]||null;
 
   const formCard=(
@@ -785,8 +808,8 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
       </div>
       <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={v=>setForm(f=>({...f,debitCode:v}))} accounts={accounts}/></div>
-        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={v=>setForm(f=>({...f,creditCode:v}))} accounts={accounts}/></div>
+        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={pickDebitAccount} accounts={accounts}/></div>
+        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={pickCreditAccount} accounts={accounts}/></div>
       </div>
       {/* A VAT box under each side, in the same two columns as the account
           row above it — matching Register voucher's per-side VAT pattern.
@@ -795,11 +818,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           not a separate label above the field. Slightly shorter than the
           account dropdown above it since it's a secondary/auxiliary field,
           not a fresh full-height input. An empty cell holds the column
-          steady on whichever side isn't a P&L account. */}
+          steady on whichever side isn't a P&L account. Locked exactly like
+          every other entry screen when the account itself is VAT-locked. */}
       {(debitIsExpense||creditIsIncome)&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:-8}}>
-          <div>{debitIsExpense&&<VatDrop value={debitVatCode} onChange={setDebitVatCode} options={vatCodeOptions("input")}/>}</div>
-          <div>{creditIsIncome&&<VatDrop value={creditVatCode} onChange={setCreditVatCode} options={vatCodeOptions("output")}/>}</div>
+          <div>{debitIsExpense&&<VatDrop value={debitVatCode} onChange={setDebitVatCode} options={vatCodeOptions("input")} disabled={debitVatLocked}/>}</div>
+          <div>{creditIsIncome&&<VatDrop value={creditVatCode} onChange={setCreditVatCode} options={vatCodeOptions("output")} disabled={creditVatLocked}/>}</div>
         </div>
       )}
       <div><SL>Linked Customer / Supplier (optional)</SL><ContactSearch contacts={contacts} value={form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
@@ -873,13 +897,17 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
                 <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
               </div>
             </>):(
-              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center"}}>
+              <div
+                onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
+                onDragLeave={()=>setDropHover(false)}
+                onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
+                style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
                 <i className="ti ti-file-off" style={{fontSize:28}}/>
-                <div style={{fontSize:12}}>No document attached to this entry yet.</div>
+                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
                 {onUploadFile&&(
-                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
+                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
                     <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file"}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
                     <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
                   </label>
                 )}

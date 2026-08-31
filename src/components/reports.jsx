@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton } from "./ledger.jsx";
-import { ResizableSplit } from "./shell.jsx";
+import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
@@ -4790,29 +4790,45 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[bulkOffsetCode,setBulkOffsetCode]=useState("");
   const[bulkPosting,setBulkPosting]=useState(false);
   const[uploadingProof,setUploadingProof]=useState(false);
+  const[showAttachUpload,setShowAttachUpload]=useState(false);
 
   const attachKey=`${selectedAccount}_${month}`;
   const currentAttachment=attachments[attachKey];
-  const handleAttachStatement=(file)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{if(onAttach)onAttach(attachKey,{name:file.name,data:e.target.result,type:file.type,period:month,code:selectedAccount});};
-    reader.readAsDataURL(file);
+  // Was storing the entire file as a base64 data URL in localStorage — a
+  // real bank-statement PDF is routinely several hundred KB to a few MB
+  // once base64-encoded, and localStorage's total quota (5-10MB, shared
+  // with everything else the app keeps there) silently rejected the write
+  // (the surrounding try/catch swallowed the QuotaExceededError). The
+  // upload LOOKED like it worked — react state updated fine in memory —
+  // but nothing actually persisted, so the attachment was gone on the next
+  // reload. Uploading straight to Supabase Storage (the same inbox_files
+  // path every other attachment in this app already uses) and keeping only
+  // the small {name,type,inboxFileId,storagePath} reference means there's
+  // nothing size-sensitive left to silently drop.
+  const handleAttachStatement=async(file)=>{
+    if(!uploadInboxFile){alert("Can't upload right now — try again in a moment.");return;}
+    setUploadingProof(true);
+    const uploaded=await uploadInboxFile(file);
+    setUploadingProof(false);
+    if(!uploaded){alert("Upload failed — try again.");return;}
+    if(onAttach)onAttach(attachKey,{name:file.name,type:file.type,period:month,code:selectedAccount,inboxFileId:uploaded.id,storagePath:uploaded.storagePath});
   };
-  // The uploaded bank-statement attachment is what stands in as "proof" when
-  // posting straight from the statement (Bokfør) — it's stored locally as a
-  // data URL, so turning it into something attachFilesToTxnEntry can point
-  // at means uploading it once to the real inbox/storage, then reusing that
-  // file id for every entry created from this batch.
+  // The attachment is what stands in as "proof" when posting straight from
+  // the statement (Bokfør) — already a real uploaded inbox file (above), so
+  // this just returns its id. Older attachments saved before this fix (the
+  // {data:<base64>} shape, still sitting in someone's localStorage) get
+  // uploaded once here on first use, same as before, then never again.
   const ensureProofFileId=async()=>{
-    if(!currentAttachment||!uploadInboxFile)return null;
+    if(!currentAttachment)return null;
     if(currentAttachment.inboxFileId)return currentAttachment.inboxFileId;
+    if(!currentAttachment.data||!uploadInboxFile)return null;
     setUploadingProof(true);
     try{
       const resp=await fetch(currentAttachment.data);
       const blob=await resp.blob();
       const file=new File([blob],currentAttachment.name,{type:currentAttachment.type||blob.type});
       const uploaded=await uploadInboxFile(file);
-      if(uploaded&&onAttach)onAttach(attachKey,{...currentAttachment,inboxFileId:uploaded.id});
+      if(uploaded&&onAttach)onAttach(attachKey,{...currentAttachment,inboxFileId:uploaded.id,storagePath:uploaded.storagePath});
       setUploadingProof(false);
       return uploaded?uploaded.id:null;
     }catch(e){
@@ -5607,15 +5623,23 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <div style={{fontSize:12,fontWeight:700,color:T.text}}>Bank statement — {getName(selectedAccount)} · {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
             </div>
             <div style={{display:"flex",gap:8,padding:"10px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-              <label style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer"}}>
-                {currentAttachment?"Replace":"Attach file"}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAttachStatement(e.target.files[0]);}}/>
-              </label>
+              <button onClick={()=>setShowAttachUpload(true)} disabled={uploadingProof} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:uploadingProof?T.muted:T.sub,cursor:uploadingProof?"wait":"pointer",fontFamily:"inherit"}}>
+                {uploadingProof?"Uploading…":currentAttachment?"Replace":"Attach file"}
+              </button>
               {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
+              {showAttachUpload&&(
+                <UploadDropModal title="Attach bank statement" accept=".pdf,.jpg,.jpeg,.png" busy={uploadingProof}
+                  onFiles={files=>{if(files[0])handleAttachStatement(files[0]);setShowAttachUpload(false);}}
+                  onClose={()=>setShowAttachUpload(false)}/>
+              )}
             </div>
             <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>
               {currentAttachment?(
-                currentAttachment.type&&currentAttachment.type.startsWith("image")?(
+                currentAttachment.storagePath?(
+                  <div style={{height:"100%",minHeight:400}}>
+                    <SignedFileViewer storagePath={currentAttachment.storagePath} type={currentAttachment.type} name={currentAttachment.name} style={{width:"100%",height:"100%"}}/>
+                  </div>
+                ):currentAttachment.type&&currentAttachment.type.startsWith("image")?(
                   <img src={currentAttachment.data} style={{width:"100%",borderRadius:8,border:`1px solid ${T.border}`}}/>
                 ):(
                   <iframe src={currentAttachment.data} style={{width:"100%",height:"100%",minHeight:400,border:`1px solid ${T.border}`,borderRadius:8}} title="Bank statement"/>

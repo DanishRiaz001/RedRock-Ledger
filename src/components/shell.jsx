@@ -259,6 +259,42 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   );
 }
 
+// A real drag-and-drop upload modal — every "Upload" / "Attach file" button
+// across the app used to just be a plain hidden <input type="file"> behind
+// a label, which only ever worked by clicking to browse. This gives every
+// one of those buttons the same real drop target (drag files onto it, or
+// click through to the same file picker as before).
+function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles,onClose,busy=false}){
+  const[dragOver,setDragOver]=useState(false);
+  const inputRef=React.useRef(null);
+  const handleFiles=fileList=>{
+    const files=Array.from(fileList||[]);
+    if(files.length)onFiles(files);
+  };
+  return(
+    <div onClick={busy?undefined:onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.28)",padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:16,fontWeight:800,color:T.text}}>{title}</div>
+          <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:busy?"default":"pointer",lineHeight:1,opacity:busy?0.4:1}}>✕</button>
+        </div>
+        <div
+          onDragOver={e=>{e.preventDefault();if(!busy)setDragOver(true);}}
+          onDragLeave={()=>setDragOver(false)}
+          onDrop={e=>{e.preventDefault();setDragOver(false);if(!busy)handleFiles(e.dataTransfer.files);}}
+          onClick={()=>{if(!busy&&inputRef.current)inputRef.current.click();}}
+          style={{border:`2px dashed ${dragOver?T.accent:T.border}`,borderRadius:12,padding:"40px 20px",textAlign:"center",cursor:busy?"wait":"pointer",background:dragOver?T.accentLight:T.bg,transition:"background .1s,border-color .1s"}}
+        >
+          <div style={{fontSize:32,marginBottom:10}}>{busy?"⏳":"📎"}</div>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{busy?"Uploading…":dragOver?"Drop to upload":"Drag a file here"}</div>
+          {!busy&&<div style={{fontSize:11,color:T.muted}}>or click to browse{hint?` · ${hint}`:""}</div>}
+          <input ref={inputRef} type="file" accept={accept} multiple={multiple} disabled={busy} style={{display:"none"}} onChange={e=>{handleFiles(e.target.files);e.target.value="";}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // The marketing homepage — what a signed-out visitor sees first. Built for
 // two audiences at once (a business running its own books, and an
 // accountant/bookkeeper managing several clients' books from one login),
@@ -604,4 +640,4 @@ function PendingAccessScreen({reason,onSignOut}){
 
 
 
-export { Spinner, SignedFileViewer, ResizableSplit, LoginScreen, PendingAccessScreen };
+export { Spinner, SignedFileViewer, ResizableSplit, UploadDropModal, LoginScreen, PendingAccessScreen };

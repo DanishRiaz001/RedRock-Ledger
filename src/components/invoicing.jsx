@@ -1443,7 +1443,9 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   // same way a real bookkeeper would glance at the invoice before typing.
   const autoFillFromDocument=async()=>{
     if(!currentFile||autoFilling)return;
-    if(!(currentFile.type||"").startsWith("image")){alert("Auto-fill currently only reads image files.");return;}
+    const isPdf=(currentFile.type||"")==="application/pdf";
+    const isImg=(currentFile.type||"").startsWith("image");
+    if(!isPdf&&!isImg){alert("Auto-fill currently only reads image and PDF files.");return;}
     setAutoFilling(true);
     try{
       const url=await getSignedUrl(currentFile.storagePath);
@@ -1456,11 +1458,18 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         reader.onerror=reject;
         reader.readAsDataURL(blob);
       });
+      // Claude's Messages API reads a PDF natively via a "document" content
+      // block (own text + rendered pages) instead of the "image" block used
+      // for a photo/scan — this was the one thing gating auto-fill to
+      // images only, even though most real invoices arrive as PDFs.
+      const docBlock=isPdf
+        ?{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}}
+        :{type:"image",source:{type:"base64",media_type:blob.type||"image/jpeg",data:base64}};
       const{data,error}=await callClaudeAPI({
         model:"claude-sonnet-4-6",max_tokens:300,
         messages:[{role:"user",content:[
-          {type:"image",source:{type:"base64",media_type:blob.type||"image/jpeg",data:base64}},
-          {type:"text",text:"Look at this invoice or receipt image. Find the invoice/receipt date and the total amount due. Return ONLY valid JSON, no markdown: {\"date\":\"YYYY-MM-DD\" or \"\" if not found,\"amount\":number or null}"},
+          docBlock,
+          {type:"text",text:"Look at this invoice or receipt. Find the invoice/receipt date and the total amount due. Return ONLY valid JSON, no markdown: {\"date\":\"YYYY-MM-DD\" or \"\" if not found,\"amount\":number or null}"},
         ]}],
       });
       if(error==="NO_KEY"){alert("Add your Anthropic API key in Company → Settings to use auto-fill.");setAutoFilling(false);return;}
@@ -1480,7 +1489,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   };
 
   return(
-    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",height:"calc(100vh - 140px)",marginRight:-32}}>
+    <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"16px 24px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Register voucher</h1>
         <div style={{display:"flex",gap:8}}>
@@ -1743,16 +1752,32 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     <div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
                   ))}
                 </div>
-                {generalLines.map((l,i)=>(
+                {generalLines.map((l,i)=>{
+                  // Same auto-fill + lock every other entry screen already
+                  // does when an account is picked — this general-voucher
+                  // table was the one place left where a VAT-locked account
+                  // could still go through with whatever code (or none) was
+                  // already sitting in its dropdown.
+                  const lDebitAcc=accounts.find(a=>a.code===l.debitCode);
+                  const lCreditAcc=accounts.find(a=>a.code===l.creditCode);
+                  const lDebitLocked=!!(lDebitAcc&&lDebitAcc.vatLocked&&lDebitAcc.defaultVatCode);
+                  const lCreditLocked=!!(lCreditAcc&&lCreditAcc.vatLocked&&lCreditAcc.defaultVatCode);
+                  return(
                   <div key={l.lid} style={{display:"grid",gridTemplateColumns:lineGridCols,gap:8,padding:"8px 10px",alignItems:"center",borderBottom:i<generalLines.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
                     {displayOpts.showDescription&&<input placeholder="Line description" value={l.description} onChange={e=>updateGeneralLine(l.lid,{description:e.target.value})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>}
-                    <AccDrop value={l.debitCode} onChange={v=>updateGeneralLine(l.lid,{debitCode:v})} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
+                    <AccDrop value={l.debitCode} onChange={v=>{
+                      const acc=accounts.find(a=>a.code===v);
+                      updateGeneralLine(l.lid,{debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:l.debitVatCode});
+                    }} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
                     {displayOpts.showVat&&(
-                      <VatDrop value={l.debitVatCode} onChange={code=>updateGeneralLine(l.lid,{debitVatCode:code})} options={vatCodeOptions("input")}/>
+                      <VatDrop value={l.debitVatCode} onChange={code=>updateGeneralLine(l.lid,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={lDebitLocked}/>
                     )}
-                    <AccDrop value={l.creditCode} onChange={v=>updateGeneralLine(l.lid,{creditCode:v})} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
+                    <AccDrop value={l.creditCode} onChange={v=>{
+                      const acc=accounts.find(a=>a.code===v);
+                      updateGeneralLine(l.lid,{creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:l.creditVatCode});
+                    }} accounts={accounts} onCreateAccount={a=>setAccounts&&setAccounts([...accounts,{code:a.code,name:a.name}])}/>
                     {displayOpts.showVat&&(
-                      <VatDrop value={l.creditVatCode} onChange={code=>updateGeneralLine(l.lid,{creditVatCode:code})} options={vatCodeOptions("output")}/>
+                      <VatDrop value={l.creditVatCode} onChange={code=>updateGeneralLine(l.lid,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={lCreditLocked}/>
                     )}
                     <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"&&i===generalLines.length-1){e.preventDefault();addGeneralLine();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
                     {trackProjects&&(
@@ -1781,7 +1806,8 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     </div>
                     {l.debitCode===l.creditCode&&l.debitCode&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.red,marginTop:-4}}>Debit and credit can't be the same account on this line.</div>}
                   </div>
-                ))}
+                  );
+                })}
                 <button onClick={addGeneralLine} style={{background:"none",border:"none",borderTop:`1px solid ${T.border}`,color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 10px",width:"100%",display:"flex",alignItems:"center",gap:5}}>
                   <i className="ti ti-plus" style={{fontSize:13}}/>Add line
                 </button>
@@ -3378,6 +3404,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     setForm(p=>({...p,lines}));
   };
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
+  const[dropHover,setDropHover]=useState(false);
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
     const newFile=await uploadInboxFile(file);
@@ -3801,30 +3828,45 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   setForm(p=>({...p,lines}));
                 }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
               </div>
+              {(()=>{
+                // Auto-fill AND lock VAT from the account's own settings the
+                // moment it's picked — every other entry screen already does
+                // this; this multi-line editor was the one place a VAT-
+                // locked account's line could still be posted with whatever
+                // code (or none) happened to be sitting in the dropdown.
+                const debitAcc=accounts.find(a=>a.code===line.debitCode);
+                const creditAcc=accounts.find(a=>a.code===line.creditCode);
+                const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
+                const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+                return(<>
               <div style={{flex:"0 0 140px",minWidth:0}}>
                 <AccDrop value={line.debitCode||""} onChange={v=>{
+                  const acc=accounts.find(a=>a.code===v);
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],debitCode:v};
+                  lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                   setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
                 <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],debitVatCode:code};
                   setForm(p=>({...p,lines}));
-                }} options={vatCodeOptions("input")}/>
+                }} options={vatCodeOptions("input")} disabled={debitLocked}/>
               </div>
               <div style={{flex:"0 0 140px",minWidth:0}}>
                 <AccDrop value={line.creditCode||""} onChange={v=>{
+                  const acc=accounts.find(a=>a.code===v);
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                  lines[li]={...lines[li],creditCode:v};
+                  lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                   setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
                 }} accounts={accounts}/>
                 <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],creditVatCode:code};
                   setForm(p=>({...p,lines}));
-                }} options={vatCodeOptions("output")}/>
+                }} options={vatCodeOptions("output")} disabled={creditLocked}/>
               </div>
+                </>);
+              })()}
               <div style={{flex:"0 0 90px",minWidth:0,display:"flex",gap:4,alignItems:"flex-start"}}>
                 {li===0?(
                   <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:11,padding:"7px 8px",flex:1,minWidth:0}}/>
@@ -3913,32 +3955,40 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   }} style={{flexShrink:0,background:T.redLight,border:"none",borderRadius:6,color:T.red,fontSize:14,fontWeight:900,cursor:"pointer",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
                 )}
               </div>
+              {(()=>{
+                const debitAcc=accounts.find(a=>a.code===line.debitCode);
+                const creditAcc=accounts.find(a=>a.code===line.creditCode);
+                const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
+                const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+                return(
               <div style={{display:"flex",gap:8,padding:"0 12px 9px",alignItems:"flex-start"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:8,color:T.red,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Dr</div>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
+                    const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                    lines[li]={...lines[li],debitCode:v};
+                    lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                     setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
                   }} accounts={accounts}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
                     setForm(p=>({...p,lines}));
-                  }} options={vatCodeOptions("input")}/>
+                  }} options={vatCodeOptions("input")} disabled={debitLocked}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:8,color:T.green,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Cr</div>
                   <AccDrop value={line.creditCode||""} onChange={v=>{
+                    const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                    lines[li]={...lines[li],creditCode:v};
+                    lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                     setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
                   }} accounts={accounts}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};
                     setForm(p=>({...p,lines}));
-                  }} options={vatCodeOptions("output")}/>
+                  }} options={vatCodeOptions("output")} disabled={creditLocked}/>
                 </div>
                 <div style={{width:80,flexShrink:0}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:2,textAlign:"right"}}>Amount</div>
@@ -3953,6 +4003,8 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   )}
                 </div>
               </div>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -4276,12 +4328,16 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         right={(
           <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
             {!attached?(
-              <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center"}}>
+              <div
+                onDragOver={e=>{e.preventDefault();if(!uploadingReceipt)setDropHover(true);}}
+                onDragLeave={()=>setDropHover(false)}
+                onDrop={e=>{e.preventDefault();setDropHover(false);if(!uploadingReceipt&&e.dataTransfer.files[0])uploadToInbox(e.dataTransfer.files[0]);}}
+                style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
                 <i className="ti ti-file-off" style={{fontSize:28}}/>
-                <div style={{fontSize:12}}>No document attached to this entry yet.</div>
-                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"10px 16px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg,marginTop:6}}>
+                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
+                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg,marginTop:6}}>
                   <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Upload a file"}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Upload a file, or drag one here"}</span>
                   <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
                 </label>
                 {inboxFiles.length>0&&(

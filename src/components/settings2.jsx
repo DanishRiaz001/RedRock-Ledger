@@ -3,7 +3,7 @@ import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js"
 import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey, openHtmlInNewTab } from "../lib/utils.js";
 import { sb } from "../lib/supabaseClient.js";
 import { Card, BackHeader, Menu3, AccDropFlat, SaveFlashButton, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug } from "./ledger.jsx";
-import { ResizableSplit, SignedFileViewer } from "./shell.jsx";
+import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { AccLedgerTable } from "./invoicing.jsx";
 
 function BalanceListsScreen({contacts,transactions,employees=[]}){
@@ -1525,6 +1525,7 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
 function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMove,onCopy,onMerge,isDesktop,onStartRegistration}){
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
+  const[showUploadModal,setShowUploadModal]=useState(false);
   const[selected,setSelected]=useState([]);
   const[busy,setBusy]=useState(false);
   const[previewFile,setPreviewFile]=useState(null);
@@ -1625,18 +1626,29 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   };
 
   if(isDesktop){
+    // marginRight:-32 used to compensate for the preview panel sitting in
+    // normal flex flow inside this page's own right padding — now that
+    // ResizableSplit's panel is always position:fixed to the window's true
+    // right edge regardless of this wrapper, that negative margin only
+    // shifted the file list itself out of alignment with where the resize
+    // handle actually sits, which is what read as the splitter "not
+    // properly moving."
     return(
-      <div style={{height:"calc(100vh - 100px)",display:"flex",flexDirection:"column",minHeight:0,marginRight:-32}}>
+      <div style={{height:"calc(100vh - 100px)",display:"flex",flexDirection:"column",minHeight:0}}>
         <div style={{flex:1,minHeight:0,display:"flex"}}>
         <ResizableSplit defaultRightWidth={640} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
           <div style={{paddingRight:16,minWidth:0,height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexShrink:0}}>
               <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
-              <label style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:busy?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center"}}>
+              <button onClick={()=>setShowUploadModal(true)} disabled={busy} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:busy?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center"}}>
                 <i className="ti ti-upload" style={{fontSize:13,marginRight:5}}/>Upload
-                <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple disabled={busy} style={{display:"none"}} onChange={e=>{Array.from(e.target.files||[]).forEach(f=>addFile(f));e.target.value="";}}/>
-              </label>
+              </button>
             </div>
+            {showUploadModal&&(
+              <UploadDropModal title="Upload to Inbox" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple busy={busy}
+                onFiles={async files=>{for(const f of files)await addFile(f);setShowUploadModal(false);}}
+                onClose={()=>setShowUploadModal(false)}/>
+            )}
             <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":""}</p>
 
             {viewMode==="active"&&(()=>{
