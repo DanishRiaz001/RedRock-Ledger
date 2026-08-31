@@ -301,6 +301,27 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const totalRI=Object.values(reportIncome).reduce((s,v)=>s+v,0);
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
   const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
+  // A multi-line voucher (New Entry's flexible balancing, a bulk bank
+  // post, a multi-line invoice, …) saves as several transaction rows
+  // sharing one bilag — searchedEntries is still one row PER underlying
+  // row, so the same bilag used to show up as several separate-looking
+  // rows in this list. Collapsed here into one row per bilag (the
+  // earliest line stands in as the representative for date/description/
+  // debit/credit/amount), with the line count carried along so the row
+  // can flag there's more — opening it (DetailModal→EditModal, which
+  // already looks up every row sharing this bilag) shows the whole thing.
+  const groupedEntries=useMemo(()=>{
+    const byBilag=new Map();
+    searchedEntries.forEach(t=>{
+      const arr=byBilag.get(t.bilag)||[];
+      arr.push(t);
+      byBilag.set(t.bilag,arr);
+    });
+    return[...byBilag.values()].map(lines=>{
+      const primary=lines.length>1?[...lines].sort((a,b)=>(a.id>b.id?1:-1))[0]:lines[0];
+      return{...primary,_lineCount:lines.length};
+    });
+  },[searchedEntries]);
 
   // First-run onboarding — shown once, until the company has a name saved or
   // it's explicitly skipped. Doesn't block returning users at all.
@@ -961,7 +982,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             {(()=>{
               const sortKey=entriesSortKey, sortDir=entriesSortDir;
               const toggleSort=(k)=>{if(sortKey===k)setEntriesSortDir(d=>d==="asc"?"desc":"asc");else{setEntriesSortKey(k);setEntriesSortDir("desc");}};
-              const sorted=[...searchedEntries].sort((a,b)=>{
+              const sorted=[...groupedEntries].sort((a,b)=>{
                 const mul=sortDir==="asc"?1:-1;
                 if(sortKey==="amount")return(a.amount-b.amount)*mul;
                 if(sortKey==="bilag")return(a.bilag-b.bilag)*mul;
@@ -1026,7 +1047,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       const isMatched=!!t.matchedWith;
                       return(
                         <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
-                          <td style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}</td>
+                          <td style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}{t._lineCount>1&&<span title={`${t._lineCount} lines in this voucher`} style={{marginLeft:5,fontSize:10,fontWeight:700,color:T.muted,background:T.bg,borderRadius:5,padding:"1px 5px"}}>+{t._lineCount-1}</span>}</td>
                           {cols.date&&<td style={{color:T.sub}}>{t.date}</td>}
                           {cols.accounts&&<td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>}
                           {cols.accounts&&<td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>}
@@ -1446,8 +1467,8 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
               <input placeholder="Search bilag, description, account..." value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} style={{...inp,paddingLeft:42}}/>
             </div>
-            <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{searchedEntries.length} entries</div>
-            {searchedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>)}
+            <div style={{fontSize:12,color:T.muted,marginBottom:10,fontWeight:600}}>{groupedEntries.length} entries</div>
+            {groupedEntries.map(t=><TxnCard key={t.id} t={t} accounts={accounts} contacts={contacts} transactions={transactions} attachedTxnIds={attachedTxnIds} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onEdit={saveEdit} onDelete={deleteTxnWithUndo} onReverse={reverseTransaction} onDuplicate={duplicateTransaction} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>)}
           </div>
         )}
 

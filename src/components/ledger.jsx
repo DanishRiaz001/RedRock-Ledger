@@ -1569,7 +1569,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
+function TxnCard({t,accounts,contacts,transactions=[],attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -1579,7 +1579,7 @@ function TxnCard({t,accounts,contacts,attachedTxnIds,fetchTxnAttachments,uploadI
   if(t.matchedWith&&(isReversed||isReversal))return null; // both sides of a reversal hide from main list
   return(
     <>
-      {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts}
+      {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         onEdit={u=>{onEdit(u);setDetail(false);}}
