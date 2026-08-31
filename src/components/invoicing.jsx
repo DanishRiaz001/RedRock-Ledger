@@ -3346,9 +3346,13 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
 }
 
 function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt"}){
-  const lastDebit=(()=>{try{return localStorage.getItem("rr_last_debit_code")||"";}catch{return"";}})();
-  const lastCredit=(()=>{try{return localStorage.getItem("rr_last_credit_code")||"";}catch{return"";}})();
-  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:lastDebit,creditCode:lastCredit,description:"",amount:"",contactId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
+  // A New Entry (or "Register" from an Inbox file) always starts with
+  // blank Debit/Credit accounts now — it used to silently pre-fill
+  // whichever accounts the LAST entry used, which both looked like a
+  // stuck/unclearable entry and, since those accounts were never actually
+  // picked through the dropdown, skipped the VAT auto-fill that only runs
+  // on a real onChange.
+  const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -3495,9 +3499,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     if(possibleDupe&&!window.confirm(`This looks like a duplicate of ${fmtB(possibleDupe.bilag)} — same date, amount, and description. Save it anyway?`))return;
     setSaving(true);
     try{
-      // Remember what was used this time, so the next New Entry starts pre-filled
-      // with the same accounts — most entries in a row tend to repeat a pattern.
-      try{localStorage.setItem("rr_last_debit_code",form.debitCode);localStorage.setItem("rr_last_credit_code",form.creditCode);}catch{}
       const linesArr=form.lines&&form.lines.length?form.lines:[{debitCode:form.debitCode,creditCode:form.creditCode}];
       const normLines=linesArr.map((l,li)=>({
         date:li===0?form.date:(l.date||form.date),
