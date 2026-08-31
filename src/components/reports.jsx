@@ -4758,7 +4758,18 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     return!/cash/i.test(a.name);
   }),[accounts]);
   const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
-  const[month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  // Default to the earliest month that actually has activity for this
+  // account and isn't reconciled/approved yet — not always "now" — so
+  // opening the screen lands on the real work-in-progress month (e.g. an
+  // account whose current month is quiet but May is still open) instead of
+  // an empty current month the user then has to navigate away from.
+  const earliestOpenMonth=acctCode=>{
+    if(!acctCode)return new Date().toISOString().slice(0,7);
+    const months=Array.from(new Set(transactions.filter(t=>(t.debitCode===acctCode||t.creditCode===acctCode)&&t.date).map(t=>t.date.slice(0,7)))).sort();
+    if(!months.length)return new Date().toISOString().slice(0,7);
+    return months.find(m=>!isBankReconApproved(acctCode,m))||months[months.length-1];
+  };
+  const[month,setMonth]=useState(()=>earliestOpenMonth(selectedAccount));
   const[selectedLineIds,setSelectedLineIds]=useState(()=>new Set()); // right side, multi-select
   const[selectedTxnIds,setSelectedTxnIds]=useState(()=>new Set()); // left side, multi-select
   const[dismissedSuggestions,setDismissedSuggestions]=useState(()=>new Set()); // line ids where the auto-suggested match was dismissed
@@ -5336,7 +5347,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%"}}/>
         </div>
         <div style={{width:210,flexShrink:0}}>
-          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);clearSelection();}} accounts={bankAccounts}/>
+          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);setMonth(earliestOpenMonth(v));clearSelection();}} accounts={bankAccounts}/>
         </div>
         <div style={{position:"relative",flexShrink:0}}>
           <div onClick={()=>setMonthDropdownOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"0 6px",background:"#fff",height:36,boxSizing:"border-box",cursor:"pointer"}}>
@@ -5877,6 +5888,14 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
     const cur=p[cid]||[];
     return{...p,[cid]:cur.includes(tid)?cur.filter(x=>x!==tid):[...cur,tid]};
   });
+  // Selects/clears every open (unmatched) bilag for one contact at once —
+  // matching only ever applies within a single contact's items, so this is
+  // scoped per-group rather than a single global header checkbox.
+  const toggleSelectAllForContact=(cid,ids)=>setSelected(p=>{
+    const cur=p[cid]||[];
+    const allSel=ids.length>0&&ids.every(id=>cur.includes(id));
+    return{...p,[cid]:allSel?[]:ids};
+  });
   const doMatch=(cid)=>{
     const ids=selected[cid]||[];
     const grpTxns=transactions.filter(t=>ids.includes(t.id));
@@ -5943,6 +5962,12 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
 
   return(
     <div>
+      {/* Hidden entirely while an entry is open — it used to stay visible
+          underneath the (no-longer-a-popup) editor, so opening a bilag
+          from here appended the editor below the whole ledger table
+          instead of replacing the view, the same issue already fixed on
+          Voucher overview. */}
+      {!detailTxn&&(<>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
         {onNavigate&&(
@@ -6000,13 +6025,13 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         </div>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none"}}>
           <tbody><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
-            <td style={{padding:"9px 14px",width:36}}></td>
-            <td style={{width:90}}>Bilag</td>
-            <td style={{width:100}}>Invoice no.</td>
-            <td style={{width:100}}>Date</td>
-            <td style={{width:100}}>Due date</td>
+            <td style={{padding:"9px 14px",width:32}}></td>
+            <td style={{width:76}}>Bilag</td>
+            <td style={{width:88}}>Invoice no.</td>
+            <td style={{width:84}}>Date</td>
+            <td style={{width:84}}>Due date</td>
             <td>Description</td>
-            <td style={{textAlign:"right",padding:"9px 14px",width:130}}>Amount</td>
+            <td style={{textAlign:"right",padding:"9px 14px",width:120}}>Amount</td>
           </tr></tbody>
         </table>
         </div>
@@ -6021,10 +6046,17 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           <tbody>
             {groups.map(({contact,txns,total})=>{
               const sel=selected[contact.id]||[];
+              const selectableIds=txns.filter(t=>!(!!t.matchedWith&&t.matchedAccount===code)).map(t=>t.id);
+              const allGroupSelected=selectableIds.length>0&&selectableIds.every(id=>sel.includes(id));
               return(
                 <React.Fragment key={contact.id}>
                   <tr>
-                    <td colSpan="7" style={{padding:"7px 14px 4px",background:T.bg}}>
+                    <td style={{padding:"7px 14px 4px",background:T.bg,width:32}}>
+                      {selectableIds.length>0&&(
+                        <input type="checkbox" checked={allGroupSelected} onChange={()=>toggleSelectAllForContact(contact.id,selectableIds)} title="Select all open items for this contact"/>
+                      )}
+                    </td>
+                    <td colSpan="6" style={{padding:"7px 14px 4px",background:T.bg}}>
                       <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                         {contact.name}
                       </div>
@@ -6035,19 +6067,19 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                     const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
                     return(
                       <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                        <td style={{padding:"9px 14px",width:36}}>
+                        <td style={{padding:"9px 14px",width:32}}>
                           {isMatchedHere?(
                             <button onClick={()=>setMatchDetailGroupId(t.matchedWith)} title="Matched — click for details" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
                           ):(
                             <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
                           )}
                         </td>
-                        <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{width:90,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
-                        <td style={{width:100,color:T.sub}}>{t.invoiceNo||"—"}</td>
-                        <td style={{width:100,color:T.text}}>{t.date}</td>
-                        <td style={{width:100,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
+                        <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{width:76,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
+                        <td style={{width:88,color:T.sub}}>{t.invoiceNo||"—"}</td>
+                        <td style={{width:84,color:T.text}}>{t.date}</td>
+                        <td style={{width:84,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
                         <td style={{color:T.text}}>{t.description}</td>
-                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:130,color:T.text}}>{sign(mv(t))}</td>
+                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>{sign(mv(t))}</td>
                       </tr>
                     );
                   })}
@@ -6089,6 +6121,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         </table>
       </div>
       </div>
+      </>)}
       {matchDetailGroupId&&(
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
       )}

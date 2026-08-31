@@ -1097,9 +1097,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
         <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
-        <div style={{padding:"14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-          <div><SL>Voucher number</SL><div style={{...inp,background:T.bg,color:T.sub}}>{fmtB(txn.bilag)}</div></div>
-          <div><SL>Linked customer / supplier</SL><ContactSearch contacts={contacts} value={isGroup?"":form.contactId} onChange={v=>setForm(f=>({...f,contactId:v}))}/></div>
+        {/* No separate "Linked customer/supplier" field here anymore —
+            typing a contact's name straight into a Debit/Credit account
+            box (first line only, same as New Entry) already routes to
+            1500/2400 and links them; a second field asking for the same
+            thing again was redundant. */}
+        <div style={{padding:"14px"}}>
+          <div style={{maxWidth:280}}><SL>Voucher number</SL><div style={{...inp,background:T.bg,color:T.sub}}>{fmtB(txn.bilag)}</div></div>
         </div>
         {moneySources&&moneySources.length>0&&(
           <div style={{padding:"0 14px 14px"}}>

@@ -251,6 +251,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[entriesShowCount,setEntriesShowCount]=useState(50);
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
   const[entriesDetailTxn,setEntriesDetailTxn]=useState(null);
+  // Navigating away from Voucher overview and back used to still show
+  // whichever bilag was open the LAST time you left — this state lived at
+  // this component's level, outliving the visit entirely, so "Voucher
+  // overview" from the sidebar didn't reliably mean "the list" the way any
+  // other nav link means starting fresh. Cleared the instant you leave the
+  // tab, not just when you explicitly close the entry.
+  useEffect(()=>{if(tab!=="Entries")setEntriesDetailTxn(null);},[tab]);
   const[vatTerminView,setVatTerminView]=useState(null); // null = Termin list, or {year,n} = drill-down
   const[entriesFixedBarHeight,setEntriesFixedBarHeight]=useState(90);
   const entriesFixedBarRef=React.useRef(null);
@@ -1102,7 +1109,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>{const r=await addTransactionNotified(form);setTab("Dashboard");return r;}} addEntryComment={addEntryComment}/>
+            <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment}/>
           </div>
         )}
 
@@ -1488,7 +1495,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>{const r=await addTransactionNotified(form);setTab("Dashboard");return r;}} addEntryComment={addEntryComment}/>
+          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment}/>
         )}
 
         {tab==="Accounts"&&(
