@@ -4840,6 +4840,19 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     setUploadingProof(false);
     if(!uploaded){alert("Upload failed — try again.");return;}
     if(onAttach)onAttach(attachKey,{name:file.name,type:file.type,period:month,code:selectedAccount,inboxFileId:uploaded.id,storagePath:uploaded.storagePath});
+    // Only Bokfør (postBankStatementLinesBulk) actually links a statement to
+    // the transactions it creates, and only if this attachment already
+    // existed BEFORE that post ran — attaching (or replacing) the statement
+    // afterward only ever updated this account/month's own reference, never
+    // the entries already posted from it, so opening any of them still read
+    // "no document attached" even once a statement genuinely was on file.
+    // Backfill it onto every already-posted transaction for this exact
+    // account and month now, so attaching (or re-attaching) the statement
+    // always catches every entry from that period, not just future ones.
+    if(attachFilesToTxnEntry){
+      const already=transactions.filter(t=>t.date.slice(0,7)===month&&(t.debitCode===selectedAccount||t.creditCode===selectedAccount));
+      for(const t of already)await attachFilesToTxnEntry(t.id,[uploaded.id]);
+    }
   };
   // The attachment is what stands in as "proof" when posting straight from
   // the statement (Bokfør) — already a real uploaded inbox file (above), so
