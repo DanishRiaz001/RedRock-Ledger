@@ -979,7 +979,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Entries"&&(
           <div style={{maxWidth:1000}}>
-            {(()=>{
+            {/* The list and the editor used to both render at once — opening
+                a bilag just appended the (no-longer-a-popup) editor BELOW
+                the entire table, so it landed off-screen at the bottom
+                instead of replacing the view the way New Entry does. Hidden
+                while something's open now, exactly like a real navigation:
+                one or the other, never both at once. */}
+            {!entriesDetailTxn&&(()=>{
               const sortKey=entriesSortKey, sortDir=entriesSortDir;
               const toggleSort=(k)=>{if(sortKey===k)setEntriesSortDir(d=>d==="asc"?"desc":"asc");else{setEntriesSortKey(k);setEntriesSortDir("desc");}};
               const sorted=[...groupedEntries].sort((a,b)=>{
@@ -1068,10 +1074,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               </>);
             })()}
             {entriesDetailTxn&&(
-              <DetailModal txn={entriesDetailTxn} accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransactionNotified} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}
+              <DetailModal txn={entriesDetailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransactionNotified} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}
                 fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
-                onEdit={u=>{saveEdit(u);setEntriesDetailTxn(null);}}
-                onDelete={id=>{deleteTxnWithUndo(id);setEntriesDetailTxn(null);}}
+                // onEdit/onDelete used to close this straight away — fine
+                // for a single-line save/delete (which already closes
+                // itself via onClose right after), but the multi-line
+                // editor calls onSave/onDelete once PER LINE in a loop, so
+                // closing on every call meant a 3-line save/delete only
+                // ever got through line 1 before the whole editor
+                // vanished. Only onClose (called explicitly once, at the
+                // right moment, from inside the editor itself) should
+                // actually close it now.
+                onEdit={u=>saveEdit(u)}
+                onDelete={id=>deleteTxnWithUndo(id)}
                 onReverse={tx=>{reverseTransaction(tx);setEntriesDetailTxn(null);}}
                 onDuplicate={duplicateTransaction}
                 onClose={()=>setEntriesDetailTxn(null)}/>

@@ -5753,12 +5753,19 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
         return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef]}/>;
       })()}
-      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
+      {detailTxn&&<DetailModal txn={detailTxn} initialShowEdit addTransaction={addTransaction} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         initialShowComments={detailTxnShowComments}
-        onEdit={u=>{if(onEditTxn)onEditTxn(u);setDetailTxn(null);}}
-        onDelete={id=>{if(onDeleteTxn)onDeleteTxn(id);setDetailTxn(null);}}
+        // onEdit/onDelete used to close this immediately on every call —
+        // fine for a single-line save/delete, but the multi-line editor
+        // calls these once PER LINE, so closing every time meant only the
+        // first line of a multi-line save/delete ever went through before
+        // the editor vanished. onClose (called once, explicitly, from
+        // inside the editor at the right moment) is what actually closes
+        // it now.
+        onEdit={u=>{if(onEditTxn)onEditTxn(u);}}
+        onDelete={id=>{if(onDeleteTxn)onDeleteTxn(id);}}
         onReverse={tx=>{if(onReverseTxn)onReverseTxn(tx);setDetailTxn(null);}}
         onClose={()=>{setDetailTxn(null);setDetailTxnShowComments(false);}}/>}
     </div>
@@ -6065,9 +6072,9 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
-          onEdit={u=>{onEditTxn&&onEditTxn(u);setDetailTxn(null);}}
-          onDelete={id=>{onDeleteTxn&&onDeleteTxn(id);setDetailTxn(null);}}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+          onEdit={u=>{onEditTxn&&onEditTxn(u);}}
+          onDelete={id=>{onDeleteTxn&&onDeleteTxn(id);}}
           onReverse={tx=>{onReverseTxn&&onReverseTxn(tx);setDetailTxn(null);}}
           onClose={()=>setDetailTxn(null)}/>
       )}

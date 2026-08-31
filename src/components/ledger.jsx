@@ -1313,8 +1313,13 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
-  const[showEdit,setShowEdit]=useState(false);
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
+  // Clicking a bilag from a list is meant to go straight into editing —
+  // left the lines, right the document preview, no "view details" popup
+  // step in between. Callers that still want the read-only view-first
+  // step (a real "Detail" click distinct from "Edit") simply don't pass
+  // this.
+  const[showEdit,setShowEdit]=useState(initialShowEdit);
   // Every OTHER row sharing this bilag — a real multi-line voucher (New
   // Entry's flexible balancing, a bulk bank post, a multi-line invoice, …)
   // saves as several transaction rows under one shared bilag number. Only
