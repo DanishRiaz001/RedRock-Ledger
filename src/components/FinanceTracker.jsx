@@ -832,7 +832,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
-              {tab:"Accounts",label:"Chart of accounts"},
+              {tab:"AccountPlan",label:"Chart of accounts"},
               {tab:"Employees",label:"Employees"},
               {tab:"EmployeeNew",label:"New employee",requiresWrite:true},
               {tab:"Payroll",label:"Payroll"},
@@ -1116,6 +1116,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="Reconciliation"&&(
           <ScreenErrorBoundary name="Reconciliation">
             <ReconciliationScreen accounts={accounts} transactions={transactions} reconciliationStatus={reconciliationStatus} saveReconciliationStatus={saveReconciliationStatus} reconciliationFiles={reconciliationFiles} attachReconciliationFile={attachReconciliationFile} removeReconciliationFile={removeReconciliationFile} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} profiles={profiles} isDesktop={isDesktop}/>
+          </ScreenErrorBoundary>
+        )}
+
+        {/* Company → "Chart of accounts" used to be wired to the same tab
+            ("Accounts") as the read-only balance-list drilldown reused from
+            the Dashboard/Reports side of the app — clicking it never
+            actually reached the real, editable Account Plan screen (with
+            + New Account, Export/Import, and Reset to NS defaults), it just
+            showed that plain balance list again under a misleading label.
+            Given its own dedicated tab now. */}
+        {tab==="AccountPlan"&&(
+          <ScreenErrorBoundary name="AccountPlan">
+            <AccountPlanScreen accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} transactions={transactions} onBack={()=>setTab("Dashboard")} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={setTab} mergeAccounts={mergeAccounts}/>
           </ScreenErrorBoundary>
         )}
 
