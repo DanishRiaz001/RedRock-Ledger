@@ -1527,7 +1527,14 @@ function ProfileScreen({onSignOut,onNavigate,isAdmin,isDesktop=false}){
 }
 
 // ─── Files Screen ─────────────────────────────────────────────────────────────
-function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMove,onCopy,onMerge,isDesktop,onStartRegistration}){
+function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload,onDelete,onRestore,onPermanentDelete,onRename,onMove,onCopy,onMerge,isDesktop,onStartRegistration}){
+  // Once a file has been attached to a real ledger entry it's done its
+  // job as an Inbox item — it used to just sit here forever, indistinguishable
+  // from something still waiting to be turned into a voucher. Hidden from
+  // the active list by default now (still fully there — deleting or
+  // restoring is unaffected — just out of the way), with a toggle to bring
+  // attached files back into view when you actually want to find one again.
+  const[showAttached,setShowAttached]=useState(false);
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[showUploadModal,setShowUploadModal]=useState(false);
@@ -1589,6 +1596,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
   const[suggestionFilter,setSuggestionFilter]=useState(""); // "" | "with" | "without"
   const filtered=files
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
+    .filter(f=>viewMode!=="active"||showAttached||!attachedFileIds.has(f.id))
     .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
     .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
     .filter(f=>!suggestionFilter||(suggestionFilter==="with"?hasSuggestion(f):!hasSuggestion(f)));
@@ -1601,7 +1609,8 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
     if(previewFile&&filtered.some(f=>f.id===previewFile.id))return;
     setPreviewFile(filtered[0]||null);
   },[filtered.map(f=>f.id).join(",")]);
-  const activeCount=files.filter(f=>!f.deletedAt).length;
+  const activeCount=files.filter(f=>!f.deletedAt&&(showAttached||!attachedFileIds.has(f.id))).length;
+  const attachedHiddenCount=files.filter(f=>!f.deletedAt&&attachedFileIds.has(f.id)).length;
   const deletedCount=files.filter(f=>!!f.deletedAt).length;
   const toggleSel=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
 
@@ -1659,7 +1668,7 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
             {viewMode==="active"&&(()=>{
               // Counts computed from everything except the suggestion filter
               // itself, so switching tabs doesn't change the other tabs' own counts.
-              const base=files.filter(f=>!f.deletedAt)
+              const base=files.filter(f=>!f.deletedAt&&(showAttached||!attachedFileIds.has(f.id)))
                 .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
                 .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")));
               const withCount=base.filter(hasSuggestion).length;
@@ -1714,6 +1723,12 @@ function FilesScreen({onBack,onNavigate,files,onUpload,onDelete,onRestore,onPerm
                   </div>
                 </>)}
               </div>
+              {viewMode==="active"&&attachedHiddenCount>0&&(
+                <button onClick={()=>setShowAttached(s=>!s)} title={showAttached?"Hide already-attached files":`${attachedHiddenCount} file${attachedHiddenCount===1?"":"s"} already attached to an entry — hidden`} style={{position:"relative",flexShrink:0,background:showAttached?T.accent:"none",border:`1px solid ${showAttached?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:showAttached?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <i className="ti ti-paperclip" style={{fontSize:15}}/>
+                  {!showAttached&&<span style={{position:"absolute",top:-4,right:-4,background:T.muted,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{attachedHiddenCount}</span>}
+                </button>
+              )}
               <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",flexShrink:0,background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <i className="ti ti-trash" style={{fontSize:15}}/>
                 {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}

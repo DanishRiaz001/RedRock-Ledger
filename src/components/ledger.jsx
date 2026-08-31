@@ -877,7 +877,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false,groupLines=[]}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false,groupLines=[],bilag,onAddLine}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -967,6 +967,21 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     for(const l of groupLinesState)await onDelete(l.id);
     onClose();
   };
+  const[addingLine,setAddingLine]=useState(false);
+  // Inserts a genuinely new transaction row sharing this SAME bilag —
+  // addTransaction (threaded through as onAddLine) already supports
+  // reusing an explicit bilag instead of always minting a fresh one.
+  // Starts blank so it reads the same way a freshly-added New Entry line
+  // does; it isn't part of groupValid's balance check until an account
+  // and amount are actually filled in.
+  const addGroupLine=async()=>{
+    if(!onAddLine||addingLine)return;
+    setAddingLine(true);
+    const today=new Date().toISOString().split("T")[0];
+    const res=await onAddLine({date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:0,bilag});
+    setAddingLine(false);
+    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
+  };
 
   const multiFormCard=(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:16,padding:22,display:"flex",flexDirection:"column",gap:16}}>
@@ -1022,6 +1037,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           </div>
         );
       })()}
+      {onAddLine&&(
+        <button onClick={addGroupLine} disabled={addingLine} style={{...btnGhost,padding:"6px 12px",fontSize:11,color:T.accent,borderColor:T.accent,alignSelf:"flex-start"}}>{addingLine?"Adding…":"+ Add line"}</button>
+      )}
       <div style={{display:"flex",gap:6,marginTop:4}}>
         <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px",fontWeight:700,fontSize:13,cursor:"pointer",flex:2,fontFamily:"inherit",opacity:groupValid&&!savingGroup?1:0.5}} onClick={saveGroup}>{savingGroup?"Saving…":"💾 Save all lines"}</button>
         {confirmDelGroup?(
@@ -1302,7 +1320,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false}){
   const[showEdit,setShowEdit]=useState(false);
   // Every OTHER row sharing this bilag — a real multi-line voucher (New
   // Entry's flexible balancing, a bulk bank post, a multi-line invoice, …)
@@ -1329,7 +1347,21 @@ function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,
   useEffect(()=>{
     let alive=true;
     if(!fetchTxnAttachments){setAttLoading(false);return;}
-    fetchTxnAttachments(txn.id).then(list=>{if(alive){setAttList(list);setAttLoading(false);}});
+    // A multi-line voucher's document is attached to whichever specific
+    // line happened to be the "primary" one at save time — fetching only
+    // txn.id (whichever line was clicked into) meant opening the SAME
+    // bilag from a different line could show "no document attached" even
+    // though the voucher genuinely has one. Fetch every line in this
+    // group and merge (dedupe by file id), so the voucher's attachment
+    // shows up regardless of which specific line it's actually linked to.
+    Promise.all(groupTxnLines.map(l=>fetchTxnAttachments(l.id))).then(lists=>{
+      if(!alive)return;
+      const seen=new Set();
+      const merged=[];
+      lists.flat().forEach(f=>{if(f&&!seen.has(f.id)){seen.add(f.id);merged.push(f);}});
+      setAttList(merged);
+      setAttLoading(false);
+    });
     return()=>{alive=false;};
   },[txn.id]);
   // Comments — a simple discussion thread, separate from the change log.
@@ -1393,6 +1425,8 @@ function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,
       onUploadFile={uploadInboxFile?handleAttach:undefined}
       onAttachExisting={attachFilesToTxnEntry?attachExistingFile:undefined}
       groupLines={groupTxnLines}
+      bilag={txn.bilag}
+      onAddLine={addTransaction}
       // Closing is now EditModal's own call — the single-line Save button
       // closes right after its one save, same as before; the multi-line
       // Save button stays open across every line's own save call in its
@@ -1569,7 +1603,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],fetchTxnAttachments,
 
 // ─── TxnCard ─────────────────────────────────────────────────────────────────
 
-function TxnCard({t,accounts,contacts,transactions=[],attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
+function TxnCard({t,accounts,contacts,transactions=[],addTransaction,attachedTxnIds,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,onEdit,onDelete,onReverse,onDuplicate,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
   const[detail,setDetail]=useState(false);
   const isReversed=!!t.reversedBy;
   const isReversal=!!t.reversalOf;
@@ -1579,7 +1613,7 @@ function TxnCard({t,accounts,contacts,transactions=[],attachedTxnIds,fetchTxnAtt
   if(t.matchedWith&&(isReversed||isReversal))return null; // both sides of a reversal hide from main list
   return(
     <>
-      {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts} transactions={transactions}
+      {detail&&<DetailModal txn={t} accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransaction}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         onEdit={u=>{onEdit(u);setDetail(false);}}

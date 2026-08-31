@@ -189,6 +189,11 @@ function AppShell({user}){
   // new signups pick explicitly during onboarding.
   const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",country:"PK",trackProjects:false,municipality:"",municipalityStartDate:""});
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
+  // Which Inbox files already have a real attachment link somewhere —
+  // once true, that file should stop showing up in the main Inbox list
+  // (it's already been used) rather than sitting there indefinitely
+  // looking unprocessed.
+  const[attachedFileIds,setAttachedFileIds]=useState(()=>new Set());
   const[nextBilag,setNextBilag]=useState(1);
   const bilagRef=React.useRef(1);
   const[loading,setLoading]=useState(true);
@@ -307,7 +312,7 @@ function AppShell({user}){
       scoped(sb.from("sinking_funds").select("*").eq("user_id",viewingUserId)).order("fund_id"),
       scoped(sb.from("budgets").select("*").eq("user_id",viewingUserId)),
       scoped(sb.from("inbox_files").select("*").eq("user_id",viewingUserId)).order("created_at",{ascending:false}),
-      scoped(sb.from("txn_attachments").select("txn_id").eq("user_id",viewingUserId)),
+      scoped(sb.from("txn_attachments").select("txn_id, file_id").eq("user_id",viewingUserId)),
       scoped(sb.from("bank_statement_lines").select("*").eq("user_id",viewingUserId)).order("date"),
       scoped(sb.from("invoices").select("*").eq("user_id",viewingUserId)).order("invoice_no",{ascending:false}),
       scoped(sb.from("company_profile").select("*").eq("user_id",viewingUserId)).maybeSingle(),
@@ -419,6 +424,7 @@ function AppShell({user}){
       setBudgetsState((bR.data||[]).map(b=>({year:parseInt(b.year),month:parseInt(b.month),code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at,aiSupplier:r.ai_supplier||null,aiAmount:r.ai_amount!=null?parseFloat(r.ai_amount):null,aiInvoiceNo:r.ai_invoice_no||null,aiDocType:r.ai_doc_type||null,aiAnalyzed:!!r.ai_analyzed})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
+      setAttachedFileIds(new Set((taR.data||[]).map(r=>r.file_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
       setInvoices((invR.data||[]).map(r=>({id:r.id,invoiceNo:r.invoice_no,customerId:r.customer_id,date:r.date,dueDate:r.due_date,periodFrom:r.period_from,periodTo:r.period_to,saleAccount:r.sale_account,lines:r.lines||[],vatPct:parseFloat(r.vat_pct)||0,subtotal:parseFloat(r.subtotal),vatAmount:parseFloat(r.vat_amount),total:parseFloat(r.total),status:r.status,txnId:r.txn_id})));
       const startInvNo=(invR.data||[]).reduce((m,r)=>Math.max(m,r.invoice_no),0)+1;
@@ -670,8 +676,8 @@ function AppShell({user}){
       return;
     }
     if(data){
-      if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));}
-      else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));}
+      if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,...form.attachmentIds]));}
+      else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
@@ -1691,7 +1697,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     const{error}=await sb.from("inbox_files").update({deleted_at:new Date().toISOString()}).eq("user_id",user.id).eq("id",id);
     if(error){console.error("Inbox file delete error:",error);return;}
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:new Date().toISOString()}:f));
-    fetchAttachedTxnIds().then(setAttachedTxnIds); // a txn's only attachment may have just been removed
+    fetchAttachedTxnIds().then(({txnIds,fileIds})=>{setAttachedTxnIds(txnIds);setAttachedFileIds(fileIds);}); // a txn's only attachment (or a file's only link) may have just been removed
   };
   const restoreInboxFileEntry=async(id)=>{
     if(!canEdit)return;
@@ -1765,6 +1771,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     if(!canEdit)return;
     await attachFilesToTxn(txnId,fileIds);
     setAttachedTxnIds(p=>new Set([...p,txnId]));
+    setAttachedFileIds(p=>new Set([...p,...(Array.isArray(fileIds)?fileIds:[fileIds])]));
   };
 
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
@@ -1916,7 +1923,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     reconciliationStatus,saveReconciliationStatus,reconciliationFiles,attachReconciliationFile,removeReconciliationFile,
     budgets,saveBudget,restoreBudgets,
     saveBudgetSurplusSetting,sweepBudgetSurplus,
-    inboxFiles,attachedTxnIds,
+    inboxFiles,attachedTxnIds,attachedFileIds,
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,fetchTxnAttachments,
@@ -1978,9 +1985,9 @@ const fetchInboxFiles=async()=>{
   return(data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path}));
 };
 const fetchAttachedTxnIds=async()=>{
-  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("txn_id").eq("user_id",getCurrentUserId()));
-  if(error){console.error("Fetch attached txn ids error:",error);return new Set();}
-  return new Set((data||[]).map(r=>r.txn_id));
+  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("txn_id, file_id").eq("user_id",getCurrentUserId()));
+  if(error){console.error("Fetch attached txn ids error:",error);return{txnIds:new Set(),fileIds:new Set()};}
+  return{txnIds:new Set((data||[]).map(r=>r.txn_id)),fileIds:new Set((data||[]).map(r=>r.file_id))};
 };
 const attachFilesToTxn=async(txnId,fileIds)=>{
   const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
