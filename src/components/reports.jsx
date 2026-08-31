@@ -321,6 +321,12 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                   }}/>
               )}
               <span onClick={()=>setShowNew(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>New account</span>
+              {/* This desktop table view has its own copy of the "Reset to
+                  NS defaults" confirmation modal below (showResetDefaults),
+                  but nothing here ever opened it — the only trigger button
+                  lived in the other (non-desktop) render branch, which the
+                  real desktop web app never reaches. */}
+              <span onClick={()=>setShowResetDefaults(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>Reset to NS defaults</span>
             </div>
           </div>
           <table style={{width:"100%",fontSize:10.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
