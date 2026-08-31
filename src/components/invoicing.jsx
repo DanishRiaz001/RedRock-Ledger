@@ -4520,8 +4520,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         minRightWidth={300}
         maxRightWidth={640}
         minLeftWidth={580}
+        // height:"100%" instead of a fixed 520px on the wrapper below — the
+        // panel that wraps this (ResizableSplit's right side) is itself
+        // pinned top:60 to bottom:0, i.e. genuinely the rest of the
+        // screen's height, but a fixed 520px child left a visible gap of
+        // blank space below the document on anything taller than that.
         right={(
-          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:520,background:"#fff"}}>
+          <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:"100%",background:"#fff"}}>
             {!attached?(
               <div
                 onDragOver={e=>{e.preventDefault();if(!uploadingReceipt)setDropHover(true);}}
