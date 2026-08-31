@@ -3519,40 +3519,22 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         creditVatCode:l.creditVatCode,
         amount:parseFloat(li===0?form.amount:l.amount)||0,
       })).filter(l=>l.amount>0);
-      // A line with both an account picked contributes its amount to BOTH
-      // lists (a self-balanced pair, same as every entry before this
-      // feature existed); leaving one side's account unpicked (the "(Velg
-      // kontering)" placeholder, same as the reference table) contributes
-      // to only the other. Two lines pushed from the same iteration land at
-      // the same index in both lists, so the waterfall below re-derives the
-      // exact original pairing for any entry that never uses a one-sided
-      // line at all.
-      const debitContribs=[],creditContribs=[];
-      normLines.forEach(l=>{
-        if(l.debitCode)debitContribs.push({code:l.debitCode,amount:l.amount,vatCode:l.debitVatCode,date:l.date,description:l.description});
-        if(l.creditCode)creditContribs.push({code:l.creditCode,amount:l.amount,vatCode:l.creditVatCode,date:l.date,description:l.description});
-      });
-      // Waterfall-match debits against credits into balanced two-sided
-      // rows — this is what lets, say, two separate debit-only lines share
-      // one combined credit-only line (or the reverse) and still post as
-      // ordinary balanced ledger rows, without every single line having to
-      // already balance on its own.
-      const rows=[];
-      {
-        const d=debitContribs.map(x=>({...x,rem:x.amount}));
-        const c=creditContribs.map(x=>({...x,rem:x.amount}));
-        let i=0,j=0;
-        while(i<d.length&&j<c.length){
-          const take=Math.round(Math.min(d[i].rem,c[j].rem)*100)/100;
-          if(take>0){
-            rows.push({date:d[i].date||c[j].date||form.date,description:d[i].description||c[j].description||form.description,debitCode:d[i].code,creditCode:c[j].code,amount:take,debitVatCode:d[i].vatCode,creditVatCode:c[j].vatCode});
-          }
-          d[i].rem=Math.round((d[i].rem-take)*100)/100;
-          c[j].rem=Math.round((c[j].rem-take)*100)/100;
-          if(d[i].rem<=0)i++;
-          if(c[j].rem<=0)j++;
-        }
-      }
+      // Save each line exactly as it was posted — one ledger row per line,
+      // carrying whichever side(s) the user actually picked on THAT line
+      // (a one-sided line, e.g. only a credit account chosen, is saved
+      // one-sided; a line with both sides filled is a self-balanced pair,
+      // same as every entry before this feature existed). This used to
+      // run every line through a waterfall matcher that re-paired debit
+      // contributions against credit contributions in array order instead
+      // — it kept the whole bilag numerically balanced, but the moment more
+      // than one line was one-sided it invented account pairings the user
+      // never entered (e.g. line 1's debit account ending up paired with
+      // line 3's credit account), which then showed up as wrong, made-up
+      // postings anywhere the saved rows were displayed (VAT reports,
+      // ledger, editing). The bilag as a whole is still required to
+      // balance (see linesBalanced above) — it just no longer needs every
+      // individual row to balance on its own.
+      const rows=normLines.map(l=>({date:l.date,description:l.description,debitCode:l.debitCode||null,creditCode:l.creditCode||null,amount:l.amount,debitVatCode:l.debitVatCode,creditVatCode:l.creditVatCode}));
       // Multi-row entries share one groupRef so opening any line shows the whole entry
       const groupRef=rows.length>1?`grp-${Date.now()}`:null;
       let primaryResult=null;

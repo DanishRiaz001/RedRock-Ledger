@@ -646,9 +646,15 @@ function AppShell({user}){
   };
 
   const checkTxnLogic=(form,ctx)=>{
-    // Accounting logic checks — log bugs but never block saving
-    if(!form.debitCode||!form.creditCode)logBug("ACCOUNTING","Transaction missing debit or credit account","debit:"+form.debitCode+" credit:"+form.creditCode,ctx);
-    if(form.debitCode===form.creditCode)logBug("ACCOUNTING","Debit and credit are the same account","account:"+form.debitCode+" desc:"+form.description,ctx);
+    // Accounting logic checks — log bugs but never block saving.
+    // A one-sided row (only debitCode or only creditCode set) used to be
+    // flagged here as "missing debit or credit account" — that was true
+    // before multi-line entries existed, but a one-sided row is now a
+    // normal, intentional part of a balanced multi-line bilag (Save stays
+    // disabled until the whole group balances, so by the time this runs
+    // the imbalance has already been ruled out) — flagging it just
+    // flooded the bug log with false positives for legitimate entries.
+    if(form.debitCode&&form.debitCode===form.creditCode)logBug("ACCOUNTING","Debit and credit are the same account","account:"+form.debitCode+" desc:"+form.description,ctx);
     if(!form.amount||form.amount<=0)logBug("ACCOUNTING","Transaction amount is zero or negative","amount:"+form.amount+" desc:"+form.description,ctx);
     if(!form.date)logBug("ACCOUNTING","Transaction has no date","desc:"+form.description,ctx);
     if(form.amount>10000000)logBug("ACCOUNTING","Unusually large transaction amount (>10M)","amount:"+form.amount+" desc:"+form.description,ctx);

@@ -4314,6 +4314,11 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     const grandAmount=groups.reduce((s,g)=>s+g.amountSum,0);
     return(
       <div style={{maxWidth:1100}}>
+        {/* Hidden entirely while an entry is open — clicking a bilag here
+            used to leave the spec table on screen with the editor appended
+            below it, instead of replacing it like every other ledger
+            screen now does. */}
+        {!openTxn&&(<>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:11,color:T.muted}}>
           <span onClick={()=>setSpecView(null)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding</span>
           <span>/</span><span>Mva-melding spesifikasjon</span>
@@ -4365,7 +4370,8 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             </tbody>
           </table>
         </div>
-        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
+        </>)}
+        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} initialShowEdit onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
       </div>
     );
   }
