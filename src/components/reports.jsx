@@ -4112,47 +4112,49 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
       </select>
       {/* A wide plain table stretched every column to fill the row, which
           left short text ("Alminnelig næring", a date) sitting in the
-          middle of a huge gap on any real desktop width — a card per
-          termin fixes the proportions by construction (each piece of
-          information gets exactly the width its own content needs,
-          nothing stretches to fill leftover space) and reads more like a
-          real bookkeeping timeline than a spreadsheet dump, while keeping
-          every one of the same pieces: period, type, due date, amount,
-          payment status, and the same two actions. */}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {rows.map(r=>{
-          const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
-          const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
-          const overdue=r.due<today&&!r.status.filed;
-          const st=statusLabel(r);
-          return(
-            <div key={r.n} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:20,boxShadow:"0 1px 3px rgba(20,60,50,0.04)"}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:st.dot,flexShrink:0}}/>
-              <div style={{minWidth:170,flexShrink:0}}>
-                <div style={{fontSize:13.5,fontWeight:800,color:T.text}}>{r.label}</div>
-                <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>Alminnelig næring</div>
+          middle of a huge gap on any real desktop width. Each card uses the
+          SAME grid-template-columns, so every piece of information —
+          period, due date, amount, status, actions — lines up into a real
+          column across every row (a flex layout with per-card minWidths
+          only approximates this; identical column tracks guarantee it). */}
+      {(()=>{
+        const gridCols="10px 1.4fr 1fr 0.8fr 1.2fr auto";
+        return(<div style={{display:"flex",flexDirection:"column",gap:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",boxShadow:"0 1px 3px rgba(20,60,50,0.04)"}}>
+          <div style={{display:"grid",gridTemplateColumns:gridCols,gap:20,alignItems:"center",padding:"10px 18px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+            <div/>
+            <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Periode</div>
+            <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Forfall</div>
+            <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Beløp</div>
+            <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Betalingsstatus</div>
+            <div/>
+          </div>
+          {rows.map((r,i)=>{
+            const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
+            const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
+            const overdue=r.due<today&&!r.status.filed;
+            const st=statusLabel(r);
+            return(
+              <div key={r.n} style={{display:"grid",gridTemplateColumns:gridCols,gap:20,alignItems:"center",padding:"14px 18px",borderTop:i>0?`1px solid ${T.border}`:"none"}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:st.dot}}/>
+                <div>
+                  <div style={{fontSize:13.5,fontWeight:800,color:T.text}}>{r.label}</div>
+                  <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>Alminnelig næring</div>
+                </div>
+                <div style={{fontSize:12,fontWeight:600,color:overdue?T.red:T.sub}}>{r.due}</div>
+                <div style={{fontSize:14,fontWeight:800,color:T.text}}>{fmt(r.netVat)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
+                  <span style={{fontSize:11,color:T.sub,fontWeight:600}}>{paymentText}</span>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
+                  <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>Avstem</button>
+                </div>
               </div>
-              <div style={{minWidth:130,flexShrink:0}}>
-                <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Forfall</div>
-                <div style={{fontSize:12,fontWeight:600,color:overdue?T.red:T.sub,marginTop:2}}>{r.due}</div>
-              </div>
-              <div style={{minWidth:110,flexShrink:0}}>
-                <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Beløp</div>
-                <div style={{fontSize:14,fontWeight:800,color:T.text,marginTop:2}}>{fmt(r.netVat)}</div>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,minWidth:150,flexShrink:0}}>
-                <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
-                <span style={{fontSize:11,color:T.sub,fontWeight:600}}>{paymentText}</span>
-              </div>
-              <div style={{flex:1}}/>
-              <div style={{display:"flex",gap:8,flexShrink:0}}>
-                <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
-                <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>Avstem</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>);
+      })()}
     </div>
   );
 }
