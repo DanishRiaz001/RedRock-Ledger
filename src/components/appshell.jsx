@@ -554,6 +554,27 @@ function AppShell({user}){
   // Merge two contacts — every transaction pointing at the duplicate gets
   // reassigned to the one being kept, then the duplicate is removed. Contacts
   // must be the same type (can't merge a customer into a supplier).
+  // Change a contact's own number (e.g. a legacy "S001"-style id renumbered
+  // to the 20000-series, or just correcting a typo) — every transaction
+  // pointing at the old id is reassigned to the new one first (same
+  // mechanism as mergeContacts below), then the contact record itself is
+  // moved: setContacts diffs by id, so passing the same contact back under
+  // a new id makes it delete the old row and insert the new one on its own.
+  const renumberContact=async(oldId,newId)=>{
+    if(!canEdit||oldId===newId)return{error:"Nothing to change."};
+    if(contacts.some(c=>c.id===newId))return{error:"That number is already used by another contact."};
+    const contact=contacts.find(c=>c.id===oldId);
+    if(!contact)return{error:"Contact not found."};
+    const affectedIds=transactions.filter(t=>t.contactId===oldId).map(t=>t.id);
+    if(affectedIds.length){
+      const{error}=await sb.from("transactions").update({contact_id:newId}).in("id",affectedIds);
+      if(error)return{error:"Couldn't reassign transactions: "+error.message};
+      setTransactionsState(p=>p.map(t=>t.contactId===oldId?{...t,contactId:newId}:t));
+    }
+    await setContacts(contacts.map(c=>c.id===oldId?{...c,id:newId}:c));
+    return{count:affectedIds.length};
+  };
+
   const mergeContacts=async(keepId,removeId)=>{
     if(!canEdit||keepId===removeId)return{error:"Nothing to merge."};
     const keep=contacts.find(c=>c.id===keepId);
@@ -1902,7 +1923,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
-    fetchEntryComments,addEntryComment,mergeContacts,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
+    fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
   };
   return(
     <div>

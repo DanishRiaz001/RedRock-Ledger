@@ -319,14 +319,17 @@ function VatDrop({value,onChange,options,disabled=false}){
   );
 }
 
-// Flexible date input — type raw digits (021526 or 02152026, both parsed as
-// MM/DD) or click the calendar icon for a native picker. Always stores/reads
+// Flexible date input — type raw digits (120626 or 12062026, both parsed as
+// DD/MM) or click the calendar icon for a native picker. Always stores/reads
 // standard YYYY-MM-DD underneath so nothing else in the app needs to change.
 function parseFlexDate(raw){
   const digits=(raw||"").replace(/[^\d]/g,"");
   if(digits.length!==6&&digits.length!==8)return null;
-  const mm=parseInt(digits.slice(0,2),10);
-  const dd=parseInt(digits.slice(2,4),10);
+  // Day first — "120626" or "12062026" both mean 12 June 2026, matching how
+  // dates are written everywhere else in this app (Norwegian/day-month-year
+  // convention), not the US month-first order this used to parse as.
+  const dd=parseInt(digits.slice(0,2),10);
+  const mm=parseInt(digits.slice(2,4),10);
   const yy=digits.length===8?digits.slice(4,8):("20"+digits.slice(4,6));
   if(mm<1||mm>12||dd<1||dd>31)return null;
   const iso=`${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
@@ -359,7 +362,7 @@ function FlexDateInput({value,onChange,style,inputStyle}){
     <div style={{position:"relative",...style}}>
       <input
         value={editing?draft:fmtDateDisplay(value)}
-        placeholder="e.g. 021526 or 02152026"
+        placeholder="e.g. 120626 or 12062026"
         onFocus={()=>{setEditing(true);setDraft("");}}
         onChange={e=>setDraft(e.target.value)}
         onBlur={commit}
@@ -602,6 +605,13 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   const[category,setCategory]=useState(initial?initial.category||"":"");
   const[currency,setCurrency]=useState(initial&&initial.currency?initial.currency:companyCurrency||"");
   const[inactive,setInactive]=useState(initial?!!initial.inactive:false);
+  // The contact's own number — normally auto-assigned (10000s for
+  // customers, 20000s for suppliers), but editable here so an existing
+  // contact can be renumbered onto that scheme, or a typo in a manually-
+  // entered number fixed, without recreating the contact from scratch.
+  // Blank on a NEW contact means "let the register auto-assign one" — only
+  // fill this in to deliberately pick a specific number instead.
+  const[contactNumber,setContactNumber]=useState(initial?initial.id:"");
 
   // Brønnøysundregisteret (Norwegian business registry) name search — live,
   // debounced, public API (no key, CORS-open). Only offered for NO companies
@@ -671,7 +681,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   const valid=name.trim().length>0;
   const submit=()=>{
     if(!valid)return;
-    onSave({type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
+    onSave({id:contactNumber.trim()||undefined,type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
   };
   const CURRENCIES=["NOK","USD","EUR","GBP","AED","SAR","PKR"];
 
@@ -692,6 +702,12 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
             {["customer","supplier"].map(t=>(
               <button key={t} onClick={()=>setType(t)} style={{flex:1,background:type===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:type===t?(t==="customer"?T.blue:T.red):T.sub,border:`1.5px solid ${type===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:8,padding:"9px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
             ))}
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{type==="customer"?"Customer":"Supplier"} number</div>
+            <input value={contactNumber} onChange={e=>setContactNumber(e.target.value)} placeholder={type==="customer"?"e.g. 10000 (auto-assigned if left blank)":"e.g. 20000 (auto-assigned if left blank)"} style={inp}/>
+            {editing&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>Changing this moves every past entry for this contact onto the new number.</div>}
           </div>
 
           <div style={{display:"flex",gap:16}}>

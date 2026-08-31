@@ -568,7 +568,7 @@ function CustomerSettingsScreen({contacts}){
   );
 }
 
-function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,onOpenReskontro,autoOpenNew,companyProfile,onNavigateImport}){
+function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContacts,renumberContact,onOpenReskontro,autoOpenNew,companyProfile,onNavigateImport}){
   const[type,setType]=useState("customer");
   const[search,setSearch]=useState("");
   const[editingId,setEditingId]=useState(null);
@@ -846,9 +846,27 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
           country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
           initial={editingId?contacts.find(c=>c.id===editingId):null}
           companyCurrency={companyProfile&&companyProfile.currency}
-          onSave={contact=>{
-            if(editingId){setContacts(contacts.map(c=>c.id===editingId?{...c,...contact}:c));setEditingId(null);}
-            else{setContacts([...contacts,{id:nextId(),...contact}]);setShowNew(false);}
+          onSave={async contact=>{
+            if(editingId){
+              // A changed number means the modal is asking to actually
+              // renumber this contact (e.g. onto the 20000-series) rather
+              // than just edit its other details — that needs every past
+              // transaction's contactId reassigned too, which plain
+              // setContacts doesn't do on its own.
+              const newId=contact.id&&contact.id!==editingId?contact.id:editingId;
+              if(newId!==editingId){
+                if(!renumberContact){setEditingId(null);return;}
+                const res=await renumberContact(editingId,newId);
+                if(res&&res.error){alert(res.error);return;}
+              }
+              setContacts(contacts.map(c=>c.id===editingId?{...c,...contact,id:newId}:c));
+              setEditingId(null);
+            }
+            else{
+              const newId=contact.id||nextId();
+              if(contacts.some(c=>c.id===newId)){alert("That number is already used by another contact.");return;}
+              setContacts([...contacts,{id:newId,...contact}]);setShowNew(false);
+            }
           }}
           onClose={cancelContactModal}
           onBulkImport={!editingId&&onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
@@ -3369,13 +3387,17 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invVatCode,setInvVatCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
-  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount}]
+  // Blank means "same as the voucher date" above — this is what lets each
+  // posting line (esp. one added later, like the actual payment) carry its
+  // own real date instead of every line silently sharing the voucher date.
+  const[invPrimaryDate,setInvPrimaryDate]=useState("");
+  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode,date,description}]
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
   const[invRegisterPayment,setInvRegisterPayment]=useState(""); // "" = no payment (AP/AR open item), else account code (Cash or a bank) to settle against
   const[invPaymentAmount,setInvPaymentAmount]=useState(""); // blank = settle the full invoice total; can be overridden for a partial payment
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvPrimaryDate("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -3397,7 +3419,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const duplicateLine=(li)=>{
     const currentLines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
     const source=li===0
-      ?{date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,mode:form.mode}
+      ?{date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount}
       :currentLines[li];
     const newLines=[...currentLines];
     newLines.splice(li+1,0,{...source});
@@ -3430,26 +3452,27 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
 
   // Every line normally posts one amount to BOTH its own debit and credit
   // side — a self-balanced pair. `mode` lets a line instead post to only
-  // ONE side ("debit only"/"credit only"), so several one-sided lines can
-  // be combined — e.g. two debit-only lines against one credit-only line —
-  // as long as the two totals match overall, rather than every single line
-  // having to already balance on its own. Defaults to "both" everywhere, so
-  // an untouched entry behaves exactly as before.
-  const lineModeOf=(li,l)=>li===0?(form.mode||"both"):((l&&l.mode)||"both");
+  // ONE side, just by leaving the other side's account unpicked on that
+  // line — same as the reference voucher table's "(Velg kontering)"
+  // rows — so several one-sided lines can be combined (e.g. two debit-only
+  // lines against one credit-only line) as long as the two totals match
+  // overall, without forcing every single line to already balance on its
+  // own or needing an explicit per-line switch. A line with BOTH sides
+  // filled contributes to both, exactly as every entry always has.
+  const lineDebitCode=(li,l)=>li===0?form.debitCode:(l&&l.debitCode);
+  const lineCreditCode=(li,l)=>li===0?form.creditCode:(l&&l.creditCode);
   const lineTotals=(()=>{
     const linesArr=form.lines&&form.lines.length?form.lines:[{debitCode:form.debitCode,creditCode:form.creditCode}];
     let totalDebit=0,totalCredit=0;
     linesArr.forEach((l,li)=>{
       const amt=parseFloat(li===0?form.amount:l.amount)||0;
-      const mode=lineModeOf(li,l);
-      if(mode!=="credit")totalDebit+=amt;
-      if(mode!=="debit")totalCredit+=amt;
+      if(lineDebitCode(li,l))totalDebit+=amt;
+      if(lineCreditCode(li,l))totalCredit+=amt;
     });
     return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100};
   })();
   const linesBalanced=Math.abs(lineTotals.totalDebit-lineTotals.totalCredit)<0.01;
-  const line0Mode=form.mode||"both";
-  const line0AccountsOk=line0Mode==="debit"?!!form.debitCode:line0Mode==="credit"?!!form.creditCode:!!(form.debitCode&&form.creditCode);
+  const line0AccountsOk=!!(form.debitCode||form.creditCode);
 
   const valid=line0AccountsOk&&form.description&&parseFloat(form.amount)>0&&linesBalanced;
 
@@ -3484,18 +3507,19 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         debitVatCode:l.debitVatCode,
         creditVatCode:l.creditVatCode,
         amount:parseFloat(li===0?form.amount:l.amount)||0,
-        mode:lineModeOf(li,l),
       })).filter(l=>l.amount>0);
-      // A "both" line contributes its amount to BOTH lists (a self-balanced
-      // pair, same as every entry before this feature existed); a
-      // debit-only/credit-only line contributes to only one. Two lines
-      // pushed from the same iteration land at the same index in both
-      // lists, so the waterfall below re-derives the exact original
-      // pairing for any entry that never uses one-sided lines at all.
+      // A line with both an account picked contributes its amount to BOTH
+      // lists (a self-balanced pair, same as every entry before this
+      // feature existed); leaving one side's account unpicked (the "(Velg
+      // kontering)" placeholder, same as the reference table) contributes
+      // to only the other. Two lines pushed from the same iteration land at
+      // the same index in both lists, so the waterfall below re-derives the
+      // exact original pairing for any entry that never uses a one-sided
+      // line at all.
       const debitContribs=[],creditContribs=[];
       normLines.forEach(l=>{
-        if(l.mode!=="credit"&&l.debitCode)debitContribs.push({code:l.debitCode,amount:l.amount,vatCode:l.debitVatCode,date:l.date,description:l.description});
-        if(l.mode!=="debit"&&l.creditCode)creditContribs.push({code:l.creditCode,amount:l.amount,vatCode:l.creditVatCode,date:l.date,description:l.description});
+        if(l.debitCode)debitContribs.push({code:l.debitCode,amount:l.amount,vatCode:l.debitVatCode,date:l.date,description:l.description});
+        if(l.creditCode)creditContribs.push({code:l.creditCode,amount:l.amount,vatCode:l.creditVatCode,date:l.date,description:l.description});
       });
       // Waterfall-match debits against credits into balanced two-sided
       // rows — this is what lets, say, two separate debit-only lines share
@@ -3535,7 +3559,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         const vatAmount=vc&&vc.rate?Math.round((r.amount-(r.amount/(1+vc.rate/100)))*100)/100:null;
         const vatCode=(r.debitVatCode&&r.debitVatCode!=="0")?r.debitVatCode:(r.creditVatCode&&r.creditVatCode!=="0"?r.creditVatCode:null);
         if(ri===0){
-          primaryResult=await onSave({...form,date:r.date,description:r.description,debitCode:r.debitCode,creditCode:r.creditCode,amount:r.amount,lines:undefined,mode:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode,vatPct:vc?vc.rate:null,vatAmount});
+          primaryResult=await onSave({...form,date:r.date,description:r.description,debitCode:r.debitCode,creditCode:r.creditCode,amount:r.amount,lines:undefined,groupRef,moneySourceId:form.moneySourceId||null,vatCode,vatPct:vc?vc.rate:null,vatAmount});
           // A comment is extra context on top of the required description —
           // saved as an entry comment (same thread DetailModal shows later)
           // instead of a new column, so it's visible wherever comments
@@ -3608,7 +3632,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,date:invPrimaryDate,description:invDescription},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
@@ -3637,9 +3661,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       // being one logical voucher — every line here now shares whichever
       // bilag the first line was actually assigned.
       const res=await onSave({
-        date:form.date,
+        date:l.date||form.date,
         debitCode,creditCode,
-        description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
+        description:l.description||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
         amount:absAmt,
         contactId:invContactId,
         invoiceNo:invoiceNo||null,
@@ -3891,12 +3915,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               const creditAcc=accounts.find(a=>a.code===line.creditCode);
               const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
               const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
-              // "mode" lets this line post to only one side (see
-              // lineModeOf above) — the inactive side's fields are greyed
-              // out and inert rather than removed, so switching back
-              // brings the previous value straight back.
-              const mode=lineModeOf(li,line);
-              const debitOn=mode!=="credit",creditOn=mode!=="debit";
               const isLast=li===linesArr.length-1;
               const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
               return(<React.Fragment key={li}>
@@ -3914,7 +3932,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     setForm(p=>({...p,lines}));
                   }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
                 </div>
-                <div style={{...rowCell,...vDivider,minWidth:0,opacity:debitOn?1:0.35,pointerEvents:debitOn?"auto":"none"}}>
+                <div style={{...rowCell,...vDivider,minWidth:0}}>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
@@ -3927,7 +3945,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     setForm(p=>({...p,lines}));
                   }} options={vatCodeOptions("input")} disabled={debitLocked}/>
                 </div>
-                <div style={{...rowCell,...vDivider,minWidth:0,opacity:creditOn?1:0.35,pointerEvents:creditOn?"auto":"none"}}>
+                <div style={{...rowCell,...vDivider,minWidth:0}}>
                   <AccDrop value={line.creditCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
@@ -3953,11 +3971,11 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate
-                      always available, Delete only for lines after the first
-                      (line 0 is the entry's own primary debit/credit, not a
-                      removable extra line), plus a Debit/Credit/Both mode
-                      switch on every line so one-sided lines (see #7) can be
-                      combined against each other and still balance overall. */}
+                      always available, Delete only for lines after the
+                      first (line 0 is the entry's own primary debit/credit,
+                      not a removable extra line). A line posts to one side
+                      only just by leaving that side's account unpicked —
+                      no separate mode switch needed (see #7). */}
                   <div style={{position:"relative",flexShrink:0}}>
                     <button onClick={()=>setLineMenuOpen(o=>o===li?null:li)} title="Line options" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",width:22,height:26,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,fontFamily:"inherit"}}>
                       <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
@@ -3965,7 +3983,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     {lineMenuOpen===li&&(
                       <>
                         <div onClick={()=>setLineMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                        <div style={{position:"absolute",right:0,top:28,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:170}}>
+                        <div style={{position:"absolute",right:0,top:28,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:140}}>
                           <button onClick={()=>{duplicateLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
                             <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
                           </button>
@@ -3974,25 +3992,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                               <i className="ti ti-trash" style={{fontSize:14}}/>Delete
                             </button>
                           )}
-                          <div style={{borderTop:`1px solid ${T.border}`,margin:"4px 0"}}/>
-                          <div style={{padding:"4px 10px 2px",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>This line posts to</div>
-                          {[["both","Debit + Credit"],["debit","Debit only"],["credit","Credit only"]].map(([m,label])=>(
-                            <button key={m} onClick={()=>{
-                              if(li===0){
-                                setForm(p=>({...p,mode:m,...(m==="debit"?{creditCode:""}:{}),...(m==="credit"?{debitCode:""}:{})}));
-                              } else {
-                                const lines=[...(form.lines||[])];
-                                const upd={...lines[li],mode:m};
-                                if(m==="debit")upd.creditCode="";
-                                if(m==="credit")upd.debitCode="";
-                                lines[li]=upd;
-                                setForm(p=>({...p,lines}));
-                              }
-                              setLineMenuOpen(null);
-                            }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:mode===m?T.accent:T.text,fontWeight:mode===m?700:400,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
-                              <i className={mode===m?"ti ti-circle-check-filled":"ti ti-circle"} style={{fontSize:14}}/>{label}
-                            </button>
-                          ))}
                         </div>
                       </>
                     )}
@@ -4038,26 +4037,6 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   lines[li]={...lines[li],description:e.target.value};
                   setForm(p=>({...p,lines}));
                 }} style={{...inpSm,fontSize:12,padding:"7px 8px",flex:1,minWidth:0}}/>
-                {/* Debit+Credit / Debit only / Credit only — lets this line
-                    post to just one side, so it can be combined against
-                    other one-sided lines and still balance overall (see #7). */}
-                <select value={lineModeOf(li,line)} onChange={e=>{
-                  const m=e.target.value;
-                  if(li===0){
-                    setForm(p=>({...p,mode:m,...(m==="debit"?{creditCode:""}:{}),...(m==="credit"?{debitCode:""}:{})}));
-                  } else {
-                    const lines=[...(form.lines||[])];
-                    const upd={...lines[li],mode:m};
-                    if(m==="debit")upd.creditCode="";
-                    if(m==="credit")upd.debitCode="";
-                    lines[li]=upd;
-                    setForm(p=>({...p,lines}));
-                  }
-                }} style={{...selSm,fontSize:10,padding:"5px 4px",width:64,flexShrink:0}}>
-                  <option value="both">Dr+Cr</option>
-                  <option value="debit">Dr only</option>
-                  <option value="credit">Cr only</option>
-                </select>
                 {li>0&&(
                   <button onClick={()=>{
                     const lines=[...(form.lines||[])];
@@ -4071,11 +4050,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                 const creditAcc=accounts.find(a=>a.code===line.creditCode);
                 const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
                 const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
-                const mode=lineModeOf(li,line);
-                const debitOn=mode!=="credit",creditOn=mode!=="debit";
                 return(
               <div style={{display:"flex",gap:8,padding:"0 12px 9px",alignItems:"flex-start"}}>
-                <div style={{flex:1,minWidth:0,opacity:debitOn?1:0.35,pointerEvents:debitOn?"auto":"none"}}>
+                <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:8,color:T.red,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Dr</div>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
@@ -4089,7 +4066,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     setForm(p=>({...p,lines}));
                   }} options={vatCodeOptions("input")} disabled={debitLocked}/>
                 </div>
-                <div style={{flex:1,minWidth:0,opacity:creditOn?1:0.35,pointerEvents:creditOn?"auto":"none"}}>
+                <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:8,color:T.green,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Cr</div>
                   <AccDrop value={line.creditCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
@@ -4307,72 +4284,101 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
               </div>
             </div>
 
-            {/* Account (55%) + VAT code (20%) + Amount (25%) — the VAT box
-                was missing entirely on this screen (supplier/customer
-                invoice entry), unlike every other entry form in the app.
-                Picking an account with a locked default VAT code locks
-                this dropdown to it, same convention used elsewhere. */}
+            {/* One grid — Date / Description / Account / VAT / Amount all in
+                the same row, per line, header aligned exactly above its own
+                column (same technique as New Entry's Postings table). The
+                per-line Date defaults to the voucher date above but can be
+                set separately — lets an added line (e.g. the actual
+                payment) carry its own real date instead of silently
+                inheriting the invoice's date. Picking an account with a
+                locked default VAT code locks that line's VAT dropdown. */}
             {(()=>{
-              const invSelectedAcc=accounts.find(a=>a.code===invAccountCode);
-              const invVatLocked=!!(invSelectedAcc&&invSelectedAcc.vatLocked&&invSelectedAcc.defaultVatCode);
+              const GRID_COLS="118px 1.3fr 1.5fr 100px 100px 26px";
+              const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+              const vDivider={borderRight:`1px solid ${T.border}`};
+              const rows=[
+                {isPrimary:true,date:invPrimaryDate,description:invDescription,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
+                ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
+              ];
               return(
-            <div style={{display:"flex",gap:8}}>
-              <div style={{flex:5}}>
-                <div style={{fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                <AccDrop value={invAccountCode} onChange={code=>{
-                  setInvAccountCode(code);
-                  const acc=accounts.find(a=>a.code===code);
-                  setInvVatCode(acc&&acc.defaultVatCode?acc.defaultVatCode:"");
-                }} accounts={filteredAccounts}/>
-              </div>
-              <div style={{flex:3}}>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>VAT code{invVatLocked&&<i className="ti ti-lock" style={{fontSize:8,marginLeft:3}}/>}</div>
-                <VatDrop value={invVatCode} onChange={setInvVatCode} disabled={invVatLocked} options={vatCodeOptions(invVatDirection)}/>
-              </div>
-              <div style={{flex:3}}>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount{invAmount&&parseFloat(invAmount)<0?" (cr.note)":""}</div>
-                <input placeholder="0" type="number" value={invAmount} onChange={e=>setInvAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 8px":"7px 8px"}}/>
+            <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
+              <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?640:0,overflowX:isDesktop?"visible":"auto"}}>
+                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
+                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
+                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
+                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
+                <div style={{...cellBase,background:"#fff"}}/>
+                {rows.map((r,idx)=>{
+                  const acc=accounts.find(a=>a.code===r.accountCode);
+                  const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
+                  const isLastRow=idx===rows.length-1;
+                  const rowCell=isLastRow?{...cellBase,borderBottom:"none"}:cellBase;
+                  const update=patch=>{
+                    if(r.isPrimary){
+                      if("date"in patch)setInvPrimaryDate(patch.date);
+                      if("description"in patch)setInvDescription(patch.description);
+                      if("accountCode"in patch)setInvAccountCode(patch.accountCode);
+                      if("vatCode"in patch)setInvVatCode(patch.vatCode);
+                      if("amount"in patch)setInvAmount(patch.amount);
+                    } else {
+                      setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
+                    }
+                  };
+                  return(<React.Fragment key={idx}>
+                    <div style={{...rowCell,...vDivider}}>
+                      <FlexDateInput value={r.date||form.date} onChange={v=>update({date:v})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
+                    </div>
+                    <div style={{...rowCell,...vDivider}}>
+                      <input placeholder="Description" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...inpSm,fontSize:11,padding:"6px 7px",width:"100%"}}/>
+                    </div>
+                    <div style={{...rowCell,...vDivider}}>
+                      <AccDrop value={r.accountCode||""} onChange={code=>{
+                        const a=accounts.find(x=>x.code===code);
+                        update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
+                      }} accounts={filteredAccounts}/>
+                    </div>
+                    <div style={{...rowCell,...vDivider}}>
+                      <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
+                    </div>
+                    <div style={{...rowCell,...vDivider}}>
+                      {/* Tabbing out of the last row's Amount box starts a
+                          new line automatically — matches the quick-entry
+                          feel of a real spreadsheet/voucher table instead
+                          of forcing a click on "+ Add Line" every time. */}
+                      <input type="number" placeholder="0" value={r.amount||""} onChange={e=>update({amount:e.target.value})} onKeyDown={e=>{
+                        if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",date:"",description:""}]);
+                      }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"6px 7px",width:"100%",textAlign:"right"}}/>
+                    </div>
+                    <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {!r.isPrimary&&<button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==r.li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontWeight:800,fontSize:12,lineHeight:1}}>−</button>}
+                    </div>
+                  </React.Fragment>);
+                })}
               </div>
             </div>
               );
             })()}
-            <input placeholder="Description" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
+            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",date:"",description:""}])} style={{...btnGhost,padding:"4px 9px",fontSize:10,color:T.accent,borderColor:T.accent,alignSelf:"flex-start"}}>+ Add Line</button>
 
-            {/* Additional lines — account + VAT code + amount */}
-            {invExtraLines.map((l,li)=>{
-              const lAcc=accounts.find(a=>a.code===l.accountCode);
-              const lVatLocked=!!(lAcc&&lAcc.vatLocked&&lAcc.defaultVatCode);
-              return(
-              <div key={li} style={{display:"flex",gap:6,alignItems:"flex-end",background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
-                <div style={{flex:5}}>
-                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Account</div>
-                  <AccDrop value={l.accountCode} onChange={v=>{
-                    const acc=accounts.find(a=>a.code===v);
-                    setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,accountCode:v,vatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:""}:x));
-                  }} accounts={filteredAccounts}/>
-                </div>
-                <div style={{flex:3}}>
-                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>VAT{lVatLocked&&<i className="ti ti-lock" style={{fontSize:7,marginLeft:2}}/>}</div>
-                  <VatDrop value={l.vatCode||""} onChange={v=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,vatCode:v}:x))} disabled={lVatLocked} options={vatCodeOptions(invVatDirection)}/>
-                </div>
-                <div style={{flex:3}}>
-                  <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>
-                  <input type="number" placeholder="0" value={l.amount} onChange={e=>setInvExtraLines(p=>p.map((x,i)=>i===li?{...x,amount:e.target.value}:x))} style={{...inpSm,fontSize:12,padding:"7px 8px"}}/>
-                </div>
-                <button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,width:30,height:34,cursor:"pointer",fontWeight:800,flexShrink:0}}>−</button>
-              </div>
-              );
-            })}
-            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"7px",fontSize:11,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
-
-            {/* Running Debit / Credit / Difference — debit is what's entered across the
-                cost-account line(s) above; credit is the same total, since that's exactly
-                what's now payable to the supplier. Shown here purely as a running-total
+            {/* Running Debit / Credit / VAT / Difference — debit is what's entered
+                across the cost-account line(s) above; credit is the same total,
+                since that's exactly what's now payable to/from the contact. VAT
+                is how much of those amounts is tax, same rate/code as each
+                line's own VAT dropdown. Shown here purely as a running-total
                 confirmation before posting. */}
             {(()=>{
-              const invTotal=[invAmount,...invExtraLines.map(l=>l.amount)].reduce((s,a)=>s+(parseFloat(a)||0),0);
+              const invLineAmounts=[invAmount,...invExtraLines.map(l=>l.amount)];
+              const invLineVatCodes=[invVatCode,...invExtraLines.map(l=>l.vatCode)];
+              const invTotal=invLineAmounts.reduce((s,a)=>s+(parseFloat(a)||0),0);
+              const invVatTotal=invLineAmounts.reduce((s,a,i)=>{
+                const amt=Math.abs(parseFloat(a)||0);
+                if(!amt)return s;
+                const vc=findVatCode(invLineVatCodes[i],invVatDirection);
+                return s+(vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:0);
+              },0);
               return(
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
                   <div>
                     <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
                     <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
@@ -4380,6 +4386,10 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   <div>
                     <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit ({invIsCustomer?"AR":"AP"})</div>
                     <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Of which VAT</div>
+                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(invVatTotal)}</div>
                   </div>
                   <div>
                     <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div>
