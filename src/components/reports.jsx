@@ -4107,49 +4107,51 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
         <button onClick={exportYearXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 11px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:12,marginRight:5}}/>Export {year}</button>
       </div>
-      <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:100,marginBottom:12,fontSize:12,padding:"6px 8px"}}>
+      <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:100,marginBottom:14,fontSize:12,padding:"6px 8px"}}>
         {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
       </select>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-        <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
-          <colgroup>
-            <col style={{width:"22%"}}/>
-            <col style={{width:"18%"}}/>
-            <col style={{width:"14%"}}/>
-            <col style={{width:"14%"}}/>
-            <col style={{width:"14%"}}/>
-            <col style={{width:"18%"}}/>
-          </colgroup>
-          <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left"}}>
-            <td style={{padding:"8px 14px"}}>Periode</td><td>Meldingstype</td><td>Forfallsdato</td><td style={{textAlign:"right"}}>Beløp</td><td>Betalingsstatus</td><td>Handlinger</td>
-          </tr></thead>
-          <tbody>
-            {rows.map(r=>{
-              const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
-              const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
-              return(
-                <tr key={r.n} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"9px 14px",color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label}</td>
-                  <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Alminnelig næring</td>
-                  <td style={{color:r.due<today&&!r.status.filed?T.red:T.sub}}>{r.due}</td>
-                  <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(r.netVat)}</td>
-                  <td>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
-                      <span style={{fontSize:10.5,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{paymentText}</span>
-                    </div>
-                  </td>
-                  <td style={{padding:"9px 14px"}}>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
-                      <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px",fontSize:10.5,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit"}}>Avstem</button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* A wide plain table stretched every column to fill the row, which
+          left short text ("Alminnelig næring", a date) sitting in the
+          middle of a huge gap on any real desktop width — a card per
+          termin fixes the proportions by construction (each piece of
+          information gets exactly the width its own content needs,
+          nothing stretches to fill leftover space) and reads more like a
+          real bookkeeping timeline than a spreadsheet dump, while keeping
+          every one of the same pieces: period, type, due date, amount,
+          payment status, and the same two actions. */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {rows.map(r=>{
+          const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
+          const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
+          const overdue=r.due<today&&!r.status.filed;
+          const st=statusLabel(r);
+          return(
+            <div key={r.n} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:20,boxShadow:"0 1px 3px rgba(20,60,50,0.04)"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:st.dot,flexShrink:0}}/>
+              <div style={{minWidth:170,flexShrink:0}}>
+                <div style={{fontSize:13.5,fontWeight:800,color:T.text}}>{r.label}</div>
+                <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>Alminnelig næring</div>
+              </div>
+              <div style={{minWidth:130,flexShrink:0}}>
+                <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Forfall</div>
+                <div style={{fontSize:12,fontWeight:600,color:overdue?T.red:T.sub,marginTop:2}}>{r.due}</div>
+              </div>
+              <div style={{minWidth:110,flexShrink:0}}>
+                <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Beløp</div>
+                <div style={{fontSize:14,fontWeight:800,color:T.text,marginTop:2}}>{fmt(r.netVat)}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,minWidth:150,flexShrink:0}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
+                <span style={{fontSize:11,color:T.sub,fontWeight:600}}>{paymentText}</span>
+              </div>
+              <div style={{flex:1}}/>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
+                <button onClick={()=>markReconciled(r)} disabled={!r.status.filed} style={{background:r.status.filed?"#fff":T.bg,color:r.status.filed?T.text:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:r.status.filed?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>Avstem</button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
