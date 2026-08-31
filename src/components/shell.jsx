@@ -163,17 +163,19 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   const[rightWidth,setRightWidth]=useState(defaultRightWidth);
   const[collapsed,setCollapsed]=useState(false);
   const draggingRef=React.useRef(false);
-  const panelRef=React.useRef(null);
-  // Genuine flex layout now — not position:fixed. Anchoring the preview to
-  // the true window edge via position:fixed made it float OVER the left
-  // side instead of sharing the row with it, so dragging it wider covered
-  // part of the form instead of the form actually getting narrower to make
-  // room. A normal flex row can't overlap by construction: `left` is
-  // flex:1 (takes whatever's left) and this panel is a fixed pixel width
-  // that shrinks `left` as it grows, exactly "the entry rows move, not
-  // hide" — and it lines up with the window's right edge simply because
-  // that's where a full-width flex row already ends, no special
-  // positioning needed for that either.
+  const leftRef=React.useRef(null);
+  const handleRef=React.useRef(null);
+  const HANDLE_W=14;
+  // Both things at once: the preview stays pinned to the TRUE right edge of
+  // the browser window (position:fixed) rather than wherever a flex row
+  // happens to end — which for a page whose own content column has a
+  // max-width left a visible gap between the panel and the actual window
+  // edge once this was plain flex — while the left side gets an explicit
+  // marginRight equal to the panel+handle width, so its own content
+  // genuinely narrows to stay clear of them instead of running underneath.
+  // Physically impossible to overlap (the margin IS the panel's width) and
+  // still genuinely screen-edge-anchored regardless of any container's own
+  // max-width.
   const startDrag=(e)=>{
     e.preventDefault();
     draggingRef.current={startX:e.clientX,startWidth:rightWidth};
@@ -192,7 +194,8 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
       // final value.
       frame=requestAnimationFrame(()=>{
         frame=null;
-        if(panelRef.current)panelRef.current.style.width=pending+"px";
+        if(handleRef.current)handleRef.current.style.right=pending+"px";
+        if(leftRef.current)leftRef.current.style.marginRight=(pending+HANDLE_W)+"px";
       });
     };
     const onUp=()=>{
@@ -207,15 +210,10 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
     window.addEventListener("mouseup",onUp);
   };
   const tabStyle={writingMode:"vertical-rl",background:"#EEF2FF",color:"#4F46E5",fontSize:11,fontWeight:700,padding:"14px 6px",borderRadius:"8px 0 0 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,flexShrink:0,userSelect:"none",whiteSpace:"nowrap"};
+  const effectiveRightWidth=collapsible&&collapsed?0:rightWidth+HANDLE_W;
   return(
-    // minHeight keeps the row (and therefore the preview panel, which
-    // stretches to match via alignItems:"stretch") reaching down to the
-    // bottom of the screen even when the left side's own content is short
-    // — a plain flex row is otherwise only as tall as its tallest child's
-    // actual content, which for a short form left the panel stopping well
-    // above the bottom of the screen instead of touching it.
     <div style={{display:"flex",alignItems:"stretch",gap:0,minWidth:0,minHeight:"calc(100vh - 90px)",position:"relative"}}>
-      <div style={{flex:1,minWidth:0}}>{left}</div>
+      <div ref={leftRef} style={{flex:1,minWidth:0,marginRight:effectiveRightWidth}}>{left}</div>
       {collapsible&&collapsed?(
         // Collapsed state sits fixed to the true right screen edge (not just
         // the container edge) and the tab itself is what you click to slide
@@ -241,16 +239,16 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
             position:sticky keeps the dot near the top of the viewport no
             matter how tall the content grows; the draggable strip itself
             still spans the full height, so grabbing it anywhere still works. */}
-        {/* A normal flex sibling now — no longer needs its own position
-            tracking (right:rightWidth) since it just sits wherever flex
-            layout naturally places it, immediately before the panel, and
-            moves with it automatically as the panel's own width changes. */}
-        <div onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:14,flexShrink:0,alignSelf:"stretch",position:"relative",cursor:"col-resize",background:"#F5F9FA"}}>
+        <div ref={handleRef} onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:HANDLE_W,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}}>
           <div style={{position:"sticky",top:30,width:4,height:44,margin:"0 auto",borderRadius:2,background:T.accent}}/>
         </div>
-        <div ref={panelRef} style={{
-          width:rightWidth,flexShrink:0,minWidth:minRightWidth,position:"relative",
-          background:"#fff",
+        <div style={{
+          // Fixed to the real window edge, independent of whatever
+          // max-width the surrounding page content happens to have — the
+          // matching marginRight on `left` above is what actually keeps
+          // this from ever covering it.
+          position:"fixed",top:60,right:0,bottom:0,width:rightWidth,
+          boxShadow:"-8px 0 24px rgba(0,0,0,0.12)",background:"#fff",zIndex:60,
           transition:draggingRef.current?"none":"box-shadow .15s ease",
         }}>
           {right}
