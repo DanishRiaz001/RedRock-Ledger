@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal, VatDrop, SaveFlashButton } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
@@ -574,11 +574,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   const code=type==="customer"?"1500":"2400";
   const getBalance=cid=>transactions.filter(t=>t.contactId===cid).reduce((s,t)=>t.debitCode===code?s+t.amount:t.creditCode===code?s-t.amount:s,0);
 
-  const nextId=()=>{
-    const prefix=type==="customer"?"C":"S";
-    const nums=contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0);
-    return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
-  };
+  const nextId=()=>nextContactId(contacts,type);
   const startEdit=(c)=>{setEditingId(c.id);setShowNew(false);};
   const startNew=()=>{setEditingId(null);setShowNew(true);};
   const cancelContactModal=()=>{setEditingId(null);setShowNew(false);};
@@ -3232,8 +3228,7 @@ function AccountSwitcherDropdown({accounts,value,onChange}){
 // id scheme ContactSearch (ledger.jsx) and the SAF-T importer already use.
 const createContactInline=(contacts,setContacts,{name,type,orgNumber})=>{
   if(!setContacts||!name.trim())return null;
-  const nextNum=Math.max(0,...contacts.filter(c=>c.type===type).map(c=>parseInt((c.id||"").slice(1))||0))+1;
-  const id=type==="customer"?`C${String(nextNum).padStart(3,"0")}`:`S${String(nextNum).padStart(3,"0")}`;
+  const id=nextContactId(contacts,type);
   setContacts([...contacts,{id,type,name:name.trim(),orgNumber:orgNumber||"",paymentTermsDays:30}]);
   return id;
 };
@@ -3511,11 +3506,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const saveNewContact=()=>{
     if(!newContact.name.trim())return;
     const typeToUse=autoNeedContact?contactType:(newContact.type||"supplier");
-    const prefix=typeToUse==="customer"?"C":"S";
-    const existing=contacts.filter(c=>c.type===typeToUse);
-    const nums=existing.map(c=>parseInt(c.id.slice(1))||0);
-    const nextNum=(nums.length?Math.max(...nums):0)+1;
-    const id=`${prefix}${String(nextNum).padStart(3,"0")}`;
+    const id=nextContactId(contacts,typeToUse);
     const c={id,type:typeToUse,name:newContact.name,notes:[newContact.phone,newContact.email,newContact.address,newContact.accountNo].filter(Boolean).join(" | ")};
     const updated=[...contacts,c];
     setContacts(updated);
@@ -3845,7 +3836,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                   setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                }} accounts={accounts}/>
+                }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
                 <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],debitVatCode:code};
@@ -3858,7 +3849,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                   setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                }} accounts={accounts}/>
+                }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
                 <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                   const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                   lines[li]={...lines[li],creditVatCode:code};
@@ -3969,7 +3960,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                     setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts}/>
+                  }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
@@ -3983,7 +3974,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                     setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts}/>
+                  }} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>setForm(p=>({...p,contactId:id})):undefined}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};

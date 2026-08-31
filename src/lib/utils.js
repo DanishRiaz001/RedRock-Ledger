@@ -291,4 +291,20 @@ const parseDelimitedText=(text,delim)=>{
   return rows.filter(r=>r.some(v=>v.trim()!==""));
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText };
+// Customer numbers start at 10000, supplier numbers at 20000 — the real
+// Norwegian numbering convention, replacing the old C001/S001 scheme.
+// Existing C###/S### contacts are left exactly as they are (nothing
+// renames or renumbers them on its own); only a NEW contact gets a number
+// in the new range. parseInt("C001") is NaN, so old-style ids simply don't
+// count toward "the highest number so far", meaning the very first
+// new-style contact always starts at the base rather than colliding with
+// old numbering. One shared function so every place a contact gets
+// created (the main Customers/Suppliers screen, bulk import, the inline
+// "+ New customer/supplier" creator, the admin panel, …) numbers the same way.
+const nextContactId=(contacts,type)=>{
+  const base=type==="customer"?10000:20000;
+  const nums=(contacts||[]).filter(c=>c.type===type).map(c=>parseInt(c.id,10)).filter(n=>!isNaN(n)&&n>=base&&n<base+10000);
+  return String((nums.length?Math.max(...nums):base-1)+1);
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId };

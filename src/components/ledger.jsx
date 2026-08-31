@@ -120,7 +120,7 @@ function BackHeader({title,sub,onBack}){
 const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"6px 8px",width:"100%",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
-function AccDrop({value,onChange,accounts,onCreateAccount}){
+function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const[creating,setCreating]=useState(false);
@@ -143,6 +143,27 @@ function AccDrop({value,onChange,accounts,onCreateAccount}){
     });
     return all;
   },[accounts,q]);
+  // Typing a customer/supplier's own name straight into a debit or credit
+  // field routes the entry to their real control account (1500/2400) —
+  // matching a real bookkeeper picking "the customer" instead of hunting
+  // for the control account by number. Typing the control account code
+  // itself is a shortcut to every contact of that type, since picking one
+  // is exactly "post here, linked to them". Only offered where a caller
+  // actually wants this (onContactPick passed) — every other AccDrop use
+  // (sale account, bank account, …) is completely unaffected.
+  const qTrim=q.trim();
+  const contactMatches=useMemo(()=>{
+    if(!onContactPick)return[];
+    if(qTrim==="1500")return contacts.filter(c=>c.type==="customer");
+    if(qTrim==="2400")return contacts.filter(c=>c.type==="supplier");
+    if(!qTrim)return[];
+    return contacts.filter(c=>c.name.toLowerCase().includes(qTrim.toLowerCase()));
+  },[contacts,qTrim,onContactPick]);
+  const pickContact=c=>{
+    onChange(c.type==="customer"?"1500":"2400");
+    onContactPick(c.id);
+    closeAndRevert();
+  };
 
   const openAndSearch=()=>{setOpen(true);setQ("");};
   const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");};
@@ -195,7 +216,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount}){
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
           <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280,minWidth:320}}>
-            {filtered.length>0&&(
+            {(filtered.length>0||contactMatches.length>0)&&(
               <div style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"6px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Type</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Number</div>
@@ -203,7 +224,14 @@ function AccDrop({value,onChange,accounts,onCreateAccount}){
               </div>
             )}
             <div style={{overflowY:"auto",maxHeight:230}}>
-              {filtered.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
+              {filtered.length===0&&contactMatches.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
+              {contactMatches.map((c,i)=>(
+                <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
+                  <span style={{fontSize:11,color:c.type==="customer"?T.blue:T.red,fontWeight:600}}>{c.type==="customer"?"Customer":"Supplier"}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.type==="customer"?"1500":"2400"}</span>
+                  <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                </div>
+              ))}
               {filtered.map((a,i)=>(
                 <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
                   <span style={{fontSize:11,color:T.muted}}>Account</span>
@@ -356,12 +384,28 @@ function FlexDateInput({value,onChange,style,inputStyle}){
 }
 
 // Flat searchable dropdown (for edit modal)
-function AccDropFlat({value,onChange,accounts}){
+function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const sel=accounts.find(a=>a.code===value);
   const sorted=[...accounts].sort((a,b)=>a.code.localeCompare(b.code));
   const filtered=sorted.filter(a=>!q||a.code.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()));
+  // Same contact shortcut as AccDrop — type a customer/supplier's name to
+  // route straight to them, or type 1500/2400 to browse every contact of
+  // that type. Additive: only active where a caller passes onContactPick.
+  const qTrim=q.trim();
+  const contactMatches=useMemo(()=>{
+    if(!onContactPick)return[];
+    if(qTrim==="1500")return contacts.filter(c=>c.type==="customer");
+    if(qTrim==="2400")return contacts.filter(c=>c.type==="supplier");
+    if(!qTrim)return[];
+    return contacts.filter(c=>c.name.toLowerCase().includes(qTrim.toLowerCase()));
+  },[contacts,qTrim,onContactPick]);
+  const pickContact=c=>{
+    onChange(c.type==="customer"?"1500":"2400");
+    onContactPick(c.id);
+    setOpen(false);setQ("");
+  };
   return(
     <div style={{position:"relative"}}>
       <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
@@ -373,9 +417,16 @@ function AccDropFlat({value,onChange,accounts}){
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
           <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:220}}>
             <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
-              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
             </div>
             <div style={{overflowY:"auto",maxHeight:175}}>
+              {contactMatches.map(c=>(
+                <div key={"c"+c.id} onClick={()=>pickContact(c)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:"#fff",color:c.type==="customer"?T.blue:T.red,borderBottom:`0.5px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontWeight:700,minWidth:32,flexShrink:0}}>{c.type==="customer"?"1500":"2400"}</span>
+                  <span style={{color:T.text}}>{c.name}</span>
+                  <span style={{marginLeft:"auto",fontSize:8,fontWeight:700,textTransform:"uppercase"}}>{c.type==="customer"?"Customer":"Supplier"}</span>
+                </div>
+              ))}
               {filtered.map((a,i)=>(
                 <div key={a.code} onClick={()=>{onChange(a.code);setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
                   <span style={{fontWeight:700,minWidth:32,flexShrink:0,color:T.muted}}>{a.code}</span>
@@ -808,8 +859,8 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
       </div>
       <div><SL>Description</SL><input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={inp}/></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={pickDebitAccount} accounts={accounts}/></div>
-        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={pickCreditAccount} accounts={accounts}/></div>
+        <div><SL>Debit Account</SL><AccDropFlat value={form.debitCode} onChange={pickDebitAccount} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(f=>({...f,contactId:id}))}/></div>
+        <div><SL>Credit Account</SL><AccDropFlat value={form.creditCode} onChange={pickCreditAccount} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(f=>({...f,contactId:id}))}/></div>
       </div>
       {/* A VAT box under each side, in the same two columns as the account
           row above it — matching Register voucher's per-side VAT pattern.

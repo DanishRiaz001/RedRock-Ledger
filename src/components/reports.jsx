@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
@@ -918,11 +918,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
   // Period Close, or Backup from the Settings menu.)
   const[checklistDismissed,setChecklistDismissed]=useState(()=>{try{return localStorage.getItem("rr_checklist_dismissed")==="1";}catch{return false;}});
 
-  const nextId=type=>{
-    const prefix=type==="customer"?"C":"S";
-    const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
-    return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
-  };
+  const nextId=type=>nextContactId(contacts,type);
   const addContact=()=>{
     if(!newName.trim())return;
     setContacts([...contacts,{id:nextId(contactType),type:contactType,name:newName.trim(),notes:""}]);
@@ -1253,11 +1249,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
       const[search,setSearch]=useState("");
       const[saved,setSaved]=useState(false);
       const hasTxns=(id)=>transactions.some(t=>t.contactId===id);
-      const nextId=(type)=>{
-        const prefix=type==="customer"?"C":"S";
-        const nums=contacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
-        return`${prefix}${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
-      };
+      const nextId=type=>nextContactId(contacts,type);
       const openNew=()=>{setCName("");setCNotes("");setEditId(null);setShowForm(true);};
       const openEdit=(c)=>{setCType(c.type);setCName(c.name);setCNotes(c.notes||"");setEditId(c.id);setShowForm(true);};
       const cancelForm=()=>{setShowForm(false);setEditId(null);setCName("");setCNotes("");};

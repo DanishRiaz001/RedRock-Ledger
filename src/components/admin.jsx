@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { T, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { callClaudeAPI } from "../lib/utils.js";
+import { callClaudeAPI, nextContactId } from "../lib/utils.js";
 import { sb, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop } from "./ledger.jsx";
 import { ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages } from "./settings2.jsx";
@@ -822,14 +822,8 @@ Return ONLY valid JSON, no markdown:
     setScanning(false);
   };
 
-  const nextContactId=(type,currentContacts)=>{
-    const prefix=type==="customer"?"C":"S";
-    const nums=currentContacts.filter(c=>c.type===type).map(c=>parseInt(c.id.slice(1))||0);
-    return prefix+String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
-  };
-
   const addUnknownContact=(uid,name,type)=>{
-    const newId=nextContactId(type,contacts);
+    const newId=nextContactId(contacts,type);
     const newContact={id:newId,type,name,notes:""};
     setContacts([...contacts,newContact]);
     setEntries(prev=>prev.map(e=>{
