@@ -3387,17 +3387,17 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invVatCode,setInvVatCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
-  // Blank means "same as the voucher date" above — this is what lets each
-  // posting line (esp. one added later, like the actual payment) carry its
-  // own real date instead of every line silently sharing the voucher date.
-  const[invPrimaryDate,setInvPrimaryDate]=useState("");
-  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode,date,description}]
+  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode}]
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
   const[invRegisterPayment,setInvRegisterPayment]=useState(""); // "" = no payment (AP/AR open item), else account code (Cash or a bank) to settle against
   const[invPaymentAmount,setInvPaymentAmount]=useState(""); // blank = settle the full invoice total; can be overridden for a partial payment
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvPrimaryDate("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");};
+  // Blank means "same as the invoice date" — this is what actually lets you
+  // record when a supplier invoice was really paid, separately from the
+  // invoice's own date, without needing a date on every cost line.
+  const[invPaymentDate,setInvPaymentDate]=useState("");
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -3632,7 +3632,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,date:invPrimaryDate,description:invDescription},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
@@ -3661,9 +3661,9 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       // being one logical voucher — every line here now shares whichever
       // bilag the first line was actually assigned.
       const res=await onSave({
-        date:l.date||form.date,
+        date:form.date,
         debitCode,creditCode,
-        description:l.description||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
+        description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
         amount:absAmt,
         contactId:invContactId,
         invoiceNo:invoiceNo||null,
@@ -3686,7 +3686,7 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
       const creditCode=invIsCustomer?contactCode:invRegisterPayment;
       const payAmount=Math.min(Math.abs(parseFloat(invPaymentAmount)||Math.abs(invTotal)),Math.abs(invTotal));
       await onSave({
-        date:form.date,
+        date:invPaymentDate||form.date,
         debitCode,creditCode,
         description:`Payment${invoiceNo?" · "+invoiceNo:""}`,
         amount:payAmount,
@@ -4253,175 +4253,186 @@ function NewEntryForm({accounts,contacts,setContacts,nextBilag,onSave,addEntryCo
         const bankAccounts=accounts.filter(a=>["1900","1920","2060"].includes(a.code));
         const invTotalPreview=[{amount:invAmount},...invExtraLines].reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
+        const sectionBox={border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"};
+        const sectionHead={padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub};
+        const sectionBody={padding:isDesktop?"12px 14px":14,display:"flex",flexDirection:"column",gap:isDesktop?9:10};
         return(
-          <div style={{display:"flex",flexDirection:"column",gap:isDesktop?7:10}}>
-            {/* Supplier/Customer selector */}
-            <div>
-              <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{isDesktop?(invIsCustomer?"Customer":"Supplier"):(invIsCustomer?"👤 Customer":"👤 Supplier")}</div>
-              {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
-                <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
-                  <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
-                  <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+          <div style={{display:"flex",flexDirection:"column",gap:isDesktop?12:14}}>
+            {/* Invoice details — supplier/customer, invoice no/due date, and
+                ONE description for the whole voucher, matching the reference
+                voucher's "Fakturadetaljer" section instead of scattering
+                these across the page. */}
+            <div style={sectionBox}>
+              <div style={sectionHead}>Invoice details</div>
+              <div style={sectionBody}>
+                <div>
+                  <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
+                  {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
+                    <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
+                      <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
+                      <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+                    </div>
+                  );})():(
+                    <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
+                  )}
                 </div>
-              );})():(
-                <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
-              )}
-            </div>
-
-            {/* Invoice No + Due date — compact, no Amount here (amount now lives with the account line below).
-                Desktop: shorter boxes (6px vertical padding vs 7px), matching
-                the tight, no-wasted-space density of a real invoice-entry
-                form rather than a comfortably-padded mobile field. */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              <div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
-              </div>
-            </div>
-
-            {/* One grid — Date / Description / Account / VAT / Amount all in
-                the same row, per line, header aligned exactly above its own
-                column (same technique as New Entry's Postings table). The
-                per-line Date defaults to the voucher date above but can be
-                set separately — lets an added line (e.g. the actual
-                payment) carry its own real date instead of silently
-                inheriting the invoice's date. Picking an account with a
-                locked default VAT code locks that line's VAT dropdown. */}
-            {(()=>{
-              const GRID_COLS="118px 1.3fr 1.5fr 100px 100px 26px";
-              const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-              const vDivider={borderRight:`1px solid ${T.border}`};
-              const rows=[
-                {isPrimary:true,date:invPrimaryDate,description:invDescription,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
-                ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
-              ];
-              return(
-            <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
-              <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?640:0,overflowX:isDesktop?"visible":"auto"}}>
-                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Date</div>
-                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Description</div>
-                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
-                <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
-                <div style={{...cellBase,background:"#fff"}}/>
-                {rows.map((r,idx)=>{
-                  const acc=accounts.find(a=>a.code===r.accountCode);
-                  const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
-                  const isLastRow=idx===rows.length-1;
-                  const rowCell=isLastRow?{...cellBase,borderBottom:"none"}:cellBase;
-                  const update=patch=>{
-                    if(r.isPrimary){
-                      if("date"in patch)setInvPrimaryDate(patch.date);
-                      if("description"in patch)setInvDescription(patch.description);
-                      if("accountCode"in patch)setInvAccountCode(patch.accountCode);
-                      if("vatCode"in patch)setInvVatCode(patch.vatCode);
-                      if("amount"in patch)setInvAmount(patch.amount);
-                    } else {
-                      setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
-                    }
-                  };
-                  return(<React.Fragment key={idx}>
-                    <div style={{...rowCell,...vDivider}}>
-                      <FlexDateInput value={r.date||form.date} onChange={v=>update({date:v})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
-                    </div>
-                    <div style={{...rowCell,...vDivider}}>
-                      <input placeholder="Description" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...inpSm,fontSize:11,padding:"6px 7px",width:"100%"}}/>
-                    </div>
-                    <div style={{...rowCell,...vDivider}}>
-                      <AccDrop value={r.accountCode||""} onChange={code=>{
-                        const a=accounts.find(x=>x.code===code);
-                        update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
-                      }} accounts={filteredAccounts}/>
-                    </div>
-                    <div style={{...rowCell,...vDivider}}>
-                      <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
-                    </div>
-                    <div style={{...rowCell,...vDivider}}>
-                      {/* Tabbing out of the last row's Amount box starts a
-                          new line automatically — matches the quick-entry
-                          feel of a real spreadsheet/voucher table instead
-                          of forcing a click on "+ Add Line" every time. */}
-                      <input type="number" placeholder="0" value={r.amount||""} onChange={e=>update({amount:e.target.value})} onKeyDown={e=>{
-                        if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",date:"",description:""}]);
-                      }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"6px 7px",width:"100%",textAlign:"right"}}/>
-                    </div>
-                    <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {!r.isPrimary&&<button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==r.li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontWeight:800,fontSize:12,lineHeight:1}}>−</button>}
-                    </div>
-                  </React.Fragment>);
-                })}
-              </div>
-            </div>
-              );
-            })()}
-            <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",date:"",description:""}])} style={{...btnGhost,padding:"4px 9px",fontSize:10,color:T.accent,borderColor:T.accent,alignSelf:"flex-start"}}>+ Add Line</button>
-
-            {/* Running Debit / Credit / VAT / Difference — debit is what's entered
-                across the cost-account line(s) above; credit is the same total,
-                since that's exactly what's now payable to/from the contact. VAT
-                is how much of those amounts is tax, same rate/code as each
-                line's own VAT dropdown. Shown here purely as a running-total
-                confirmation before posting. */}
-            {(()=>{
-              const invLineAmounts=[invAmount,...invExtraLines.map(l=>l.amount)];
-              const invLineVatCodes=[invVatCode,...invExtraLines.map(l=>l.vatCode)];
-              const invTotal=invLineAmounts.reduce((s,a)=>s+(parseFloat(a)||0),0);
-              const invVatTotal=invLineAmounts.reduce((s,a,i)=>{
-                const amt=Math.abs(parseFloat(a)||0);
-                if(!amt)return s;
-                const vc=findVatCode(invLineVatCodes[i],invVatDirection);
-                return s+(vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:0);
-              },0);
-              return(
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
-                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
-                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
+                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
                   </div>
                   <div>
-                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit ({invIsCustomer?"AR":"AP"})</div>
-                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Of which VAT</div>
-                    <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(invVatTotal)}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div>
-                    <div style={{fontSize:12,fontWeight:700,color:T.green}}>{fmt(0)}</div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
+                    <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
                   </div>
                 </div>
-              );
-            })()}
-
-            {/* Payment — a single clean dropdown. Nothing selected → posts as a
-                plain open item to Accounts Payable/Receivable. Pick Cash or a
-                bank → settles the full amount immediately against that account,
-                same date as the invoice. */}
-            <div style={{display:"flex",gap:8}}>
-              <div style={{flex:7}}>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
-                <select value={invRegisterPayment} onChange={e=>{setInvRegisterPayment(e.target.value);if(e.target.value&&!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));if(!e.target.value)setInvPaymentAmount("");}} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
-                  <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
-                  {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                </select>
-              </div>
-              {invRegisterPayment&&(
-                <div style={{flex:3}}>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
-                  <input type="number" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
+                <div>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Description</div>
+                  <input placeholder="Shown on every posting from this voucher" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
                 </div>
-              )}
+              </div>
             </div>
-            {invRegisterPayment&&(
-              <div style={{fontSize:10,color:T.muted,marginTop:-3}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."} Same date as the invoice{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" — partial; the rest stays open.":", full amount."}</div>
-            )}
-            <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
+
+            {/* Costs — just Account / VAT / Amount per line, no date or
+                description per row (those live once, above, for the whole
+                voucher) — matching the reference's plain cost-line table. */}
+            <div style={sectionBox}>
+              <div style={sectionHead}>{invIsCustomer?"Sales lines":"Costs"}</div>
+              <div style={{padding:isDesktop?"10px 14px 14px":"10px 14px 14px"}}>
+              {(()=>{
+                const GRID_COLS="1.6fr 110px 110px 26px";
+                const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+                const vDivider={borderRight:`1px solid ${T.border}`};
+                const rows=[
+                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
+                  ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
+                ];
+                return(
+              <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?520:0,overflowX:isDesktop?"visible":"auto"}}>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
+                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Amount</div>
+                  <div style={{...cellBase,background:"#fff"}}/>
+                  {rows.map((r,idx)=>{
+                    const acc=accounts.find(a=>a.code===r.accountCode);
+                    const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
+                    const isLastRow=idx===rows.length-1;
+                    const rowCell=isLastRow?{...cellBase,borderBottom:"none"}:cellBase;
+                    const update=patch=>{
+                      if(r.isPrimary){
+                        if("accountCode"in patch)setInvAccountCode(patch.accountCode);
+                        if("vatCode"in patch)setInvVatCode(patch.vatCode);
+                        if("amount"in patch)setInvAmount(patch.amount);
+                      } else {
+                        setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
+                      }
+                    };
+                    return(<React.Fragment key={idx}>
+                      <div style={{...rowCell,...vDivider}}>
+                        <AccDrop value={r.accountCode||""} onChange={code=>{
+                          const a=accounts.find(x=>x.code===code);
+                          update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
+                        }} accounts={filteredAccounts}/>
+                      </div>
+                      <div style={{...rowCell,...vDivider}}>
+                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
+                      </div>
+                      <div style={{...rowCell,...vDivider}}>
+                        {/* Tabbing out of the last row's Amount box starts a
+                            new line automatically — matches the quick-entry
+                            feel of a real spreadsheet/voucher table instead
+                            of forcing a click on "+ Add Line" every time. */}
+                        <input type="number" placeholder="0" value={r.amount||""} onChange={e=>update({amount:e.target.value})} onKeyDown={e=>{
+                          if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
+                        }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"6px 7px",width:"100%",textAlign:"right"}}/>
+                      </div>
+                      <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {!r.isPrimary&&<button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==r.li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontWeight:800,fontSize:12,lineHeight:1}}>−</button>}
+                      </div>
+                    </React.Fragment>);
+                  })}
+                </div>
+              </div>
+                );
+              })()}
+              <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"4px 9px",fontSize:10,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+
+              {/* Running Debit / Credit / VAT / Difference — debit is what's
+                  entered across the cost-account line(s) above; credit is the
+                  same total, since that's exactly what's now payable to/from
+                  the contact. VAT is how much of those amounts is tax, per
+                  each line's own VAT dropdown. Shown here purely as a
+                  running-total confirmation before posting. */}
+              {(()=>{
+                const invLineAmounts=[invAmount,...invExtraLines.map(l=>l.amount)];
+                const invLineVatCodes=[invVatCode,...invExtraLines.map(l=>l.vatCode)];
+                const invTotal=invLineAmounts.reduce((s,a)=>s+(parseFloat(a)||0),0);
+                const invVatTotal=invLineAmounts.reduce((s,a,i)=>{
+                  const amt=Math.abs(parseFloat(a)||0);
+                  if(!amt)return s;
+                  const vc=findVatCode(invLineVatCodes[i],invVatDirection);
+                  return s+(vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:0);
+                },0);
+                return(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px",marginTop:8}}>
+                    <div>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit ({invIsCustomer?"AR":"AP"})</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Of which VAT</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(invVatTotal)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div>
+                      <div style={{fontSize:12,fontWeight:700,color:T.green}}>{fmt(0)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+              </div>
+            </div>
+
+            {/* Payment — a single clean dropdown. Nothing selected → posts as
+                a plain open item to Accounts Payable/Receivable. Pick Cash
+                or a bank → settles the amount against that account, on
+                whichever date it was really paid (defaults to the invoice
+                date, editable). */}
+            <div style={sectionBox}>
+              <div style={sectionHead}>Payment</div>
+              <div style={sectionBody}>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:7}}>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
+                    <select value={invRegisterPayment} onChange={e=>{setInvRegisterPayment(e.target.value);if(e.target.value&&!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));if(!e.target.value)setInvPaymentAmount("");}} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
+                      <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
+                      {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                    </select>
+                  </div>
+                  {invRegisterPayment&&(
+                    <div style={{flex:3}}>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
+                      <input type="number" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
+                    </div>
+                  )}
+                </div>
+                {invRegisterPayment&&(<>
+                  <div style={{maxWidth:180}}>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Payment date</div>
+                    <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{fontSize:12,padding:"7px 10px"}}/>
+                  </div>
+                  <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
+                </>)}
+              </div>
+            </div>
+
+            <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
           </div>
         );
       })()}
