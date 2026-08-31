@@ -488,6 +488,13 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
       <div style={isDesktop?{}:{padding:16}}>
         <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,marginBottom:12}}/>
         <button style={{...btnRed,marginBottom:14}} onClick={()=>setShowNew(true)}>+ New Account</button>
+        {/* "Reset to NS defaults" used to be desktop-only (grouped with
+            Export/Import in that header row) — mobile had no way to reach
+            it at all, not even a smaller version, so a renamed standard
+            account couldn't be fixed from the phone. */}
+        {!isDesktop&&(
+          <button onClick={()=>setShowResetDefaults(true)} style={{...btnGhost,marginBottom:14,width:"100%"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>
+        )}
         {orphanCodes.length>0&&(
           <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:700,color:T.orange,marginBottom:8}}>⚠ {orphanCodes.length} account code{orphanCodes.length===1?"":"s"} used in transactions but missing from your chart — tap to add:</div>
