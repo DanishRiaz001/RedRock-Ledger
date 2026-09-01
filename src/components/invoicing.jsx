@@ -1415,6 +1415,16 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
     setPosting(true);
     const supplier=contacts.find(c=>c.id===form.supplierId);
     const customer=contacts.find(c=>c.id===form.customerId);
+    // Every addTransaction call below used to be pure fire-and-forget — no
+    // result ever checked, so a failed save (or a save that went through
+    // but whose attachment link to THIS file failed) looked identical to a
+    // clean success: the file still got pulled out of the queue and moved
+    // on from. That's exactly "I registered this receipt and the bilag
+    // ended up with nothing on it" with no visibility into why. Now every
+    // save is checked; a real save failure stops here and keeps the file
+    // in the queue to retry, while an attachment-only failure still lets
+    // the voucher stand (it's real and correct) but says so clearly.
+    const results=[];
     if(form.voucherType==="income"){
       // One ledger entry per income line (Dr 1500 Accounts Receivable / Cr the
       // line's income account), sharing a groupRef so opening any one of them
@@ -1424,11 +1434,11 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         const{gross,vat}=incomeLineCalc(l);
         const desc=l.description||form.description||`${customer?customer.name:"Customer"} sale${form.invoiceNo?" "+form.invoiceNo:""}`;
         const lineVc=findVatCode(l.vatCode,"output");
-        await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:l.accountCode,description:desc,amount:gross,contactId:form.customerId,attachmentId:currentFileId,vatPct:lineVc?lineVc.rate:0,vatCode:l.vatCode,vatAmount:Math.round(vat*100)/100,currency:form.currency,groupRef});
+        results.push(await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:"1500",creditCode:l.accountCode,description:desc,amount:gross,contactId:form.customerId,attachmentId:currentFileId,vatPct:lineVc?lineVc.rate:0,vatCode:l.vatCode,vatAmount:Math.round(vat*100)/100,currency:form.currency,groupRef}));
       }
     } else if(form.voucherType==="supplier"){
       const desc=form.description||`${supplier?supplier.name:"Supplier"} invoice${form.invoiceNo?" "+form.invoiceNo:""}`;
-      await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100});
+      results.push(await addTransaction({date:form.date,dueDate:form.dueDate,invoiceNo:form.invoiceNo,debitCode:form.expenseAccount,creditCode:"2400",description:desc,amount:grossAmount,contactId:form.supplierId,attachmentId:currentFileId,vatPct:vatRate,vatAmount:Math.round(vatAmount*100)/100}));
     } else {
       // General voucher — one ledger entry per line, sharing a groupRef
       // when there's more than one, exactly like the income-lines path above.
@@ -1438,10 +1448,19 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
         const debitVc=findVatCode(l.debitVatCode,"input");
         const creditVc=findVatCode(l.creditVatCode,"output");
         const desc=l.description||form.description||"Voucher entry";
-        await addTransaction({date:form.date,debitCode:l.debitCode,creditCode:l.creditCode,description:desc,amount:amt,attachmentId:currentFileId,vatCode:l.debitVatCode||l.creditVatCode,vatPct:debitVc?debitVc.rate:(creditVc?creditVc.rate:0),groupRef});
+        results.push(await addTransaction({date:form.date,debitCode:l.debitCode,creditCode:l.creditCode,description:desc,amount:amt,attachmentId:currentFileId,vatCode:l.debitVatCode||l.creditVatCode,vatPct:debitVc?debitVc.rate:(creditVc?creditVc.rate:0),groupRef}));
       }
     }
     setPosting(false);
+    const failed=results.find(r=>!r||r.error||r.id==null);
+    if(failed){
+      alert(`Couldn't save this entry:\n\n${(failed&&failed.error)||"Unknown error."}\n\nNothing was posted — this file stays in the queue, try again.`);
+      return;
+    }
+    const attachFailed=results.find(r=>r.attachmentError);
+    if(attachFailed){
+      alert(`Posted, but the attached file didn't link to it:\n\n${attachFailed.attachmentError}\n\nThe file is still in your Inbox — open the new bilag and attach it again from the Attachments tab.`);
+    }
     // Remove it from the queue entirely — once it's posted there's nothing
     // left to do with it here, so it shouldn't still show up when paging
     // back and forth.
@@ -3570,6 +3589,16 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           if(!primaryResult||primaryResult.error||primaryResult.id==null){
             alert(`Couldn't save this entry:\n\n${(primaryResult&&primaryResult.error)||"Unknown error."}\n\nNothing was saved — your entry is still here, try again.`);
             return;
+          }
+          // The voucher itself saved fine, but the attachment link to it
+          // specifically failed — used to fail completely silently (the
+          // file just quietly stayed unattached with zero indication),
+          // which is exactly "I attached a receipt, saved, and the bilag
+          // has nothing on it" with no way to know why. The voucher is
+          // real and correct either way — only the attachment needs a
+          // retry — so this warns rather than blocking the save outright.
+          if(primaryResult.attachmentError){
+            alert(`${fmtB(primaryResult.bilag)} saved, but the attached file didn't link to it:\n\n${primaryResult.attachmentError}\n\nThe file is still in your Inbox — open this bilag and attach it again from the Attachments tab.`);
           }
           // A comment is extra context on top of the required description —
           // saved as an entry comment (same thread DetailModal shows later)

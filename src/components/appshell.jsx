@@ -682,12 +682,28 @@ function AppShell({user}){
       return{error:error.message};
     }
     if(data){
-      if(form.attachmentIds&&form.attachmentIds.length){await attachFilesToTxn(data.id,form.attachmentIds);setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,...form.attachmentIds]));}
-      else if(form.attachmentId){await attachFilesToTxn(data.id,[form.attachmentId]);setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
+      // Same fix as the attach-from-Inbox path (attachFilesToTxnEntry) —
+      // used to fire-and-forget this and mark the file "attached"
+      // unconditionally, whether the link actually saved or not. That's
+      // exactly "I attached a receipt to a new entry, saved, and opening
+      // the bilag later shows nothing" with zero indication anything went
+      // wrong. Now the caller finds out (attachmentError on the result),
+      // and the file only counts as attached — hidden from Inbox — once
+      // the database confirms it.
+      let attachmentError=null;
+      if(form.attachmentIds&&form.attachmentIds.length){
+        const r=await attachFilesToTxn(data.id,form.attachmentIds);
+        if(r&&r.error)attachmentError=r.error;
+        else{setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,...form.attachmentIds]));}
+      } else if(form.attachmentId){
+        const r=await attachFilesToTxn(data.id,[form.attachmentId]);
+        if(r&&r.error)attachmentError=r.error;
+        else{setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
+      }
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
       setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null}]);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
-      return{id:data.id,bilag:nb,description:form.description,amount:form.amount};
+      return{id:data.id,bilag:nb,description:form.description,amount:form.amount,attachmentError};
     }
     return{error:"No data returned from the database."};
   };
@@ -1796,10 +1812,17 @@ If you genuinely cannot read useful information from this file, return {"supplie
     }catch(e){console.error("Merge error:",e);alert("Merge failed: "+e.message);return null;}
   };
   const attachFilesToTxnEntry=async(txnId,fileIds)=>{
-    if(!canEdit)return;
-    await attachFilesToTxn(txnId,fileIds);
+    if(!canEdit)return{error:"You don't have permission to attach files."};
+    const res=await attachFilesToTxn(txnId,fileIds);
+    // Only mark as attached (hide from Inbox, show the checkmark) once the
+    // link genuinely exists in the database — see attachFilesToTxn above.
+    if(res&&res.error){
+      alert(`Couldn't attach this file to the entry:\n\n${res.error}\n\nIt's still in your Inbox — nothing was lost, but this entry has no document attached yet.`);
+      return res;
+    }
     setAttachedTxnIds(p=>new Set([...p,txnId]));
     setAttachedFileIds(p=>new Set([...p,...(Array.isArray(fileIds)?fileIds:[fileIds])]));
+    return{ok:true};
   };
 
   const signOut=async()=>{await sb.auth.signOut();window.location.reload();};
@@ -2019,11 +2042,18 @@ const fetchAttachedTxnIds=async()=>{
 };
 const attachFilesToTxn=async(txnId,fileIds)=>{
   const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
-  if(!ids.length)return;
+  if(!ids.length)return{ok:true};
   const c=getCid();
   const rows=ids.map(fileId=>({user_id:getCurrentUserId(),...(c?{company_id:c}:{}),txn_id:txnId,file_id:fileId}));
   const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:c?"user_id,company_id,txn_id,file_id":"user_id,txn_id,file_id",ignoreDuplicates:true});
-  if(error)console.error("Attach file to txn error:",error);
+  // Used to only console.error here — every caller marked the file as
+  // "attached" (hiding it from Inbox, showing a green checkmark) whether
+  // this actually wrote a row or not. A failure here is exactly what "I
+  // attached it, saved, and reopening the bilag shows nothing" looks like:
+  // the UI believed it worked, the database never got the link. Now
+  // callers get a real result to check before treating it as done.
+  if(error){console.error("Attach file to txn error:",error);return{error:error.message};}
+  return{ok:true};
 };
 const fetchTxnAttachments=async(txnId)=>{
   const{data,error}=await scopedHelper(sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId())).eq("txn_id",txnId);

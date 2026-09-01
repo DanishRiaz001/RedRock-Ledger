@@ -1476,9 +1476,15 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   const[dragOver,setDragOver]=useState(false);
   const attachExistingFile=async(fileId)=>{
     if(!attachFilesToTxnEntry)return;
-    await attachFilesToTxnEntry(txn.id,[fileId]);
-    const file=inboxFiles.find(f=>f.id===fileId);
-    if(file)setAttList(p=>[...p,file]);
+    const res=await attachFilesToTxnEntry(txn.id,[fileId]);
+    // attachFilesToTxnEntry already alerts on failure — only add it to the
+    // visible attachment list here once it's actually confirmed linked;
+    // this used to add it unconditionally, showing a document as attached
+    // in the UI that the database never actually recorded.
+    if(!res||!res.error){
+      const file=inboxFiles.find(f=>f.id===fileId);
+      if(file)setAttList(p=>[...p,file]);
+    }
     setShowInboxPicker(false);
   };
   const availableInboxFiles=inboxFiles.filter(f=>!f.deletedAt&&!attList.some(a=>a.id===f.id));
@@ -1492,8 +1498,13 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       if(newFile)newFiles.push(newFile);
     }
     if(newFiles.length){
-      await attachFilesToTxnEntry(txn.id,newFiles.map(f=>f.id));
-      setAttList(p=>[...p,...newFiles]);
+      // The upload itself (uploadInboxFile above) succeeded either way —
+      // these are real files sitting in Inbox regardless. Only add them
+      // to this entry's visible attachment list once the link to THIS
+      // transaction is actually confirmed; attachFilesToTxnEntry already
+      // alerts if it isn't.
+      const res=await attachFilesToTxnEntry(txn.id,newFiles.map(f=>f.id));
+      if(!res||!res.error)setAttList(p=>[...p,...newFiles]);
     }
     setAttUploading(false);
   };
