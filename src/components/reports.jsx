@@ -4318,30 +4318,29 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     // that have nothing to do with each other). Saldo is now a running
     // subtotal PER account group instead of one continuous total across all
     // of them, with a grand total underneath.
-    // Kunde/Leverandør means an actual linked customer/supplier contact —
-    // a bank-direct posting with no contact attached isn't "from" whatever
-    // account it happened to clear through, so that must never be shown
-    // (or grouped) here as if it were the supplier's name.
-    const NO_CONTACT_KEY="— No customer/supplier linked —";
-    // "Ingen avgiftsbehandling" grouping used to show BOTH sides of the
-    // entry ("Bankgebyr / Driftskonto") — the real income/expense account
-    // alongside whatever balance-sheet account it cleared through (a bank,
-    // AR/AP, etc.), which read as if a 1xxx–2xxx balance account belonged
-    // in a VAT-relevant list at all. Only the real income/expense side
-    // (the one this bucket is actually about) is shown now.
+    // Every direction (25%/15%/12% sales & purchases, and the no-VAT
+    // bucket) groups by the real income/expense account now — same
+    // logic uniformly, not "by contact" for VAT-coded rows and "by
+    // account" only for the no-VAT ones. Grouping by contact used to mean
+    // the same account (say 3100 Salgsinntekt) got scattered across a
+    // separate group per customer instead of showing as one real account
+    // total with a running Saldo that actually means something; the
+    // Kunde/Leverandør column below still shows which contact each row
+    // belongs to, it just isn't what rows get bundled by anymore.
     const groupKeyOf=t=>{
-      if(specView.direction==="none"){
-        if(isExpenseSK(t.debitCode))return getName(t.debitCode);
-        if(isIncomeSK(t.creditCode))return getName(t.creditCode);
-        return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
-      }
+      if(isExpenseSK(t.debitCode))return getName(t.debitCode);
+      if(isIncomeSK(t.creditCode))return getName(t.creditCode);
+      return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
+    };
+    const NO_CONTACT_KEY="— No customer/supplier linked —";
+    const contactNameOf=t=>{
       const contact=contacts.find(c=>c.id===t.contactId);
       return contact?contact.name:NO_CONTACT_KEY;
     };
     // The dedicated Kunde/Leverandør column is genuinely useful (which
     // customer/supplier this VAT-coded row belongs to); for the no-VAT
-    // bucket it just repeated the group header above every row, since the
-    // group key already IS the account. Dropped for that view only.
+    // bucket a contact rarely applies at all, so it's dropped for that
+    // view only.
     const showKontoCol=specView.direction!=="none";
     const groups=[];
     const idxByKey={};
@@ -4388,7 +4387,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                       <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.date}</td>
                       <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                      {showKontoCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key===NO_CONTACT_KEY?"—":g.key}</td>}
+                      {showKontoCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contactNameOf(t)===NO_CONTACT_KEY?"—":contactNameOf(t)}</td>}
                       <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                       <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                       <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
