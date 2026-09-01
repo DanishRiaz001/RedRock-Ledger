@@ -25,8 +25,7 @@ function AppShell({user}){
   // to a client's requires a real client_access grant (enforced server-side
   // by RLS too, this is just what drives which data gets fetched).
   const[viewingUserId,setViewingUserId]=useState(user.id);
-  const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel}]
-  const currentAccessLevel=viewingUserId===user.id?"full":((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).accessLevel||"readonly");
+  const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel,companyId}]
 
   // Multi-company — one login can own several separate, fully isolated
   // companies (real client books, or just test entities). activeCompanyId
@@ -59,11 +58,30 @@ function AppShell({user}){
   // that may not exist yet never blocks the app from loading.
   const cid=(activeCompanyId&&activeCompanyId!=="__no_company_scoping__")?activeCompanyId:null;
   const scoped=q=>cid?q.eq("company_id",cid):q;
+  // Matched on the actual active COMPANY now, not just who owns it — a
+  // grant names one specific company_id, so viewing a different company
+  // under that same owner (which the companies-fetch effect above no
+  // longer even lists, but this is a second, independent guard) must never
+  // inherit whatever access level happened to be granted for a different
+  // company.
+  const currentAccessLevel=viewingUserId===user.id?"full":((myClientAccess.find(c=>c.clientUserId===viewingUserId&&c.companyId===cid)||{}).accessLevel||"readonly");
 
   useEffect(()=>{
     setCompaniesLoading(true);
+    // Viewing your OWN login (viewingUserId===user.id): every one of your
+    // companies. Viewing a CLIENT's login you were granted into: every
+    // client_access grant names exactly one company_id — used to just
+    // fetch that owner's entire company list with no filtering at all, so
+    // being granted "Khalid Maroof" specifically actually showed every
+    // other company that same owner has too (including their own default
+    // one), and the switcher let you freely hop into any of them. Now
+    // restricted to only the company_id(s) actually granted.
+    const grantedCompanyIds=viewingUserId!==user.id
+      ?new Set(myClientAccess.filter(g=>g.clientUserId===viewingUserId&&g.companyId).map(g=>g.companyId))
+      :null;
     sb.from("companies").select("*").eq("owner_user_id",viewingUserId).order("created_at").then(async({data,error})=>{
       let list=data||[];
+      if(grantedCompanyIds)list=list.filter(c=>grantedCompanyIds.has(c.id));
       if(error){
         // The companies table doesn't exist yet (SQL migration not run) or
         // some other real failure — either way, the app must still work.
@@ -78,7 +96,11 @@ function AppShell({user}){
         setCompaniesLoading(false);
         return;
       }
-      if(!list.length){
+      // The auto-create-a-company fallback below must never run while
+      // viewing someone else's login — a granted employee filtering down
+      // to zero companies (a stale/mismatched grant, say) must never
+      // silently create a brand-new company under the CLIENT's ownership.
+      if(!list.length&&viewingUserId===user.id){
         // First time this person has ever loaded the app under the new
         // multi-company model — give them a company automatically rather
         // than showing an empty "no companies" screen on login. Their
@@ -115,7 +137,7 @@ function AppShell({user}){
       setActiveCompanyId("__no_company_scoping__");
       setCompaniesLoading(false);
     });
-  },[viewingUserId]);
+  },[viewingUserId,myClientAccess]);
 
   const createCompany=async(name)=>{
     const{data,error}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:name||"New Company"}).select().single();
@@ -159,7 +181,13 @@ function AppShell({user}){
       const clientIds=data.map(r=>r.client_user_id);
       const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
       const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
-      setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level})));
+      // companyId was never even read off the grant row here — every grant
+      // already names exactly one company, but nothing downstream could
+      // actually scope by it since it wasn't in this object at all. This
+      // is what let the companies-fetch effect (and currentAccessLevel)
+      // show/apply access to a granted owner's WHOLE company list instead
+      // of just the one company that was actually granted.
+      setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level,companyId:r.company_id||null})));
     });
   },[user.id]);
   const[accounts,setAccountsState]=useState([]);
