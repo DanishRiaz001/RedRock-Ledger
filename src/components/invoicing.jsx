@@ -3996,7 +3996,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                     setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
@@ -4009,7 +4009,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                     setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};
@@ -4117,7 +4117,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                     setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
@@ -4131,7 +4131,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                     setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};

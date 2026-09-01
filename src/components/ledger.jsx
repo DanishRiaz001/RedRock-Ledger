@@ -120,7 +120,7 @@ function BackHeader({title,sub,onBack}){
 const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"6px 8px",width:"100%",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
-function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact}){
+function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact,contactId}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const[creating,setCreating]=useState(false);
@@ -137,11 +137,17 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const sel=accounts.find(a=>a.code===value);
+  // Once a real customer/supplier is linked (1500/2400), show their name
+  // instead of the generic "Kundefordringer"/"Leverandørgjeld" label —
+  // same as AccDropFlat below, matching what any real accounting software
+  // shows on an AR/AP subledger line.
+  const linkedContact=contactId?contacts.find(c=>c.id===contactId):null;
+  const displayAccName=sel&&(value==="1500"||value==="2400")&&linkedContact?linkedContact.name:sel?sel.name:null;
   // The box itself IS the search field now — no separate click-to-reveal
   // step. Typing a code or name directly filters live; picking an option
   // or clicking away reverts the box to showing "CODE — Name" for the
   // current selection.
-  const displayValue=sel?`${sel.code} — ${sel.name}`:"";
+  const displayValue=sel?`${sel.code} — ${displayAccName}`:"";
 
   const filtered=useMemo(()=>{
     const all=[];
@@ -437,10 +443,17 @@ function FlexDateInput({value,onChange,style,inputStyle}){
 }
 
 // Flat searchable dropdown (for edit modal)
-function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick}){
+function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactId}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const sel=accounts.find(a=>a.code===value);
+  // 1500/2400 are the generic "Kundefordringer"/"Leverandørgjeld" account
+  // names — once a real customer/supplier is actually linked to this line,
+  // showing their name instead (same as any real accounting software's
+  // reskontro subledger) is what actually identifies the posting, not the
+  // generic account label repeated on every AR/AP line in the voucher.
+  const linkedContact=contactId?contacts.find(c=>c.id===contactId):null;
+  const displayName=sel&&(value==="1500"||value==="2400")&&linkedContact?linkedContact.name:sel?sel.name:null;
   const sorted=[...accounts].sort((a,b)=>a.code.localeCompare(b.code));
   const filtered=sorted.filter(a=>!q||a.code.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()));
   // Same contact shortcut as AccDrop — type a customer/supplier's name to
@@ -462,7 +475,7 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick}){
   return(
     <div style={{position:"relative"}}>
       <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
-        {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {sel.name}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
+        {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {displayName}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
         <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
       </div>
       {open&&(
@@ -1034,7 +1047,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // details box + Postings grid, and a SEPARATE "Attachments" tab for the
   // document — not a permanent side-by-side split. Matches that instead.
   const[activeTab,setActiveTab]=useState("details");
-  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode}];
+  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode,contactId:form.contactId}];
   // Single-line mode still keeps its own separate state (form/debitVatCode/
   // creditVatCode) rather than groupLinesState — this routes a grid edit
   // back to whichever state actually owns that field, so the same grid
@@ -1104,11 +1117,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
                 <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 7px"}}/>
               </div>
               <div style={{...rowCell,...vDivider}}>
-                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
+                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
                 <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked}/></div>
               </div>
               <div style={{...rowCell,...vDivider}}>
-                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={li===0?contacts:undefined} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
+                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
                 <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
               </div>
               <div style={{...rowCell,...vDivider}}>

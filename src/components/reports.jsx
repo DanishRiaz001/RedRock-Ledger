@@ -4323,11 +4323,26 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     // account it happened to clear through, so that must never be shown
     // (or grouped) here as if it were the supplier's name.
     const NO_CONTACT_KEY="— No customer/supplier linked —";
+    // "Ingen avgiftsbehandling" grouping used to show BOTH sides of the
+    // entry ("Bankgebyr / Driftskonto") — the real income/expense account
+    // alongside whatever balance-sheet account it cleared through (a bank,
+    // AR/AP, etc.), which read as if a 1xxx–2xxx balance account belonged
+    // in a VAT-relevant list at all. Only the real income/expense side
+    // (the one this bucket is actually about) is shown now.
     const groupKeyOf=t=>{
-      if(specView.direction==="none")return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
+      if(specView.direction==="none"){
+        if(isExpenseSK(t.debitCode))return getName(t.debitCode);
+        if(isIncomeSK(t.creditCode))return getName(t.creditCode);
+        return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
+      }
       const contact=contacts.find(c=>c.id===t.contactId);
       return contact?contact.name:NO_CONTACT_KEY;
     };
+    // The dedicated Kunde/Leverandør column is genuinely useful (which
+    // customer/supplier this VAT-coded row belongs to); for the no-VAT
+    // bucket it just repeated the group header above every row, since the
+    // group key already IS the account. Dropped for that view only.
+    const showKontoCol=specView.direction!=="none";
     const groups=[];
     const idxByKey={};
     sorted.forEach(t=>{
@@ -4355,23 +4370,25 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
             <colgroup>
-              <col style={{width:"9%"}}/><col style={{width:"9%"}}/><col style={{width:"26%"}}/><col style={{width:"16%"}}/>
+              <col style={{width:"9%"}}/><col style={{width:"9%"}}/><col style={{width:showKontoCol?"26%":"36%"}}/>
+              {showKontoCol&&<col style={{width:"16%"}}/>}
               <col style={{width:"9%"}}/><col style={{width:"11%"}}/><col style={{width:"10%"}}/><col style={{width:"10%"}}/>
             </colgroup>
             <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>{specView.direction==="output"?"Kunde":specView.direction==="input"?"Leverandør":"Konto"}</td>
+              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
+              {showKontoCol&&<td>{specView.direction==="output"?"Kunde":"Leverandør"}</td>}
               <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
             </tr></thead>
             <tbody>
               {groups.map(g=>(
                 <React.Fragment key={g.key}>
-                  <tr><td colSpan="8" style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  <tr><td colSpan={showKontoCol?8:7} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
                   {g.rows.map(t=>(
                     <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
                       <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.date}</td>
                       <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                      <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key===NO_CONTACT_KEY?"—":g.key}</td>
+                      {showKontoCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.key===NO_CONTACT_KEY?"—":g.key}</td>}
                       <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                       <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                       <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
@@ -4379,17 +4396,17 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                     </tr>
                   ))}
                   <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td colSpan="5" style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Sum {g.key}</td>
+                    <td colSpan={showKontoCol?5:4} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Sum {g.key}</td>
                     <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
                     <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
                     <td style={{padding:"6px 12px"}}></td>
                   </tr>
                 </React.Fragment>
               ))}
-              {!groups.length&&<tr><td colSpan="8" style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+              {!groups.length&&<tr><td colSpan={showKontoCol?8:7} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
               {groups.length>1&&(
                 <tr style={{borderTop:`2px solid ${T.border}`}}>
-                  <td colSpan="5" style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
+                  <td colSpan={showKontoCol?5:4} style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.accent}}>{fmt(grandVat)}</td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.text}}>{fmt(grandAmount)}</td>
                   <td style={{padding:"9px 12px"}}></td>
@@ -4905,6 +4922,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const toolbarActionsRef=React.useRef(null);
   const[bulkPostOpen,setBulkPostOpen]=useState(false);
   const[bulkOffsetCode,setBulkOffsetCode]=useState("");
+  // Set when "POST AS" is picked via a customer/supplier search (routes to
+  // 1500/2400) rather than a plain account — carried through to the
+  // posted transaction's own contactId so it actually shows up linked in
+  // Reskontro, not just posted to the generic AR/AP control account with
+  // no idea which customer/supplier it was.
+  const[bulkOffsetContactId,setBulkOffsetContactId]=useState("");
   const[bulkPosting,setBulkPosting]=useState(false);
   const[uploadingProof,setUploadingProof]=useState(false);
   const[syncingProof,setSyncingProof]=useState(false);
@@ -5111,10 +5134,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     if(!bulkOffsetCode||!selectedLines.length||bulkPosting)return;
     setBulkPosting(true);
     const proofFileId=await ensureProofFileId();
-    if(postBankStatementLinesBulk)await postBankStatementLinesBulk(selectedLines,bulkOffsetCode,proofFileId);
+    if(postBankStatementLinesBulk)await postBankStatementLinesBulk(selectedLines,bulkOffsetCode,proofFileId,bulkOffsetContactId||null);
     setBulkPosting(false);
     setBulkPostOpen(false);
     setBulkOffsetCode("");
+    setBulkOffsetContactId("");
     clearSelection();
   };
 
@@ -5644,20 +5668,27 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         );
       })()}
       {bulkPostOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
               <div style={{fontSize:16,fontWeight:800,color:T.text}}>Post transactions</div>
-              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
             </div>
             <div style={{fontSize:11,color:T.sub,marginBottom:16,lineHeight:1.5}}>{selectedLines.length} line{selectedLines.length===1?"":"s"} selected · {fmtBal(selLinesTotal)} total. Each will post as its own entry against the account you choose{currentAttachment?", with the attached bank statement kept as proof.":"."}</div>
             <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>POST AS *</div>
             <div style={{marginBottom:16}}>
-              <AccDrop value={bulkOffsetCode} onChange={setBulkOffsetCode} accounts={offsetOptions} onCreateAccount={onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined}/>
+              {/* Typing a customer/supplier's name routes straight to their
+                  control account (1500/2400), same shortcut every other
+                  entry screen offers — picking one also carries their
+                  contactId through to the posted transaction (see
+                  runBulkPost/postBankStatementLinesBulk) so it shows up
+                  properly linked in Reskontro, not just posted to the
+                  generic AR/AP account with no idea whose it was. */}
+              <AccDrop value={bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined}/>
             </div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Post"}</button>
-              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
             </div>
           </div>
         </div>

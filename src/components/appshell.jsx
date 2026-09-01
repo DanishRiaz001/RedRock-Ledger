@@ -988,7 +988,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // Shared insert used by both the single-line and bulk posting paths below —
   // takes an explicit bilag number (and optional groupRef) so a caller can
   // decide whether several lines share one bilag or each gets its own.
-  const insertBankLineTxn=async(line,offsetCode,bilagNum,groupRef)=>{
+  const insertBankLineTxn=async(line,offsetCode,bilagNum,groupRef,contactId)=>{
     const isOutflow=line.amount<0;
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
@@ -1006,9 +1006,9 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const vatCode=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatCode:null;
     const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
     const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,contact_id:contactId||null}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount,vatCode,vatPct,vatAmount,contactId:null}]);
+    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount,vatCode,vatPct,vatAmount,contactId:contactId||null}]);
     if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount,debitCode,creditCode});
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
     if(updErr)console.error("Bank line post-flag error:",updErr);
@@ -1032,7 +1032,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // every selected line shares ONE bilag number (reserved once, up front)
   // plus a groupRef, so opening that bilag shows all of them together,
   // exactly like a real multi-line voucher.
-  const postBankStatementLinesBulk=async(lines,offsetCode,proofFileId)=>{
+  const postBankStatementLinesBulk=async(lines,offsetCode,proofFileId,contactId)=>{
     if(!canEdit||!lines.length)return[];
     const blocked=lines.find(l=>blockIfLocked(l.date));
     if(blocked)return[];
@@ -1042,7 +1042,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const groupRef=lines.length>1?`bank-${Date.now()}`:null;
     const newTxnIds=[];
     for(const line of lines){
-      const txnId=await insertBankLineTxn(line,offsetCode,nb,groupRef);
+      const txnId=await insertBankLineTxn(line,offsetCode,nb,groupRef,contactId);
       if(txnId)newTxnIds.push(txnId);
     }
     if(proofFileId&&newTxnIds.length)for(const txnId of newTxnIds)await attachFilesToTxnEntry(txnId,[proofFileId]);
