@@ -30,7 +30,7 @@ function AccessRequestsPanel({accessRequests,requestsLoading,onApprove,onDismiss
   );
 }
 
-function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,companies=[],createCompany,renameCompany,deleteCompany,activeCompanyId,setActiveCompanyId,isDesktop=false}){
+function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,companies=[],createCompany,renameCompany,deleteCompany,activeCompanyId,setActiveCompanyId,isDesktop=false,ownUserId}){
   const[newCompanyName,setNewCompanyName]=useState("");
   const[creatingCompany,setCreatingCompany]=useState(false);
   const[companyError,setCompanyError]=useState("");
@@ -51,31 +51,26 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
   const[clientGrants,setClientGrants]=useState([]);
-  const[grantClientId,setGrantClientId]=useState("");
   const[grantLevel,setGrantLevel]=useState("full");
   const[grantCompanyId,setGrantCompanyId]=useState("");
-  const[grantClientCompanies,setGrantClientCompanies]=useState([]);
   const[grantBusy,setGrantBusy]=useState(false);
   useEffect(()=>{
     if(!selUser||!fetchClientAccessFor){setClientGrants([]);return;}
     fetchClientAccessFor(selUser.id).then(setClientGrants);
   },[selUser]);
-  // Every grant now names exactly one of the client's companies — once a
-  // client is picked, load that client's own company list to choose from
-  // (an admin managing Redrock's own staff shouldn't have to know a
-  // client's company names/IDs by heart).
-  useEffect(()=>{
-    setGrantCompanyId("");
-    if(!grantClientId||!fetchCompaniesFor){setGrantClientCompanies([]);return;}
-    fetchCompaniesFor(grantClientId).then(setGrantClientCompanies);
-  },[grantClientId]);
+  // Picking a user then immediately picking one of YOUR OWN companies
+  // (companies, already loaded) to grant them into — no separate "whose
+  // login" step first. Every real use of this has been "give this person
+  // access to one of my own companies," not managing access on someone
+  // else's login, so that extra step was just friction (and required
+  // knowing/searching a second person's email before even seeing which
+  // companies existed to pick from).
   const addGrant=async()=>{
-    if(!grantClientId||!grantCompanyId||!grantClientAccess)return;
+    if(!grantCompanyId||!grantClientAccess||!ownUserId)return;
     setGrantBusy(true);
-    const result=await grantClientAccess(selUser.id,grantClientId,grantLevel,grantCompanyId);
+    const result=await grantClientAccess(selUser.id,ownUserId,grantLevel,grantCompanyId);
     setGrantBusy(false);
     if(result.error){alert(result.error);return;}
-    setGrantClientId("");
     setGrantCompanyId("");
     fetchClientAccessFor(selUser.id).then(setClientGrants);
   };
@@ -246,14 +241,14 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
           </div>
           {fetchClientAccessFor&&(
             <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:20,marginTop:14}}>
-              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Client access</div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Which clients' companies can this user see, and at what level. Each grant is scoped to one company — a client with several companies needs a separate grant per company.</div>
+              <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Company access</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Which of your companies this user can see, and at what level — pick a company below to add one.</div>
               {clientGrants.length>0&&(
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
                   {clientGrants.map(g=>(
                     <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.bg,borderRadius:8,padding:"8px 12px"}}>
                       <div>
-                        <div style={{fontSize:12,fontWeight:600,color:T.text}}>{g.clientEmail} <span style={{fontWeight:400,color:T.muted}}>· {g.companyName}</span></div>
+                        <div style={{fontSize:12,fontWeight:600,color:T.text}}>{g.companyName}</div>
                         <div style={{fontSize:10,color:T.muted,textTransform:"capitalize"}}>{g.accessLevel} access</div>
                       </div>
                       <button onClick={()=>removeGrant(g.id)} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Revoke</button>
@@ -263,9 +258,9 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
               )}
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",gap:8}}>
-                  <select value={grantClientId} onChange={e=>setGrantClientId(e.target.value)} style={{...inp,fontSize:12,flex:1}}>
-                    <option value="">— Select a client —</option>
-                    {profiles.filter(pr=>pr.id!==selUser.id).map(pr=><option key={pr.id} value={pr.id}>{pr.display_name||pr.email}</option>)}
+                  <select value={grantCompanyId} onChange={e=>setGrantCompanyId(e.target.value)} style={{...inp,fontSize:12,flex:1}}>
+                    <option value="">— Select a company —</option>
+                    {companies.filter(c=>!clientGrants.some(g=>g.companyId===c.id)).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <select value={grantLevel} onChange={e=>setGrantLevel(e.target.value)} style={{...inp,fontSize:12,width:120}}>
                     <option value="full">Full</option>
@@ -273,16 +268,8 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
                     <option value="reports">Reports</option>
                     <option value="readonly">Read-only</option>
                   </select>
+                  <button onClick={addGrant} disabled={!grantCompanyId||grantBusy} style={{background:grantCompanyId?T.accent:T.border,color:grantCompanyId?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 16px",fontWeight:700,fontSize:12,cursor:grantCompanyId?"pointer":"default",fontFamily:"inherit",flexShrink:0}}>{grantBusy?"…":"Grant"}</button>
                 </div>
-                {grantClientId&&(
-                  <div style={{display:"flex",gap:8}}>
-                    <select value={grantCompanyId} onChange={e=>setGrantCompanyId(e.target.value)} style={{...inp,fontSize:12,flex:1}}>
-                      <option value="">{grantClientCompanies.length?"— Select which company —":"Loading companies…"}</option>
-                      {grantClientCompanies.filter(c=>!clientGrants.some(g=>g.clientUserId===grantClientId&&g.companyId===c.id)).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button onClick={addGrant} disabled={!grantClientId||!grantCompanyId||grantBusy} style={{background:grantCompanyId?T.accent:T.border,color:grantCompanyId?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 16px",fontWeight:700,fontSize:12,cursor:grantCompanyId?"pointer":"default",fontFamily:"inherit",flexShrink:0}}>{grantBusy?"…":"Grant"}</button>
-                  </div>
-                )}
               </div>
             </div>
           )}
