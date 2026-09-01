@@ -4198,7 +4198,24 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // actually touch a real income (credit side) or expense (debit side)
   // account keeps this section to real "we chose not to apply VAT here"
   // postings, e.g. a 7770 bank-fee or a 0%-rated sale.
-  const nonVatTxns=periodTxns.filter(t=>!vatIds.has(t.id)&&(isIncomeSK(t.creditCode)||isExpenseSK(t.debitCode)));
+  // Export sales (code 52, "Avgiftsfri utførsel av varer og tjenester") used
+  // to fall into the same flat "Uten avgiftsbehandling" bucket as every
+  // other zero-rate line — no visible distinction between "we sold this
+  // domestically with no VAT" and "we sold this to a foreign customer",
+  // which is exactly the distinction the real mva-melding (and any real
+  // bookkeeper reading this) needs to see at a glance. Carved out into its
+  // own group, nested under Salg, same real Skatteetaten grouping (3.7
+  // Utførsel) instead of getting lost among unrelated no-VAT postings.
+  const exportTxns=periodTxns.filter(t=>isIncomeSK(t.creditCode)&&t.vatCode==="52");
+  // No input VAT code for foreign/imported purchases exists yet in
+  // MVA_CODES (real Skatteetaten codes for this are 14/15/21 — flagged as
+  // unsupported when the chart of accounts was built; see accounts_data.js)
+  // — so this is always empty for now, but the group is built the same
+  // way exportTxns is so it starts working the moment those codes exist,
+  // rather than needing this screen rebuilt again later.
+  const FOREIGN_PURCHASE_CODES=["14","15","21"];
+  const foreignPurchaseTxns=periodTxns.filter(t=>isExpenseSK(t.debitCode)&&FOREIGN_PURCHASE_CODES.includes(t.vatCode));
+  const nonVatTxns=periodTxns.filter(t=>!vatIds.has(t.id)&&t.vatCode!=="52"&&!FOREIGN_PURCHASE_CODES.includes(t.vatCode)&&(isIncomeSK(t.creditCode)||isExpenseSK(t.debitCode)));
 
   const groupByRate=(rows)=>{
     const m={};
@@ -4207,6 +4224,11 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   };
   const salesByRate=groupByRate(salesTxns);
   const purchasesByRate=groupByRate(purchaseTxns);
+  // Single-bucket totals for the export / foreign-purchase groups — always
+  // 0% VAT by definition (that's what these codes mean), so there's only
+  // ever one "rate" to show, unlike the domestic groups above.
+  const exportTotal=exportTxns.reduce((s,t)=>s+t.amount,0);
+  const foreignPurchaseTotal=foreignPurchaseTxns.reduce((s,t)=>s+t.amount,0);
   // "Ingen avgiftsbehandling" used to be one flat, always-expanded list of
   // every no-VAT entry dumped below the real Mva-kode/Sats/Grunnlag/Mva
   // table. Grouping it by the entry's own vatCode (defaulting untagged rows
@@ -4260,13 +4282,17 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // downloadable as PDF (for records/handing to an accountant) or Excel
   // (for further work), same pattern General ledger's export uses.
   const exportXlsx=()=>{
-    const aoa=[["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg av varer og tjenester i Norge","","","",""]];
+    const aoa=[["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg","","","",""],["Salg innenlands","","","",""]];
     salesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"output");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,g.net,g.vat]);});
-    aoa.push(["Kjøp av varer og tjenester i Norge","","","",""]);
+    aoa.push(["Salg til utlandet","","","",""]);
+    if(exportTxns.length)aoa.push(["52","Avgiftsfri utførsel av varer og tjenester",0,exportTotal,0]);
+    aoa.push(["Kjøp","","","",""],["Kjøp innenlands","","","",""]);
     purchasesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"input");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,-g.net,-g.vat]);});
+    aoa.push(["Kjøp fra utlandet","","","",""]);
+    if(foreignPurchaseTxns.length)aoa.push([foreignPurchaseTxns[0].vatCode,"Kjøp av varer/tjenester fra utlandet",0,-foreignPurchaseTotal,0]);
     aoa.push([],[netVat>=0?"Skyldig terminbeløp":"Terminbeløp til gode","","","",Math.abs(netVat)]);
     aoa.push([],["Spesifikasjon","","","",""],["Bilag","Dato","Beskrivelse","Konto","Beløp","Mva"]);
-    [...salesTxns,...purchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+    [...salesTxns,...purchaseTxns,...exportTxns,...foreignPurchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
       aoa.push([fmtB(t.bilag),t.date,t.description,getName(t.debitCode)+" / "+getName(t.creditCode),t.amount,t.vatAmount||0]);
     });
     const wb=XLSX.utils.book_new();
@@ -4433,7 +4459,17 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <td style={{padding:"10px 14px"}}>Mva-kode</td><td>Beskrivelse</td><td style={{textAlign:"right"}}>Sats</td><td style={{textAlign:"right"}}>Grunnlag</td><td style={{textAlign:"right",padding:"10px 14px"}}>Mva</td>
           </tr></thead>
           <tbody>
-            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Salg av varer og tjenester i Norge</td></tr>
+            {/* Grouped SALG → KJØP → Uten avgiftsbehandling, each with a
+                bold top-level header; Salg and Kjøp each get a lighter
+                "innenlands" sub-header for their normal-rate rows and a
+                separate "til/fra utlandet" sub-header nested right under
+                it — same real Skatteetaten distinction (3.1–3.3 domestic
+                vs. 3.7 export; equivalently 3.9–3.12 domestic purchases
+                vs. import) that used to be invisible here: export sales
+                and any future foreign-purchase rows were indistinguishable
+                from ordinary no-VAT postings in one flat bucket below. */}
+            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Salg</td></tr>
+            <tr><td colSpan="5" style={{padding:"6px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg innenlands</td></tr>
             {salesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"output");
               const key="s"+g.rate;
@@ -4449,7 +4485,18 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               );
             })}
             {!salesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</td></tr>}
-            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Kjøp av varer og tjenester i Norge</td></tr>
+            <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg til utlandet</td></tr>
+            {exportTxns.length?(
+              <tr style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>52</td>
+                <td style={{color:T.text}}>Avgiftsfri utførsel av varer og tjenester</td>
+                <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
+                <td onClick={()=>setSpecView({key:"export",direction:"output",rate:0,code:"52",vc:findVatCode("52","output"),rows:exportTxns,otherField:"debitCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(exportTotal)}</td>
+                <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>0</td>
+              </tr>
+            ):<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg til utlandet denne perioden.</td></tr>}
+            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Kjøp</td></tr>
+            <tr><td colSpan="5" style={{padding:"6px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp innenlands</td></tr>
             {purchasesByRate.map(g=>{
               const vc=vatCodeForRate(g.rate,"input");
               const key="p"+g.rate;
@@ -4465,6 +4512,23 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               );
             })}
             {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
+            <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp fra utlandet</td></tr>
+            {foreignPurchaseTxns.length?(
+              <tr style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{foreignPurchaseTxns[0].vatCode}</td>
+                <td style={{color:T.text}}>Kjøp av varer/tjenester fra utlandet</td>
+                <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
+                <td onClick={()=>setSpecView({key:"foreignPurchase",direction:"input",rate:0,code:foreignPurchaseTxns[0].vatCode,vc:null,rows:foreignPurchaseTxns,otherField:"creditCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-foreignPurchaseTotal)}</td>
+                <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>0</td>
+              </tr>
+            ):(
+              // Always empty for now — the real Skatteetaten import codes
+              // (14/15/21) aren't assignable anywhere in this app yet (see
+              // FOREIGN_PURCHASE_CODES above), so there's nothing that
+              // could ever land here. The group still shows, structurally
+              // ready for when that support is added.
+              <tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp fra utlandet denne perioden.</td></tr>
+            )}
             <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Uten avgiftsbehandling</td></tr>
             {noVatByCode.map(g=>{
               const vc=findVatCode(g.code,"output")||findVatCode(g.code,"input");
