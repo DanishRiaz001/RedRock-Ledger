@@ -3534,7 +3534,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // ledger, editing). The bilag as a whole is still required to
       // balance (see linesBalanced above) — it just no longer needs every
       // individual row to balance on its own.
-      const rows=normLines.map(l=>({date:l.date,description:l.description,debitCode:l.debitCode||null,creditCode:l.creditCode||null,amount:l.amount,debitVatCode:l.debitVatCode,creditVatCode:l.creditVatCode}));
+      // "" (never null) for the unfilled side — the transactions table's
+      // debit_code/credit_code columns are NOT NULL, and "" is already the
+      // app's own convention for "no account" (AccDrop's pinned "No
+      // account" row sets it to "", not null). Saving null here made every
+      // genuinely one-sided line fail outright with a not-null-constraint
+      // error from the database — visible now that saves report real
+      // errors, but previously would have failed the exact same way.
+      const rows=normLines.map(l=>({date:l.date,description:l.description,debitCode:l.debitCode||"",creditCode:l.creditCode||"",amount:l.amount,debitVatCode:l.debitVatCode,creditVatCode:l.creditVatCode}));
       // Multi-row entries share one groupRef so opening any line shows the whole entry
       const groupRef=rows.length>1?`grp-${Date.now()}`:null;
       let primaryResult=null;
