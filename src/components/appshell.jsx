@@ -181,13 +181,17 @@ function AppShell({user}){
       const clientIds=data.map(r=>r.client_user_id);
       const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
       const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
-      // companyId was never even read off the grant row here — every grant
-      // already names exactly one company, but nothing downstream could
-      // actually scope by it since it wasn't in this object at all. This
-      // is what let the companies-fetch effect (and currentAccessLevel)
-      // show/apply access to a granted owner's WHOLE company list instead
-      // of just the one company that was actually granted.
-      setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level,companyId:r.company_id||null})));
+      // Every grant now names exactly one company — fetch those names too
+      // so the switcher can show "Khalid Maroof" (what a grant is actually
+      // FOR) instead of the owner's own email, which is what it showed
+      // before company_id was even read off the grant row at all.
+      const companyIds=[...new Set(data.map(r=>r.company_id).filter(Boolean))];
+      let companyMap={};
+      if(companyIds.length){
+        const{data:comps}=await sb.from("companies").select("id,name").in("id",companyIds);
+        (comps||[]).forEach(c=>{companyMap[c.id]=c.name;});
+      }
+      setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level,companyId:r.company_id||null,companyName:r.company_id?(companyMap[r.company_id]||"Unknown company"):null})));
     });
   },[user.id]);
   const[accounts,setAccountsState]=useState([]);

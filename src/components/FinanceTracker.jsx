@@ -511,9 +511,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             // and the switcher used to only ever show the former, so it
             // could keep saying a generic placeholder like "My Company"
             // even after someone had already set their real name elsewhere.
+            // Matched on the active company too, not just who owns it —
+            // shows "Khalid Maroof" (what you were actually granted), not
+            // the owner's own email, which is what a grant scoped to one
+            // company used to show regardless of which company that was.
+            const activeGrant=myClientAccess.find(c=>c.clientUserId===viewingUserId&&(!c.companyId||c.companyId===activeCompanyId));
             const pillLabel=viewingUserId===user.id
               ?((activeCompany&&companyProfile&&companyProfile.companyName)||(activeCompany?activeCompany.name:"Redrock Ledger"))
-              :((myClientAccess.find(c=>c.clientUserId===viewingUserId)||{}).clientEmail||"Client");
+              :((activeGrant&&(activeGrant.companyName||activeGrant.clientEmail))||"Client");
             return(
               <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
                 <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
@@ -573,16 +578,33 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 {myClientAccess.length>0&&(()=>{
                   const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
                   const q=clientSwitcherSearch.trim().toLowerCase();
-                  const shown=myClientAccess.filter(c=>!q||c.clientEmail.toLowerCase().includes(q));
+                  // Shows the COMPANY the grant is actually for (e.g. "Khalid
+                  // Maroof") — not the owner's own email, which is what this
+                  // used to show even though every grant names one specific
+                  // company, not "everything this login owns". Keyed by the
+                  // grant's own id (was clientUserId, which collides — the
+                  // same owner can grant several separate companies, and
+                  // React would only ever keep one row for all of them).
+                  const shown=myClientAccess.filter(c=>!q||(c.companyName||c.clientEmail).toLowerCase().includes(q));
                   if(!shown.length)return null;
                   return(<>
                     <div style={{padding:"10px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,borderTop:`1px solid ${T.border}`}}>Client access</div>
                     {shown.map(c=>{
-                      const active=viewingUserId===c.clientUserId;
+                      const active=viewingUserId===c.clientUserId&&(!c.companyId||activeCompanyId===c.companyId);
+                      const label=c.companyName||c.clientEmail;
                       return(
-                        <div key={c.clientUserId} onClick={()=>{setViewingUserId(c.clientUserId);setClientSwitcherOpen(false);setClientSwitcherSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
-                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(c.clientEmail)}</div>
-                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.clientEmail}</span>
+                        <div key={c.id} onClick={()=>{
+                          setViewingUserId(c.clientUserId);
+                          // Jump straight to the granted company once its
+                          // list has loaded (the companies-fetch effect
+                          // filters to exactly this grant's company anyway,
+                          // but this avoids a stale activeCompanyId lingering
+                          // from whatever was active before the switch).
+                          if(c.companyId)setActiveCompanyId(c.companyId);
+                          setClientSwitcherOpen(false);setClientSwitcherSearch("");
+                        }} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(label)}</div>
+                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
                           <span style={{fontSize:9,color:T.muted,textTransform:"capitalize",flexShrink:0}}>{c.accessLevel}</span>
                         </div>
                       );
