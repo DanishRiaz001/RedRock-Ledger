@@ -993,13 +993,15 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const debitCode=isOutflow?offsetCode:line.accountCode;
     const creditCode=isOutflow?line.accountCode:offsetCode;
     // Posting a bank statement line never checked the account's own VAT
-    // settings at all — a locked, VAT-coded account (e.g. 7001 with a
-    // locked 25% code) posted with zero VAT every time through this path,
-    // even though the exact same account correctly applies its VAT when
-    // used from the manual entry forms. line.accountCode is whichever real
-    // expense/income account the line is being posted to, regardless of
-    // which side (debit/outflow or credit/inflow) it lands on.
-    const postedAccount=accounts.find(a=>a.code===line.accountCode);
+    // settings — this looked up line.accountCode, which is actually the
+    // BANK account the statement was imported into (set once at import
+    // time, e.g. "1920" — see commitBankStatementRows), not the real
+    // expense/income category. A bank account never has a default VAT
+    // code, so this always came back null. offsetCode is the actual
+    // category account chosen in "Post as" (e.g. "7142 Parkering") — THAT
+    // account is the one whose default VAT code/rate should apply, the
+    // same way it would from the manual entry forms.
+    const postedAccount=accounts.find(a=>a.code===offsetCode);
     const amount=Math.abs(line.amount);
     const vatCode=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatCode:null;
     const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
