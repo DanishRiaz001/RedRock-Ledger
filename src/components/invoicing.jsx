@@ -55,38 +55,71 @@ function VATCodesScreen({accounts}){
 // Bank settings — payment account agreements, matching Bankinnstillinger.
 // Honest about what needs a real bank API vs. what's genuinely usable now.
 function BankSettingsScreen({accounts,onSaveAccounts}){
-  const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900");
-  const[editingAccount,setEditingAccount]=useState(null);
   const bankDetailsFor=(a)=>{
     try{
       const parsed=JSON.parse(a.notes||"{}");
       const defaultVisible=!/cash/i.test(a.name);
-      return{branch:parsed.branch||"",accountNumber:parsed.accountNumber||"",bankName:parsed.bankName||"",iban:parsed.iban||"",visibleInReconciliation:parsed.visibleInReconciliation!==undefined?parsed.visibleInReconciliation:defaultVisible};
-    }catch{return{branch:"",accountNumber:"",bankName:"",iban:"",visibleInReconciliation:!/cash/i.test(a.name)};}
+      return{accountNumber:parsed.accountNumber||"",bankName:parsed.bankName||"",visibleInReconciliation:parsed.visibleInReconciliation!==undefined?parsed.visibleInReconciliation:defaultVisible};
+    }catch{return{accountNumber:"",bankName:"",visibleInReconciliation:!/cash/i.test(a.name)};}
   };
+  // A brand new company used to come with generic 1900-series accounts
+  // ("Bankinnskudd - ledig", "Bankinnskudd utland") already sitting in
+  // this list, unconfigured — looking exactly like a bank had already
+  // been added on their behalf. Only accounts someone has actually put a
+  // real bank name or kontonummer into show here now; the rest of the
+  // default chart's generic slots stay available underneath for "+ Add
+  // bank account" to reuse instead of minting new codes needlessly.
+  const isCashAccount=a=>/kontant|kasse/i.test(a.name);
+  const configured=a=>{const d=bankDetailsFor(a);return!!(d.bankName||d.accountNumber);};
+  const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&configured(a));
+  const[editingAccount,setEditingAccount]=useState(null);
   const saveBankDetails=(code,details)=>{
     if(!onSaveAccounts)return;
     const updated=accounts.map(a=>a.code===code?{...a,notes:JSON.stringify(details)}:a);
     onSaveAccounts(updated);
     setEditingAccount(null);
   };
+  // Reuses an existing, still-unconfigured 1900-series slot from the
+  // default chart if one's available, rather than always minting a brand
+  // new code — only falls back to a fresh code once every existing slot
+  // is actually in use.
+  const addBankAccount=()=>{
+    if(!onSaveAccounts)return;
+    const name=(window.prompt("Bank name (e.g. DNB, Nordea, Sparebank 1):")||"").trim();
+    if(!name)return;
+    const reusable=accounts.find(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&!configured(a));
+    if(reusable){
+      const details={bankName:name,accountNumber:"",visibleInReconciliation:true};
+      saveBankDetails(reusable.code,details);
+      return;
+    }
+    const used=new Set(accounts.map(a=>a.code));
+    let code=null;
+    for(let c=1922;c<1999;c++){if(!used.has(String(c))){code=String(c);break;}}
+    if(!code){alert("No free account code available in the 1900 series.");return;}
+    const newAcct={code,name,matchable:false,notes:JSON.stringify({bankName:name,accountNumber:"",visibleInReconciliation:true})};
+    onSaveAccounts([...accounts,newAcct]);
+  };
   return(
     <div style={{maxWidth:800}}>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Bank settings</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank settings</h1>
+        <button onClick={addBankAccount} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add bank account</button>
+      </div>
       {editingAccount&&(
         <BankAccountDetailsModal account={editingAccount} initial={bankDetailsFor(editingAccount)} onSave={details=>saveBankDetails(editingAccount.code,details)} onClose={()=>setEditingAccount(null)}/>
       )}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Bank</td><td style={{fontWeight:700}}>IBAN</td><td style={{fontWeight:700}}>In reconciliation</td><td style={{fontWeight:700,padding:"10px 16px"}}></td></tr></thead>
+          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Bank</td><td style={{fontWeight:700}}>Kontonummer</td><td style={{fontWeight:700}}>In reconciliation</td><td style={{fontWeight:700,padding:"10px 16px"}}></td></tr></thead>
           <tbody>
             {bankAccounts.map(a=>{
               const d=bankDetailsFor(a);
               return(
                 <tr key={a.code} onClick={()=>setEditingAccount(a)} style={{borderBottom:`1px solid ${T.border}`,cursor:"pointer"}}>
                   <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{a.code} {a.name}</td>
-                  <td style={{color:T.sub}}>{d.bankName||<span style={{color:T.muted}}>—</span>}{d.branch?` · ${d.branch}`:""}</td>
-                  <td style={{color:T.sub,fontSize:11}}>{d.iban||<span style={{color:T.muted}}>—</span>}</td>
+                  <td style={{color:T.sub}}>{d.bankName||<span style={{color:T.muted}}>—</span>}</td>
+                  <td style={{color:T.sub,fontSize:11}}>{d.accountNumber||<span style={{color:T.muted}}>—</span>}</td>
                   <td style={{padding:"10px 16px"}}>
                     <span style={{fontSize:11,fontWeight:700,color:d.visibleInReconciliation?T.green:T.muted,background:d.visibleInReconciliation?T.greenBg:T.bg,padding:"3px 9px",borderRadius:8}}>{d.visibleInReconciliation?"Visible":"Hidden"}</span>
                   </td>
@@ -94,7 +127,7 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
                 </tr>
               );
             })}
-            {!bankAccounts.length&&<tr><td colSpan="5" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — add one from Chart of Accounts (1900 series).</td></tr>}
+            {!bankAccounts.length&&<tr><td colSpan="5" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — click "+ Add bank account" above.</td></tr>}
           </tbody>
         </table>
       </div>

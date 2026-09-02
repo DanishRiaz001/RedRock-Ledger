@@ -4799,22 +4799,22 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Bank account</div>
         <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:20}}>{account.code} {account.name}</div>
+        {/* Norwegian bank accounts only need a bank name and the 11-digit
+            kontonummer (format XXXX.XX.XXXXX) — branch and IBAN don't
+            apply for domestic Norwegian banking (IBAN only matters for
+            international transfers, and Norwegian banks are effectively
+            branchless online banking today), so they're not asked for
+            here. Previously this form defaulted to Pakistani examples
+            (bank names, a PK-format IBAN) regardless of which country the
+            company was actually in. */}
         <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:20}}>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Bank name</div>
-            <input value={form.bankName} onChange={e=>setForm(p=>({...p,bankName:e.target.value}))} placeholder="e.g. HBL, UBL, Meezan" style={inp}/>
+            <input value={form.bankName} onChange={e=>setForm(p=>({...p,bankName:e.target.value}))} placeholder="e.g. DNB, Nordea, Sparebank 1" style={inp}/>
           </div>
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Branch</div>
-            <input value={form.branch} onChange={e=>setForm(p=>({...p,branch:e.target.value}))} placeholder="e.g. Gujrat Cantt" style={inp}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account number</div>
-            <input value={form.accountNumber} onChange={e=>setForm(p=>({...p,accountNumber:e.target.value}))} placeholder="Account number" style={inp}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>IBAN</div>
-            <input value={form.iban||""} onChange={e=>setForm(p=>({...p,iban:e.target.value}))} placeholder="e.g. PK36SCBL0000001123456702" style={inp}/>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Kontonummer</div>
+            <input value={form.accountNumber} onChange={e=>setForm(p=>({...p,accountNumber:e.target.value}))} placeholder="e.g. 1503.12.34567" style={inp}/>
           </div>
           <div style={{background:T.bg,borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
@@ -4840,14 +4840,18 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
 function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
-  // Settings when someone's explicitly set it; falls back to the cash-name
-  // heuristic for anything nobody's touched yet, so existing behavior doesn't
-  // silently change for accounts nobody has an opinion about.
+  // Settings when someone's explicitly set it; falls back to "not cash AND
+  // actually configured with a real bank name/kontonummer" for anything
+  // nobody's touched yet — a brand new company's still-generic, never-set-up
+  // default account slots ("Bankinnskudd - ledig" etc.) used to show up
+  // here by default, looking like a bank had already been added on their
+  // behalf.
   const bankAccounts=useMemo(()=>accounts.filter(a=>{
     if(getSK(a.code)!=="1900")return false;
     try{
       const parsed=JSON.parse(a.notes||"{}");
       if(parsed.visibleInReconciliation!==undefined)return parsed.visibleInReconciliation;
+      if(!/cash/i.test(a.name))return!!(parsed.bankName||parsed.accountNumber);
     }catch{}
     return!/cash/i.test(a.name);
   }),[accounts]);
