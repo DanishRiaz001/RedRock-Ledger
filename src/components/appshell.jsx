@@ -2047,7 +2047,16 @@ function Root(){
   },[]);
   if(checking)return <Spinner/>;
   if(!user)return <LoginScreen onLogin={setUser} skipMarketing={isNativeApp()}/>;
-  return <AppShell user={user}/>;
+  // key={user.id} forces a full remount whenever the actual logged-in user
+  // changes (sign out, sign in as someone else, in the same browser tab) —
+  // without it, AppShell just re-renders with a new `user` prop and every
+  // piece of internal state (company name, profile, accounts, everything)
+  // from whoever was signed in a moment ago stays sitting in memory until
+  // each individual fetch effect happens to overwrite it. That's exactly
+  // "a brand new signup sees the previous user's company name" — leftover
+  // render from the last session in this tab, not anything about the new
+  // account itself.
+  return <AppShell key={user.id} user={user}/>;
 }
 
 
