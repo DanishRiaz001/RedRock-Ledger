@@ -50,12 +50,10 @@ const DEFAULT_ACCOUNTS=[
   {code:"1243",name:"Traktorer",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205"},
   {code:"1248",name:"Trucker",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205",defaultVatCode:"1",defaultVatPct:25},
   {code:"1250",name:"Inventar",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205",defaultVatCode:"1",defaultVatPct:25},
-  {code:"1251",name:"Avskrivning kto. 1250 - Inventar",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205"},
   {code:"1260",name:"Fast bygningsinventar, eget bygg",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205",defaultVatCode:"1",defaultVatPct:25},
   {code:"1265",name:"Fast bygningsinventar, leide bygg",accountType:"Balanse - eiendeler",balanceGroup:"Driftsmiddel som avskrives lineært",saftCode13:"1290",defaultVatCode:"1",defaultVatPct:25},
   {code:"1270",name:"Verktøy o.l.",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe D: Personbiler, traktorer mv.",saftCode13:"1205",defaultVatCode:"1",defaultVatPct:25},
   {code:"1280",name:"Kontormaskiner",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe A: Kontormaskiner mv.",saftCode13:"1280"},
-  {code:"1281",name:"Akk avskrivning kontormaskiner 1280",accountType:"Balanse - eiendeler",balanceGroup:"Saldogruppe A: Kontormaskiner mv.",saftCode13:"1280"},
   {code:"1290",name:"Andre driftsmidler",accountType:"Balanse - eiendeler",balanceGroup:"Driftsmiddel som avskrives lineært",saftCode13:"1290",defaultVatCode:"1",defaultVatPct:25},
   {code:"1291",name:"Andre driftsmidler, ikke avskrivbare",accountType:"Balanse - eiendeler",balanceGroup:"Ikke avskrivbart driftsmiddel",saftCode13:"1290",defaultVatCode:"1",defaultVatPct:25},
   // 13 Finansielle anleggsmidler
@@ -152,10 +150,8 @@ const DEFAULT_ACCOUNTS=[
   {code:"1900",name:"Kontanter NOK",accountType:"Balanse - eiendeler",saftCode13:"1900"},
   {code:"1908",name:"Kontanter annen valuta",accountType:"Balanse - eiendeler",saftCode13:"1900"},
   {code:"1909",name:"Kassedifferanser",accountType:"Balanse - eiendeler",saftCode13:"1900"},
-  {code:"1920",name:"Bankinnskudd S Banken utgår",accountType:"Balanse - eiendeler",saftCode13:"1920"},
   {code:"1921",name:"Bankinnskudd - ledig",accountType:"Balanse - eiendeler",saftCode13:"1920"},
   {code:"1940",name:"Bankinnskudd utland",accountType:"Balanse - eiendeler",saftCode13:"1920"},
-  {code:"1950",name:"Bankinnskudd for skattetrekk Sbanken - utgår",accountType:"Balanse - eiendeler",saftCode13:"1950"},
   // 20 Egenkapital AS/ASA / Egenkapital andre foretak (inkl. samvirkeforetak)
   {code:"2000",name:"Aksjekapital",accountType:"Balanse - egenkapital",saftCode13:"2000"},
   {code:"2010",name:"Egne aksjer",accountType:"Balanse - egenkapital",saftCode13:"2010"},
@@ -587,7 +583,6 @@ const DEFAULT_ACCOUNTS=[
   {code:"8150",name:"Annen rentekostnad",accountType:"Resultat - kapitalkostnad",saftCode13:"8150"},
   {code:"8160",name:"Valutatap (disagio)",accountType:"Resultat - kapitalkostnad",saftCode13:"8160"},
   {code:"8170",name:"Annen finanskostnad",accountType:"Resultat - kapitalkostnad",saftCode13:"8179"},
-  {code:"8175",name:"Aprilla Bank - Annen finanskostnad",accountType:"Resultat - kapitalkostnad",saftCode13:"8175"},
   {code:"8178",name:"Tap ved realisasjon av aksjer",accountType:"Resultat - kapitalkostnad",saftCode13:"8174"},
   // 83 Skattekostnad på ordinært resultat
   {code:"8300",name:"Betalbar skatt",accountType:"Resultat - skattekostnad på ordinært resultat",saftCode13:"8300"},
