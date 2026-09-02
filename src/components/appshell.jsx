@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T } from "../lib/theme.js";
-import { sb, setCurrentUserId, getCurrentUserId, setCurrentCompanyId, getCurrentCompanyId, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
+import { sb, setCurrentUserId, getCurrentUserId, setCurrentBooksOwnerId, getCurrentBooksOwnerId, setCurrentCompanyId, getCurrentCompanyId, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import {
   isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,
   vatCodeOptions, findVatCode, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE,
@@ -17,7 +17,6 @@ import { isNativeApp } from "../lib/native.js";
 import MobileApp from "./mobile/MobileApp.jsx";
 
 function AppShell({user}){
-  setCurrentUserId(user.id); // must be set before any child uploads/reads files via Supabase Storage below
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
   const[profileLoading,setProfileLoading]=useState(true);
@@ -26,6 +25,17 @@ function AppShell({user}){
   // by RLS too, this is just what drives which data gets fetched).
   const[viewingUserId,setViewingUserId]=useState(user.id);
   const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel,companyId}]
+  // getCurrentUserId() deliberately stays the REAL authenticated user (not
+  // viewingUserId) — it's also used to build Supabase Storage paths
+  // (uploadFileToStorage: `${getCurrentUserId()}/filename`), and Storage
+  // bucket policies check that prefix against the real auth.uid(), not
+  // any app-level "whose books" concept. Making this track viewingUserId
+  // would make every file upload get rejected by Storage RLS for a
+  // granted employee. setCurrentBooksOwnerId (below) is the correct,
+  // separate value for "whose data" — used for the actual DB row
+  // ownership in fetchInboxFiles/attachFilesToTxn/fetchTxnAttachments.
+  setCurrentUserId(user.id);
+  setCurrentBooksOwnerId(viewingUserId);
 
   // Multi-company — one login can own several separate, fully isolated
   // companies (real client books, or just test entities). activeCompanyId
@@ -509,8 +519,8 @@ function AppShell({user}){
         // Scoped by company_id (not just user_id) — every company starts from the
         // same NS 4102 codes, so without this a rename in one company would
         // silently rename the same code across every other company too.
-        await scoped(sb.from("transactions").update({debit_code:newCode}).eq("user_id",user.id).eq("debit_code",deletedCode));
-        await scoped(sb.from("transactions").update({credit_code:newCode}).eq("user_id",user.id).eq("credit_code",deletedCode));
+        await scoped(sb.from("transactions").update({debit_code:newCode}).eq("user_id",viewingUserId).eq("debit_code",deletedCode));
+        await scoped(sb.from("transactions").update({credit_code:newCode}).eq("user_id",viewingUserId).eq("credit_code",deletedCode));
         // Update in local state immediately so UI reflects change
         setTransactionsState(p=>p.map(t=>({
           ...t,
@@ -518,10 +528,10 @@ function AppShell({user}){
           creditCode:t.creditCode===deletedCode?newCode:t.creditCode,
         })));
         // Delete old account row, new one will be upserted below
-        await scoped(sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode));
+        await scoped(sb.from("accounts").delete().eq("user_id",viewingUserId).eq("code",deletedCode));
       } else {
         // Account was DELETED (no newCode) — only delete if no transactions (guard)
-        await scoped(sb.from("accounts").delete().eq("user_id",user.id).eq("code",deletedCode));
+        await scoped(sb.from("accounts").delete().eq("user_id",viewingUserId).eq("code",deletedCode));
       }
     }
     // Upsert all current accounts. This was previously fire-and-forget —
@@ -531,7 +541,7 @@ function AppShell({user}){
     // reload. Now any failure surfaces immediately instead of silently.
     const failures=[];
     for(const a of list){
-      const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(a)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+      const{error}=await sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),...accountRow(a)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
       if(error){console.error(`Account save error (${a.code}):`,error);failures.push(`${a.code}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} account${failures.length===1?"":"s"} didn't save to the database — they'll disappear on reload until this is fixed:\n\n${failures.join("\n")}`);
@@ -551,7 +561,7 @@ function AppShell({user}){
   const addAccount=async(acc)=>{
     setAccountsState(prev=>[...prev,acc]);
     if(!canEdit)return;
-    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+    const{error}=await sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
     if(error){console.error(`Account save error (${acc.code}):`,error);alert(`"${acc.code}" didn't save to the database — it'll disappear on reload until this is fixed:\n\n${error.message}`);}
   };
 
@@ -561,7 +571,7 @@ function AppShell({user}){
   const updateAccount=async(acc)=>{
     setAccountsState(prev=>prev.map(a=>a.code===acc.code?{...a,...acc}:a));
     if(!canEdit)return;
-    const{error}=await sb.from("accounts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
+    const{error}=await sb.from("accounts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),...accountRow(acc)},{onConflict:cid?"user_id,company_id,code":"user_id,code"});
     if(error){console.error(`Account save error (${acc.code}):`,error);alert(`"${acc.code}" didn't save to the database:\n\n${error.message}`);}
   };
 
@@ -579,11 +589,11 @@ function AppShell({user}){
     if(!canEdit)return;
     const failures=[];
     if(removedIds.length){
-      const{error}=await scoped(sb.from("contacts").delete().eq("user_id",user.id).in("contact_id",removedIds));
+      const{error}=await scoped(sb.from("contacts").delete().eq("user_id",viewingUserId).in("contact_id",removedIds));
       if(error){console.error("Contact delete error:",error);failures.push(`Removing ${removedIds.length} contact(s): ${error.message}`);}
     }
     for(const c of list){
-      const{error}=await sb.from("contacts").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",org_number:c.orgNumber||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null,inactive:c.inactive||false,is_company:c.isCompany!=null?c.isCompany:true,category:c.category||null,currency:c.currency||null},{onConflict:cid?"user_id,company_id,contact_id":"user_id,contact_id"});
+      const{error}=await sb.from("contacts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",org_number:c.orgNumber||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null,inactive:c.inactive||false,is_company:c.isCompany!=null?c.isCompany:true,category:c.category||null,currency:c.currency||null},{onConflict:cid?"user_id,company_id,contact_id":"user_id,contact_id"});
       if(error){console.error(`Contact save error (${c.name||c.id}):`,error);failures.push(`${c.name||c.id}: ${error.message}`);}
     }
     if(failures.length)alert(`${failures.length} contact change${failures.length===1?"":"s"} didn't save to the database:\n\n${failures.join("\n")}`);
@@ -661,7 +671,7 @@ function AppShell({user}){
   // logging itself fails, since the money-move mattering more than the log.
   const logAudit=(entityType,entityId,bilag,action,oldValues,newValues)=>{
     if(!canEdit)return;
-    sb.from("audit_log").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
+    sb.from("audit_log").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),changed_by:user.id,entity_type:entityType,entity_id:entityId||null,bilag:bilag||null,action,old_values:oldValues||null,new_values:newValues||null}])
       // Used to check `error` only to decide whether to update local state,
       // never logging or surfacing it — every audit_log insert could have
       // been failing (e.g. a column type mismatch) with zero indication,
@@ -708,7 +718,7 @@ function AppShell({user}){
     let nb;
     if(form.bilag!=null){nb=form.bilag;}
     else{nb=bilagRef.current;bilagRef.current=nb+1;setNextBilag(bilagRef.current);}
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return{error:error.message};
@@ -936,7 +946,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // whole import can be undone as one action if it turns out to be wrong.
   const commitBankStatementRows=async(accountCode,rows)=>{
     if(!canEdit)return{error:"No permission to edit."};
-    const dbRows=rows.map(r=>({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+    const dbRows=rows.map(r=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
     const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
     if(error)return{error:"Upload failed: "+error.message};
     const mapped=(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}));
@@ -1011,7 +1021,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       rows=rows.filter(r=>r.amount!=null&&r.amount!==0);
       if(!rows.length){alert("Couldn't find usable rows. Expected a Date column plus either an Amount column, separate Debit/Credit columns, or a running Balance column.");return;}
 
-      const dbRows=rows.map(r=>({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+      const dbRows=rows.map(r=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
       const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
       if(error){alert("Upload failed: "+error.message);return;}
       setBankStatementLines(p=>[...p,...(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}))]);
@@ -1038,7 +1048,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const vatCode=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatCode:null;
     const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
     const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,contact_id:contactId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,contact_id:contactId||null}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
     setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount,vatCode,vatPct,vatAmount,contactId:contactId||null}]);
     if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount,debitCode,creditCode});
@@ -1082,7 +1092,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deleteBankStatementLine=async(id)=>{
     if(!canEdit)return;
-    await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",viewingUserId);
     setBankStatementLines(p=>p.filter(l=>l.id!==id));
   };
   // Match links an EXISTING ledger transaction to an uploaded statement line —
@@ -1136,11 +1146,11 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
     const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
 
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
     if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:form.total,contactId:form.customerId}]);
 
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Invoice posted to ledger but couldn't be saved as an invoice record: "+invErr.message);return null;}
     const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"sent",txnId:txnData.id};
@@ -1164,7 +1174,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Payment · Invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data,error}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:payDate,debit_code:bankCode,credit_code:"1500",description:desc,amount,contact_id:invoice.customerId,invoice_no:String(invoice.invoiceNo)}]).select().single();
     if(error){alert("Payment posting failed: "+error.message);return;}
     const newTxn={id:data.id,bilag:nb,date:payDate,debitCode:bankCode,creditCode:"1500",description:desc,amount,contactId:invoice.customerId,invoiceNo:String(invoice.invoiceNo)};
     setTransactionsState(p=>[...p,newTxn]);
@@ -1198,11 +1208,11 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setNextBilag(bilagRef.current);
     const contact=contacts.find(c=>c.id===invoice.customerId);
     const desc=`Credit note ${cnNo} for invoice ${invoice.invoiceNo}${contact?" · "+contact.name:""}`;
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:today,debit_code:invoice.saleAccount,credit_code:"1500",description:desc,amount:invoice.total,contact_id:invoice.customerId,invoice_no:String(cnNo)}]).select().single();
     if(txnErr){alert("Credit note posting failed: "+txnErr.message);return;}
     setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,contactId:invoice.customerId,invoiceNo:String(cnNo)}]);
     logAudit("transaction",txnData.id,nb,"create",null,{date:today,debitCode:invoice.saleAccount,creditCode:"1500",description:desc,amount:invoice.total,note:"credit note"});
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),invoice_no:cnNo,customer_id:invoice.customerId,date:today,due_date:null,period_from:invoice.periodFrom,period_to:invoice.periodTo,sale_account:invoice.saleAccount,lines:invoice.lines.map(l=>({...l,unitPrice:-l.unitPrice})),vat_pct:invoice.vatPct,subtotal:-invoice.subtotal,vat_amount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Credit note entry posted but record failed: "+invErr.message);return;}
     setInvoices(p=>[{id:invData.id,invoiceNo:cnNo,customerId:invoice.customerId,date:today,dueDate:null,periodFrom:invoice.periodFrom,periodTo:invoice.periodTo,saleAccount:invoice.saleAccount,lines:row.lines,vatPct:invoice.vatPct,subtotal:-invoice.subtotal,vatAmount:-invoice.vatAmount,total:-invoice.total,status:"credit_note",txnId:txnData.id},...p]);
@@ -1213,7 +1223,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(!canEdit)return;
     const inv=invoices.find(i=>i.id===id);
     if(inv&&inv.txnId)await deleteTxn(inv.txnId);
-    await sb.from("invoices").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("invoices").delete().eq("id",id).eq("user_id",viewingUserId);
     setInvoices(p=>p.filter(i=>i.id!==id));
   };
   const saveCompanyProfile=async(profile)=>{
@@ -1226,7 +1236,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // still flashed "Saved!" regardless, since that flash isn't wired to
     // this call's outcome either. That's exactly "I set the country/name
     // and it didn't save" with zero visible error. Now it actually surfaces.
-    const{error}=await sb.from("company_profile").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
+    const{error}=await sb.from("company_profile").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
     if(error){
       alert("Company information didn't save:\n\n"+error.message+"\n\nYour changes are shown here but will revert on reload until this is fixed.");
       logBug&&logBug("DB_ERROR","Failed to save company_profile",error.message,"saveCompanyProfile");
@@ -1239,7 +1249,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // manual "Generate this month" action — honest given the deployment model.
   const createRecurringInvoice=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),customer_id:form.customerId,sale_account:form.saleAccount,monthly_rate:form.monthlyRate,description:form.description,vat_pct:form.vatPct};
     const{data,error}=await sb.from("recurring_invoices").insert([row]).select().single();
     if(error){alert("Couldn't save recurring invoice: "+error.message);return;}
     setRecurringInvoices(p=>[...p,{id:data.id,customerId:form.customerId,saleAccount:form.saleAccount,monthlyRate:form.monthlyRate,description:form.description,vatPct:form.vatPct,active:true,lastGeneratedPeriod:null}]);
@@ -1255,7 +1265,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deleteRecurringInvoice=async(id)=>{
     if(!canEdit)return;
-    await sb.from("recurring_invoices").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("recurring_invoices").delete().eq("id",id).eq("user_id",viewingUserId);
     setRecurringInvoices(p=>p.filter(r=>r.id!==id));
   };
   const generateRecurringInvoicesForMonth=async(period)=>{
@@ -1286,7 +1296,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // filing) — see roadmap for why that's a separate, jurisdiction-specific project.
   const createEmployee=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:form.name,role:form.role||null,email:form.email||null,phone:form.phone||null,start_date:form.startDate||null,salary:form.salary||null,notes:form.notes||null};
     const{data,error}=await sb.from("employees").insert([row]).select().single();
     if(error){alert("Couldn't save employee: "+error.message);return;}
     setEmployees(p=>[...p,{id:data.id,name:form.name,role:form.role,email:form.email,phone:form.phone,startDate:form.startDate,salary:form.salary,active:true,notes:form.notes}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -1307,7 +1317,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deleteEmployee=async(id)=>{
     if(!canEdit)return;
-    await sb.from("employees").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("employees").delete().eq("id",id).eq("user_id",viewingUserId);
     setEmployees(p=>p.filter(e=>e.id!==id));
   };
 
@@ -1316,7 +1326,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // payment, post to the ledger — one real transaction per sale account used.
   const createPosProduct=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),name:form.name,price:form.price,sale_account:form.saleAccount};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:form.name,price:form.price,sale_account:form.saleAccount};
     const{data,error}=await sb.from("pos_products").insert([row]).select().single();
     if(error){alert("Couldn't save product: "+error.message);return;}
     setPosProducts(p=>[...p,{id:data.id,name:form.name,price:form.price,saleAccount:form.saleAccount,active:true}].sort((a,b)=>a.name.localeCompare(b.name)));
@@ -1333,7 +1343,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deletePosProduct=async(id)=>{
     if(!canEdit)return;
-    await sb.from("pos_products").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("pos_products").delete().eq("id",id).eq("user_id",viewingUserId);
     setPosProducts(p=>p.filter(x=>x.id!==id));
   };
   const completeSale=async(cart,paymentAccount,mode="sale")=>{
@@ -1367,10 +1377,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const totalGross=lines.reduce((s,l)=>s+l.grossPay,0);
     const totalDeductions=lines.reduce((s,l)=>s+l.deductions,0);
     const totalNet=lines.reduce((s,l)=>s+l.netPay,0);
-    const runRow={user_id:user.id,...(cid?{company_id:cid}:{}),period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
+    const runRow={user_id:viewingUserId,...(cid?{company_id:cid}:{}),period,run_date:runDate,pay_account:payAccount,total_gross:totalGross,total_deductions:totalDeductions,total_net:totalNet};
     const{data:runData,error:runErr}=await sb.from("payroll_runs").insert([runRow]).select().single();
     if(runErr){alert("Couldn't save payroll run: "+runErr.message);return null;}
-    const lineRows=lines.map(l=>({run_id:runData.id,user_id:user.id,...(cid?{company_id:cid}:{}),employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
+    const lineRows=lines.map(l=>({run_id:runData.id,user_id:viewingUserId,...(cid?{company_id:cid}:{}),employee_id:l.employeeId,employee_name:l.employeeName,gross_pay:l.grossPay,deductions:l.deductions,net_pay:l.netPay}));
     const{data:lineData,error:lineErr}=await sb.from("payroll_lines").insert(lineRows).select();
     if(lineErr){alert("Payroll run saved but lines failed: "+lineErr.message);return null;}
     for(const l of lines){
@@ -1385,7 +1395,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deletePayrollRun=async(id)=>{
     if(!canEdit)return;
-    await sb.from("payroll_runs").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("payroll_runs").delete().eq("id",id).eq("user_id",viewingUserId);
     setPayrollRuns(p=>p.filter(r=>r.id!==id));
   };
 
@@ -1396,7 +1406,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const qNo=quoteNoRef.current;
     quoteNoRef.current=qNo+1;
     setNextQuoteNo(quoteNoRef.current);
-    const row={user_id:user.id,...(cid?{company_id:cid}:{}),quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),quote_no:qNo,customer_id:form.customerId,date:form.date,valid_until:form.validUntil||null,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"draft"};
     const{data,error}=await sb.from("quotes").insert([row]).select().single();
     if(error){alert("Couldn't save quote: "+error.message);return null;}
     const newQuote={id:data.id,quoteNo:qNo,customerId:form.customerId,date:form.date,validUntil:form.validUntil,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"draft",convertedInvoiceId:null};
@@ -1410,7 +1420,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   };
   const deleteQuote=async(id)=>{
     if(!canEdit)return;
-    await sb.from("quotes").delete().eq("id",id).eq("user_id",user.id);
+    await sb.from("quotes").delete().eq("id",id).eq("user_id",viewingUserId);
     setQuotes(p=>p.filter(q=>q.id!==id));
   };
   const convertQuoteToInvoice=async(quote)=>{
@@ -1492,7 +1502,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
     const desc="Reversal of "+fmtB(t.bilag)+" — "+t.description;
-    const{data}=await sb.from("transactions").insert([{user_id:user.id,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
+    const{data}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
     await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
     if(data){
       setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
@@ -1524,10 +1534,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setSFState(list);
     if(!canEdit)return;
     // Delete all then re-insert
-    const {error:delErr}=await scoped(sb.from("sinking_funds").delete().eq("user_id",user.id));
+    const {error:delErr}=await scoped(sb.from("sinking_funds").delete().eq("user_id",viewingUserId));
     if(delErr){console.error("SF delete error:",delErr);alert("Sinking Funds save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(f=>({user_id:user.id,...(cid?{company_id:cid}:{}),fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false,account_code:f.accountCode||null}));
+      const rows=list.map(f=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),fund_id:f.id,name:f.name,goal:f.goal,saved:f.saved||0,color:f.color,icon:f.icon,months:f.months||null,inactive:f.inactive||false,account_code:f.accountCode||null}));
       console.log("SF inserting:",rows);
       const {error:insErr}=await sb.from("sinking_funds").insert(rows);
       if(insErr){console.error("SF insert error:",insErr);alert("Sinking Funds save failed (insert): "+insErr.message);}
@@ -1543,10 +1553,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   const saveMoneySources=async(list)=>{
     setMoneySourcesState(list);
     if(!canEdit)return;
-    const {error:delErr}=await scoped(sb.from("money_sources").delete().eq("user_id",user.id));
+    const {error:delErr}=await scoped(sb.from("money_sources").delete().eq("user_id",viewingUserId));
     if(delErr){console.error("Money sources delete error:",delErr);alert("Money sources save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(m=>({id:m.id,user_id:user.id,...(cid?{company_id:cid}:{}),name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
+      const rows=list.map(m=>({id:m.id,user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:m.name,opening_received:m.openingReceived||0,opening_used:m.openingUsed||0,inactive:m.inactive||false}));
       const {error:insErr}=await sb.from("money_sources").insert(rows);
       if(insErr){console.error("Money sources insert error:",insErr);alert("Money sources save failed (insert): "+insErr.message);}
     }
@@ -1568,10 +1578,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   const saveProjects=async(list)=>{
     setProjectsState(list);
     if(!canEdit)return;
-    const {error:delErr}=await scoped(sb.from("projects").delete().eq("user_id",user.id));
+    const {error:delErr}=await scoped(sb.from("projects").delete().eq("user_id",viewingUserId));
     if(delErr){console.error("Projects delete error:",delErr);alert("Project save failed (delete): "+delErr.message);return;}
     if(list.length){
-      const rows=list.map(p=>({id:p.id,user_id:user.id,...(cid?{company_id:cid}:{}),name:p.name,inactive:p.inactive||false}));
+      const rows=list.map(p=>({id:p.id,user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:p.name,inactive:p.inactive||false}));
       const {error:insErr}=await sb.from("projects").insert(rows);
       if(insErr){console.error("Projects insert error:",insErr);alert("Project save failed (insert): "+insErr.message);}
     }
@@ -1595,7 +1605,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       return[...p,merged];
     });
     if(!canEdit)return true;
-    const{error}=await sb.from("reconciliation_status").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id,account_code,period":"user_id,account_code,period"});
+    const{error}=await sb.from("reconciliation_status").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,period,status:merged.status,status_comment:merged.statusComment,account_comment:merged.accountComment,updated_by:user.id,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id,account_code,period":"user_id,account_code,period"});
     if(error){
       // Same silent-loss risk as attachments — a status flip or a comment
       // someone just typed would otherwise look saved and then quietly
@@ -1617,7 +1627,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const row={id:"rf_"+Date.now().toString(36),accountCode,period,inboxFileId};
     setReconciliationFilesState(p=>[...p,row]);
     if(!canEdit)return true;
-    const{data,error}=await sb.from("reconciliation_files").insert({user_id:user.id,...(cid?{company_id:cid}:{}),account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
+    const{data,error}=await sb.from("reconciliation_files").insert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,period,inbox_file_id:inboxFileId}).select().single();
     if(error){
       // Real save failed — the optimistic add above would otherwise make it
       // LOOK attached until the next page refresh silently drops it. Roll
@@ -1659,8 +1669,8 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // the DB column defaults (or lack thereof) can silently diverge from what
     // local state assumes ("rollover", not swept), until the next full reload.
     const payload=isNew
-      ?{user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
-      :{user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,amount};
+      ?{user_id:viewingUserId,...(cid?{company_id:cid}:{}),year,month,code,amount,surplus_action:"rollover",surplus_fund_id:null,swept:false}
+      :{user_id:viewingUserId,...(cid?{company_id:cid}:{}),year,month,code,amount};
     const{error}=await sb.from("budgets").upsert(payload,{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error){console.error("Budget save error:",error);alert("Budget save failed: "+error.message);}
   };
@@ -1673,7 +1683,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       const n=[...p];n[idx]={...n[idx],surplusAction,surplusFundId};return n;
     });
     if(!canEdit)return;
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),year,month,code,surplus_action:surplusAction,surplus_fund_id:surplusFundId},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error){console.error("Budget surplus-setting save error:",error);alert("Save failed: "+error.message);}
   };
   // Actually transfers a month's unspent leftover into the chosen sinking fund and
@@ -1690,17 +1700,17 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       if(idx===-1)return p;
       const n=[...p];n[idx]={...n[idx],swept:true};return n;
     });
-    const{error}=await sb.from("budgets").upsert({user_id:user.id,...(cid?{company_id:cid}:{}),year,month,code,swept:true},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
+    const{error}=await sb.from("budgets").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),year,month,code,swept:true},{onConflict:cid?"user_id,company_id,year,month,code":"user_id,year,month,code"});
     if(error)console.error("Budget sweep flag save error:",error);
   };
   // Bulk replace (used by Backup Restore) — delete all budget rows then re-insert.
   const restoreBudgets=async(list)=>{
     setBudgetsState(list);
     if(!canEdit)return;
-    const{error:delErr}=await scoped(sb.from("budgets").delete().eq("user_id",user.id));
+    const{error:delErr}=await scoped(sb.from("budgets").delete().eq("user_id",viewingUserId));
     if(delErr){console.error("Budget restore delete error:",delErr);return;}
     if(list.length){
-      const rows=list.map(b=>({user_id:user.id,...(cid?{company_id:cid}:{}),year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
+      const rows=list.map(b=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),year:b.year,month:b.month,code:b.code,amount:b.amount||0,surplus_action:b.surplusAction||"rollover",surplus_fund_id:b.surplusFundId||null,swept:b.swept||false}));
       const{error:insErr}=await sb.from("budgets").insert(rows);
       if(insErr)console.error("Budget restore insert error:",insErr);
     }
@@ -1761,7 +1771,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     try{
       const storagePath=await uploadFileToStorage(file);
       const now=new Date();
-      const row={user_id:user.id,...(cid?{company_id:cid}:{}),storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
+      const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),storage_path:storagePath,name:file.name,type:file.type,size:file.size,date:now.toISOString().slice(0,10),month:now.toLocaleString("default",{month:"long"}),year:now.getFullYear(),folder};
       const{data,error}=await sb.from("inbox_files").insert([row]).select().single();
       if(error){console.error("Inbox file insert error:",error);alert("Upload failed: "+error.message);return null;}
       const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
@@ -1772,14 +1782,14 @@ If you genuinely cannot read useful information from this file, return {"supplie
   };
   const deleteInboxFileEntry=async(id)=>{
     if(!canEdit)return;
-    const{error}=await sb.from("inbox_files").update({deleted_at:new Date().toISOString()}).eq("user_id",user.id).eq("id",id);
+    const{error}=await sb.from("inbox_files").update({deleted_at:new Date().toISOString()}).eq("user_id",viewingUserId).eq("id",id);
     if(error){console.error("Inbox file delete error:",error);return;}
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:new Date().toISOString()}:f));
     fetchAttachedTxnIds().then(({txnIds,fileIds})=>{setAttachedTxnIds(txnIds);setAttachedFileIds(fileIds);}); // a txn's only attachment (or a file's only link) may have just been removed
   };
   const restoreInboxFileEntry=async(id)=>{
     if(!canEdit)return;
-    const{error}=await sb.from("inbox_files").update({deleted_at:null}).eq("user_id",user.id).eq("id",id);
+    const{error}=await sb.from("inbox_files").update({deleted_at:null}).eq("user_id",viewingUserId).eq("id",id);
     if(error){console.error("Inbox file restore error:",error);return;}
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:null}:f));
   };
@@ -1788,20 +1798,20 @@ If you genuinely cannot read useful information from this file, return {"supplie
     const file=inboxFiles.find(f=>f.id===id);
     if(!file)return;
     await deleteFileFromStorage(file.storagePath);
-    const{error}=await sb.from("inbox_files").delete().eq("user_id",user.id).eq("id",id);
+    const{error}=await sb.from("inbox_files").delete().eq("user_id",viewingUserId).eq("id",id);
     if(error){console.error("Inbox file permanent-delete error:",error);return;}
     setInboxFilesState(p=>p.filter(f=>f.id!==id));
   };
   const renameInboxFileEntry=async(id,newName)=>{
     if(!canEdit)return;
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,name:newName}:f));
-    const{error}=await sb.from("inbox_files").update({name:newName}).eq("user_id",user.id).eq("id",id);
+    const{error}=await sb.from("inbox_files").update({name:newName}).eq("user_id",viewingUserId).eq("id",id);
     if(error)console.error("Inbox file rename error:",error);
   };
   const moveInboxFileEntry=async(id,newFolder)=>{
     if(!canEdit)return;
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,folder:newFolder}:f));
-    const{error}=await sb.from("inbox_files").update({folder:newFolder}).eq("user_id",user.id).eq("id",id);
+    const{error}=await sb.from("inbox_files").update({folder:newFolder}).eq("user_id",viewingUserId).eq("id",id);
     if(error)console.error("Inbox file move error:",error);
   };
   // Copies both the storage object and the DB row — the copy is fully
@@ -1813,7 +1823,7 @@ If you genuinely cannot read useful information from this file, return {"supplie
     const newPath=`${user.id}/${Date.now()}_${f.name}`;
     const{error:copyError}=await sb.storage.from("attachments").copy(f.storagePath,newPath);
     if(copyError){console.error("Storage copy error:",copyError);return null;}
-    const{data,error}=await sb.from("inbox_files").insert({user_id:user.id,...(cid?{company_id:cid}:{}),name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
+    const{data,error}=await sb.from("inbox_files").insert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:f.name,type:f.type,size:f.size,date:f.date,month:f.month,year:f.year,folder:targetFolder||f.folder,storage_path:newPath}).select().single();
     if(error){console.error("Inbox file copy error:",error);return null;}
     const newFile={id:data.id,name:data.name,type:data.type,size:data.size,date:data.date,month:data.month,year:data.year,folder:data.folder,storagePath:data.storage_path};
     setInboxFilesState(p=>[newFile,...p]);
@@ -2074,12 +2084,12 @@ const getCid=()=>{
 };
 const scopedHelper=q=>{const c=getCid();return c?q.eq("company_id",c):q;};
 const fetchInboxFiles=async()=>{
-  const{data,error}=await scopedHelper(sb.from("inbox_files").select("*").eq("user_id",getCurrentUserId())).order("created_at",{ascending:false});
+  const{data,error}=await scopedHelper(sb.from("inbox_files").select("*").eq("user_id",getCurrentBooksOwnerId())).order("created_at",{ascending:false});
   if(error){console.error("Inbox fetch error:",error);return[];}
   return(data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path}));
 };
 const fetchAttachedTxnIds=async()=>{
-  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("txn_id, file_id").eq("user_id",getCurrentUserId()));
+  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("txn_id, file_id").eq("user_id",getCurrentBooksOwnerId()));
   if(error){console.error("Fetch attached txn ids error:",error);return{txnIds:new Set(),fileIds:new Set()};}
   return{txnIds:new Set((data||[]).map(r=>r.txn_id)),fileIds:new Set((data||[]).map(r=>r.file_id))};
 };
@@ -2087,7 +2097,7 @@ const attachFilesToTxn=async(txnId,fileIds)=>{
   const ids=(Array.isArray(fileIds)?fileIds:[fileIds]).filter(Boolean);
   if(!ids.length)return{ok:true};
   const c=getCid();
-  const rows=ids.map(fileId=>({user_id:getCurrentUserId(),...(c?{company_id:c}:{}),txn_id:txnId,file_id:fileId}));
+  const rows=ids.map(fileId=>({user_id:getCurrentBooksOwnerId(),...(c?{company_id:c}:{}),txn_id:txnId,file_id:fileId}));
   const{error}=await sb.from("txn_attachments").upsert(rows,{onConflict:c?"user_id,company_id,txn_id,file_id":"user_id,txn_id,file_id",ignoreDuplicates:true});
   // Used to only console.error here — every caller marked the file as
   // "attached" (hiding it from Inbox, showing a green checkmark) whether
@@ -2099,7 +2109,7 @@ const attachFilesToTxn=async(txnId,fileIds)=>{
   return{ok:true};
 };
 const fetchTxnAttachments=async(txnId)=>{
-  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentUserId())).eq("txn_id",txnId);
+  const{data,error}=await scopedHelper(sb.from("txn_attachments").select("file_id, inbox_files(id,name,type,storage_path)").eq("user_id",getCurrentBooksOwnerId())).eq("txn_id",txnId);
   if(error){console.error("Fetch txn attachments error:",error);return[];}
   return(data||[]).filter(r=>r.inbox_files).map(r=>({id:r.inbox_files.id,name:r.inbox_files.name,type:r.inbox_files.type,storagePath:r.inbox_files.storage_path}));
 };
@@ -2114,7 +2124,12 @@ const fetchEntryComments=async(txnId)=>{
 const addEntryComment=async(txnId,body,booksUserId)=>{
   if(!body||!body.trim())return null;
   const c=getCid();
-  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentUserId(),...(c?{company_id:c}:{}),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
+  // user_id is whose books this comment belongs to (ownership/scoping);
+  // author_id is who actually wrote it — these must NOT be the same
+  // getter, or every comment from a granted employee would either be
+  // scoped to their own account (invisible on the client's books) or
+  // misattributed to the client as the "author".
+  const{data,error}=await sb.from("entry_comments").insert({user_id:booksUserId||getCurrentBooksOwnerId(),...(c?{company_id:c}:{}),transaction_id:txnId,author_id:getCurrentUserId(),body:body.trim()}).select().single();
   // Used to swallow the error and just return null — the comment box would
   // clear and look like it posted, with zero indication the save actually
   // failed. Returning the error lets the caller keep the typed text and

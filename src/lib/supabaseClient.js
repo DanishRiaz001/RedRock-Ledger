@@ -21,6 +21,24 @@ export function setCurrentUserId(id) {
   _currentUserId = id;
 }
 
+// Separate from the above on purpose. getCurrentUserId() is the REAL
+// authenticated person (needed for Storage paths, which Storage RLS
+// checks against the real auth.uid() — not any app-level "whose books"
+// concept). This tracks WHOSE DATA is being viewed — your own by default,
+// or a client's you've been granted access to (AppShell's viewingUserId).
+// Standalone helpers that read/write a table's own user_id column
+// (fetchInboxFiles, attachFilesToTxn, fetchTxnAttachments — anything
+// deciding row OWNERSHIP, not a Storage path) should use this one instead
+// of getCurrentUserId(), or a granted employee's reads/writes end up
+// scoped to their own account instead of the client's.
+let _currentBooksOwnerId = null;
+export function getCurrentBooksOwnerId() {
+  return _currentBooksOwnerId;
+}
+export function setCurrentBooksOwnerId(id) {
+  _currentBooksOwnerId = id;
+}
+
 // Same pattern, for the active company — standalone helper functions (Inbox
 // attachments, entry comments) that can't reach AppShell's activeCompanyId
 // through React closures need a live value too, for the same reason.
