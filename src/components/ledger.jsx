@@ -339,6 +339,8 @@ function VatDrop({value,onChange,options,disabled=false}){
     closeAndRevert();
   };
 
+  // Deliberately smaller than the account dropdown above it (12px) — VAT
+  // is a secondary detail on this line, the account is the primary choice.
   return(
     <div ref={containerRef} style={{position:"relative",opacity:disabled?0.6:1}}>
       <input
@@ -353,7 +355,7 @@ function VatDrop({value,onChange,options,disabled=false}){
           if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
           if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
         }}
-        style={{...selSm,minHeight:28,cursor:disabled?"default":"text",paddingRight:20}}
+        style={{...selSm,fontSize:10.5,minHeight:28,cursor:disabled?"default":"text",paddingRight:20}}
       />
       {!disabled&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>}
       {open&&!disabled&&(
@@ -475,7 +477,10 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
   return(
     <div style={{position:"relative"}}>
       <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
-        {sel?<span style={{fontSize:9,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {displayName}</span>:<span style={{fontSize:9,color:T.muted}}>— Select Account —</span>}
+        {/* Was fontSize:9 — smaller than the VAT-code dropdown right below
+            it, backwards from the actual hierarchy (the account is the
+            primary choice on this line, VAT is a secondary detail). */}
+        {sel?<span style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {displayName}</span>:<span style={{fontSize:12,color:T.muted}}>— Select Account —</span>}
         <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
       </div>
       {open&&(
@@ -1047,6 +1052,17 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // details box + Postings grid, and a SEPARATE "Attachments" tab for the
   // document — not a permanent side-by-side split. Matches that instead.
   const[activeTab,setActiveTab]=useState("details");
+  // No isDesktop prop reaches this component (it's shared by desktop AND
+  // mobile call sites — mobile's own screens render it inside a 430px-wide
+  // wrapper), so width is read straight off the window instead of being
+  // threaded through every caller. Wide enough for a permanent side-by-side
+  // attachment panel; narrow falls back to the Details/Attachments tabs.
+  const[isWide,setIsWide]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=900);
+  useEffect(()=>{
+    const onResize=()=>setIsWide(window.innerWidth>=900);
+    window.addEventListener("resize",onResize);
+    return()=>window.removeEventListener("resize",onResize);
+  },[]);
   const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode,contactId:form.contactId}];
   // Single-line mode still keeps its own separate state (form/debitVatCode/
   // creditVatCode) rather than groupLinesState — this routes a grid edit
@@ -1149,10 +1165,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             typing a contact's name straight into a Debit/Credit account
             box (first line only, same as New Entry) already routes to
             1500/2400 and links them; a second field asking for the same
-            thing again was redundant. */}
-        <div style={{padding:"14px"}}>
-          <div style={{maxWidth:280}}><SL>Voucher number</SL><div style={{...inp,background:T.bg,color:T.sub}}>{fmtB(txn.bilag)}</div></div>
-        </div>
+            thing again was redundant. Voucher number field removed too —
+            it just repeated the big "EDITING B040" heading right above
+            this whole page, in a duller box, for no extra information. */}
         {moneySources&&moneySources.length>0&&(
           <div style={{padding:"0 14px 14px"}}>
             <SL>Whose</SL>
@@ -1254,16 +1269,71 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // backdrop, no fixed positioning, no click-outside-to-close; scrolls
   // itself into view on open since wherever this renders in the page
   // (right where the row that opened it lives) might not already be at
-  // the top of the viewport. Details/Attachments as real tabs (not a
-  // permanent side-by-side split) matches Tripletex's own voucher screen.
+  // the top of the viewport.
   const rootRef=useRef(null);
   useEffect(()=>{rootRef.current&&rootRef.current.scrollIntoView({behavior:"smooth",block:"start"});},[]);
+  const header=(
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
+      <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
+    </div>
+  );
+  // On a wide-enough screen the attachment preview is a permanent side
+  // panel — same idea as the Inbox's own preview pane, 30% of the window —
+  // instead of a second tab you have to click into. On a narrow one
+  // (mobile — this component is shared with mobile's own DetailModal call
+  // sites) there's no room for a persistent side panel, so it stays a tab.
+  if(isWide)return(
+    <div ref={rootRef}>
+      <div style={{maxWidth:1000}}>{header}</div>
+      <ResizableSplit
+        defaultRightWidth={Math.min(700,Math.max(340,Math.round(window.innerWidth*0.3)))}
+        minRightWidth={300} maxRightWidth={800}
+        collapsible collapseLabel="Hide attachment" expandLabel="Show attachment"
+        left={<div style={{maxWidth:1000}}>{detailsTab}</div>}
+        right={(
+          <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#fff"}}>
+            {attached?(<>
+              <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</span>
+              </div>
+              <div style={{flex:1,minHeight:0}}>
+                <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
+              </div>
+            </>):(
+              <div
+                onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
+                onDragLeave={()=>setDropHover(false)}
+                onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
+                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
+                <i className="ti ti-file-off" style={{fontSize:28}}/>
+                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
+                {onUploadFile&&(
+                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
+                    <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
+                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
+                    <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
+                  </label>
+                )}
+                {onAttachExisting&&availableInboxFiles.length>0&&(
+                  <select value="" disabled={attUploading} onChange={e=>{
+                    const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
+                    if(picked)onAttachExisting(picked.id);
+                  }} style={{...selSm,width:"100%",maxWidth:320,marginTop:2}}>
+                    <option value="">— or pick an existing Inbox file —</option>
+                    {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      />
+    </div>
+  );
   return(
     <div ref={rootRef} style={{maxWidth:1000}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
-        <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
-      </div>
+      {header}
       <div style={{display:"flex",gap:20,borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
         {[["details","Details"],["attachments","Attachments"]].map(([id,label])=>(
           <button key={id} onClick={()=>setActiveTab(id)} style={{background:"none",border:"none",borderBottom:activeTab===id?`2px solid ${T.accent}`:"2px solid transparent",padding:"0 2px 10px",fontSize:13,fontWeight:activeTab===id?700:500,color:activeTab===id?T.accent:T.sub,cursor:"pointer",fontFamily:"inherit"}}>
