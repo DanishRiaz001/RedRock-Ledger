@@ -1310,12 +1310,22 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // sites) there's no room for a persistent side panel, so it stays a tab.
   if(isWide)return(
     <div ref={rootRef}>
-      <div style={{maxWidth:1000}}>{header}</div>
+      {header}
+      {/* left had its own maxWidth:1000 on top of ResizableSplit's own
+          marginRight-based width management — redundant, and actively
+          harmful once a side panel is involved: whenever the space
+          ResizableSplit actually left for `left` was WIDER than 1000px,
+          the form stopped short of that at 1000px while the marginRight
+          reservation (and the visible divider) sat further out, leaving a
+          dead strip of plain page background between the end of the form
+          and the resize handle — exactly the "gray gap that moves when I
+          drag" bug. ResizableSplit already constrains this side correctly
+          on its own; no second cap needed. */}
       <ResizableSplit
         defaultRightWidth={Math.min(700,Math.max(340,Math.round(window.innerWidth*0.3)))}
         minRightWidth={300} maxRightWidth={800}
         collapsible collapseLabel="Hide attachment" expandLabel="Show attachment"
-        left={<div style={{maxWidth:1000}}>{detailsTab}</div>}
+        left={detailsTab}
         right={(
           <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#fff"}}>
             {attached?(<>
