@@ -387,7 +387,11 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const reportExpenses=useMemo(()=>{const m={};reportTxns.filter(t=>isExpenseSK(t.debitCode)).forEach(t=>{m[t.debitCode]=(m[t.debitCode]||0)+t.amount;});return m;},[reportTxns]);
   const totalRI=Object.values(reportIncome).reduce((s,v)=>s+v,0);
   const totalRE=Object.values(reportExpenses).reduce((s,v)=>s+v,0);
-  const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q));},[transactions,entrySearch]);
+  // Searching a customer/supplier's name (not just a bilag number,
+  // description, or account code) used to find nothing at all here — the
+  // linked contact was never checked, even though the whole point of
+  // linking one is to be able to find their entries by name later.
+  const searchedEntries=useMemo(()=>{const q=entrySearch.trim().toLowerCase();const all=[...transactions].sort((a,b)=>b.bilag-a.bilag);if(!q)return all;return all.filter(t=>{if(fmtB(t.bilag).toLowerCase().includes(q)||t.description.toLowerCase().includes(q)||t.debitCode.includes(q)||t.creditCode.includes(q)||String(t.amount).includes(q))return true;if(t.contactId){const c=contacts.find(x=>x.id===t.contactId);if(c&&c.name.toLowerCase().includes(q))return true;}return false;});},[transactions,entrySearch,contacts]);
   // A multi-line voucher (New Entry's flexible balancing, a bulk bank
   // post, a multi-line invoice, …) saves as several transaction rows
   // sharing one bilag — searchedEntries is still one row PER underlying
@@ -409,6 +413,24 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return{...primary,_lineCount:lines.length};
     });
   },[searchedEntries]);
+
+  // Global header search dropdown (Tripletex-style): grouped, capped
+  // live results shown right under the header search box while it's
+  // focused with text in it — a supplier/customer match navigates to
+  // Reskontro, a voucher match opens that bilag directly. Reuses the
+  // same contact/entry matching as the Entries-tab search above, just
+  // capped to a handful per group so the dropdown stays short.
+  const headerSearchContacts=useMemo(()=>{
+    const q=entrySearch.trim().toLowerCase();
+    if(!q)return[];
+    return contacts.filter(c=>c.name.toLowerCase().includes(q)||(c.orgNumber||"").toLowerCase().includes(q)||String(c.id).toLowerCase().includes(q)).slice(0,5);
+  },[contacts,entrySearch]);
+  const headerSearchVouchers=useMemo(()=>{
+    if(!entrySearch.trim())return[];
+    return groupedEntries.slice(0,5);
+  },[groupedEntries,entrySearch]);
+  const[headerSearchFocused,setHeaderSearchFocused]=useState(false);
+  const headerSearchHasResults=headerSearchContacts.length>0||headerSearchVouchers.length>0;
 
   // First-run onboarding — shown once, until the company has a name saved or
   // it's explicitly skipped. Doesn't block returning users at all.
@@ -692,7 +714,41 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         <div style={{flex:1}}/>
         <div style={{position:"relative",width:260}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-          <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>{setEntrySearch(e.target.value);setTab("Entries");}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
+          <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} onFocus={()=>setHeaderSearchFocused(true)} onBlur={()=>setTimeout(()=>setHeaderSearchFocused(false),150)} onKeyDown={e=>{if(e.key==="Enter"){setTab("Entries");setHeaderSearchFocused(false);searchInputRef.current&&searchInputRef.current.blur();}if(e.key==="Escape"){setEntrySearch("");setHeaderSearchFocused(false);}}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
+          {headerSearchFocused&&entrySearch.trim()&&(
+            <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,width:340,maxHeight:420,overflowY:"auto",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 12px 32px rgba(0,0,0,.16)",zIndex:400,padding:"6px 0"}}>
+              {!headerSearchHasResults&&(
+                <div style={{padding:"14px 14px",fontSize:12,color:T.muted}}>No matches for "{entrySearch.trim()}"</div>
+              )}
+              {headerSearchContacts.length>0&&(<>
+                <div style={{padding:"7px 14px 4px",fontSize:10,fontWeight:800,letterSpacing:.4,textTransform:"uppercase",color:T.muted}}>Customers &amp; suppliers</div>
+                {headerSearchContacts.map(c=>(
+                  <div key={"hsc"+c.id} onMouseDown={()=>{setReskontroDefaultType(c.type);setTab("Reskontro");setEntrySearch("");setHeaderSearchFocused(false);}} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <span style={{width:26,height:26,borderRadius:7,background:c.type==="customer"?T.accentLight:T.redLight,color:c.type==="customer"?T.accent:T.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>{c.type==="customer"?"Ku":"Le"}</span>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontSize:12.5,fontWeight:600,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                      <div style={{fontSize:10.5,color:T.muted}}>{c.type==="customer"?"Customer":"Supplier"}{c.orgNumber?` · Org.nr. ${c.orgNumber}`:""}</div>
+                    </div>
+                  </div>
+                ))}
+              </>)}
+              {headerSearchVouchers.length>0&&(<>
+                <div style={{padding:"7px 14px 4px",fontSize:10,fontWeight:800,letterSpacing:.4,textTransform:"uppercase",color:T.muted,borderTop:headerSearchContacts.length?`1px solid ${T.border}`:"none",marginTop:headerSearchContacts.length?4:0}}>Vouchers</div>
+                {headerSearchVouchers.map(t=>(
+                  <div key={"hsv"+t.id} onMouseDown={()=>{setEntriesDetailTxn(t);setTab("Entries");setHeaderSearchFocused(false);}} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <span style={{fontSize:11,fontWeight:800,color:T.accent,minWidth:44,flexShrink:0}}>B{fmtB(t.bilag)}</span>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontSize:12.5,fontWeight:600,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.description||"—"}</div>
+                      <div style={{fontSize:10.5,color:T.muted}}>{t.date} · {fmt(t.amount)}</div>
+                    </div>
+                  </div>
+                ))}
+              </>)}
+              <div onMouseDown={()=>{setTab("Entries");setHeaderSearchFocused(false);}} style={{padding:"9px 14px",fontSize:11.5,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,marginTop:4}}>
+                See all results in Voucher overview →
+              </div>
+            </div>
+          )}
         </div>
         <button onClick={()=>setAssistantOpen(true)} style={{display:"flex",alignItems:"center",gap:6,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",flexShrink:0,background:"none",border:`1px solid ${T.border}`}}>
           <i className="ti ti-sparkles" style={{fontSize:13,color:T.accent}}/>Assistant
