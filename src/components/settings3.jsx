@@ -228,19 +228,60 @@ function InvoiceSettingsScreen({companyProfile,saveCompanyProfile}){
 
 // Accounting settings — points to the real period-lock and fiscal-year
 // controls that already exist elsewhere, rather than duplicating them.
+// Was a flat 4-item list — missing half of what already exists elsewhere
+// in the app (opening balance import, voucher/invoice settings, VAT
+// return filing, project/dimension tracking) with no grouping at all.
+// Reorganized into the same three groups Tripletex's own
+// "Regnskapsinnstillinger" uses (general bookkeeping / VAT / dimensions)
+// — everything here already has a real, working screen behind it; this
+// is a clearer front door to those, not new functionality bolted on.
+const ACCOUNTING_SETTINGS_GROUPS=[
+  {
+    id:"general",label:"General",icon:"ti-adjustments",
+    items:[
+      {icon:"ti-list-numbers",label:"Chart of accounts",desc:"Account numbers, types, and default VAT codes",tab:"Accounts"},
+      {icon:"ti-calendar",label:"Fiscal year",desc:"Which month your accounting year starts",tab:"CompanyInfo"},
+      {icon:"ti-lock",label:"Period close",desc:"Lock past periods against further edits",tab:"Settings"},
+      {icon:"ti-database-import",label:"Opening balance",desc:"Post a starting trial balance from a previous system",tab:"OpeningBalance"},
+      {icon:"ti-file-text",label:"Voucher settings",desc:"Defaults for how new vouchers are entered",tab:"VoucherSettings"},
+      {icon:"ti-file-invoice",label:"Invoice settings",desc:"Numbering, terms, and defaults for invoices you send",tab:"InvoiceSettings"},
+    ],
+  },
+  {
+    id:"vat",label:"VAT",icon:"ti-receipt-tax",
+    items:[
+      {icon:"ti-list-details",label:"VAT codes",desc:"The full Norwegian mva-koder reference — rates and which account each settles to",tab:"VATCodes"},
+      {icon:"ti-report-money",label:"VAT report",desc:"See VAT owed/reclaimable for any period",tab:"VATReport"},
+      {icon:"ti-file-certificate",label:"Mva-meldinger",desc:"File the VAT return for each two-month termin",tab:"VATTermin"},
+    ],
+  },
+  {
+    id:"dimensions",label:"Dimensions",icon:"ti-category-2",
+    items:[
+      {icon:"ti-briefcase",label:"Project tracking",desc:"Tag entries by project/department to follow costs and income across the whole ledger, not just per account",tab:"ProjectTracking"},
+    ],
+  },
+];
 function AccountingSettingsScreen({onNavigate}){
+  const[activeGroup,setActiveGroup]=useState("general");
+  const group=ACCOUNTING_SETTINGS_GROUPS.find(g=>g.id===activeGroup)||ACCOUNTING_SETTINGS_GROUPS[0];
   return(
-    <div style={{maxWidth:800}}>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Accounting settings</h1>
+    <div style={{maxWidth:820}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Accounting settings</h1>
+      <p style={{fontSize:12,color:T.muted,margin:"0 0 18px"}}>Everything that shapes how your books are kept — bookkeeping basics, VAT, and cost/department tracking.</p>
+      <div style={{display:"flex",gap:6,marginBottom:18,borderBottom:`1px solid ${T.border}`,paddingBottom:0}}>
+        {ACCOUNTING_SETTINGS_GROUPS.map(g=>(
+          <button key={g.id} onClick={()=>setActiveGroup(g.id)} style={{display:"flex",alignItems:"center",gap:7,background:"none",border:"none",borderBottom:activeGroup===g.id?`2.5px solid ${T.accent}`:"2.5px solid transparent",padding:"0 4px 10px",marginBottom:-1,fontSize:13,fontWeight:activeGroup===g.id?700:500,color:activeGroup===g.id?T.accent:T.sub,cursor:"pointer",fontFamily:"inherit"}}>
+            <i className={`ti ${g.icon}`} style={{fontSize:15}}/>{g.label}
+          </button>
+        ))}
+      </div>
       <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,overflow:"hidden",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
-        {[
-          {icon:"ti-lock",label:"Period close",desc:"Lock past periods against further edits",action:()=>onNavigate&&onNavigate("Settings")},
-          {icon:"ti-calendar",label:"Fiscal year",desc:"Set which month your fiscal year starts",action:()=>onNavigate&&onNavigate("CompanyInfo")},
-          {icon:"ti-list-numbers",label:"Chart of accounts",desc:"Manage account numbers, types, and defaults",action:()=>onNavigate&&onNavigate("Accounts")},
-          {icon:"ti-receipt-tax",label:"VAT codes",desc:"Norwegian mva-koder — rates, direction, and which accounts they settle to",action:()=>onNavigate&&onNavigate("VATCodes")},
-        ].map((r,i)=>(
-          <div key={r.label} onClick={r.action} style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",cursor:"pointer",borderBottom:i<3?`1px solid ${T.border}`:"none"}}>
-            <i className={`ti ${r.icon}`} style={{fontSize:20,color:T.accent}}/>
+        {group.items.map((r,i)=>(
+          <div key={r.label} onClick={()=>onNavigate&&onNavigate(r.tab)} className="rr-sidebar-item" style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",cursor:"pointer",borderBottom:i<group.items.length-1?`1px solid ${T.border}`:"none"}}>
+            <div style={{width:36,height:36,borderRadius:10,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <i className={`ti ${r.icon}`} style={{fontSize:17,color:T.accent}}/>
+            </div>
             <div><div style={{fontSize:13,fontWeight:700,color:T.text}}>{r.label}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>{r.desc}</div></div>
             <span style={{marginLeft:"auto",color:T.muted}}>›</span>
           </div>
