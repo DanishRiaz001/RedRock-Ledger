@@ -3152,6 +3152,71 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   );
 }
 
+// Norway's VAT "termin" periods — six fixed two-month spans (Jan–Feb,
+// Mar–Apr, ... Nov–Dec), the same grouping Mva-meldinger already reports
+// against. Trial Balance's period picker used the generic drag-timeline
+// (TimelineRangePicker) before, which has no notion of a termin at all —
+// this is a dedicated Year / Termin / Month picker instead, since those
+// three are the periods someone actually reasons about here.
+const TERMINER=[
+  {n:1,label:"Jan–Feb",from:"01-01",to:"02-28"},
+  {n:2,label:"Mar–Apr",from:"03-01",to:"04-30"},
+  {n:3,label:"May–Jun",from:"05-01",to:"06-30"},
+  {n:4,label:"Jul–Aug",from:"07-01",to:"08-31"},
+  {n:5,label:"Sep–Oct",from:"09-01",to:"10-31"},
+  {n:6,label:"Nov–Dec",from:"11-01",to:"12-31"},
+];
+function TerminPeriodPicker({initialFrom,initialTo,onApply,onClose}){
+  const[year,setYear]=useState(parseInt((initialFrom||"").slice(0,4),10)||new Date().getFullYear());
+  const[mode,setMode]=useState("year"); // "year" | "termin" | "month"
+  const apply=(from,to)=>{onApply(from,to);onClose();};
+  const terminRange=(t)=>{
+    // Feb's last day depends on the year (leap years) — computed instead
+    // of hardcoded so a termin picked in a leap year is exactly right.
+    const to=t.n===1?`${year}-02-${String(new Date(year,2,0).getDate()).padStart(2,"0")}`:`${year}-${t.to}`;
+    return[`${year}-${t.from}`,to];
+  };
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 8px 24px rgba(20,40,40,0.14)",width:280,overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",borderBottom:`1px solid ${T.border}`}}>
+        <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:15,color:T.sub,width:26,height:26}}>‹</button>
+        <span style={{fontSize:14,fontWeight:800,color:T.text}}>{year}</span>
+        <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:15,color:T.sub,width:26,height:26}}>›</button>
+      </div>
+      <div style={{display:"flex",gap:4,padding:"10px 10px 0"}}>
+        {[["year","Year"],["termin","Termin"],["month","Month"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setMode(key)} style={{flex:1,background:mode===key?T.accent:T.bg,color:mode===key?"#fff":T.sub,border:"none",borderRadius:7,padding:"7px 0",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+        ))}
+      </div>
+      <div style={{padding:12}}>
+        {mode==="year"&&(
+          <button onClick={()=>apply(`${year}-01-01`,`${year}-12-31`)} style={{width:"100%",background:T.accentLight,color:T.accent,border:"none",borderRadius:9,padding:"14px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Full year {year}</button>
+        )}
+        {mode==="termin"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {TERMINER.map(t=>{
+              const[from,to]=terminRange(t);
+              return(
+                <button key={t.n} onClick={()=>apply(from,to)} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px 6px",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.3}}>{t.n}. termin</div>
+                  <div style={{fontSize:12,fontWeight:700,color:T.text,marginTop:2}}>{t.label}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {mode==="month"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {MONTH_SHORT.map((m,i)=>(
+              <button key={m} onClick={()=>apply(`${year}-${String(i+1).padStart(2,"0")}-01`,`${year}-${String(i+1).padStart(2,"0")}-${String(daysInMonth(year,i+1)).padStart(2,"0")}`)} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,padding:"9px 0",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>{m}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport,isDesktop=false}){
   const today=new Date().toISOString().slice(0,10);
   // Excel-style resizable columns — drag the handle on the right edge of any
@@ -3366,32 +3431,21 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           only one sticky boundary, so a row is always either fully above
           or fully below it, never sandwiched in a gap between two. */}
       <div style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:10,padding:"8px 10px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
-          <div style={{position:"relative"}}>
-            <button onClick={()=>setFiltersOpen(o=>!o)} title="Filter by account category" style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-              <i className="ti ti-filter" style={{fontSize:14,color:T.sub}}/>
-              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Filters</span>
-              {activeCategories&&<span style={{fontSize:10,background:T.accentLight,color:T.accent,borderRadius:10,padding:"1px 6px",fontWeight:700}}>{activeCategories.size}</span>}
-            </button>
-            {filtersOpen&&(<>
-              <div onClick={()=>setFiltersOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-              <div style={{position:"absolute",left:0,top:38,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:240,boxShadow:"0 8px 24px rgba(20,40,40,0.12)",padding:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div style={{fontSize:12,fontWeight:800,color:T.text}}>Account categories</div>
-                  <button onClick={()=>setActiveCategories(null)} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Show all</button>
-                </div>
-                {categoryKeys.map(k=>{
-                  const isOn=!activeCategories||activeCategories.has(k);
-                  return(
-                    <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,padding:"6px 0",cursor:"pointer"}}>
-                      <input type="checkbox" checked={isOn} onChange={()=>toggleCategory(k)}/>
-                      <span>{SERIES[k].icon} {SERIES[k].name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </>)}
-          </div>
+        {/* Solid, fully opaque toolbar — was a translucent
+            backdrop-filter:blur() glass panel, which is expensive to
+            repaint on every scroll frame and is exactly what caused the
+            reported "account row visible behind the sticky header" glitch
+            during fast scrolling (the compositor briefly showing the row
+            scrolling underneath through the blur before it caught up).
+            An opaque panel has nothing to show through, so that class of
+            glitch is now structurally impossible, not just less likely. */}
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
+          {/* Filters is icon-only and inert for now — category filtering is
+              being reworked, so the dropdown/checkbox panel is removed
+              rather than left half-functional. */}
+          <button title="Filters" disabled style={{display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,borderRadius:8,width:34,height:34,background:"#fff",cursor:"default",fontFamily:"inherit"}}>
+            <i className="ti ti-filter" style={{fontSize:14,color:T.muted}}/>
+          </button>
           <div style={{position:"relative"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
               <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
@@ -3401,7 +3455,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             {periodPickerOpen&&(<>
               <div onClick={()=>setPeriodPickerOpen(false)} style={{position:"fixed",inset:0,zIndex:748}}/>
               <div style={{position:"absolute",left:0,top:44,zIndex:749}}>
-                <TimelineRangePicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+                <TerminPeriodPicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
               </div>
             </>)}
           </div>
@@ -3412,7 +3466,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <input placeholder="Search within report…" value={reportSearch} onChange={e=>setReportSearch(e.target.value)} style={{...inp,paddingLeft:32,background:"#fff"}}/>
           </div>
           <div style={{flex:1}}/>
-          <button onClick={()=>{setFromAcct("");setToAcct("");setReportSearch("");setActiveCategories(null);}} title="Reset all filters" style={{background:"none",border:"none",cursor:"pointer",color:T.sub,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:8}}>
+          <button onClick={()=>{setFromAcct("");setToAcct("");setReportSearch("");}} title="Reset filters" style={{background:"none",border:"none",cursor:"pointer",color:T.sub,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:8}}>
             <i className="ti ti-settings" style={{fontSize:16}}/>
           </button>
         </div>
