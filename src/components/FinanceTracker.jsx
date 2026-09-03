@@ -300,8 +300,77 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
   const[entrySearch,setEntrySearch]=useState("");
   useEffect(()=>{setEntriesShowCount(50);},[entrySearch]);
-  const[bankAttachments,setBankAttachmentsState]=useState(()=>{try{const saved=localStorage.getItem("rr_bank_attachments");return saved?JSON.parse(saved):{}}catch{return{};}});
-  const setBankAttachments=(fn)=>{setBankAttachmentsState(prev=>{const next=typeof fn==="function"?fn(prev):fn;try{localStorage.setItem("rr_bank_attachments",JSON.stringify(next));}catch(e){}return next;});};
+  // Was localStorage-only ("rr_bank_attachments") — the entire "Attach bank
+  // statement" feature in Bank Reconciliation never actually reached the
+  // database at all. That meant: it never survived a cleared browser or a
+  // different device, and — the part that actually mattered once a second
+  // real person started using the app — it was invisible to anyone but
+  // whoever's own browser originally attached it, since localStorage never
+  // leaves that one browser. A granted employee (or you, on a different
+  // device) opening the exact same account/month would see no attachment
+  // at all, and posting from it would carry no proof, not because
+  // anything failed but because the reference was never shared to begin
+  // with. reconciliation_files is the real, already-DB-backed, already
+  // company-scoped table built for exactly this (the separate
+  // Reconciliation screen already uses it) — this derives the same
+  // {code_period: {name,type,inboxFileId,storagePath}} shape Bank
+  // Reconciliation expects straight from it instead.
+  const bankAttachments=useMemo(()=>{
+    const map={};
+    reconciliationFiles.forEach(rf=>{
+      const file=inboxFiles.find(f=>f.id===rf.inboxFileId);
+      map[`${rf.accountCode}_${rf.period}`]={
+        name:file?file.name:"Bank statement",
+        type:file?file.type:"",
+        period:rf.period,
+        code:rf.accountCode,
+        inboxFileId:rf.inboxFileId,
+        storagePath:file?file.storagePath:undefined,
+        _reconciliationFileId:rf.id,
+      };
+    });
+    return map;
+  },[reconciliationFiles,inboxFiles]);
+  const attachBankStatement=(key,att)=>{
+    const idx=key.lastIndexOf("_");
+    const code=key.slice(0,idx),period=key.slice(idx+1);
+    if(attachReconciliationFile&&att&&att.inboxFileId)attachReconciliationFile(code,period,att.inboxFileId);
+  };
+  const removeBankStatement=key=>{
+    const existing=bankAttachments[key];
+    if(existing&&existing._reconciliationFileId&&removeReconciliationFile)removeReconciliationFile(existing._reconciliationFileId);
+  };
+  // One-time migration for whatever was already sitting in this browser's
+  // localStorage from before the fix above — otherwise it just silently
+  // disappears from view the moment this ships, even though the file
+  // itself is still safely uploaded (only the small {name,type,
+  // inboxFileId} reference lived in localStorage). Only migrates entries
+  // that already reference a real uploaded file (inboxFileId) — the rare
+  // pre-Storage-upload {data:<base64>} shape from even earlier isn't
+  // handled here, since re-uploading it needs the full upload flow this
+  // effect doesn't have reason to duplicate.
+  useEffect(()=>{
+    if(!attachReconciliationFile||!reconciliationFiles)return;
+    let raw;
+    try{raw=localStorage.getItem("rr_bank_attachments");}catch{return;}
+    if(!raw)return;
+    let legacy;
+    try{legacy=JSON.parse(raw);}catch{try{localStorage.removeItem("rr_bank_attachments");}catch{}return;}
+    const existingKeys=new Set(reconciliationFiles.map(rf=>`${rf.accountCode}_${rf.period}`));
+    const entries=Object.entries(legacy||{}).filter(([key,att])=>att&&att.inboxFileId&&!existingKeys.has(key));
+    if(!entries.length){try{localStorage.removeItem("rr_bank_attachments");}catch{}return;}
+    (async()=>{
+      for(const[key,att]of entries){
+        const idx=key.lastIndexOf("_");
+        await attachReconciliationFile(key.slice(0,idx),key.slice(idx+1),att.inboxFileId);
+      }
+      try{localStorage.removeItem("rr_bank_attachments");}catch{}
+    })();
+    // Deliberately runs once reconciliationFiles has actually loaded (not
+    // on every change) — re-checking existingKeys above already guards
+    // against re-migrating something that's since been attached for real.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[attachReconciliationFile]);
   const _now=new Date();
   const _y=_now.getFullYear();
   const _m=String(_now.getMonth()+1).padStart(2,"0");
@@ -408,7 +477,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   if(tab==="Files"&&!isDesktop)return(<FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} attachedFileIds={attachedFileIds} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRename={renameInboxFileEntry} onMove={moveInboxFileEntry} onCopy={copyInboxFileEntry} onMerge={mergeInboxFilesEntry} onStartRegistration={setRegistrationQueue}/>);
   if(tab==="Bank"&&!isDesktop){
     if(!feat.bank)return(<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>);
-    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/></div></div>);
+    return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Bank" sub="BANK ACCOUNTS" onBack={()=>setTab("Dashboard")}/><PeriodSelector from={filterFrom} to={filterTo} onChange={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/><div style={{padding:16}}><BankModule accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} filterFrom={filterFrom} filterTo={filterTo} attachments={bankAttachments} onAttach={attachBankStatement} moneySources={effectiveMoneySources} saveMoneySources={saveMoneySources} tagTransaction={tagTransaction}/></div></div>);
   }
 
   // Contextual export — Excel for the screens with structured tabular data
@@ -1236,7 +1305,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={(key,att)=>setBankAttachments(p=>({...p,[key]:att}))} onRemoveAttach={key=>setBankAttachments(p=>{const n={...p};delete n[key];return n;})} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab}/>
+            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
