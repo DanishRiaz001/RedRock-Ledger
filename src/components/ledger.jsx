@@ -407,6 +407,68 @@ function fmtDateDisplay(iso){
 // it to match a smaller sibling field. `inputStyle` is the real hook for
 // that: it merges onto the actual input, defaulting to {} so every existing
 // caller (which only ever used `style`) renders exactly as before.
+// A small, safe arithmetic evaluator — +, -, *, /, parentheses, decimals —
+// for CalcAmountInput below. Deliberately a hand-written recursive-descent
+// parser instead of eval()/new Function() (never run untrusted input as
+// real JS); anything containing so much as a letter is rejected outright
+// before parsing even starts.
+function evalArithmetic(raw){
+  const s=String(raw).replace(/,/g,"").trim();
+  if(!s||!/^[0-9+\-*/().\s]+$/.test(s))return null;
+  let i=0;
+  const skip=()=>{while(s[i]===" ")i++;};
+  const parseFactor=()=>{
+    skip();
+    if(s[i]==="("){i++;const v=parseExpr();skip();if(s[i]===")")i++;return v;}
+    if(s[i]==="-"){i++;return -parseFactor();}
+    if(s[i]==="+"){i++;return parseFactor();}
+    const start=i;
+    while(i<s.length&&/[0-9.]/.test(s[i]))i++;
+    if(start===i)return NaN;
+    return parseFloat(s.slice(start,i));
+  };
+  const parseTerm=()=>{
+    skip();let v=parseFactor();
+    while(true){skip();const c=s[i];if(c==="*"||c==="/"){i++;const f=parseFactor();v=c==="*"?v*f:v/f;}else break;}
+    return v;
+  };
+  const parseExpr=()=>{
+    skip();let v=parseTerm();
+    while(true){skip();const c=s[i];if(c==="+"||c==="-"){i++;const t=parseTerm();v=c==="+"?v+t:v-t;}else break;}
+    return v;
+  };
+  const result=parseExpr();
+  skip();
+  if(i!==s.length||isNaN(result)||!isFinite(result))return null;
+  return Math.round(result*100)/100;
+}
+// Any amount field in the app can double as a tiny calculator — type
+// "249+118.50" (or paste several line amounts with + between them) and
+// it resolves to the total the moment you leave the field, same as
+// typing a formula into a spreadsheet cell. A plain number just evaluates
+// to itself, so this is a drop-in replacement for a normal amount input
+// with no behavior change for the common case of typing one number.
+function CalcAmountInput({value,onChange,style,placeholder,onKeyDown}){
+  const[editing,setEditing]=useState(false);
+  const[draft,setDraft]=useState("");
+  const commit=()=>{
+    if(draft.trim()===""){onChange("");setEditing(false);return;}
+    const evaluated=evalArithmetic(draft);
+    onChange(evaluated!=null?String(evaluated):draft);
+    setEditing(false);
+  };
+  return(
+    <input
+      value={editing?draft:(value===0?"0":(value||""))}
+      placeholder={placeholder||"0"}
+      onFocus={()=>{setEditing(true);setDraft(value!=null?String(value):"");}}
+      onChange={e=>setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(onKeyDown)onKeyDown(e);}}
+      style={style}
+    />
+  );
+}
 function FlexDateInput({value,onChange,style,inputStyle}){
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState("");
@@ -969,6 +1031,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const[confirmDelGroup,setConfirmDelGroup]=useState(false);
   const[confirmDelLine,setConfirmDelLine]=useState(null);
   const updateGroupLine=(li,patch)=>setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,...patch}:l));
+  // One "master" date at the top of a multi-line voucher — changing it
+  // updates every line's date, EXCEPT a line whose own date was edited
+  // directly at some point (that line's own edit is treated as
+  // deliberate and keeps its own value from then on, the same way
+  // typing a different value into any one field is expected to stick).
+  // _dateTouched starts false on every line — a fresh multi-line
+  // voucher almost always shares one date across all its lines anyway,
+  // so the master field controls all of them until someone specifically
+  // overrides one.
+  const[masterDate,setMasterDate]=useState(()=>(groupLinesState[0]&&groupLinesState[0].date)||"");
+  const applyMasterDate=(v)=>{
+    setMasterDate(v);
+    setGroupLinesState(p=>p.map(l=>l._dateTouched?l:{...l,date:v}));
+  };
   // At least one side per line (see the single-line `valid` above for
   // why), plus a real balance check across the whole group — editing
   // amounts/accounts here can break a voucher that balanced exactly at
@@ -1139,7 +1215,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
               <div style={{...rowCell,...vDivider,display:"flex",flexDirection:"column",gap:4}}>
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
                 <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 7px"}}/>
               </div>
               <div style={{...rowCell,...vDivider}}>
@@ -1151,7 +1227,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
                 <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
               </div>
               <div style={{...rowCell,...vDivider}}>
-                <input type="number" value={l.amount} onChange={e=>updateRow(li,{amount:e.target.value})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 7px",textAlign:"right"}}/>
+                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 7px",textAlign:"right"}}/>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(
@@ -1167,67 +1243,97 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     );
   })();
 
+  const voucherDetailsBox=(
+    <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+      <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+      {isInvoiceMode&&(
+        <div style={{padding:"14px 14px 0"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
+            <i className={entryModeVal==="customer_invoice"?"ti ti-file-invoice":"ti ti-receipt-2"} style={{fontSize:13}}/>
+            {entryModeVal==="customer_invoice"?"Customer invoice":"Supplier invoice"}
+          </div>
+          {linkedContact&&(
+            <div style={{marginTop:12}}>
+              <SL>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</SL>
+              <div style={{...inp,background:T.bg,color:T.sub}}>{linkedContact.name}</div>
+            </div>
+          )}
+        </div>
+      )}
+      {/* No separate "Linked customer/supplier" field here anymore —
+          typing a contact's name straight into a Debit/Credit account
+          box (first line only, same as New Entry) already routes to
+          1500/2400 and links them; a second field asking for the same
+          thing again was redundant. Voucher number field removed too —
+          it just repeated the big "EDITING B040" heading right above
+          this whole page, in a duller box, for no extra information. */}
+      {/* Invoice number / due date — these were already saved reliably
+          (saveEdit's DB update always carries them through, and every
+          save path here spreads the full original txn/line object, so
+          editing one field never wiped the others) but had NO visible
+          field anywhere in this editor, so there was no way to see them
+          were kept, correct them, or add them to an entry that didn't
+          start with any. Shown/edited here now — on a multi-line
+          voucher these are one property of the whole bilag, so editing
+          either applies to every line, keeping them consistent. */}
+      <div style={{padding:"0 14px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div>
+          <SL>Invoice number</SL>
+          <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
+            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
+            else setForm(f=>({...f,invoiceNo:e.target.value}));
+          }} placeholder="Optional" style={inp}/>
+        </div>
+        <div>
+          <SL>Due date</SL>
+          <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
+            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
+            else setForm(f=>({...f,dueDate:v}));
+          }}/>
+        </div>
+      </div>
+      {moneySources&&moneySources.length>0&&(
+        <div style={{padding:"0 14px 14px"}}>
+          <SL>Whose</SL>
+          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+            <option value="">— Select source (optional) —</option>
+            {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+
+  // One master date at the top of a multi-line voucher, applying to every
+  // line that hasn't had its own date edited directly (see applyMasterDate
+  // above). Single-line entries just have the one date already in Voucher
+  // details/the grid — no separate master needed.
+  const masterDateRow=isGroup?(
+    <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 14px"}}>
+      <span style={{fontSize:11.5,fontWeight:700,color:T.sub,whiteSpace:"nowrap"}}>Date for all lines</span>
+      <FlexDateInput value={masterDate} onChange={applyMasterDate} style={{width:150}}/>
+      <span style={{fontSize:10.5,color:T.muted}}>Changing a line's own date below keeps that line on its own date from then on.</span>
+    </div>
+  ):null;
+
+  const rightColumn=(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {masterDateRow}
+      {postingsGrid}
+    </div>
+  );
+
   const detailsTab=(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
-        {isInvoiceMode&&(
-          <div style={{padding:"14px 14px 0"}}>
-            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
-              <i className={entryModeVal==="customer_invoice"?"ti ti-file-invoice":"ti ti-receipt-2"} style={{fontSize:13}}/>
-              {entryModeVal==="customer_invoice"?"Customer invoice":"Supplier invoice"}
-            </div>
-            {linkedContact&&(
-              <div style={{marginTop:12}}>
-                <SL>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</SL>
-                <div style={{...inp,background:T.bg,color:T.sub}}>{linkedContact.name}</div>
-              </div>
-            )}
-          </div>
-        )}
-        {/* No separate "Linked customer/supplier" field here anymore —
-            typing a contact's name straight into a Debit/Credit account
-            box (first line only, same as New Entry) already routes to
-            1500/2400 and links them; a second field asking for the same
-            thing again was redundant. Voucher number field removed too —
-            it just repeated the big "EDITING B040" heading right above
-            this whole page, in a duller box, for no extra information. */}
-        {/* Invoice number / due date — these were already saved reliably
-            (saveEdit's DB update always carries them through, and every
-            save path here spreads the full original txn/line object, so
-            editing one field never wiped the others) but had NO visible
-            field anywhere in this editor, so there was no way to see them
-            were kept, correct them, or add them to an entry that didn't
-            start with any. Shown/edited here now — on a multi-line
-            voucher these are one property of the whole bilag, so editing
-            either applies to every line, keeping them consistent. */}
-        <div style={{padding:"0 14px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <div>
-            <SL>Invoice number</SL>
-            <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
-              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
-              else setForm(f=>({...f,invoiceNo:e.target.value}));
-            }} placeholder="Optional" style={inp}/>
-          </div>
-          <div>
-            <SL>Due date</SL>
-            <input type="date" value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={e=>{
-              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:e.target.value})));
-              else setForm(f=>({...f,dueDate:e.target.value}));
-            }} style={inp}/>
-          </div>
+      {isInvoiceMode?(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:18,alignItems:"start"}}>
+          {voucherDetailsBox}
+          {rightColumn}
         </div>
-        {moneySources&&moneySources.length>0&&(
-          <div style={{padding:"0 14px 14px"}}>
-            <SL>Whose</SL>
-            <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
-              <option value="">— Select source (optional) —</option>
-              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
-      {postingsGrid}
+      ):(<>
+        {voucherDetailsBox}
+        {rightColumn}
+      </>)}
       {isGroup&&!groupBalanced&&(
         <div style={{fontSize:11,fontWeight:700,color:T.red,background:T.redLight,borderRadius:8,padding:"7px 12px"}}>
           Off by {fmt(Math.abs(groupTotals.totalDebit-groupTotals.totalCredit))} — total debit {fmt(groupTotals.totalDebit)} vs total credit {fmt(groupTotals.totalCredit)}. Save is disabled until these match.
@@ -2203,9 +2309,9 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         {/* Custom date range when search open */}
         {showSearch&&(
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{...inp,flex:1,padding:"5px 8px",fontSize:12}}/>
+            <FlexDateInput value={from} onChange={setFrom} style={{flex:1}} inputStyle={{padding:"5px 8px",fontSize:12}}/>
             <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
-            <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={{...inp,flex:1,padding:"5px 8px",fontSize:12}}/>
+            <FlexDateInput value={to} onChange={setTo} style={{flex:1}} inputStyle={{padding:"5px 8px",fontSize:12}}/>
             <input placeholder="Search..." value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} style={{...inp,flex:1,padding:"5px 8px",fontSize:12}}/>
           </div>
         )}
@@ -3246,4 +3352,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, NewContactModal, VatDrop };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop };

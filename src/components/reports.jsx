@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -1184,7 +1184,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
             Set a date to lock all periods up to and including that date. No new entries or edits will be allowed on or before this date. To unlock, clear the date and save.
           </div>
           <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:5}}>Close Date</div>
-          <input type="date" value={tempPeriodClose!==null?tempPeriodClose:periodClose} onChange={e=>setTempPeriodClose(e.target.value)} style={{...inp,marginBottom:12}}/>
+          <FlexDateInput value={tempPeriodClose!==null?tempPeriodClose:periodClose} onChange={setTempPeriodClose} style={{marginBottom:12}}/>
           {periodClose&&(
             <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
               <span style={{fontSize:14}}>🔒</span>
@@ -1693,9 +1693,9 @@ function PeriodSelector({from,to,onChange}){
           ):(
             <div style={{padding:"10px 0"}}>
               <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
-                <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{...selSm,flex:1,padding:"7px 8px",fontSize:12}}/>
+                <FlexDateInput value={customFrom} onChange={setCustomFrom} style={{flex:1}} inputStyle={{padding:"7px 8px",fontSize:12}}/>
                 <span style={{fontSize:10,color:T.muted,fontWeight:700}}>→</span>
-                <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{...selSm,flex:1,padding:"7px 8px",fontSize:12}}/>
+                <FlexDateInput value={customTo} onChange={setCustomTo} style={{flex:1}} inputStyle={{padding:"7px 8px",fontSize:12}}/>
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={applyCustom} style={{flex:1,background:T.blue,color:"#fff",border:"none",borderRadius:8,padding:"8px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Apply</button>
@@ -2521,11 +2521,11 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From (exact date)</div>
-            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={inp}/>
+            <FlexDateInput value={from} onChange={setFrom}/>
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To (exact date)</div>
-            <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={inp}/>
+            <FlexDateInput value={to} onChange={setTo}/>
           </div>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:20}}>
@@ -3868,7 +3868,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:11,color:T.muted}}>As of</span>
-            <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={{...inp,width:150}}/>
+            <FlexDateInput value={asOf} onChange={setAsOf} style={{width:150}}/>
             <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
           </div>
         </div>
@@ -3876,7 +3876,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer"}}>
             <input type="checkbox" checked={compareOn} onChange={e=>setCompareOn(e.target.checked)} disabled={monthlyView}/>Compare to another date
           </label>
-          {compareOn&&!monthlyView&&<input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)} style={{...inp,width:150}}/>}
+          {compareOn&&!monthlyView&&<FlexDateInput value={compareDate} onChange={setCompareDate} style={{width:150}}/>}
           <button onClick={()=>setMonthlyView(m=>!m)} title="Show a snapshot as of the end of every month this year, side by side" style={{background:monthlyView?T.accent:"none",color:monthlyView?"#fff":T.sub,border:`1px solid ${monthlyView?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
         </div>
       </div>
@@ -5415,9 +5415,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                     <tbody>
                       {preview.rows.map((r,i)=>(
                         <tr key={i} style={{borderTop:`1px solid ${T.border}`}}>
-                          <td style={{padding:"4px 6px"}}><input type="date" value={r.date||""} onChange={e=>updatePreviewRow(i,"date",e.target.value)} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",color:T.text,boxSizing:"border-box"}}/></td>
+                          <td style={{padding:"4px 6px"}}><FlexDateInput value={r.date||""} onChange={v=>updatePreviewRow(i,"date",v)} inputStyle={{padding:"5px 6px",fontSize:11}}/></td>
                           <td style={{padding:"4px 6px"}}><input type="text" value={r.description||""} onChange={e=>updatePreviewRow(i,"description",e.target.value)} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",color:T.text,boxSizing:"border-box"}}/></td>
-                          <td style={{padding:"4px 6px"}}><input type="number" step="any" value={r.amount==null?"":r.amount} onChange={e=>updatePreviewRow(i,"amount",e.target.value===""?null:parseFloat(e.target.value))} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",textAlign:"right",fontWeight:600,color:r.amount>=0?T.green:T.red,boxSizing:"border-box"}}/></td>
+                          <td style={{padding:"4px 6px"}}><CalcAmountInput value={r.amount==null?"":r.amount} onChange={v=>updatePreviewRow(i,"amount",v===""?null:parseFloat(v))} style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 6px",fontSize:11,fontFamily:"inherit",textAlign:"right",fontWeight:600,color:r.amount>=0?T.green:T.red,boxSizing:"border-box"}}/></td>
                           <td style={{textAlign:"center"}}><span onClick={()=>removePreviewRow(i)} title="Remove row" style={{cursor:"pointer",color:T.muted,fontSize:13}}>✕</span></td>
                         </tr>
                       ))}

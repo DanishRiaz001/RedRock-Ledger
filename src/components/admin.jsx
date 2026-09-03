@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { T, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { callClaudeAPI, nextContactId } from "../lib/utils.js";
 import { sb, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
-import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop } from "./ledger.jsx";
+import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop, FlexDateInput } from "./ledger.jsx";
 import { ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages } from "./settings2.jsx";
 import { Dashboard } from "./reports.jsx";
 
@@ -929,7 +929,7 @@ Return ONLY valid JSON, no markdown:
                     <div style={{fontSize:14,fontWeight:700,color:T.text}}>{e.description}</div>
                   )}
                   {isEditing?(
-                    <input type="date" value={e.date} onChange={ev=>updateEntryField(uid,"date",ev.target.value)} style={{...inp,fontSize:12,width:"auto"}}/>
+                    <FlexDateInput value={e.date} onChange={v=>updateEntryField(uid,"date",v)} inputStyle={{fontSize:12}}/>
                   ):(
                     <div style={{fontSize:11,color:T.muted,marginTop:2}}>{e.date}</div>
                   )}

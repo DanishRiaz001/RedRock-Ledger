@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, NewContactModal, VatDrop, SaveFlashButton } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -1087,7 +1087,7 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Municipality start date</div>
-              <input type="date" value={form.municipalityStartDate||""} onChange={set("municipalityStartDate")} style={inp}/>
+              <FlexDateInput value={form.municipalityStartDate||""} onChange={v=>set("municipalityStartDate")({target:{value:v}})}/>
             </div>
           </>)}
           <div>
@@ -1234,11 +1234,11 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Invoice date</div>
-                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+                  <FlexDateInput value={date} onChange={setDate}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Due date</div>
-                  <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{...inp}}/>
+                  <FlexDateInput value={dueDate} onChange={setDueDate}/>
                 </div>
               </div>
               <div>
@@ -1287,7 +1287,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
               <div style={{display:"grid",gridTemplateColumns:"20% 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-                  <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+                  <FlexDateInput value={date} onChange={setDate}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
@@ -1669,7 +1669,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                 })()}
                 <div>
                   <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Amount incl. VAT</div>
-                  <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({amount:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}/>
+                  <CalcAmountInput placeholder="0" value={form.amount} onChange={v=>setForm({amount:v})} style={{...inp,padding:"8px 10px",fontSize:12}}/>
                 </div>
               </div>
               {(()=>{const acc=accounts.find(a=>a.code===form.expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:-4}}>ℹ️ {acc.notes}</div>:null;})()}
@@ -2349,7 +2349,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-                  <input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={{...inp}}/>
+                  <FlexDateInput value={payDate} onChange={setPayDate}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
@@ -2614,7 +2614,7 @@ function EmployeesScreen({employees,createEmployee,updateEmployee,deleteEmployee
             <input placeholder="Phone" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} style={inp}/>
             <div>
               <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Start date</div>
-              <input type="date" value={form.startDate} onChange={e=>setForm(p=>({...p,startDate:e.target.value}))} style={inp}/>
+              <FlexDateInput value={form.startDate} onChange={v=>setForm(p=>({...p,startDate:v}))}/>
             </div>
             <div>
               <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Salary</div>
@@ -3078,11 +3078,11 @@ function QuoteFormScreen({accounts,contacts,companyProfile,nextQuoteNo,createQuo
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Date</div>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp}}/>
+            <FlexDateInput value={date} onChange={setDate}/>
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Valid until</div>
-            <input type="date" value={validUntil} onChange={e=>setValidUntil(e.target.value)} style={{...inp}}/>
+            <FlexDateInput value={validUntil} onChange={setValidUntil}/>
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
@@ -3726,20 +3726,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   };
 
   const[calcExpr,setCalcExpr]=useState("");
-  const[calcResult,setCalcResult]=useState(null);
 
-  const handleAmountChange=(val)=>{
-    setForm(p=>({...p,amount:val}));
-    // Try evaluating expression
-    if(/[+\-*/]/.test(val)){
-      try{
-        // eslint-disable-next-line no-new-func
-        const result=Function(`"use strict";return(${val})`)();
-        if(isFinite(result)&&result>0)setCalcResult(result);
-        else setCalcResult(null);
-      }catch{setCalcResult(null);}
-    } else {setCalcResult(null);}
-  };
+  // Used to run typed input through Function(...) (a real eval) to preview
+  // a calculation, then need a separate "Use this" click to actually apply
+  // it. The Amount field is a CalcAmountInput now — it resolves an
+  // expression itself, safely (no eval — see evalArithmetic in
+  // ledger.jsx), the moment you leave the field. This just takes the
+  // already-resolved value.
+  const handleAmountChange=(val)=>setForm(p=>({...p,amount:val}));
 
   // Load funds from prop
   const sfFunds=sinkingFunds||[];
@@ -4128,11 +4122,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 </div>
                 <div style={{...rowCell,...vDivider,minWidth:0}}>
                   {li===0?(
-                    <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                    <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   ):(
-                    <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
+                    <CalcAmountInput placeholder="0" value={line.amount||""} onChange={v=>{
                       const lines=[...(form.lines||[])];
-                      lines[li]={...lines[li],amount:e.target.value};
+                      lines[li]={...lines[li],amount:v};
                       setForm(p=>({...p,lines}));
                     }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   )}
@@ -4251,11 +4245,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 <div style={{width:80,flexShrink:0}}>
                   <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:2,textAlign:"right"}}>Amount</div>
                   {li===0?(
-                    <input placeholder="0" value={form.amount} onChange={e=>handleAmountChange(e.target.value)} style={{...inpSm,fontSize:13,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                    <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...inpSm,fontSize:13,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   ):(
-                    <input type="number" placeholder="0" value={line.amount||""} onChange={e=>{
+                    <CalcAmountInput placeholder="0" value={line.amount||""} onChange={v=>{
                       const lines=[...(form.lines||[])];
-                      lines[li]={...lines[li],amount:e.target.value};
+                      lines[li]={...lines[li],amount:v};
                       setForm(p=>({...p,lines}));
                     }} style={{...inpSm,fontSize:13,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   )}
@@ -4288,12 +4282,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           </div>
         )}
         <div>
-          {calcResult&&(
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <span style={{fontSize:11,color:T.muted}}>= {fmt(calcResult)}</span>
-              <button onClick={()=>{setForm(p=>({...p,amount:String(calcResult)}));setCalcResult(null);}} style={{fontSize:10,background:T.accentLight,color:T.accent,border:"none",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>Use this</button>
-            </div>
-          )}
+          {/* The Amount field itself now resolves a typed expression
+              ("249+118.50") the moment you leave it (CalcAmountInput) —
+              this used to be a separate live preview with its own "Use
+              this" button you had to click; now it just happens. */}
           {/* Add line */}
           <button onClick={()=>{
             const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",amount:""}];
@@ -4464,7 +4456,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     </div>
                     <div>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                      <input type="date" value={invDueDate} onChange={e=>setInvDueDate(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                      <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",minHeight:36}}/>
                     </div>
                   </div>
                 </div>
@@ -4544,7 +4536,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                             new line automatically — matches the quick-entry
                             feel of a real spreadsheet/voucher table instead
                             of forcing a click on "+ Add Line" every time. */}
-                        <input type="number" placeholder="0" value={r.amount||""} onChange={e=>update({amount:e.target.value})} onKeyDown={e=>{
+                        <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                           if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
                         }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"6px 7px",width:"100%",textAlign:"right"}}/>
                       </div>
@@ -4618,7 +4610,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   {invRegisterPayment&&(
                     <div style={{flex:3}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
-                      <input type="number" value={invPaymentAmount} onChange={e=>setInvPaymentAmount(e.target.value)} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
+                      <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
                     </div>
                   )}
                 </div>
