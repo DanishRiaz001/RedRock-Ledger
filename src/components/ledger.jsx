@@ -1064,6 +1064,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     return()=>window.removeEventListener("resize",onResize);
   },[]);
   const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode,contactId:form.contactId}];
+  // What this entry was actually created AS (a supplier invoice, a
+  // customer invoice, or nothing tracked — receipt/manual/bank/etc.) —
+  // tagged once at creation (invoicing.jsx's saveInvoice), never touched
+  // again by any later edit. Reopening it now recognizably shows it as
+  // that, instead of just the generic multi-line voucher view every entry
+  // used to fall back to regardless of how it was originally posted.
+  const entryModeVal=isGroup?(groupLinesState.find(l=>l.entryMode)||{}).entryMode:txn.entryMode;
+  const isInvoiceMode=entryModeVal==="supplier_invoice"||entryModeVal==="customer_invoice";
+  const linkedContactId=isGroup?((groupLinesState.find(l=>l.contactId)||{}).contactId):form.contactId;
+  const linkedContact=linkedContactId?contacts.find(c=>c.id===linkedContactId):null;
   // Single-line mode still keeps its own separate state (form/debitVatCode/
   // creditVatCode) rather than groupLinesState — this routes a grid edit
   // back to whichever state actually owns that field, so the same grid
@@ -1113,7 +1123,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     const vDivider={borderRight:`1px solid ${T.border}`};
     return(
       <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
+        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
         <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
           <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
           <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
@@ -1161,6 +1171,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
         <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+        {isInvoiceMode&&(
+          <div style={{padding:"14px 14px 0"}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
+              <i className={entryModeVal==="customer_invoice"?"ti ti-file-invoice":"ti ti-receipt-2"} style={{fontSize:13}}/>
+              {entryModeVal==="customer_invoice"?"Customer invoice":"Supplier invoice"}
+            </div>
+            {linkedContact&&(
+              <div style={{marginTop:12}}>
+                <SL>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</SL>
+                <div style={{...inp,background:T.bg,color:T.sub}}>{linkedContact.name}</div>
+              </div>
+            )}
+          </div>
+        )}
         {/* No separate "Linked customer/supplier" field here anymore —
             typing a contact's name straight into a Debit/Credit account
             box (first line only, same as New Entry) already routes to

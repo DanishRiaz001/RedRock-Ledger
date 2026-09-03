@@ -3773,6 +3773,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         vatPct:lineVc?lineVc.rate:null,
         vatAmount:lineVatAmount,
         attachmentIds:idx===0?invAttachmentIds:undefined,
+        // Tagged so reopening this entry later (no matter how much later)
+        // recognizes it as a supplier/customer invoice and shows it that
+        // way again, instead of falling back to the generic voucher editor.
+        entryMode:invIsCustomer?"customer_invoice":"supplier_invoice",
       });
       if(idx===0&&res&&res.bilag!=null)firstBilag=res.bilag;
     }
@@ -3791,6 +3795,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         amount:payAmount,
         contactId:invContactId,
         groupRef,
+        entryMode:invIsCustomer?"customer_invoice":"supplier_invoice",
       });
     }
     if(firstBilag!=null)setLastSavedBilag(firstBilag);
