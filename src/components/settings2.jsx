@@ -1735,14 +1735,30 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
               </button>
             </div>
 
+            {/* Table layout (was a stack of full-row divs) — a fixed grid of
+                columns (Description / Supplier / Amount / Date) reads much
+                closer to a real "voucher inbox" list, and lines the amount
+                up in its own right-aligned column instead of burying it in
+                a secondary text line. */}
             <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",flexShrink:0}}>
+              {!!filtered.length&&(
+                <div style={{display:"grid",gridTemplateColumns:"28px 1.9fr 1.2fr 0.85fr 0.8fr 96px 24px",gap:8,padding:"8px 12px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                  <span></span>
+                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Description</span>
+                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Supplier</span>
+                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Amount</span>
+                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Date</span>
+                  <span></span>
+                  <span></span>
+                </div>
+              )}
               {!filtered.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13}}>{viewMode==="deleted"?"No deleted files.":"No files yet."}</div>}
               {filtered.map((f,i)=>{
                 const isFocused=previewFile&&previewFile.id===f.id;
                 return(
-                  <div key={f.id} onClick={()=>setPreviewFile(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff",transition:"background 0.1s"}}>
+                  <div key={f.id} onClick={()=>setPreviewFile(f)} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"28px 1.9fr 1.2fr 0.85fr 0.8fr 96px 24px",gap:8,alignItems:"center",padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
                     <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
-                    <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{flex:1,minWidth:0,cursor:"text"}}>
+                    <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{minWidth:0,cursor:"text"}}>
                       {editingFileId===f.id?(
                         <input
                           autoFocus
@@ -1754,22 +1770,17 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                           style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
                         />
                       ):(
-                        <div style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||f.name}</div>
+                        <div style={{fontSize:12.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
                       )}
-                      <div style={{fontSize:10,color:T.muted,marginTop:2,display:"flex",gap:6,alignItems:"center",overflow:"hidden"}}>
-                        {hasSuggestion(f)?(<>
-                          {f.aiAmount!=null&&<span style={{fontWeight:700,color:T.text}}>{fmt(f.aiAmount)}</span>}
-                          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
-                        </>):(
-                          <span>{f.month} {f.year}</span>
-                        )}
-                        {f.aiAnalyzed&&!hasSuggestion(f)&&<span style={{color:T.muted}}>· no suggestion</span>}
-                        {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<span style={{color:T.accent}}>· analyzing…</span>}
-                      </div>
+                      {f.aiAnalyzed&&!hasSuggestion(f)&&<div style={{fontSize:10,color:T.muted,marginTop:1}}>No suggestion</div>}
+                      {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<div style={{fontSize:10,color:T.accent,marginTop:1}}>Analyzing…</div>}
                     </div>
-                    {viewMode!=="deleted"&&(
-                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}:{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post voucher":"Register"}</button>
-                    )}
+                    <div style={{fontSize:12,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||"—"}</div>
+                    <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
+                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
+                    {viewMode!=="deleted"?(
+                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
+                    ):<span/>}
                     <Menu3 items={viewMode==="deleted"?[
                       {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
                       {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
@@ -1800,6 +1811,22 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                   ):(
                     <span onDoubleClick={()=>startInlineRename(previewFile)} title="Double-click to rename" style={{fontSize:13,color:T.text,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"text",flex:1,minWidth:0}}>{previewFile.name}</span>
                   )}
+                  {/* Move to the previous/next document in the current list
+                      without leaving the preview — the list stays right
+                      there on the left, but stepping through several
+                      documents in a row no longer means clicking back into
+                      the list each time. */}
+                  {filtered.length>1&&(()=>{
+                    const idx=filtered.findIndex(x=>x.id===previewFile.id);
+                    if(idx<0)return null;
+                    return(
+                      <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                        <span style={{fontSize:11,color:T.muted,fontWeight:600,whiteSpace:"nowrap",marginRight:2}}>{idx+1} of {filtered.length}</span>
+                        <button onClick={()=>setPreviewFile(filtered[idx-1])} disabled={idx<=0} title="Previous document" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:26,height:26,cursor:idx<=0?"default":"pointer",color:idx<=0?T.border:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-left" style={{fontSize:14}}/></button>
+                        <button onClick={()=>setPreviewFile(filtered[idx+1])} disabled={idx>=filtered.length-1} title="Next document" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:26,height:26,cursor:idx>=filtered.length-1?"default":"pointer",color:idx>=filtered.length-1?T.border:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-right" style={{fontSize:14}}/></button>
+                      </div>
+                    );
+                  })()}
                 </div>
                 {/* Was justifyContent:"flex-end" — the one thing that made this
                     preview pane look mis-aligned next to Register-voucher's
