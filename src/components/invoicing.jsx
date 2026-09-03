@@ -3448,6 +3448,23 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     }
     return emptyTxn;
   });
+  // Once a supplier/customer has been posted against a real expense/income
+  // account, remembers that pairing for next time — picking the same
+  // contact again auto-fills the OTHER side of the line with whatever
+  // account it was posted to most recently, instead of starting blank
+  // every single time. Derived live from transaction history (the most
+  // recent line where this contact appears), not a separately stored
+  // "default account" that could drift stale if someone later posts them
+  // to a different account on purpose.
+  const lastAccountForContact=(contactId)=>{
+    if(!contactId)return null;
+    const matches=transactions.filter(t=>t.contactId===contactId).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+    if(!matches.length)return null;
+    const t=matches[0];
+    if(t.debitCode&&t.debitCode!=="1500"&&t.debitCode!=="2400")return t.debitCode;
+    if(t.creditCode&&t.creditCode!=="1500"&&t.creditCode!=="2400")return t.creditCode;
+    return null;
+  };
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
   const[entryMode,setEntryMode]=useState(initialEntryMode); // "receipt" | "supplier" | "customer"
@@ -4034,7 +4051,20 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitCode:v,debitVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].debitVatCode};
                     setForm(p=>({...p,lines,debitCode:li===0?v:p.debitCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>{
+                    // Landed on the debit side (1500) — auto-fill the
+                    // credit side of THIS row with whatever real account
+                    // this contact was most recently posted against, as
+                    // long as that side is still blank.
+                    const last=lastAccountForContact(id);
+                    const curLines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+                    if(last&&!curLines[li].creditCode){
+                      const lines=[...curLines];lines[li]={...lines[li],creditCode:last};
+                      setForm(p=>({...p,contactId:id,lines,creditCode:li===0?last:p.creditCode}));
+                    }else{
+                      setForm(p=>({...p,contactId:id}));
+                    }
+                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
@@ -4047,7 +4077,18 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditCode:v,creditVatCode:acc&&acc.defaultVatCode?acc.defaultVatCode:lines[li].creditVatCode};
                     setForm(p=>({...p,lines,creditCode:li===0?v:p.creditCode,contactId:li===0?"":p.contactId}));
-                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>setForm(p=>({...p,contactId:id}))} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} accounts={accounts} contacts={contacts} contactId={li===0?form.contactId:undefined} onContactPick={id=>{
+                    // Same idea, mirrored — landed on the credit side
+                    // (2400), auto-fill this row's debit side instead.
+                    const last=lastAccountForContact(id);
+                    const curLines=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+                    if(last&&!curLines[li].debitCode){
+                      const lines=[...curLines];lines[li]={...lines[li],debitCode:last};
+                      setForm(p=>({...p,contactId:id,lines,debitCode:li===0?last:p.debitCode}));
+                    }else{
+                      setForm(p=>({...p,contactId:id}));
+                    }
+                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};

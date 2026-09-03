@@ -1168,6 +1168,31 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             thing again was redundant. Voucher number field removed too —
             it just repeated the big "EDITING B040" heading right above
             this whole page, in a duller box, for no extra information. */}
+        {/* Invoice number / due date — these were already saved reliably
+            (saveEdit's DB update always carries them through, and every
+            save path here spreads the full original txn/line object, so
+            editing one field never wiped the others) but had NO visible
+            field anywhere in this editor, so there was no way to see them
+            were kept, correct them, or add them to an entry that didn't
+            start with any. Shown/edited here now — on a multi-line
+            voucher these are one property of the whole bilag, so editing
+            either applies to every line, keeping them consistent. */}
+        <div style={{padding:"0 14px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div>
+            <SL>Invoice number</SL>
+            <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
+              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
+              else setForm(f=>({...f,invoiceNo:e.target.value}));
+            }} placeholder="Optional" style={inp}/>
+          </div>
+          <div>
+            <SL>Due date</SL>
+            <input type="date" value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={e=>{
+              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:e.target.value})));
+              else setForm(f=>({...f,dueDate:e.target.value}));
+            }} style={inp}/>
+          </div>
+        </div>
         {moneySources&&moneySources.length>0&&(
           <div style={{padding:"0 14px 14px"}}>
             <SL>Whose</SL>
