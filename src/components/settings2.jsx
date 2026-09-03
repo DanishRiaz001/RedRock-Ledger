@@ -1580,7 +1580,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
       // to retype everything the AI already read off the document.
       const f=files.find(x=>x.id===fileId);
       if(f&&hasSuggestion(f)){
-        localStorage.setItem("rr_pending_attachment_suggestion",JSON.stringify({amount:f.aiAmount,supplier:f.aiSupplier,invoiceNo:f.aiInvoiceNo}));
+        localStorage.setItem("rr_pending_attachment_suggestion",JSON.stringify({amount:f.aiAmount,supplier:f.aiSupplier,invoiceNo:f.aiInvoiceNo,invoiceDate:f.aiInvoiceDate,dueDate:f.aiDueDate,description:f.aiDescription}));
       }else{
         localStorage.removeItem("rr_pending_attachment_suggestion");
       }
@@ -1592,7 +1592,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   // A file "has a suggestion" once AI analysis has actually run on it AND
   // found something usable — aiAnalyzed alone isn't enough, since a run
   // that came back empty (unreadable scan) shouldn't count as a suggestion.
-  const hasSuggestion=f=>f.aiAnalyzed&&(f.aiSupplier||f.aiAmount!=null);
+  const hasSuggestion=f=>f.aiAnalyzed&&(f.aiSupplier||f.aiAmount!=null||f.aiDescription);
   const[suggestionFilter,setSuggestionFilter]=useState(""); // "" | "with" | "without"
   const filtered=files
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
@@ -1747,12 +1747,13 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 a secondary text line. */}
             <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",flexShrink:0}}>
               {!!filtered.length&&(
-                <div style={{display:"grid",gridTemplateColumns:"28px 1.9fr 1.2fr 0.85fr 0.8fr 96px 24px",gap:8,padding:"8px 12px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                <div style={{display:"grid",gridTemplateColumns:"28px 1.7fr 1.05fr 0.8fr 0.7fr 0.7fr 96px 24px",gap:8,padding:"8px 12px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
                   <span></span>
                   <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Description</span>
                   <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Supplier</span>
                   <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Amount</span>
                   <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Date</span>
+                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Due date</span>
                   <span></span>
                   <span></span>
                 </div>
@@ -1761,7 +1762,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
               {filtered.map((f,i)=>{
                 const isFocused=previewFile&&previewFile.id===f.id;
                 return(
-                  <div key={f.id} onClick={()=>setPreviewFile(f)} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"28px 1.9fr 1.2fr 0.85fr 0.8fr 96px 24px",gap:8,alignItems:"center",padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
+                  <div key={f.id} onClick={()=>setPreviewFile(f)} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"28px 1.7fr 1.05fr 0.8fr 0.7fr 0.7fr 96px 24px",gap:8,alignItems:"center",padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
                     <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
                     <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{minWidth:0,cursor:"text"}}>
                       {editingFileId===f.id?(
@@ -1775,14 +1776,19 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                           style={{fontSize:13,fontWeight:600,color:T.text,width:"100%",border:`1px solid ${T.accent}`,borderRadius:6,padding:"2px 6px",fontFamily:"inherit",background:"#fff"}}
                         />
                       ):(
-                        <div style={{fontSize:12.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                        // AI-extracted description (from the document's own
+                        // line items / "Beskrivelse") when there is one —
+                        // "Office supplies" reads much better in a list than
+                        // the raw uploaded filename ever did.
+                        <div style={{fontSize:12.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiDescription||f.name}</div>
                       )}
                       {f.aiAnalyzed&&!hasSuggestion(f)&&<div style={{fontSize:10,color:T.muted,marginTop:1}}>No suggestion</div>}
                       {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<div style={{fontSize:10,color:T.accent,marginTop:1}}>Analyzing…</div>}
                     </div>
                     <div style={{fontSize:12,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||"—"}</div>
                     <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
-                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
+                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
+                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiDueDate||"—"}</div>
                     {viewMode!=="deleted"?(
                       <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
                     ):<span/>}

@@ -3397,7 +3397,7 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   );
 }
 
-function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt"}){
+function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt",onOpenEntry}){
   // Quick-create straight from any Debit/Credit AccDrop — "+ New account"
   // and "+ New customer/supplier" both need somewhere to actually create
   // the thing, not just a UI to type it into. Shared across every line's
@@ -3437,8 +3437,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       return{
         ...emptyTxn,attachmentId:pending,
         amount:suggestion&&suggestion.amount!=null?String(suggestion.amount):emptyTxn.amount,
-        description:suggestion&&suggestion.supplier?suggestion.supplier:emptyTxn.description,
+        // Prefer the AI's own reading of what the expense actually is
+        // (from the document's line items / Beskrivelse) — falls back to
+        // the supplier's name, same as before, when no description was
+        // extracted.
+        description:suggestion&&(suggestion.description||suggestion.supplier)?(suggestion.description||suggestion.supplier):emptyTxn.description,
         invoiceNo:suggestion&&suggestion.invoiceNo?suggestion.invoiceNo:"",
+        date:suggestion&&suggestion.invoiceDate?suggestion.invoiceDate:emptyTxn.date,
       };
     }
     return emptyTxn;
@@ -3654,7 +3659,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         }
       }
       if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);
-      setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
+      setEntrySaved(true);setTimeout(()=>setEntrySaved(false),5000);
       // No manual sinking-fund increment here anymore — a fund's progress
       // is now the real balance of its own account (see balAt above /
       // SinkingFundsScreen), which this entry just updated on its own by
@@ -3772,7 +3777,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       });
     }
     if(firstBilag!=null)setLastSavedBilag(firstBilag);
-    setEntrySaved(true);setTimeout(()=>setEntrySaved(false),1800);
+    setEntrySaved(true);setTimeout(()=>setEntrySaved(false),5000);
     resetInvoiceForm();
     setSaving(false);
   };
@@ -4629,6 +4634,27 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
 
   return(
     <div style={{display:"flex",gap:20,alignItems:"flex-start",flexDirection:"column"}}>
+      {/* Post-save confirmation — was just the Save button's own label
+          turning "✓ Saved as B0XX" for 1.8s, easy to miss and not
+          clickable. A real floating toast now: names the bilag, stays up
+          long enough to actually read (5s), and opens that exact bilag
+          on click. Glassy "watery" white card, matching the header's own
+          frosted-glass look, instead of a plain solid banner. */}
+      {entrySaved&&lastSavedBilag!=null&&(
+        <div onClick={()=>{
+          if(!onOpenEntry)return;
+          const t=transactions.find(x=>x.bilag===lastSavedBilag);
+          if(t)onOpenEntry(t);
+        }} style={{position:"fixed",bottom:24,right:24,zIndex:700,display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.88)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${T.borderGlass}`,borderRadius:14,padding:"13px 18px",boxShadow:"0 12px 32px rgba(20,60,50,0.16)",cursor:onOpenEntry?"pointer":"default"}}>
+          <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#0D9488,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <i className="ti ti-check" style={{fontSize:17,color:"#fff"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Bilag {fmtB(lastSavedBilag)} posted</div>
+            {onOpenEntry&&<div style={{fontSize:11,color:T.accent,fontWeight:700,marginTop:1}}>View bilag →</div>}
+          </div>
+        </div>
+      )}
       {formCard}
       <div style={{width:"100%"}}>
         {/* Receipt mode's attachment lives in the popover next to Date

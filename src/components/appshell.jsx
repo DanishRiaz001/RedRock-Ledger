@@ -464,7 +464,7 @@ function AppShell({user}){
       setReconciliationStatusState((rsR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,period:r.period,status:r.status,statusComment:r.status_comment||"",accountComment:r.account_comment||"",updatedBy:r.updated_by,updatedAt:r.updated_at})));
       setReconciliationFilesState((rfR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,period:r.period,inboxFileId:r.inbox_file_id})));
       setBudgetsState((bR.data||[]).map(b=>({year:parseInt(b.year),month:parseInt(b.month),code:b.code,amount:parseFloat(b.amount)||0,surplusAction:b.surplus_action||"rollover",surplusFundId:b.surplus_fund_id||null,swept:b.swept||false})));
-      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at,aiSupplier:r.ai_supplier||null,aiAmount:r.ai_amount!=null?parseFloat(r.ai_amount):null,aiInvoiceNo:r.ai_invoice_no||null,aiDocType:r.ai_doc_type||null,aiAnalyzed:!!r.ai_analyzed})));
+      setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at,aiSupplier:r.ai_supplier||null,aiAmount:r.ai_amount!=null?parseFloat(r.ai_amount):null,aiInvoiceNo:r.ai_invoice_no||null,aiInvoiceDate:r.ai_invoice_date||null,aiDueDate:r.ai_due_date||null,aiDescription:r.ai_description||null,aiDocType:r.ai_doc_type||null,aiAnalyzed:!!r.ai_analyzed})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setAttachedFileIds(new Set((taR.data||[]).map(r=>r.file_id)));
       setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
@@ -1748,27 +1748,42 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       const contentBlock=isImage
         ?{type:"image",source:{type:"base64",media_type:file.type,data:base64}}
         :{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}};
-      const prompt=`This file is a scanned invoice, receipt, or bill. Extract what you can identify from it. Return ONLY valid JSON, no markdown, no explanation:
-{"supplier":"vendor/supplier name, or null if not legible","amount":total amount as a plain number with no currency symbol or commas, or null,"invoiceNo":"invoice or receipt number, or null","docType":"one of exactly: simple_invoice, detailed_invoice, receipt, unclear"}
-If you genuinely cannot read useful information from this file, return {"supplier":null,"amount":null,"invoiceNo":null,"docType":"unclear"} — never guess or invent values.`;
+      // Norwegian invoices/receipts use specific field labels — naming them
+      // explicitly (rather than just "invoice number", "date") is what
+      // actually gets the model reading the right line instead of guessing:
+      // "Fakturanummer"/"Faktura nr" is the invoice number, "Fakturadato" is
+      // the invoice date, "Forfallsdato" is the due date, "Beskrivelse" is
+      // a line-item description. Supplier is asked for specifically as the
+      // sender's own name — the letterhead/header, not a customer or a
+      // referenced third party appearing lower on the document.
+      const prompt=`This file is a scanned invoice, receipt, or bill (often Norwegian). Extract what you can identify from it. Return ONLY valid JSON, no markdown, no explanation:
+{"supplier":"the SENDER's own name — the company issuing this document, normally in the header/letterhead at the top, NOT the customer it's addressed to; or null if not legible","amount":"the total/grand total amount due, as a plain number with no currency symbol or commas, or null","invoiceNo":"the invoice or receipt number — look for a field labeled Fakturanummer, Faktura nr, KID, or similar, or null","invoiceDate":"the invoice's own issue date in YYYY-MM-DD — look for a field labeled Fakturadato, Faktura dato, Dato, or similar, or null","dueDate":"the payment due date in YYYY-MM-DD — look for a field labeled Forfallsdato, Forfall, Due date, or similar, or null","description":"a short (under ~60 characters) plain-language description of what this expense actually is, written from the document's own line items or a Beskrivelse field — e.g. 'Office supplies', 'Monthly phone subscription' — not just the supplier's name repeated, or null","docType":"one of exactly: simple_invoice, detailed_invoice, receipt, unclear"}
+If you genuinely cannot read useful information from this file, return every field as null except docType:"unclear" — never guess or invent values.`;
       const{data,error}=await callClaudeAPI({
-        model:"claude-sonnet-4-6",max_tokens:400,
+        model:"claude-sonnet-4-6",max_tokens:500,
         messages:[{role:"user",content:[contentBlock,{type:"text",text:prompt}]}],
       });
       if(error)return;
       const text=data.content.map(b=>b.text||"").join("");
       const clean=text.replace(/```json|```/g,"").trim();
       const parsed=JSON.parse(clean);
+      // Basic YYYY-MM-DD shape check — a model that returns a date in some
+      // other format (or garbage) should fall back to null rather than
+      // saving something the rest of the app can't parse as a real date.
+      const validDate=d=>typeof d==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null;
       const patch={
         ai_supplier:parsed.supplier||null,
         ai_amount:parsed.amount!=null?parsed.amount:null,
         ai_invoice_no:parsed.invoiceNo||null,
+        ai_invoice_date:validDate(parsed.invoiceDate),
+        ai_due_date:validDate(parsed.dueDate),
+        ai_description:parsed.description||null,
         ai_doc_type:parsed.docType||"unclear",
         ai_analyzed:true,
       };
       const{error:updErr}=await sb.from("inbox_files").update(patch).eq("id",fileId);
       if(updErr){console.error("Inbox AI suggestion save failed:",updErr);return;}
-      setInboxFilesState(p=>p.map(f=>f.id===fileId?{...f,aiSupplier:patch.ai_supplier,aiAmount:patch.ai_amount,aiInvoiceNo:patch.ai_invoice_no,aiDocType:patch.ai_doc_type,aiAnalyzed:true}:f));
+      setInboxFilesState(p=>p.map(f=>f.id===fileId?{...f,aiSupplier:patch.ai_supplier,aiAmount:patch.ai_amount,aiInvoiceNo:patch.ai_invoice_no,aiInvoiceDate:patch.ai_invoice_date,aiDueDate:patch.ai_due_date,aiDescription:patch.ai_description,aiDocType:patch.ai_doc_type,aiAnalyzed:true}:f));
     }catch(e){console.error("Inbox AI analysis failed:",e);}
   };
 

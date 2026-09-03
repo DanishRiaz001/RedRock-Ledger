@@ -1253,7 +1253,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="NewVoucher"&&(
           <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment}/>
+            <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}}/>
           </div>
         )}
 
@@ -1639,7 +1639,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment}/>
+          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}}/>
         )}
 
         {tab==="Accounts"&&(
