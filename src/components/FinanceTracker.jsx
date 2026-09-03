@@ -251,7 +251,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // click genuinely navigates, no matter what was open before it.
   useEffect(()=>{setRegistrationQueue(null);setLedgerAcc(null);},[tab]);
   const[displayOptionsOpen,setDisplayOptionsOpen]=useState(false);
-  const[entriesDisplayCols,setEntriesDisplayCols]=useState({date:true,accounts:true,invoiceRef:true});
+  const[entriesDisplayCols,setEntriesDisplayCols]=useState({date:true,accounts:false,invoiceRef:true});
   const[entriesSortKey,setEntriesSortKey]=useState("bilag");
   const[entriesShowCount,setEntriesShowCount]=useState(50);
   const[entriesSortDir,setEntriesSortDir]=useState("desc");
@@ -1135,13 +1135,23 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               });
               const cols=entriesDisplayCols;
               const headers=[
-                {key:"bilag",label:"Bilag",always:true},
-                {key:"date",label:"Date",show:cols.date},
-                {key:"",label:"Debit",show:cols.accounts},{key:"",label:"Credit",show:cols.accounts},
-                {key:"",label:"Description",always:true},
-                {key:"",label:"Invoice / Due",show:cols.invoiceRef},
-                {key:"amount",label:"Amount",always:true},
+                {key:"bilag",label:"Bilag",always:true,w:"90px"},
+                {key:"date",label:"Date",show:cols.date,w:"100px"},
+                {key:"",label:"Debit",show:cols.accounts,w:"70px"},{key:"",label:"Credit",show:cols.accounts,w:"70px"},
+                {key:"",label:"Description",always:true,w:"1fr"},
+                {key:"",label:"Invoice / Due",show:cols.invoiceRef,w:"150px"},
+                {key:"amount",label:"Amount",always:true,w:"110px"},
               ].filter(h=>h.always||h.show);
+              // Grid, not two independent <table>s — the header and body used
+              // to be separate tables, each auto-sizing its OWN columns from
+              // its own content only, so whenever a header label's width and
+              // that column's actual data width differed (near guaranteed —
+              // "Invoice / Due" vs. a long description), the two tables'
+              // column boundaries silently drifted apart. One shared
+              // gridTemplateColumns string, reused by the header row and
+              // every body row, makes that structurally impossible — every
+              // row (header included) is guaranteed the exact same columns.
+              const gridCols=headers.map(h=>h.w).join(" ");
               return(<>
                 <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
                 <div style={{maxWidth:1000}}>
@@ -1172,45 +1182,41 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     zero gap (same technique as Trial Balance/Reskontro), so
                     sorting stays clickable right here while it's the part
                     that stays fixed on scroll. */}
-                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
-                  <tbody><tr style={{color:T.muted,fontSize:11}}>
-                    {headers.map(h=>(
-                      <td key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"8px 8px 8px 14px",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
-                        {h.label}{sortKey===h.key&&h.key&&<span style={{marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>}
-                      </td>
-                    ))}
-                  </tr></tbody>
-                </table>
+                <div style={{display:"grid",gridTemplateColumns:gridCols,fontSize:11,color:T.muted,background:"#fff",borderRadius:"10px 10px 0 0",border:`1px solid ${T.border}`,borderBottom:"none"}}>
+                  {headers.map(h=>(
+                    <div key={h.label} onClick={h.key?()=>toggleSort(h.key):undefined} style={{padding:"8px 8px 8px 14px",cursor:h.key?"pointer":"default",textAlign:h.label==="Amount"?"right":"left",userSelect:"none"}}>
+                      {h.label}{sortKey===h.key&&h.key&&<span style={{marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>}
+                    </div>
+                  ))}
+                </div>
                 </div>
                 </div>
                 <div style={{height:entriesFixedBarHeight}}/>
-                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",marginTop:-1}}>
-                  <tbody>
-                    {sorted.slice(0,entriesShowCount).map(t=>{
-                      const isRev=!!t.reversalOf;
-                      const isMatched=!!t.matchedWith;
-                      return(
-                        <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
-                          <td style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}{t._lineCount>1&&<span title={`${t._lineCount} lines in this voucher`} style={{marginLeft:5,fontSize:10,fontWeight:700,color:T.muted,background:T.bg,borderRadius:5,padding:"1px 5px"}}>+{t._lineCount-1}</span>}</td>
-                          {cols.date&&<td style={{color:T.sub}}>{t.date}</td>}
-                          {/* A one-sided line (part of the intentional flexible-
-                              balancing design — a line only needs a debit OR a
-                              credit account, not both) has "" for the unused
-                              side. Left blank, that read as the whole Debit/
-                              Credit column not showing anything by default —
-                              an em dash makes clear the column is populated,
-                              this specific line just has nothing on that side. */}
-                          {cols.accounts&&<td style={{color:t.debitCode?T.red:T.muted,fontSize:11}}>{t.debitCode||"—"}</td>}
-                          {cols.accounts&&<td style={{color:t.creditCode?T.green:T.muted,fontSize:11}}>{t.creditCode||"—"}</td>}
-                          <td style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                          {cols.invoiceRef&&<td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>}
-                          <td style={{textAlign:"right",fontWeight:700,padding:"8px 14px 8px 8px"}}>{fmt(t.amount)}</td>
-                        </tr>
-                      );
-                    })}
-                    {!sorted.length&&<tr><td colSpan={headers.length} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</td></tr>}
-                  </tbody>
-                </table>
+                <div style={{fontSize:13,background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",marginTop:-1,overflow:"hidden"}}>
+                  {sorted.slice(0,entriesShowCount).map(t=>{
+                    const isRev=!!t.reversalOf;
+                    const isMatched=!!t.matchedWith;
+                    return(
+                      <div key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{display:"grid",gridTemplateColumns:gridCols,borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1,alignItems:"center"}}>
+                        <div style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}{t._lineCount>1&&<span title={`${t._lineCount} lines in this voucher`} style={{marginLeft:5,fontSize:10,fontWeight:700,color:T.muted,background:T.bg,borderRadius:5,padding:"1px 5px"}}>+{t._lineCount-1}</span>}</div>
+                        {cols.date&&<div style={{color:T.sub}}>{t.date}</div>}
+                        {/* A one-sided line (part of the intentional flexible-
+                            balancing design — a line only needs a debit OR a
+                            credit account, not both) has "" for the unused
+                            side. Left blank, that read as the whole Debit/
+                            Credit column not showing anything by default —
+                            an em dash makes clear the column is populated,
+                            this specific line just has nothing on that side. */}
+                        {cols.accounts&&<div style={{color:t.debitCode?T.red:T.muted,fontSize:11}}>{t.debitCode||"—"}</div>}
+                        {cols.accounts&&<div style={{color:t.creditCode?T.green:T.muted,fontSize:11}}>{t.creditCode||"—"}</div>}
+                        <div style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                        {cols.invoiceRef&&<div style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</div>}
+                        <div style={{textAlign:"right",fontWeight:700,padding:"8px 14px 8px 8px"}}>{fmt(t.amount)}</div>
+                      </div>
+                    );
+                  })}
+                  {!sorted.length&&<div style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No entries match this search.</div>}
+                </div>
                 {sorted.length>entriesShowCount&&(
                   <div style={{textAlign:"center",padding:"14px 0"}}>
                     <button onClick={()=>setEntriesShowCount(c=>c+50)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 20px",fontSize:12,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Load more ({sorted.length-entriesShowCount} remaining)</button>
