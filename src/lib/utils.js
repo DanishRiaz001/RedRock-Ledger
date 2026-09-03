@@ -48,6 +48,20 @@ const EXPENSE_SK=new Set(["4000","5000","6000","6100","6200","6300","6400","6500
 // reclaimed on purchases), and the GL account its VAT amount settles to —
 // taken directly from a real Regnskapsregler export so the numbers are
 // verified against an actual company's setup, not guessed.
+// Full official Norwegian mva-kode set (Skatteetaten's standard codes, same
+// list Tripletex ships) — was a 13-code subset before, missing raw fish
+// (12/32) entirely and importing/reverse-charge/gold-and-quota/adjustment
+// codes altogether. Sourced from a real client's exported Mva-innstillinger
+// (Tripletex) plus Tripletex's own published mva-kode reference
+// (tripletex.no/fagblogg/regnskap/mva-koder-et-oppslagsverk). settleAccount
+// is set only where that reference states the account explicitly — codes
+// without one there are left null rather than guessing a number that could
+// mispost to the wrong 27xx account. The import/reverse-charge/gold-quota/
+// JUST-TAP-TILB-UTTAK codes are genuinely advanced (Tripletex itself gates
+// them behind separate "Avanserte mva-innstillinger" toggles) — they're
+// included here for completeness and search, but most everyday postings
+// never need them; a client's real usage should still be sanity-checked
+// with their accountant before relying on the less common ones.
 const MVA_CODES=[
   // Real accounting systems (Tripletex included) always offer an explicit
   // "0" code for "no VAT treatment" in both the sales and purchase
@@ -56,17 +70,65 @@ const MVA_CODES=[
   // selectable code like every other choice.
   {code:"0",name:"Ingen avgiftsbehandling",direction:"output",rate:0,settleAccount:null},
   {code:"0",name:"Ingen avgiftsbehandling",direction:"input",rate:0,settleAccount:null},
+
+  // --- Outgoing (sales) — domestic ---
   {code:"3",name:"Utgående avgift, høy sats",direction:"output",rate:25,settleAccount:"2700"},
   {code:"31",name:"Utgående avgift, middels sats",direction:"output",rate:15,settleAccount:"2701"},
-  {code:"33",name:"Utgående avgift, lav sats",direction:"output",rate:12,settleAccount:"2702"},
+  {code:"32",name:"Utgående avgift, råfisk",direction:"output",rate:11.11,settleAccount:"2702"},
+  {code:"33",name:"Utgående avgift, lav sats",direction:"output",rate:12,settleAccount:"2703"},
   {code:"5",name:"Ingen utgående avgift (innenfor mva-loven)",direction:"output",rate:0,settleAccount:null},
   {code:"51",name:"Avgiftsfri innlands omsetning med omvendt avgiftsplikt",direction:"output",rate:0,settleAccount:null},
   {code:"52",name:"Avgiftsfri utførsel av varer og tjenester",direction:"output",rate:0,settleAccount:null},
   {code:"6",name:"Ingen utgående avgift (utenfor mva-loven)",direction:"output",rate:0,settleAccount:null},
   {code:"7",name:"Ingen avgiftsbehandling (inntekter)",direction:"output",rate:0,settleAccount:null},
+
+  // --- Incoming (purchases) — domestic ---
   {code:"1",name:"Fradrag inngående avgift, høy sats",direction:"input",rate:25,settleAccount:"2710"},
   {code:"11",name:"Fradrag inngående avgift, middels sats",direction:"input",rate:15,settleAccount:"2711"},
+  {code:"12",name:"Fradrag inngående avgift, råfisk",direction:"input",rate:11.11,settleAccount:null},
   {code:"13",name:"Fradrag inngående avgift, lav sats",direction:"input",rate:12,settleAccount:"2712"},
+
+  // --- Import of goods (innførsel) — advanced ---
+  {code:"14",name:"Fradrag inngående avgift betalt ved innførsel, høy sats",direction:"input",rate:25,settleAccount:"2713"},
+  {code:"15",name:"Fradrag inngående avgift betalt ved innførsel, middels sats",direction:"input",rate:25,settleAccount:"2714"},
+  {code:"20",name:"Grunnlag, ingen inngående avgift ved innførsel",direction:"input",rate:0,settleAccount:null},
+  {code:"21",name:"Grunnlag inngående avgift ved innførsel, høy sats",direction:"input",rate:0,settleAccount:null},
+  {code:"22",name:"Grunnlag inngående avgift ved innførsel, middels sats",direction:"input",rate:0,settleAccount:null},
+  {code:"81",name:"Fradrag inngående avgift ved innførsel, høy sats",direction:"input",rate:25,settleAccount:"2705"},
+  {code:"81-K",name:"Fradrag inngående avgift ved innførsel, høy sats med kompensasjon",direction:"input",rate:25,settleAccount:null},
+  {code:"82",name:"Inngående avgift uten fradrag ved innførsel, høy sats",direction:"input",rate:25,settleAccount:"2705"},
+  {code:"83",name:"Fradrag inngående avgift ved innførsel, middels sats",direction:"input",rate:15,settleAccount:"2706"},
+  {code:"83-K",name:"Fradrag inngående avgift ved innførsel, middels sats med kompensasjon",direction:"input",rate:15,settleAccount:null},
+  {code:"84",name:"Inngående avgift uten fradrag ved innførsel, middels sats",direction:"input",rate:15,settleAccount:"2706"},
+  {code:"85",name:"Grunnlag, avgiftsfri innførsel",direction:"input",rate:0,settleAccount:null},
+
+  // --- Remote/foreign services, reverse charge (fjernleverbare tjenester) — advanced ---
+  {code:"86",name:"Fradrag inngående avgift ved kjøp av tjenester fra utlandet, høy sats",direction:"input",rate:25,settleAccount:null},
+  {code:"86-K",name:"Fradrag inngående avgift ved kjøp av tjenester fra utlandet, høy sats med kompensasjon",direction:"input",rate:25,settleAccount:null},
+  {code:"87",name:"Kjøp av tjenester fra utlandet uten fradrag, høy sats",direction:"input",rate:25,settleAccount:null},
+  {code:"88",name:"Fradrag inngående avgift ved kjøp av tjenester fra utlandet, lav sats",direction:"input",rate:12,settleAccount:null},
+  {code:"88-K",name:"Fradrag inngående avgift ved kjøp av tjenester fra utlandet, lav sats med kompensasjon",direction:"input",rate:12,settleAccount:null},
+  {code:"89",name:"Kjøp av tjenester fra utlandet uten fradrag, lav sats",direction:"input",rate:12,settleAccount:null},
+
+  // --- Gold / climate quotas (domestic reverse charge) — advanced ---
+  {code:"91",name:"Fradrag inngående avgift ved kjøp av klimakvoter/gull",direction:"input",rate:25,settleAccount:"2710"},
+  {code:"91-K",name:"Fradrag inngående avgift ved kjøp av klimakvoter/gull med avgiftskompensasjon",direction:"input",rate:25,settleAccount:null},
+  {code:"92",name:"Kjøp av klimakvoter/gull uten avgiftskompensasjon",direction:"input",rate:25,settleAccount:null},
+
+  // --- Adjustments, losses, reversals, withdrawals — advanced, rarely used ---
+  {code:"JUST-1",name:"Mva-justering for kapitalvarer - kode 1",direction:"input",rate:25,settleAccount:null},
+  {code:"JUST-81",name:"Mva-justering for kapitalvarer - kode 81",direction:"input",rate:25,settleAccount:null},
+  {code:"TAP-1",name:"Tap på krav - kode 1",direction:"output",rate:25,settleAccount:null},
+  {code:"TAP-11",name:"Tap på krav - kode 11",direction:"output",rate:15,settleAccount:null},
+  {code:"TAP-12",name:"Tap på krav - kode 12",direction:"output",rate:11.11,settleAccount:null},
+  {code:"TAP-13",name:"Tap på krav - kode 13",direction:"output",rate:12,settleAccount:null},
+  {code:"TILB-1",name:"Tilbakeføring av mva for kapitalvarer - kode 1",direction:"input",rate:25,settleAccount:null},
+  {code:"TILB-81",name:"Tilbakeføring av mva for kapitalvarer - kode 81",direction:"input",rate:25,settleAccount:null},
+  {code:"UTTAK-3",name:"Uttak - kode 3",direction:"output",rate:25,settleAccount:null},
+  {code:"UTTAK-31",name:"Uttak - kode 31",direction:"output",rate:15,settleAccount:null},
+  {code:"UTTAK-32",name:"Uttak - kode 32",direction:"output",rate:11.11,settleAccount:null},
+  {code:"UTTAK-33",name:"Uttak - kode 33",direction:"output",rate:12,settleAccount:null},
+  {code:"UTTAK-5",name:"Uttak - kode 5",direction:"output",rate:0,settleAccount:null},
 ];
 // Which sales accounts the real chart posts each output rate to (from the
 // same reference) — used to suggest the right MVA-kode from the account
