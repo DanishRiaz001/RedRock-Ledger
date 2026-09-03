@@ -4418,6 +4418,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const sectionBody={padding:isDesktop?"12px 14px":14,display:"flex",flexDirection:"column",gap:isDesktop?9:10};
         return(
           <div style={{display:"flex",flexDirection:"column",gap:isDesktop?12:14}}>
+            {/* Two-column split on desktop — Invoice details on the left,
+                Costs + Payment stacked on the right — instead of every
+                section stacked in one long column; mobile stays exactly
+                as it was (this wrapper collapses to display:contents,
+                so its children just rejoin the outer flex column). */}
+            <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:12,alignItems:"start"}:{display:"contents"}}>
             {/* Invoice details — supplier/customer, invoice no/due date, and
                 ONE description for the whole voucher, matching the reference
                 voucher's "Fakturadetaljer" section instead of scattering
@@ -4467,6 +4473,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               </div>
             </div>
 
+            <div style={isDesktop?{display:"flex",flexDirection:"column",gap:12}:{display:"contents"}}>
             {/* Costs — just Account / VAT / Amount per line, no date or
                 description per row (those live once, above, for the whole
                 voucher) — matching the reference's plain cost-line table. */}
@@ -4622,6 +4629,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
                 </>)}
               </div>
+            </div>
+            </div>
             </div>
 
             <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
