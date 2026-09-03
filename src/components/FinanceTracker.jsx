@@ -1193,8 +1193,15 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                         <tr key={t.id} className="rr-table-row" onClick={()=>setEntriesDetailTxn(t)} style={{borderTop:`1px solid ${T.border}`,cursor:"pointer",opacity:t.reversedBy?0.5:1}}>
                           <td style={{padding:"8px 8px 8px 14px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}{isMatched&&<span title="Matched" style={{marginLeft:4,color:T.green}}>✓</span>}{t._lineCount>1&&<span title={`${t._lineCount} lines in this voucher`} style={{marginLeft:5,fontSize:10,fontWeight:700,color:T.muted,background:T.bg,borderRadius:5,padding:"1px 5px"}}>+{t._lineCount-1}</span>}</td>
                           {cols.date&&<td style={{color:T.sub}}>{t.date}</td>}
-                          {cols.accounts&&<td style={{color:T.red,fontSize:11}}>{t.debitCode}</td>}
-                          {cols.accounts&&<td style={{color:T.green,fontSize:11}}>{t.creditCode}</td>}
+                          {/* A one-sided line (part of the intentional flexible-
+                              balancing design — a line only needs a debit OR a
+                              credit account, not both) has "" for the unused
+                              side. Left blank, that read as the whole Debit/
+                              Credit column not showing anything by default —
+                              an em dash makes clear the column is populated,
+                              this specific line just has nothing on that side. */}
+                          {cols.accounts&&<td style={{color:t.debitCode?T.red:T.muted,fontSize:11}}>{t.debitCode||"—"}</td>}
+                          {cols.accounts&&<td style={{color:t.creditCode?T.green:T.muted,fontSize:11}}>{t.creditCode||"—"}</td>}
                           <td style={{color:isRev?T.red:T.text,fontStyle:isRev?"italic":"normal",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                           {cols.invoiceRef&&<td style={{fontSize:11,color:T.muted}}>{t.invoiceNo||""}{t.dueDate?(t.invoiceNo?" · ":"")+t.dueDate:""}</td>}
                           <td style={{textAlign:"right",fontWeight:700,padding:"8px 14px 8px 8px"}}>{fmt(t.amount)}</td>
