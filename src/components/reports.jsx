@@ -634,15 +634,45 @@ function AccountGroupDrop({value,onChange,options}){
   );
 }
 
+// Nearest-match SAF-T v1.3 lookup — new accounts don't have their own SAF-T
+// mapping, so this reads it off the closest DEFAULT_ACCOUNTS entry instead
+// of asking the user to type a code they'd have to look up themselves. An
+// exact code match wins outright; otherwise the numerically nearest default
+// account that carries a saftCode13 stands in (same idea as "nearest account
+// in this range"), so a brand-new 6305 picks up 6300's code, not nothing.
+function autoSaftFor(trimmedCode){
+  if(!trimmedCode)return"";
+  const exact=DEFAULT_ACCOUNTS.find(a=>a.code===trimmedCode);
+  if(exact&&exact.saftCode13)return exact.saftCode13;
+  const n=parseInt(trimmedCode,10);
+  if(isNaN(n))return"";
+  let best=null,bestDist=Infinity;
+  for(const a of DEFAULT_ACCOUNTS){
+    if(!a.saftCode13)continue;
+    const an=parseInt(a.code,10);
+    if(isNaN(an))continue;
+    const d=Math.abs(an-n);
+    if(d<bestDist){bestDist=d;best=a;}
+  }
+  return best?best.saftCode13:"";
+}
+
+// Small on/off switch used by the Behavior section below — a more compact
+// stand-in for a checkbox+label row when the popup needs to stay short.
+function ToggleSwitch({checked,onChange}){
+  return(
+    <div onClick={()=>onChange(!checked)} style={{width:34,height:20,borderRadius:10,position:"relative",flexShrink:0,cursor:"pointer",background:checked?T.accent:T.border,transition:"background .15s"}}>
+      <div style={{position:"absolute",top:2,left:checked?16:2,width:16,height:16,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.25)",transition:"left .15s"}}/>
+    </div>
+  );
+}
+
 function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
   const[code,setCode]=useState(initialCode||"");
   const[name,setName]=useState("");
-  const[currency,setCurrency]=useState("PKR");
+  const[currency,setCurrency]=useState("NOK");
   const[vatCode,setVatCode]=useState("");
   const[vatLocked,setVatLocked]=useState(false);
-  const[notes,setNotes]=useState("");
-  const[saftCode13,setSaftCode13]=useState("");
-  const[saftCode12,setSaftCode12]=useState("");
   const[showAtPosting,setShowAtPosting]=useState(true);
   const[matchable,setMatchable]=useState(false);
   const[inactive,setInactive]=useState(false);
@@ -651,7 +681,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
   const sk=code?getSK(code.trim()):null;
   const seriesInfo=sk?SERIES[sk]:null;
   const isBalance=sk&&parseInt(sk)<3000;
-  const reportLabel=seriesInfo?(isBalance?"Balance sheet":"Income statement (Resultat)"):code?"Uncategorized":"—";
+  const reportLabel=seriesInfo?(isBalance?"Balance sheet":"Income statement"):code?"Uncategorized":"—";
   const vatDirection=sk&&INCOME_SK.has(sk)?"output":sk&&EXPENSE_SK.has(sk)?"input":null;
   const vatOptions=vatDirection?vatCodeOptions(vatDirection):[];
 
@@ -663,6 +693,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
   },[vatDirection]);
 
   const trimmedCode=code.trim();
+  const saftCode13=useMemo(()=>autoSaftFor(trimmedCode),[trimmedCode]);
   const valid=trimmedCode&&name.trim()&&!existingCodes.has(trimmedCode);
 
   const submit=()=>{
@@ -671,7 +702,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
     const selectedVat=vatOptions.find(c=>c.code===vatCode);
     onCreate({
       code:trimmedCode,name:name.trim(),matchable,currency,
-      notes:notes.trim(),saftCode13:saftCode13.trim(),saftCode12:saftCode12.trim(),
+      notes:"",saftCode13,saftCode12:"",
       showAtPosting,inactive,
       defaultVatCode:selectedVat?selectedVat.code:null,
       defaultVatPct:selectedVat?selectedVat.rate:null,
@@ -681,79 +712,94 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
 
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:440,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
-        <div style={{padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:16,fontWeight:800,color:T.text}}>New account</div>
-          <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,color:T.sub,fontSize:15,cursor:"pointer",width:30,height:30}}>✕</button>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:392,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 56px rgba(15,23,32,0.18)"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:15,fontWeight:800,color:T.text}}>New account</div>
+          <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,color:T.sub,fontSize:13,cursor:"pointer",width:26,height:26}}>✕</button>
         </div>
-        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{padding:"16px 20px 4px",display:"flex",flexDirection:"column",gap:11}}>
           {error&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600}}>{error}</div>}
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account group</div>
-            <AccountGroupDrop value={sk||""} onChange={k=>{setCode(k);setError("");}} options={Object.entries(SERIES).map(([k,s])=>({code:k,name:s.name,icon:s.icon}))}/>
-            <div style={{fontSize:10,color:T.muted,marginTop:4}}>Picking a group jumps the number below to its range — you can still type any specific number in that range.</div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+
+          {/* Account group (wide) + Currency (narrow) share a row */}
+          <div style={{display:"grid",gridTemplateColumns:"2.1fr 1fr",gap:9}}>
             <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
-              <input autoFocus value={code} onChange={e=>{setCode(e.target.value);setError("");}} placeholder="e.g. 6303" style={inp}/>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Account group</div>
+              <AccountGroupDrop value={sk||""} onChange={k=>{setCode(k);setError("");}} options={Object.entries(SERIES).map(([k,s])=>({code:k,name:s.name,icon:s.icon}))}/>
             </div>
             <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={inp}>
-                {["PKR","USD","EUR","GBP","AED","SAR","NOK"].map(c=><option key={c} value={c}>{c}</option>)}
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inp,padding:"8px 8px",fontSize:12.5}}>
+                {["NOK","USD","EUR","GBP"].map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
-            <input value={name} onChange={e=>{setName(e.target.value);setError("");}} placeholder="e.g. Office Rent" style={inp}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (detected from number)</div>
-            <div style={{...inp,background:T.bg,color:T.sub,display:"flex",flexDirection:"column",gap:1,lineHeight:1.3}}>
-              <span>{seriesInfo?seriesInfo.icon:""} {seriesInfo?seriesInfo.name:"—"}</span>
-              <span style={{fontSize:10,color:T.muted}}>{reportLabel}</span>
+
+          {/* Number (small box) + detected account type share a row */}
+          <div style={{display:"grid",gridTemplateColumns:"84px 1fr",gap:9}}>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
+              <input autoFocus value={code} onChange={e=>{setCode(e.target.value);setError("");}} placeholder="6303" style={{...inp,padding:"8px 8px",fontSize:12.5}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (detected)</div>
+              <div style={{background:T.bg,borderRadius:9,padding:"8px 10px",height:34,display:"flex",alignItems:"center",gap:6,overflow:"hidden"}}>
+                <span style={{fontSize:12.5,flexShrink:0}}>{seriesInfo?seriesInfo.icon:"❔"}</span>
+                <span style={{fontSize:11.5,fontWeight:600,color:"#374151",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{seriesInfo?seriesInfo.name:"Uncategorized"}</span>
+                <span style={{width:3,height:3,borderRadius:"50%",background:"#C9DCD9",flexShrink:0}}/>
+                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{reportLabel}</span>
+              </div>
             </div>
           </div>
+
+          {/* Name — its own row */}
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Description</div>
-            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional note" rows={2} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+            <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
+            <input value={name} onChange={e=>{setName(e.target.value);setError("");}} placeholder="e.g. Office Rent" style={{...inp,padding:"8px 10px",fontSize:12.5}}/>
           </div>
+
+          {/* SAF-T code — auto-derived from the detected category, never typed */}
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>SAF-T code (v1.3)</div>
-            <input value={saftCode13} onChange={e=>setSaftCode13(e.target.value)} placeholder="Optional" style={inp}/>
+            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
+              <span style={{fontSize:10.5,color:T.sub,fontWeight:600}}>SAF-T code (v1.3)</span>
+              <span style={{fontSize:9,fontWeight:700,color:T.accent,background:T.accentLight,borderRadius:5,padding:"1px 5px",letterSpacing:.2}}>AUTO</span>
+            </div>
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,color:T.sub,padding:"8px 10px",fontSize:12}}>{saftCode13||"—"}</div>
           </div>
+
           {vatDirection?(
-            <div>
-              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
-              <VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/>
-              <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,fontSize:12,color:vatCode?T.text:T.muted,cursor:vatCode?"pointer":"not-allowed"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:9,alignItems:"end"}}>
+              <div>
+                <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
+                <VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:10.5,color:vatCode?T.text:T.muted,cursor:vatCode?"pointer":"not-allowed",paddingBottom:8}}>
                 <input type="checkbox" checked={vatLocked} disabled={!vatCode} onChange={e=>setVatLocked(e.target.checked)}/>
-                Lock this VAT code — entries against this account can't use a different one
+                Lock
               </label>
             </div>
           ):(
-            <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"8px 12px"}}>Balance-sheet accounts don't carry a VAT code.</div>
+            <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:9,padding:"8px 12px"}}>Balance-sheet accounts don't carry a VAT code.</div>
           )}
-          <div style={{display:"flex",flexDirection:"column",gap:8,paddingTop:2}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={showAtPosting} onChange={e=>setShowAtPosting(e.target.checked)}/>
-              Show at posting
-            </label>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={matchable} onChange={e=>setMatchable(e.target.checked)}/>
-              Open items (matchable in Reskontro)
-            </label>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/>
-              Inactive
-            </label>
+
+          {/* Behavior — label left, toggle right, tight rows */}
+          <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Show at posting</span>
+              <ToggleSwitch checked={showAtPosting} onChange={setShowAtPosting}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Open items (Reskontro)</span>
+              <ToggleSwitch checked={matchable} onChange={setMatchable}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Inactive</span>
+              <ToggleSwitch checked={inactive} onChange={setInactive}/>
+            </div>
           </div>
         </div>
-        <div style={{padding:"14px 20px",borderTop:`1px solid ${T.border}`,display:"flex",gap:8}}>
-          <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
-          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        <div style={{padding:"14px 20px 18px",marginTop:6,display:"flex",justifyContent:"flex-end",gap:8}}>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:9,padding:"9px 16px",fontWeight:600,fontSize:12.5,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={submit} disabled={!valid} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:9,padding:"9px 20px",fontWeight:700,fontSize:12.5,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
         </div>
       </div>
     </div>
