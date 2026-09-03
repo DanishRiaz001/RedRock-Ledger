@@ -1623,7 +1623,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     }
     return true;
   };
-  const attachReconciliationFile=async(accountCode,period,inboxFileId)=>{
+  const attachReconciliationFile=async(accountCode,period,inboxFileId,opts)=>{
     const row={id:"rf_"+Date.now().toString(36),accountCode,period,inboxFileId};
     setReconciliationFilesState(p=>[...p,row]);
     if(!canEdit)return true;
@@ -1635,7 +1635,13 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       // "it looks attached" and "it's actually saved" never disagree.
       console.error("Reconciliation file attach failed:",error);
       setReconciliationFilesState(p=>p.filter(r=>r.id!==row.id));
-      alert("Couldn't save that attachment — check your connection and try again. It has NOT been saved.");
+      // silent: the one-time legacy-localStorage migration (FinanceTracker.jsx)
+      // calls this in the background on every load for whatever it hasn't
+      // migrated yet — a stale/broken legacy entry (e.g. pointing at an
+      // inbox file that no longer exists) would otherwise pop this alert on
+      // EVERY app open forever, for something the user never asked to do
+      // just now. Migration failures are logged above and simply skipped.
+      if(!(opts&&opts.silent))alert("Couldn't save that attachment — check your connection and try again. It has NOT been saved.");
       return false;
     }
     if(data)setReconciliationFilesState(p=>p.map(r=>r.id===row.id?{...r,id:data.id}:r));

@@ -2166,7 +2166,7 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
 // Desktop-reflowed Dashboard: KPI cards with delta-vs-previous-period badges,
 // a donut (balance sheet mix) + pie (expense mix) pair, an activity feed, and
 // a filterable recent-entries table. Manerty-inspired layout, teal identity.
-function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,recentTabs=[],tabLabels={},auditLog=[],profile,companyProfile}){
+function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,onOpenEntry,recentTabs=[],tabLabels={},auditLog=[],profile,companyProfile}){
   const entriesToday=useMemo(()=>{
     const today=new Date().toISOString().slice(0,10);
     return auditLog.filter(a=>a.entityType==="transaction"&&a.action==="create"&&a.createdAt&&a.createdAt.slice(0,10)===today).length;
@@ -2235,10 +2235,14 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
 
   // Editable homescreen — show/hide widgets, persisted per device.
   const WIDGET_KEY="rr_dashboard_widgets";
-  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,recent:true,banks:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true,recent:true,banks:true};}});
+  const[widgets,setWidgets]=useState(()=>{try{return{kpis:true,charts:true,entries:true,activity:true,...JSON.parse(localStorage.getItem(WIDGET_KEY)||"{}")};}catch{return{kpis:true,charts:true,entries:true,activity:true};}});
   const[customizing,setCustomizing]=useState(false);
   const toggleWidget=(key)=>setWidgets(p=>{const n={...p,[key]:!p[key]};try{localStorage.setItem(WIDGET_KEY,JSON.stringify(n));}catch{}return n;});
-  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Activity feed",recent:"Recently viewed",banks:"Bank accounts"};
+  // "Recently viewed" and "Bank accounts" widgets removed — the sidebar
+  // column was getting crowded with things that duplicated navigation
+  // already in the left sidebar (Bank) or just repeated recent tab visits
+  // with little value of their own.
+  const WIDGET_LABELS={kpis:"KPI cards",charts:"Balance & expense charts",entries:"Entries table",activity:"Transaction overview"};
 
   // Same bordered-panel-with-header-band look used everywhere else in the
   // desktop app now (Voucher details, Postings, Admin panel) — a plain
@@ -2378,12 +2382,13 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
       </div>
 
       {widgets.activity&&<div style={card}>
-        <div style={cardHead}>Activity</div>
+        <div style={cardHead}>Transaction overview</div>
         <div style={{...cardBody,display:"flex",flexDirection:"column",gap:15}}>
           {activity.map(t=>{
             const isIn=isIncomeSK(t.creditCode);
+            const clickable=!!onOpenEntry;
             return(
-              <div key={t.id} style={{display:"flex",gap:11,alignItems:"flex-start"}}>
+              <div key={t.id} onClick={()=>clickable&&onOpenEntry(t)} style={{display:"flex",gap:11,alignItems:"flex-start",cursor:clickable?"pointer":"default"}} className={clickable?"rr-sidebar-item":""}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}><i className={isIn?"ti ti-arrow-down-left":"ti ti-arrow-up-right"} style={{fontSize:15}}/></div>
                 <div style={{minWidth:0,flex:1}}>
                   <div style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
@@ -2396,44 +2401,6 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
           {!activity.length&&<div style={{fontSize:12,color:T.muted}}>Nothing this period yet.</div>}
         </div>
       </div>}
-
-      {widgets.recent&&recentTabs.length>0&&<div style={{...card,marginTop:16}}>
-        <div style={cardHead}>Recently viewed</div>
-        <div style={{...cardBody,display:"flex",flexDirection:"column",gap:2}}>
-          {recentTabs.map(rt=>(
-            <div key={rt} onClick={()=>onNavigate&&onNavigate(rt)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,cursor:"pointer"}} className="rr-sidebar-item">
-              <i className="ti ti-history" style={{fontSize:13,color:T.muted}}/>
-              <span style={{fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tabLabels[rt]||rt}</span>
-            </div>
-          ))}
-        </div>
-      </div>}
-
-      {widgets.banks&&(()=>{
-        const bankAccts=accounts.filter(a=>getSK(a.code)==="1900");
-        if(!bankAccts.length)return null;
-        const getBal=code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0);
-        return(
-          <div style={{...card,marginTop:16}}>
-            <div style={cardHead}>Bank accounts</div>
-            <div style={{...cardBody,display:"flex",flexDirection:"column",gap:11}}>
-              {bankAccts.map(a=>{
-                const bal=getBal(a.code);
-                return(
-                  <div key={a.code} onClick={()=>onNavigate&&onNavigate("Bank")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"3px 0"}} className="rr-sidebar-item">
-                    <span style={{fontSize:12,color:T.text,fontWeight:600}}>{a.name}</span>
-                    <span style={{fontSize:13,fontWeight:700,color:bal>=0?T.waterTeal:T.accent}}>{sign(bal)}</span>
-                  </div>
-                );
-              })}
-              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:10,marginTop:3,display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:12,fontWeight:700,color:T.text}}>Total</span>
-                <span style={{fontSize:13,fontWeight:800,color:T.text}}>{sign(bankAccts.reduce((s,a)=>s+getBal(a.code),0))}</span>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
     </div>
   );

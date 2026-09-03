@@ -362,8 +362,18 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     (async()=>{
       for(const[key,att]of entries){
         const idx=key.lastIndexOf("_");
-        await attachReconciliationFile(key.slice(0,idx),key.slice(idx+1),att.inboxFileId);
+        // silent:true — this is a best-effort background migration the user
+        // never explicitly asked to run right now; a stale/broken legacy
+        // entry (e.g. referencing an inbox file that's since been deleted)
+        // used to pop the same alert attachReconciliationFile shows for a
+        // real, user-initiated attach — surprising someone with a scary
+        // "couldn't save" popup on ordinary page load, for nothing they did.
+        await attachReconciliationFile(key.slice(0,idx),key.slice(idx+1),att.inboxFileId,{silent:true});
       }
+      // Cleared unconditionally, success or failure — a legacy entry that
+      // fails to migrate (e.g. its inbox file no longer exists) will never
+      // succeed on retry either, so leaving it in localStorage would just
+      // mean re-attempting (and re-failing) it silently on every future load.
       try{localStorage.removeItem("rr_bank_attachments");}catch{}
     })();
     // Deliberately runs once reconciliationFiles has actually loaded (not
@@ -619,9 +629,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             );
           })()}
           {clientSwitcherOpen&&(<>
-            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:280,maxHeight:460,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
-              <div style={{padding:10,borderBottom:`1px solid ${T.border}`}}>
-                <input autoFocus placeholder="Search" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:12}}/>
+            {/* Bigger throughout, per request — wider panel, bigger search
+                box, bigger avatar circles and company name text. "Client
+                access" and "Invite new client" were removed from this
+                dropdown entirely (still reachable from Admin Panel → Users). */}
+            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:320,maxHeight:460,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+              <div style={{padding:12,borderBottom:`1px solid ${T.border}`}}>
+                <input autoFocus placeholder="Search companies" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:14,padding:"10px 14px"}}/>
               </div>
               <div style={{overflowY:"auto"}}>
                 {companies.length>0&&(()=>{
@@ -635,7 +649,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   // two clients' books side by side in separate tabs instead
                   // of switching back and forth in one.
                   return(<>
-                    <div style={{padding:"8px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Your companies</div>
+                    <div style={{padding:"9px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Your companies</div>
                     {shown.map(c=>{
                       const active=viewingUserId===user.id&&c.id===activeCompanyId;
                       const href=`${window.location.origin}${window.location.pathname}?company=${c.id}`;
@@ -652,62 +666,21 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                           if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
                           e.preventDefault();
                           setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}} className="rr-sidebar-item">
-                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
-                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-                          {active&&<i className="ti ti-check" style={{fontSize:13,color:T.accent,flexShrink:0}}/>}
+                        }} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}} className="rr-sidebar-item">
+                          <div style={{width:34,height:34,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
+                          <span style={{fontSize:14,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                          {active&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
                         </a>
                       );
                     })}
                   </>);
                 })()}
                 {isAdmin&&createCompany&&(
-                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",cursor:"pointer",color:T.accent,fontSize:12,fontWeight:700}}>
-                    <i className="ti ti-plus" style={{fontSize:14,marginLeft:26-14}}/>Add a company
+                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700}}>
+                    <i className="ti ti-plus" style={{fontSize:15,marginLeft:34-15}}/>Add a company
                   </div>
                 )}
-                {myClientAccess.length>0&&(()=>{
-                  const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
-                  const q=clientSwitcherSearch.trim().toLowerCase();
-                  // Shows the COMPANY the grant is actually for (e.g. "Khalid
-                  // Maroof") — not the owner's own email, which is what this
-                  // used to show even though every grant names one specific
-                  // company, not "everything this login owns". Keyed by the
-                  // grant's own id (was clientUserId, which collides — the
-                  // same owner can grant several separate companies, and
-                  // React would only ever keep one row for all of them).
-                  const shown=myClientAccess.filter(c=>!q||(c.companyName||c.clientEmail).toLowerCase().includes(q));
-                  if(!shown.length)return null;
-                  return(<>
-                    <div style={{padding:"10px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,borderTop:`1px solid ${T.border}`}}>Client access</div>
-                    {shown.map(c=>{
-                      const active=viewingUserId===c.clientUserId&&(!c.companyId||activeCompanyId===c.companyId);
-                      const label=c.companyName||c.clientEmail;
-                      return(
-                        <div key={c.id} onClick={()=>{
-                          setViewingUserId(c.clientUserId);
-                          // Jump straight to the granted company once its
-                          // list has loaded (the companies-fetch effect
-                          // filters to exactly this grant's company anyway,
-                          // but this avoids a stale activeCompanyId lingering
-                          // from whatever was active before the switch).
-                          if(c.companyId)setActiveCompanyId(c.companyId);
-                          setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
-                          <div style={{width:26,height:26,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{initials(label)}</div>
-                          <span style={{fontSize:12,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
-                          <span style={{fontSize:9,color:T.muted,textTransform:"capitalize",flexShrink:0}}>{c.accessLevel}</span>
-                        </div>
-                      );
-                    })}
-                  </>);
-                })()}
               </div>
-              {isAdmin&&(
-                <button onClick={()=>{setClientSwitcherOpen(false);setShowInviteClient(true);}} style={{display:"flex",alignItems:"center",gap:6,background:T.accent,color:"#fff",border:"none",borderTop:`1px solid ${T.border}`,padding:"11px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  <i className="ti ti-user-plus" style={{fontSize:14}}/>Invite new client
-                </button>
-              )}
             </div>
           </>)}
         </div>
@@ -1140,7 +1113,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
         ):(<>
 
-        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog} profile={profile} companyProfile={companyProfile}/>}
+        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog} profile={profile} companyProfile={companyProfile}/>}
 
         {tab==="Entries"&&(
           <div style={{maxWidth:1000}}>
