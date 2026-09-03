@@ -62,6 +62,19 @@
       body.rr-panel-resizing{cursor:col-resize!important;user-select:none!important;}
       body.rr-panel-resizing *{user-select:none!important;}
       body.rr-panel-resizing img{transition:none!important;}
+      /* A resizable split panel with a PDF/file preview (ResizableSplit +
+         SignedFileViewer) has an <iframe> sitting right where the mouse
+         has to travel to drag the panel NARROWER. An iframe is a separate
+         document — once the cursor crosses into it mid-drag, further
+         mousemove events fire inside the iframe's own document, not the
+         parent window's, so the drag listener (attached to `window`)
+         silently stops receiving them and the resize freezes at whatever
+         width it was at the moment the cursor entered the iframe. Dragging
+         WIDER (away from the iframe) always worked; dragging narrower
+         (into the iframe) got stuck — exactly the reported "can't reduce
+         size" bug. Disabling pointer events on every iframe for the
+         duration of the drag lets the mouse pass straight through instead. */
+      body.rr-panel-resizing iframe{pointer-events:none!important;}
       .rr-glass-btn{
         background:rgba(255,255,255,0.45);
         border:1px solid #E4EDED;

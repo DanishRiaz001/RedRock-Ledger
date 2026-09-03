@@ -126,9 +126,15 @@ function SignedFileViewer({storagePath,type,name,style}){
   );
 
   if(!isImage)return(
-    <div style={{...style,padding:0,display:"flex",flexDirection:"column"}}>
+    // overflow:hidden + minHeight:0 on the wrapper — the image branch below
+    // already had both; this one didn't, so if any ancestor's height ever
+    // failed to resolve to a definite value the iframe (a flex child with
+    // no intrinsic height of its own) could grow to its content's size and
+    // spill past the bottom of the fixed preview panel instead of getting
+    // its own internal scrollbar the way it's meant to.
+    <div style={{...style,padding:0,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
       <Toolbar/>
-      <iframe src={url} style={{border:"none",background:"#fff",width:"100%",flex:1}} title={name||"attachment"}/>
+      <iframe src={url} style={{border:"none",background:"#fff",width:"100%",flex:1,minHeight:0}} title={name||"attachment"}/>
     </div>
   );
   return(

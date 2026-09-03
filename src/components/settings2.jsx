@@ -1650,7 +1650,12 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
     return(
       <div style={{height:"calc(100vh - 100px)",display:"flex",flexDirection:"column",minHeight:0}}>
         <div style={{flex:1,minHeight:0,display:"flex"}}>
-        <ResizableSplit defaultRightWidth={640} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
+        {/* Default width was a flat 640px — on a wide monitor that's a much
+            bigger share of the screen than intended (the list column is
+            what someone actually scans first). ~30% of the real window
+            width instead, still bounded by the same min/max so it's never
+            unreasonably cramped or huge on any screen size. */}
+        <ResizableSplit defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
           <div style={{paddingRight:16,minWidth:0,height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexShrink:0}}>
               <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
