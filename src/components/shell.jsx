@@ -172,6 +172,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
   const draggingRef=React.useRef(false);
   const leftRef=React.useRef(null);
   const handleRef=React.useRef(null);
+  const panelRef=React.useRef(null);
   const HANDLE_W=14;
   // Both things at once: the preview stays pinned to the TRUE right edge of
   // the browser window (position:fixed) rather than wherever a flex row
@@ -215,6 +216,13 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
         frame=null;
         if(handleRef.current)handleRef.current.style.right=pending+"px";
         if(leftRef.current)leftRef.current.style.marginRight=(pending+HANDLE_W)+"px";
+        // The panel itself used to only pick up its new width at mouseup
+        // (via the eventual setRightWidth re-render) — everything else
+        // (the handle strip, the left content's margin) moved live every
+        // frame, but the actual preview panel stayed frozen at its old
+        // width until you let go, then snapped. Writing it here too makes
+        // the whole drag track the cursor continuously, panel included.
+        if(panelRef.current)panelRef.current.style.width=pending+"px";
         // Some screens keep a right-aligned toolbar OUTSIDE the split's own
         // `left` content (e.g. a filter bar's action-button cluster sitting
         // above the split) — that cluster would otherwise sit at the true
@@ -276,7 +284,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
         <div ref={handleRef} onMouseDown={startDrag} title="Drag left to enlarge the preview" style={{width:HANDLE_W,position:"fixed",top:60,bottom:0,right:rightWidth,cursor:"col-resize",zIndex:61,background:"#F5F9FA"}}>
           <div style={{position:"sticky",top:30,width:4,height:44,margin:"0 auto",borderRadius:2,background:T.accent}}/>
         </div>
-        <div style={{
+        <div ref={panelRef} style={{
           // Fixed to the real window edge, independent of whatever
           // max-width the surrounding page content happens to have — the
           // matching marginRight on `left` above is what actually keeps
