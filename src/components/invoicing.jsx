@@ -7,10 +7,23 @@ import { getSignedUrl } from "../lib/storage.js";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { BankAccountDetailsModal, ConicChart } from "./reports.jsx";
 
+// Codes covering ordinary domestic sales/purchases at the standard rates —
+// what the vast majority of entries actually use. Everything else (import,
+// reverse-charge foreign services, gold/climate quotas, and the
+// JUST/TAP/TILB/UTTAK adjustment codes) is genuinely advanced — Tripletex
+// itself gates those behind a separate "Avanserte mva-innstillinger"
+// toggle, off by default, for exactly this reason: most businesses never
+// need them, and burying them among the everyday codes just makes the
+// common ones harder to find.
+const STANDARD_MVA_CODES=new Set(["0","1","11","12","13","3","31","32","33","5","51","52","6","7"]);
 function VATCodesScreen({accounts}){
+  const[showAdvanced,setShowAdvanced]=useState(false);
   const nameFor=code=>{const a=accounts.find(x=>x.code===code);return a?a.name:null;};
-  const outputCodes=MVA_CODES.filter(c=>c.direction==="output");
-  const inputCodes=MVA_CODES.filter(c=>c.direction==="input");
+  const isStandard=c=>STANDARD_MVA_CODES.has(c.code);
+  const outputCodes=MVA_CODES.filter(c=>c.direction==="output"&&isStandard(c));
+  const inputCodes=MVA_CODES.filter(c=>c.direction==="input"&&isStandard(c));
+  const advancedOutputCodes=MVA_CODES.filter(c=>c.direction==="output"&&!isStandard(c));
+  const advancedInputCodes=MVA_CODES.filter(c=>c.direction==="input"&&!isStandard(c));
   const Table=({codes})=>(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
@@ -44,6 +57,19 @@ function VATCodesScreen({accounts}){
 
       <div style={{fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Inngående avgift (purchases)</div>
       <Table codes={inputCodes}/>
+
+      <div onClick={()=>setShowAdvanced(o=>!o)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:showAdvanced?14:20,userSelect:"none"}}>
+        <i className={`ti ti-chevron-${showAdvanced?"down":"right"}`} style={{fontSize:13,color:T.sub}}/>
+        <span style={{fontSize:12,fontWeight:700,color:T.sub}}>Advanced codes</span>
+        <span style={{fontSize:10.5,color:T.muted}}>— import, reverse-charge foreign services, gold/climate quotas, adjustments ({advancedOutputCodes.length+advancedInputCodes.length})</span>
+      </div>
+      {showAdvanced&&(<>
+        <p style={{fontSize:11.5,color:T.muted,marginTop:-6,marginBottom:14}}>Tripletex itself keeps these behind a separate "Avanserte mva-innstillinger" toggle, off by default — most businesses never touch them. Several don't have a settlement account documented in the source material either, so double-check any of these with your accountant before relying on them for a real posting.</p>
+        <div style={{fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Utgående avgift — advanced</div>
+        <Table codes={advancedOutputCodes}/>
+        <div style={{fontSize:12,fontWeight:800,color:"#D97706",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Inngående avgift — advanced</div>
+        <Table codes={advancedInputCodes}/>
+      </>)}
 
       <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"14px 16px",fontSize:11,color:T.muted}}>
         VAT is currently tracked as a rate + amount on the sale/purchase entry itself, not posted as separate lines to the settlement accounts above — simpler day to day, and your VAT reports already total correctly from it. Posting real separate VAT lines to 2700-2712 is a bigger structural change worth planning deliberately, not something to bolt on here.
