@@ -666,7 +666,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                           if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
                           e.preventDefault();
                           setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}} className="rr-sidebar-item">
+                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
                           <div style={{width:34,height:34,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
                           <span style={{fontSize:14,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                           {active&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
@@ -676,7 +676,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   </>);
                 })()}
                 {isAdmin&&createCompany&&(
-                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700}}>
+                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} onMouseEnter={e=>e.currentTarget.style.background="#EEF1F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700,background:"transparent"}}>
                     <i className="ti ti-plus" style={{fontSize:15,marginLeft:34-15}}/>Add a company
                   </div>
                 )}
@@ -687,7 +687,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         <div style={{flex:1}}/>
         <div style={{position:"relative",width:260}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:13}}/>
-          <input ref={searchInputRef} placeholder="Search within report…" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} onFocus={()=>setHeaderSearchFocused(true)} onBlur={()=>setTimeout(()=>setHeaderSearchFocused(false),150)} onKeyDown={e=>{if(e.key==="Enter"){setTab("Entries");setHeaderSearchFocused(false);searchInputRef.current&&searchInputRef.current.blur();}if(e.key==="Escape"){setEntrySearch("");setHeaderSearchFocused(false);}}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
+          <input ref={searchInputRef} placeholder="Search" title="Ctrl/Cmd+K to focus" value={entrySearch} onChange={e=>setEntrySearch(e.target.value)} onFocus={()=>setHeaderSearchFocused(true)} onBlur={()=>setTimeout(()=>setHeaderSearchFocused(false),150)} onKeyDown={e=>{if(e.key==="Enter"){setTab("Entries");setHeaderSearchFocused(false);searchInputRef.current&&searchInputRef.current.blur();}if(e.key==="Escape"){setEntrySearch("");setHeaderSearchFocused(false);}}} style={{...inp,paddingLeft:28,height:32,fontSize:12,background:T.bg}}/>
           {headerSearchFocused&&entrySearch.trim()&&(
             <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,width:340,maxHeight:420,overflowY:"auto",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 12px 32px rgba(0,0,0,.16)",zIndex:400,padding:"6px 0"}}>
               {!headerSearchHasResults&&(
