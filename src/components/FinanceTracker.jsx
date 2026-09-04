@@ -1252,9 +1252,12 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {tab==="NewVoucher"&&(
-          <div style={{maxWidth:1400}}>
-            <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}}/>
-          </div>
+          // NOT wrapped in a maxWidth container — NewEntryForm's own
+          // ResizableSplit already pins its attachment preview to the
+          // TRUE window edge and caps the form side itself (1100px), so
+          // an outer cap here just left a dead gray gap between the two
+          // whenever the window was wider than the cap.
+          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}}/>
         )}
 
         {tab==="Accounts"&&(

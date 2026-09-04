@@ -4498,13 +4498,18 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 return(
-              <div style={{borderRadius:10,marginBottom:8,maxHeight:rows.length>4?248:"none",overflowY:rows.length>4?"auto":"visible"}}>
+              // No scroll cap here on purpose — a maxHeight+overflow:auto
+              // wrapper clipped the account dropdown's own flyout list the
+              // moment it opened past that box's edge, AND artificially
+              // limited how many lines were comfortably visible. As many
+              // lines as needed just grow the page instead.
+              <div style={{borderRadius:10,marginBottom:8}}>
                 <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?440:0,overflowX:isDesktop?"visible":"auto"}}>
-                  {(()=>{const stickyHead={...cellBase,position:"sticky",top:0,zIndex:1,background:"#FAFDFC"};return(<>
-                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
-                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Incl. VAT</div>
-                    <div style={stickyHead}/>
+                  {(()=>{const headCell={...cellBase,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"};return(<>
+                    <div style={headCell}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                    <div style={headCell}>VAT</div>
+                    <div style={{...headCell,textAlign:"right"}}>Incl. VAT</div>
+                    <div style={headCell}/>
                   </>);})()}
                   {rows.map((r,idx)=>{
                     const acc=accounts.find(a=>a.code===r.accountCode);
@@ -4569,7 +4574,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               </div>
                 );
               })()}
-              <button onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{...btnGhost,padding:"3px 7px",fontSize:9,color:T.accent,borderColor:T.accent}}>+ Add Line</button>
+              {/* Plain text link, not a bordered pill button — a line
+                  add is a lightweight, frequent action here, not a
+                  "real" button-weight action. */}
+              <div onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{display:"inline-block",marginTop:6,color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
 
               {/* Running Debit / Credit / VAT / Difference — debit is what's
                   entered across the cost-account line(s) above; credit is the
@@ -4611,27 +4619,32 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               </div>
             </div>
 
-            {/* Payment — a single clean dropdown. Nothing selected → posts as
-                a plain open item to Accounts Payable/Receivable. Pick Cash
-                or a bank → settles the amount against that account, on
-                whichever date it was really paid (defaults to the invoice
-                date, editable). */}
+            {/* Payment — a switch, not an implied "blank option" in the
+                dropdown. Off → posts as a plain open item to Accounts
+                Payable/Receivable. On → pick which bank/cash account to
+                settle it against, the amount, and when it was really
+                paid (defaults to the invoice date, editable). */}
             <div style={sectionBox}>
-              <div style={sectionHead}>Payment</div>
+              <div style={{...sectionHead,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span>Payment</span>
+                <div onClick={()=>{
+                  if(invRegisterPayment){setInvRegisterPayment("");setInvPaymentAmount("");}
+                  else if(bankAccounts.length){setInvRegisterPayment(bankAccounts[0].code);if(!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));}
+                }} title={invRegisterPayment?"Turn off — post as an open item instead":"Turn on — register a payment now"} style={{width:34,height:20,borderRadius:10,position:"relative",flexShrink:0,cursor:bankAccounts.length?"pointer":"default",background:invRegisterPayment?T.accent:T.border,transition:"background .15s"}}>
+                  <div style={{position:"absolute",top:2,left:invRegisterPayment?16:2,width:16,height:16,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.25)",transition:"left .15s"}}/>
+                </div>
+              </div>
               <div style={sectionBody}>
-                {/* Account / Amount / Date all on one row now — was
-                    Amount beside the account dropdown and Date on its
-                    own row below; there's no reason a payment's three
-                    facts need two rows to state. */}
-                <div style={{display:"flex",gap:8}}>
-                  <div style={{flex:5}}>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
-                    <select value={invRegisterPayment} onChange={e=>{setInvRegisterPayment(e.target.value);if(e.target.value&&!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));if(!e.target.value)setInvPaymentAmount("");}} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
-                      <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
-                      {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                    </select>
-                  </div>
-                  {invRegisterPayment&&(<>
+                {invRegisterPayment?(<>
+                  {/* Account / Amount / Date all on one row — there's no
+                      reason a payment's three facts need two rows. */}
+                  <div style={{display:"flex",gap:8}}>
+                    <div style={{flex:5}}>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Payment account</div>
+                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
+                        {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                      </select>
+                    </div>
                     <div style={{flex:2}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
                       <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
@@ -4640,10 +4653,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
                       <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{fontSize:12,padding:"7px 10px"}}/>
                     </div>
-                  </>)}
-                </div>
-                {invRegisterPayment&&(
+                  </div>
                   <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
+                </>):(
+                  <div style={{fontSize:11,color:T.muted}}>Will be registered as an open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"}). Switch on to record a payment against a bank or cash account now.</div>
                 )}
               </div>
             </div>
