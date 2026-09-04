@@ -3502,6 +3502,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const[invVatCode,setInvVatCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
   const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode}]
+  const[invRowMenuOpen,setInvRowMenuOpen]=useState(null); // index of the Costs/Sales-lines row whose ⋮ menu is open, or null
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
@@ -4423,7 +4424,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 section stacked in one long column; mobile stays exactly
                 as it was (this wrapper collapses to display:contents,
                 so its children just rejoin the outer flex column). */}
-            <div style={isDesktop?{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:12,alignItems:"start"}:{display:"contents"}}>
+            <div style={isDesktop?{display:"grid",gridTemplateColumns:"0.85fr 1fr",gap:12,alignItems:"start"}:{display:"contents"}}>
             {/* Invoice details — supplier/customer, invoice no/due date, and
                 ONE description for the whole voucher, matching the reference
                 voucher's "Fakturadetaljer" section instead of scattering
@@ -4481,32 +4482,35 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               <div style={sectionHead}>{invIsCustomer?"Sales lines":"Costs"}</div>
               <div style={{padding:isDesktop?"10px 14px 14px":"10px 14px 14px"}}>
               {(()=>{
-                // Account narrower, VAT wider (its own text — code, rate,
-                // and name — was cramped at the old width) — plus a live
-                // Excl. VAT / VAT amount breakdown next to the editable
-                // Incl. VAT amount, so it's never ambiguous which figure
-                // you're typing.
-                const GRID_COLS="1.1fr 150px 90px 90px 100px 26px";
-                const cellBase={padding:"7px 8px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-                const vDivider={borderRight:`1px solid ${T.border}`};
+                // Simplified to just Account / VAT / Amount — the old
+                // Excl. VAT and VAT amt read-only breakdown columns are
+                // gone (that math still runs, it just surfaces once, in
+                // the running totals below, not duplicated per line).
+                // Account gets most of the width; VAT and Amount sit
+                // close together on the right. No cell borders anywhere
+                // — an open list, not a spreadsheet grid — and the
+                // header stays put (position:sticky) once there are more
+                // lines than fit in the scroll area below it.
+                const GRID_COLS="1.7fr 150px 130px 30px";
+                const cellBase={padding:"8px 6px",boxSizing:"border-box"};
                 const rows=[
                   {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 return(
-              <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:8}}>
-                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?660:0,overflowX:isDesktop?"visible":"auto"}}>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:invIsCustomer?T.green:T.red,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Excl. VAT</div>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>VAT amt</div>
-                  <div style={{...cellBase,...vDivider,background:"#fff",fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Incl. VAT</div>
-                  <div style={{...cellBase,background:"#fff"}}/>
+              <div style={{borderRadius:10,marginBottom:8,maxHeight:rows.length>4?248:"none",overflowY:rows.length>4?"auto":"visible"}}>
+                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?440:0,overflowX:isDesktop?"visible":"auto"}}>
+                  {(()=>{const stickyHead={...cellBase,position:"sticky",top:0,zIndex:1,background:"#FAFDFC"};return(<>
+                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
+                    <div style={{...stickyHead,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>Incl. VAT</div>
+                    <div style={stickyHead}/>
+                  </>);})()}
                   {rows.map((r,idx)=>{
                     const acc=accounts.find(a=>a.code===r.accountCode);
                     const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
                     const isLastRow=idx===rows.length-1;
-                    const rowCell=isLastRow?{...cellBase,borderBottom:"none"}:cellBase;
+                    const rowCell={...cellBase,borderTop:`1px solid ${T.border}`};
                     const update=patch=>{
                       if(r.isPrimary){
                         if("accountCode"in patch)setInvAccountCode(patch.accountCode);
@@ -4516,39 +4520,43 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                       }
                     };
-                    // The one editable amount is Incl. VAT (the gross figure
-                    // a supplier invoice actually states) — Excl. VAT and
-                    // VAT amt are just its breakdown by this line's own VAT
-                    // code, shown read-only so there's never a question of
-                    // which figure the Amount box holds.
-                    const rowVc=findVatCode(r.vatCode,invVatDirection);
-                    const gross=Math.abs(parseFloat(r.amount)||0);
-                    const rowVatAmt=rowVc&&rowVc.rate?Math.round((gross-(gross/(1+rowVc.rate/100)))*100)/100:0;
-                    const rowNet=Math.round((gross-rowVatAmt)*100)/100;
-                    const readOnlyCell={fontSize:12,color:T.muted,textAlign:"right",padding:"6px 7px"};
                     return(<React.Fragment key={idx}>
-                      <div style={{...rowCell,...vDivider}}>
+                      <div style={rowCell}>
                         <AccDrop value={r.accountCode||""} onChange={code=>{
                           const a=accounts.find(x=>x.code===code);
                           update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
                         }} accounts={filteredAccounts}/>
                       </div>
-                      <div style={{...rowCell,...vDivider}}>
+                      <div style={rowCell}>
                         <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
                       </div>
-                      <div style={{...rowCell,...vDivider,...readOnlyCell}}>{gross?fmt(rowNet):"—"}</div>
-                      <div style={{...rowCell,...vDivider,...readOnlyCell}}>{gross?fmt(rowVatAmt):"—"}</div>
-                      <div style={{...rowCell,...vDivider}}>
+                      <div style={rowCell}>
                         {/* Tabbing out of the last row's Amount box starts a
                             new line automatically — matches the quick-entry
                             feel of a real spreadsheet/voucher table instead
                             of forcing a click on "+ Add Line" every time. */}
                         <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                           if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
-                        }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"6px 7px",width:"100%",textAlign:"right"}}/>
+                        }} style={{...inpSm,background:"transparent",border:"none",fontSize:12,fontWeight:700,padding:"6px 4px",width:"100%",textAlign:"right"}}/>
                       </div>
-                      <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {!r.isPrimary&&<button onClick={()=>setInvExtraLines(p=>p.filter((_,i)=>i!==r.li))} style={{background:T.redLight,color:T.red,border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontWeight:800,fontSize:12,lineHeight:1}}>−</button>}
+                      <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                        {/* Vertical ⋮ menu — Copy duplicates this line,
+                            Delete removes it (Delete hidden on the
+                            primary line, which can't be removed). */}
+                        <button onClick={()=>setInvRowMenuOpen(o=>o===idx?null:idx)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,padding:6,borderRadius:6,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                          <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
+                          <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
+                          <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
+                        </button>
+                        {invRowMenuOpen===idx&&(
+                          <>
+                            <div onClick={()=>setInvRowMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                            <div style={{position:"absolute",top:"100%",right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 22px rgba(20,40,50,0.14)",padding:5,width:118}}>
+                              <div onClick={()=>{setInvExtraLines(p=>[...p,{accountCode:r.accountCode,vatCode:r.vatCode,amount:r.amount}]);setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>Copy</div>
+                              {!r.isPrimary&&<div onClick={()=>{setInvExtraLines(p=>p.filter((_,i)=>i!==r.li));setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.red,cursor:"pointer"}}>Delete</div>}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </React.Fragment>);
                   })}
@@ -4585,7 +4593,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(Math.abs(invTotal))}</div>
                     </div>
                     <div>
-                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Of which VAT</div>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
                       <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(invVatTotal)}</div>
                     </div>
                     <div>
@@ -4606,28 +4614,32 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             <div style={sectionBox}>
               <div style={sectionHead}>Payment</div>
               <div style={sectionBody}>
+                {/* Account / Amount / Date all on one row now — was
+                    Amount beside the account dropdown and Date on its
+                    own row below; there's no reason a payment's three
+                    facts need two rows to state. */}
                 <div style={{display:"flex",gap:8}}>
-                  <div style={{flex:7}}>
+                  <div style={{flex:5}}>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Register Payment</div>
                     <select value={invRegisterPayment} onChange={e=>{setInvRegisterPayment(e.target.value);if(e.target.value&&!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));if(!e.target.value)setInvPaymentAmount("");}} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
                       <option value="">No payment — keep as open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"})</option>
                       {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                     </select>
                   </div>
-                  {invRegisterPayment&&(
-                    <div style={{flex:3}}>
+                  {invRegisterPayment&&(<>
+                    <div style={{flex:2}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
                       <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
                     </div>
-                  )}
+                    <div style={{flex:2}}>
+                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
+                      <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{fontSize:12,padding:"7px 10px"}}/>
+                    </div>
+                  </>)}
                 </div>
-                {invRegisterPayment&&(<>
-                  <div style={{maxWidth:180}}>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Payment date</div>
-                    <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{fontSize:12,padding:"7px 10px"}}/>
-                  </div>
+                {invRegisterPayment&&(
                   <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
-                </>)}
+                )}
               </div>
             </div>
             </div>
