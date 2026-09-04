@@ -120,7 +120,7 @@ function BackHeader({title,sub,onBack}){
 const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"6px 8px",width:"100%",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
-function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact,contactId}){
+function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact,contactId,inputStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const[creating,setCreating]=useState(false);
@@ -233,7 +233,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
           // through a whole voucher without touching the mouse.
           if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
         }}
-        style={{...selSm,minHeight:28,cursor:"text",paddingRight:22}}
+        style={{...selSm,minHeight:28,cursor:"text",paddingRight:22,...inputStyle}}
       />
       <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
       {open&&(
@@ -316,7 +316,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
 // Tripletex's own real searchable VAT dropdown rather than a plain native
 // select. VAT lists are short (a handful of codes) so no grouping is
 // needed, just live filtering by code, rate, or name.
-function VatDrop({value,onChange,options,disabled=false}){
+function VatDrop({value,onChange,options,disabled=false,inputStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const inputRef=React.useRef(null);
@@ -355,7 +355,7 @@ function VatDrop({value,onChange,options,disabled=false}){
           if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
           if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
         }}
-        style={{...selSm,fontSize:10.5,minHeight:28,cursor:disabled?"default":"text",paddingRight:20}}
+        style={{...selSm,fontSize:10.5,minHeight:28,cursor:disabled?"default":"text",paddingRight:20,...inputStyle}}
       />
       {!disabled&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>}
       {open&&!disabled&&(

@@ -4520,15 +4520,20 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                       }
                     };
+                    {/* A line, not a box — Account/VAT/Amount all share this
+                        underline-only look now (flat background, no border
+                        except a hairline underneath), instead of each field
+                        sitting in its own bordered pill. */}
+                    const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,paddingLeft:2,paddingRight:2};
                     return(<React.Fragment key={idx}>
                       <div style={rowCell}>
                         <AccDrop value={r.accountCode||""} onChange={code=>{
                           const a=accounts.find(x=>x.code===code);
                           update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
-                        }} accounts={filteredAccounts}/>
+                        }} accounts={filteredAccounts} inputStyle={lineField}/>
                       </div>
                       <div style={rowCell}>
-                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)}/>
+                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={lineField}/>
                       </div>
                       <div style={rowCell}>
                         {/* Tabbing out of the last row's Amount box starts a
@@ -4537,7 +4542,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                             of forcing a click on "+ Add Line" every time. */}
                         <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                           if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
-                        }} style={{...inpSm,background:"transparent",border:"none",fontSize:12,fontWeight:700,padding:"6px 4px",width:"100%",textAlign:"right"}}/>
+                        }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"right"}}/>
                       </div>
                       <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
                         {/* Vertical ⋮ menu — Copy duplicates this line,
@@ -4662,13 +4667,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     const attached=form.attachmentId?inboxFiles.find(f=>String(f.id)===String(form.attachmentId)):null;
     return(
       <ResizableSplit
-        // Capped to 60% of the screen width regardless of whether the
-        // preview panel is open or collapsed — without this, hiding the
-        // preview let the form stretch edge-to-edge (ResizableSplit's left
-        // side is flex:1, so it fills whatever's left), which made every
-        // field awkwardly wide instead of just leaving the freed space
-        // blank the way collapsing a side panel normally should.
-        left={<div style={{maxWidth:"60vw"}}>{formCard}</div>}
+        // A fixed cap (not vw-based) — 60vw was measured against the
+        // WHOLE window, not the column ResizableSplit actually leaves
+        // this side once the preview panel's own width is subtracted,
+        // so on a normal-width window it left a big blank gap between
+        // the form and the panel instead of the form actually filling
+        // its column. A fixed max still keeps fields from stretching
+        // absurdly wide on an ultra-wide monitor with the preview
+        // collapsed, without shortchanging the common case.
+        left={<div style={{maxWidth:1100}}>{formCard}</div>}
         collapsible={true}
         collapseLabel="Hide preview"
         expandLabel="Show preview"
