@@ -134,6 +134,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   const[creatingContact,setCreatingContact]=useState(false);
   const[newContactName,setNewContactName]=useState("");
   const[newContactType,setNewContactType]=useState("supplier");
+  const[dropPos,setDropPos]=useState(null);
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const sel=accounts.find(a=>a.code===value);
@@ -179,7 +180,15 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     closeAndRevert();
   };
 
-  const openAndSearch=()=>{setOpen(true);setQ("");};
+  // Fixed from the input's own screen coordinates (same fix as Menu3 and
+  // AccDropFlat) instead of absolute-relative-to-container — otherwise any
+  // ancestor with overflow:hidden/auto for its own rounded corners (a
+  // scrolling postings table, a clipped card) clips this list to invisible
+  // the moment it opens near that ancestor's edge.
+  const openAndSearch=()=>{
+    if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:Math.max(r.width,320)});}
+    setOpen(true);setQ("");
+  };
   const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");setCreatingContact(false);setNewContactName("");};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. If it's just moving to the code/name inputs inside the
@@ -236,10 +245,10 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
         style={{...selSm,minHeight:28,cursor:"text",paddingRight:22,...inputStyle}}
       />
       <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
-      {open&&(
+      {open&&dropPos&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280,minWidth:320}}>
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280}}>
             {(filtered.length>0||contactMatches.length>0)&&(
               <div style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"6px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Type</div>
@@ -330,7 +339,14 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
     return options.filter(o=>o.code.toLowerCase().includes(ql)||o.name.toLowerCase().includes(ql)||String(o.rate).includes(ql));
   },[options,q]);
 
-  const openAndSearch=()=>{if(disabled)return;setOpen(true);setQ("");};
+  const[dropPos,setDropPos]=useState(null);
+  // Fixed from the input's own screen coordinates (same fix as AccDrop/
+  // AccDropFlat/Menu3) instead of absolute-relative-to-container.
+  const openAndSearch=()=>{
+    if(disabled)return;
+    if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
+    setOpen(true);setQ("");
+  };
   const closeAndRevert=()=>{setOpen(false);setQ("");};
   const handleBlur=e=>{
     const next=e.relatedTarget;
@@ -358,10 +374,10 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
         style={{...selSm,fontSize:10.5,minHeight:28,cursor:disabled?"default":"text",paddingRight:20,...inputStyle}}
       />
       {!disabled&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>}
-      {open&&!disabled&&(
+      {open&&!disabled&&dropPos&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:230}}>
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:230}}>
             <div style={{overflowY:"auto",maxHeight:230}}>
               {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No VAT codes found</div>}
               {filtered.map((o,i)=>(
@@ -536,19 +552,34 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
     onContactPick(c.id);
     setOpen(false);setQ("");
   };
+  const triggerRef=React.useRef(null);
+  const[pos,setPos]=useState(null);
+  // Rows near the bottom of a scrolling postings table (or any container
+  // with overflow:hidden/auto for its own rounded corners) clipped this
+  // dropdown to invisible the instant it opened past that ancestor's
+  // edge — exactly what looked like "typing but no list shows up".
+  // Same fix as Menu3 elsewhere in this file: position the popup
+  // `fixed` from the trigger's own screen coordinates instead of
+  // `absolute` relative to whatever ancestor happens to clip.
+  const openDrop=()=>{
+    if(open){setOpen(false);return;}
+    const r=triggerRef.current.getBoundingClientRect();
+    setPos({top:r.bottom+3,left:r.left,width:r.width});
+    setQ("");setOpen(true);
+  };
   return(
     <div style={{position:"relative"}}>
-      <div onClick={()=>{setOpen(o=>!o);setQ("");}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
+      <div ref={triggerRef} onClick={openDrop} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
         {/* Was fontSize:9 — smaller than the VAT-code dropdown right below
             it, backwards from the actual hierarchy (the account is the
             primary choice on this line, VAT is a secondary detail). */}
         {sel?<span style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {displayName}</span>:<span style={{fontSize:12,color:T.muted}}>— Select Account —</span>}
         <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
       </div>
-      {open&&(
+      {open&&pos&&(
         <>
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:220}}>
+          <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:220}}>
             <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
               <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
             </div>

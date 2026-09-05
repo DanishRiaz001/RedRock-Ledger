@@ -561,9 +561,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           {Object.keys(accountMap).length===0&&<div style={{fontSize:12,color:T.muted,padding:"8px 0"}}>No mappings yet.</div>}
           {Object.entries(accountMap).map(([from,to])=>(
             <div key={from} style={{display:"grid",gridTemplateColumns:"1fr 1fr 30px",gap:8,alignItems:"center",marginBottom:6}}>
-              <select value={from} onChange={e=>{const v=e.target.value;setAccountMap(m=>{const n={...m};delete n[from];n[v]=to;return n;});}} style={{...inp,fontSize:12}}>
-                {parsed.accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-              </select>
+              <AccDrop value={from} onChange={v=>setAccountMap(m=>{const n={...m};delete n[from];n[v]=to;return n;})} accounts={parsed.accounts}/>
               <AccDrop value={to} onChange={v=>setAccountMap(m=>({...m,[from]:v}))} accounts={accounts}/>
               <button onClick={()=>setAccountMap(m=>{const n={...m};delete n[from];return n;})} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>
             </div>
@@ -2935,10 +2933,7 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
           </div>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Deductions payable account (optional)</div>
-            <select value={deductionsAccount} onChange={e=>setDeductionsAccount(e.target.value)} style={{...inp,width:260}}>
-              <option value="">— none, net pay only —</option>
-              {liabAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-            </select>
+            <div style={{width:260}}><AccDrop value={deductionsAccount} onChange={setDeductionsAccount} accounts={liabAccounts}/></div>
           </div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:14}}>
             <thead><tr style={{color:T.muted,fontSize:11}}>

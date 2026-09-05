@@ -2819,10 +2819,11 @@ function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose})
             <span style={{fontSize:13,fontWeight:700,color:T.text}}>Change account ({currentCode} side)</span>
           </label>
           {changeAccount&&(
-            <select value={newAccountCode} onChange={e=>setNewAccountCode(e.target.value)} style={{...selSm,width:"100%"}}>
-              <option value="">— Select account —</option>
-              {sortedAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-            </select>
+            // Themed searchable combobox, matching the account picker used
+            // everywhere else in the app (New Entry, the voucher editor) —
+            // was a plain native <select>, which rendered with the OS's own
+            // unstyled dark dropdown instead of the app's own look.
+            <AccDrop value={newAccountCode} onChange={setNewAccountCode} accounts={sortedAccounts}/>
           )}
 
           <label style={{display:"flex",alignItems:"center",gap:8,cursor:vatDirection?"pointer":"default",opacity:vatDirection?1:0.45}}>
