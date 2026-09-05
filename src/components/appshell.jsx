@@ -16,6 +16,14 @@ import FinanceTracker from "./FinanceTracker.jsx";
 import { isNativeApp } from "../lib/native.js";
 import MobileApp from "./mobile/MobileApp.jsx";
 
+// Single source of truth for "no company profile row exists yet" — used
+// both as the initial state AND as the reset value when switching to a
+// company that has none. Without the reset, switching companies left
+// whichever profile was already in memory on screen (and editable/
+// saveable) as if it belonged to the newly-selected company — the
+// "changes to one company leaking into another" symptom.
+const DEFAULT_COMPANY_PROFILE={companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",phone:"",faxNumber:"",website:"",postcode:"",city:"",formOfBusiness:"",currency:"PKR",language:"English",country:"PK",trackProjects:false,municipality:"",municipalityStartDate:""};
+
 function AppShell({user}){
   const[profile,setProfile]=useState(null);
   const[profiles,setProfiles]=useState([]);
@@ -229,7 +237,7 @@ function AppShell({user}){
   // Default 'PK' — your existing PKR-denominated data belongs on the
   // Pakistan side per your instruction that current data carries over there;
   // new signups pick explicitly during onboarding.
-  const[companyProfile,setCompanyProfile]=useState({companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",country:"PK",trackProjects:false,municipality:"",municipalityStartDate:""});
+  const[companyProfile,setCompanyProfile]=useState(DEFAULT_COMPANY_PROFILE);
   const[attachedTxnIds,setAttachedTxnIds]=useState(()=>new Set());
   // Which Inbox files already have a real attachment link somewhere —
   // once true, that file should stop showing up in the main Inbox list
@@ -475,6 +483,11 @@ function AppShell({user}){
       if(cpR.data){
         const d=cpR.data;
         setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
+      } else {
+        // This company has no company_profile row yet (e.g. it was just
+        // created) — reset to blank instead of leaving whichever other
+        // company's profile happened to already be in memory on screen.
+        setCompanyProfile(DEFAULT_COMPANY_PROFILE);
       }
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
