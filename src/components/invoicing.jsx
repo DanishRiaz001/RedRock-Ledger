@@ -3910,20 +3910,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               button itself once the entry is really saved, instead of
               claiming a number up front. */}
           <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap",alignItems:"flex-start"}}>
-            {/* Date only lives here for a plain Receipt entry — Supplier
-                Invoice/Customer Sale move it into their own Invoice details
-                section below (alongside Due date) instead of showing it
-                twice. */}
-            {entryMode==="receipt"&&(
-              <div>
-                <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Date</div>
-                <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:150}}/>
-              </div>
-            )}
+            {/* Date moved out of here for a Receipt entry — it now lives in
+                its own Date/Description box right below this one, same as
+                Supplier Invoice/Customer Sale already keep Date in their
+                own Invoice details section instead of here. */}
             {/* No "Entry type" caption above this — it's the only control in
-                the Voucher details box besides Date, so the section header
-                already says what it is. */}
-            <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px",alignSelf:entryMode==="receipt"?"flex-end":"auto"}}>
+                the Voucher details box, so the section header already says
+                what it is. */}
+            <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px"}}>
               <option value="receipt">Receipt</option>
               <option value="supplier">Supplier Invoice</option>
               <option value="customer">Customer Sale</option>
@@ -4009,6 +4003,28 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       </div>
       )}
 
+      {/* Date, then Description — master fields for the whole voucher,
+          each its own row, sitting right below Voucher details instead of
+          repeated inside every posting line's own first column. Desktop
+          Receipt only; Supplier Invoice/Customer Sale keep their own
+          Invoice details section, and mobile keeps its existing compact
+          per-line Date/Description (no header row to hang a separate box
+          off of there). */}
+      {isDesktop&&entryMode==="receipt"&&(
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
+          <div style={{padding:14,background:"#fff",display:"flex",flexDirection:"column",gap:12}}>
+            <div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Date</div>
+              <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{maxWidth:220}} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:13,padding:"6px 2px"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Description</div>
+              <input placeholder="What is this entry for?" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.text,padding:"6px 2px",width:"100%",fontSize:13,fontWeight:600,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+        </div>
+      )}
+
       {entryMode==="receipt"&&(
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {/* Desktop: this is now the comment icon on the Voucher details row
@@ -4070,9 +4086,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           // (see the note below), the grid just overflowed silently behind
           // the fixed-position preview panel — the Amount column, and part
           // of Credit, vanished under it instead of scrolling into view.
-          const GRID_COLS="130px minmax(130px,1fr) minmax(130px,1fr) 90px 26px";
+          // Date and Description live once, above (the master fields box),
+          // not per-line anymore — the grid is just Debit / Credit / Amount
+          // now. No vertical dividers between columns either — an open
+          // list with a hairline under each row, matching the Costs table
+          // redesign, instead of a boxed spreadsheet grid.
+          const GRID_COLS="minmax(180px,1fr) minmax(180px,1fr) 110px 26px";
           const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-          const vDivider={borderRight:`1px solid ${T.border}`};
           const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
           return(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
@@ -4083,14 +4103,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               extended below this box. Same trade-off the table already
               accepted before this rewrite: real columns over horizontal
               scrolling on a very narrow window. */}
-          <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:506}}>
+          <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:420}}>
             {/* Header — same GRID_COLS as every row below, so each label
                 sits exactly above its own column no matter what a row's
                 content measures. */}
-            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
-            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
-            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
-            <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
+            <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
+            <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
+            <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
             <div style={{...cellBase,background:"#fff"}}/>
             {linesArr.map((line,li)=>{
               // Auto-fill AND lock VAT from the account's own settings the
@@ -4105,21 +4124,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               const isLast=li===linesArr.length-1;
               const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
               return(<React.Fragment key={li}>
-                <div style={{...rowCell,...vDivider,display:"flex",flexDirection:"column",gap:4}}>
-                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
-                    if(li===0){setForm(p=>({...p,date:v}));return;}
-                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                    lines[li]={...lines[li],date:v};
-                    setForm(p=>({...p,lines}));
-                  }} style={{width:"100%"}} inputStyle={{fontSize:11,padding:"7px 8px"}}/>
-                  <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
-                    if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
-                    const lines=[...(form.lines||[])];
-                    lines[li]={...lines[li],description:e.target.value};
-                    setForm(p=>({...p,lines}));
-                  }} style={{...inpSm,fontSize:11,padding:"7px 8px",width:"100%"}}/>
-                </div>
-                <div style={{...rowCell,...vDivider,minWidth:0}}>
+                <div style={{...rowCell,minWidth:0}}>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
@@ -4145,7 +4150,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     setForm(p=>({...p,lines}));
                   }} options={vatCodeOptions("input")} disabled={debitLocked}/>
                 </div>
-                <div style={{...rowCell,...vDivider,minWidth:0}}>
+                <div style={{...rowCell,minWidth:0}}>
                   <AccDrop value={line.creditCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
@@ -4169,7 +4174,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     setForm(p=>({...p,lines}));
                   }} options={vatCodeOptions("output")} disabled={creditLocked}/>
                 </div>
-                <div style={{...rowCell,...vDivider,minWidth:0}}>
+                <div style={{...rowCell,minWidth:0}}>
                   {li===0?(
                     <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   ):(
@@ -4214,10 +4219,9 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 always has Debit total = Credit total; once a line is
                 switched to one-sided, this is the real balance check, and
                 Save stays disabled until it reads Balanced. */}
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:10,fontWeight:700,color:T.red}}>{linesBalanced?"":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
-            <div style={{...cellBase,...vDivider,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":"Unbalanced"}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}/>
           </div>
         </div>
@@ -4335,11 +4339,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               ("249+118.50") the moment you leave it (CalcAmountInput) —
               this used to be a separate live preview with its own "Use
               this" button you had to click; now it just happens. */}
-          {/* Add line */}
-          <button onClick={()=>{
+          {/* Add line — plain text link, not a bordered pill button;
+              matches the Costs table's "+ Add line" treatment. */}
+          <div onClick={()=>{
             const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}]),{debitCode:"",creditCode:"",amount:""}];
             setForm(p=>({...p,lines}));
-          }} style={{fontSize:11,color:T.accent,background:T.accentLight,border:"none",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add line</button>
+          }} style={{display:"inline-block",color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
         </div>
 
         {/* Sinking fund progress preview — each fund now has its own real
