@@ -1639,7 +1639,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
         if(previous)next[idx]=previous;else next.splice(idx,1);
         return next;
       });
-      alert("Couldn't save that change — check your connection and try again. It has NOT been saved.");
+      alert("Couldn't save that change:\n\n"+error.message+"\n\nIt has NOT been saved.");
       return false;
     }
     return true;
@@ -1662,7 +1662,12 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       // inbox file that no longer exists) would otherwise pop this alert on
       // EVERY app open forever, for something the user never asked to do
       // just now. Migration failures are logged above and simply skipped.
-      if(!(opts&&opts.silent))alert("Couldn't save that attachment — check your connection and try again. It has NOT been saved.");
+      // Was a generic "check your connection" message regardless of the
+      // actual cause — a real constraint/RLS error (not a network issue at
+      // all) looked identical to one, with no way to tell them apart short
+      // of opening devtools. Same fix as saveCompanyProfile: show the
+      // database's own error text.
+      if(!(opts&&opts.silent))alert("Couldn't save that attachment:\n\n"+error.message+"\n\nIt has NOT been saved.");
       return false;
     }
     if(data)setReconciliationFilesState(p=>p.map(r=>r.id===row.id?{...r,id:data.id}:r));
