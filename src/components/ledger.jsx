@@ -249,11 +249,15 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
           <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280}}>
+            {/* Type dropped — every row already says what it is via its
+                own color/number range or an inline Customer/Supplier tag,
+                so the column never added information. VAT% sits where
+                Type used to, showing each account's own default rate. */}
             {(filtered.length>0||contactMatches.length>0)&&(
-              <div style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"6px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Type</div>
+              <div style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"6px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Number</div>
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Name</div>
+                <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>VAT</div>
               </div>
             )}
             <div style={{overflowY:"auto",maxHeight:230}}>
@@ -265,25 +269,28 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                   account. Hidden while actively searching so it doesn't
                   compete with real matches. */}
               {!qTrim&&(
-                <div onMouseDown={e=>{e.preventDefault();onChange("");closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:!value?"#EBF4FF":"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
-                  <span style={{fontSize:11,color:T.muted}}>—</span>
+                <div onMouseDown={e=>{e.preventDefault();onChange("");closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:!value?"#EBF4FF":"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
                   <span style={{fontSize:11,color:T.muted}}>—</span>
                   <span style={{fontSize:11,color:T.muted,fontStyle:"italic",fontWeight:!value?700:400}}>No account</span>
+                  <span/>
                 </div>
               )}
               {filtered.length===0&&contactMatches.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {contactMatches.map((c,i)=>(
-                <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
-                  <span style={{fontSize:11,color:c.type==="customer"?T.blue:T.red,fontWeight:600}}>{c.type==="customer"?"Customer":"Supplier"}</span>
+                <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
                   <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.type==="customer"?"1500":"2400"}</span>
-                  <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                  <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                    <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                    <span style={{fontSize:8,fontWeight:800,color:c.type==="customer"?T.blue:T.red,textTransform:"uppercase",flexShrink:0}}>{c.type==="customer"?"Customer":"Supplier"}</span>
+                  </span>
+                  <span/>
                 </div>
               ))}
               {filtered.map((a,i)=>(
-                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"70px 62px 1fr",gap:6,padding:"7px 10px",cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
-                  <span style={{fontSize:11,color:T.muted}}>Account</span>
+                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
                   <span style={{fontSize:11,fontWeight:700,color:(SERIES[a.groupKey]?SERIES[a.groupKey].color:undefined)||T.accent}}>{a.code}</span>
                   <span style={{fontSize:11,color:T.text,fontWeight:a.code===value?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                  <span style={{fontSize:10,color:T.muted,fontWeight:600,textAlign:"right"}}>{a.defaultVatPct!=null?`${a.defaultVatPct}%`:"—"}</span>
                 </div>
               ))}
             </div>
@@ -523,7 +530,7 @@ function FlexDateInput({value,onChange,style,inputStyle}){
 }
 
 // Flat searchable dropdown (for edit modal)
-function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactId}){
+function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactId,triggerStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
   const sel=accounts.find(a=>a.code===value);
@@ -569,7 +576,7 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
   };
   return(
     <div style={{position:"relative"}}>
-      <div ref={triggerRef} onClick={openDrop} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28}}>
+      <div ref={triggerRef} onClick={openDrop} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28,...triggerStyle}}>
         {/* Was fontSize:9 — smaller than the VAT-code dropdown right below
             it, backwards from the actual hierarchy (the account is the
             primary choice on this line, VAT is a secondary detail). */}
@@ -1226,17 +1233,22 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
 
   const postingsGrid=(()=>{
     const GRID_COLS="150px 1.3fr 1.3fr 130px 60px";
-    const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-    const vDivider={borderRight:`1px solid ${T.border}`};
+    // "Open areas" per feedback — no card border, no vertical rules between
+    // columns, no boxed inputs. The only line left is the one under each
+    // row (cellBase's borderBottom), which is what actually separates one
+    // posting from the next; everything else was just visual weight with
+    // no informational job.
+    const cellBase={padding:"10px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+    const flatField={background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0};
     return(
-      <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
+      <div>
+        <div style={{padding:"0 0 10px",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
         <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
-          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
-          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
-          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
-          <div style={{...cellBase,...vDivider,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount (NOK)</div>
-          <div style={{...cellBase,background:"#fff"}}/>
+          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
+          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
+          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
+          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount (NOK)</div>
+          <div style={{...cellBase}}/>
           {gridRows.map((l,li)=>{
             const isLast=li===gridRows.length-1;
             const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
@@ -1245,20 +1257,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
-              <div style={{...rowCell,...vDivider,display:"flex",flexDirection:"column",gap:4}}>
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{fontSize:11,padding:"6px 7px"}}/>
-                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,fontSize:11,padding:"6px 7px"}}/>
+              <div style={{...rowCell,display:"flex",flexDirection:"column",gap:4}}>
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
+                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,...flatField,fontSize:11,padding:"6px 2px"}}/>
               </div>
-              <div style={{...rowCell,...vDivider}}>
-                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
-                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked}/></div>
+              <div style={{...rowCell}}>
+                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
+                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={flatField}/></div>
               </div>
-              <div style={{...rowCell,...vDivider}}>
-                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined}/>
-                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked}/></div>
+              <div style={{...rowCell}}>
+                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
+                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={flatField}/></div>
               </div>
-              <div style={{...rowCell,...vDivider}}>
-                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...selSm,fontSize:12,fontWeight:700,padding:"6px 7px",textAlign:"right"}}/>
+              <div style={{...rowCell}}>
+                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...selSm,...flatField,fontSize:12,fontWeight:700,padding:"6px 2px",textAlign:"right"}}/>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(
@@ -1275,8 +1287,8 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   })();
 
   const voucherDetailsBox=(
-    <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-      <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+    <div>
+      <div style={{padding:"0 0 10px",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
       {isInvoiceMode&&(
         <div style={{padding:"14px 14px 0"}}>
           <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
@@ -1307,26 +1319,26 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           start with any. Shown/edited here now — on a multi-line
           voucher these are one property of the whole bilag, so editing
           either applies to every line, keeping them consistent. */}
-      <div style={{padding:"0 14px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <div>
           <SL>Invoice number</SL>
           <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
             if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
             else setForm(f=>({...f,invoiceNo:e.target.value}));
-          }} placeholder="Optional" style={inp}/>
+          }} placeholder="Optional" style={{...inp,background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}/>
         </div>
         <div>
           <SL>Due date</SL>
           <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
             if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
             else setForm(f=>({...f,dueDate:v}));
-          }}/>
+          }} inputStyle={{background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}/>
         </div>
       </div>
       {moneySources&&moneySources.length>0&&(
-        <div style={{padding:"0 14px 14px"}}>
+        <div style={{padding:"0 0 14px"}}>
           <SL>Whose</SL>
-          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
+          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}>
             <option value="">— Select source (optional) —</option>
             {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
@@ -1483,7 +1495,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           drag" bug. ResizableSplit already constrains this side correctly
           on its own; no second cap needed. */}
       <ResizableSplit
-        defaultRightWidth={Math.min(700,Math.max(340,Math.round(window.innerWidth*0.3)))}
+        defaultRightWidth={Math.min(520,Math.max(320,Math.round(window.innerWidth*0.22)))}
         minRightWidth={300} maxRightWidth={800}
         collapsible collapseLabel="Hide attachment" expandLabel="Show attachment"
         left={detailsTab}
@@ -2439,6 +2451,17 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const getBal=getBalProp||(code=>transactions.reduce((s,t)=>{if(t.debitCode===code)return s+t.amount;if(t.creditCode===code)return s-t.amount;return s;},0));
   const activeBank=bankAccounts.find(a=>a.code===selectedBank)||bankAccounts[0]||null;
 
+  // A transfer between two of the user's own bank accounts is one
+  // transaction row (debitCode = receiving bank, creditCode = sending
+  // bank) with two INDEPENDENT tags: moneySourceId for the debit side,
+  // moneySourceIdCredit for the credit side. Everywhere below reads "the
+  // tag as seen from bankCode's side" through this pair instead of the
+  // bare moneySourceId field, so retagging one bank's leg never touches
+  // the other bank's leg of the same transfer. An ordinary transaction
+  // (only one side is a bank account) only ever has a debit leg here.
+  const tagFor=(t,bankCode)=>t.debitCode===bankCode?(t.moneySourceId||null):(t.moneySourceIdCredit||null);
+  const legFor=(t,bankCode)=>t.debitCode===bankCode?"debit":"credit";
+
   // Bank-first breakdown — computed purely from real tagged transactions
   // (never a source's manually-typed opening balance), and each bank lists
   // its own transactions with an inline tag selector right there. This is
@@ -2448,7 +2471,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const perBank=useMemo(()=>bankAccounts.map(bank=>{
     const txns=transactions.filter(t=>t.debitCode===bank.code||t.creditCode===bank.code).sort((a,b)=>b.date.localeCompare(a.date));
     const tagged=txns.reduce((s,t)=>{
-      if(!t.moneySourceId)return s;
+      if(!tagFor(t,bank.code))return s;
       if(t.debitCode===bank.code)return s+t.amount; // incoming = debit
       return s-t.amount; // outgoing = credit
     },0);
@@ -2458,17 +2481,16 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   const filteredTxns=useMemo(()=>{
     let txns=activeBankData.txns;
     if(periodMode==="month")txns=txns.filter(t=>t.date>=pFrom&&t.date<=pTo);
-    if(tagFilter==="untagged")txns=txns.filter(t=>!t.moneySourceId);
-    else if(tagFilter!=="all")txns=txns.filter(t=>t.moneySourceId===tagFilter);
+    if(tagFilter==="untagged")txns=txns.filter(t=>!tagFor(t,activeBankData.code));
+    else if(tagFilter!=="all")txns=txns.filter(t=>tagFor(t,activeBankData.code)===tagFilter);
     return txns;
   },[activeBankData,periodMode,pFrom,pTo,tagFilter]);
 
   const totalsFor=(id)=>{
     const src=moneySources.find(m=>m.id===id);
     if(!src)return{received:0,used:0,remaining:0};
-    const tagged=bankTxns.filter(t=>t.moneySourceId===id);
-    const taggedReceived=tagged.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
-    const taggedUsed=tagged.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const taggedReceived=bankTxns.filter(t=>bankCodes.has(t.debitCode)&&tagFor(t,t.debitCode)===id).reduce((s,t)=>s+t.amount,0);
+    const taggedUsed=bankTxns.filter(t=>bankCodes.has(t.creditCode)&&tagFor(t,t.creditCode)===id).reduce((s,t)=>s+t.amount,0);
     const received=(src.openingReceived||0)+taggedReceived;
     const used=(src.openingUsed||0)+taggedUsed;
     return{received,used,remaining:received-used};
@@ -2479,9 +2501,9 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
   // just the selected bank's own transactions, so each bank shows its own
   // per-person overview instead of one blended total.
   const perSourceForBank=(bankCode)=>{
-    const txns=bankTxns.filter(t=>t.moneySourceId&&(t.debitCode===bankCode||t.creditCode===bankCode));
+    const txns=bankTxns.filter(t=>tagFor(t,bankCode)&&(t.debitCode===bankCode||t.creditCode===bankCode));
     return activeSourcesList.map(m=>{
-      const mine=txns.filter(t=>t.moneySourceId===m.id);
+      const mine=txns.filter(t=>tagFor(t,bankCode)===m.id);
       const received=mine.filter(t=>t.debitCode===bankCode).reduce((s,t)=>s+t.amount,0);
       const used=mine.filter(t=>t.creditCode===bankCode).reduce((s,t)=>s+t.amount,0);
       // Manual per-bank corrections entered from the app (bankAdjustments) —
@@ -2532,7 +2554,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
     resetForm();setShowAdd(false);
   };
   const removeSource=(id)=>{
-    if(bankTxns.some(t=>t.moneySourceId===id)){alert("This source has tagged transactions — untag them first before deleting.");return;}
+    if(bankTxns.some(t=>t.moneySourceId===id||t.moneySourceIdCredit===id)){alert("This source has tagged transactions — untag them first before deleting.");return;}
     if(!window.confirm("Delete this money source?"))return;
     saveMoneySources(moneySources.filter(m=>m.id!==id));
   };
@@ -2665,7 +2687,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                         <td style={{color:T.text,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                         <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.red,whiteSpace:"nowrap"}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
                         <td style={{padding:"5px 8px"}}>
-                          <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{...inp,padding:"4px 7px",fontSize:11}}>
+                          <select value={tagFor(t,activeBankData.code)||""} onChange={e=>tagTransaction(t.id,e.target.value||null,legFor(t,activeBankData.code))} style={{...inp,padding:"4px 7px",fontSize:11}}>
                             <option value="">— untagged —</option>
                             {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                           </select>

@@ -4728,15 +4728,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     const attached=form.attachmentId?inboxFiles.find(f=>String(f.id)===String(form.attachmentId)):null;
     return(
       <ResizableSplit
-        // A fixed cap (not vw-based) — 60vw was measured against the
-        // WHOLE window, not the column ResizableSplit actually leaves
-        // this side once the preview panel's own width is subtracted,
-        // so on a normal-width window it left a big blank gap between
-        // the form and the panel instead of the form actually filling
-        // its column. A fixed max still keeps fields from stretching
-        // absurdly wide on an ultra-wide monitor with the preview
-        // collapsed, without shortchanging the common case.
-        left={<div style={{maxWidth:1100}}>{formCard}</div>}
+        // No maxWidth here anymore — a fixed 1100px cap left a big blank
+        // strip between the form and the preview panel on any window wider
+        // than ~1500px (the panel's own width is already fixed by
+        // defaultRightWidth below; the form should fill whatever's left of
+        // it, not stop short). The Invoice details / Costs grid inside
+        // formCard is fr-based, so it naturally stretches to use the extra
+        // width instead of overflowing.
+        left={formCard}
         collapsible={true}
         collapseLabel="Hide preview"
         expandLabel="Show preview"
@@ -4773,7 +4772,25 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               </div>
             ):(
               <>
-                <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</div>
+                {/* Prev/next through the whole Inbox list + an "N of M"
+                    counter — same nav the Inbox screen's own preview pane
+                    already has, so stepping through several candidate
+                    documents while filling this entry doesn't mean
+                    closing this panel and going back to Inbox each time. */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,gap:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{attached.name}</span>
+                  {inboxFiles.length>1&&(()=>{
+                    const idx=inboxFiles.findIndex(f=>String(f.id)===String(attached.id));
+                    if(idx<0)return null;
+                    return(
+                      <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                        <span style={{fontSize:10,color:T.muted,fontWeight:600,whiteSpace:"nowrap",marginRight:2}}>{idx+1} of {inboxFiles.length}</span>
+                        <button onClick={()=>setForm(p=>({...p,attachmentId:inboxFiles[idx-1].id}))} disabled={idx<=0} title="Previous document" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:24,height:24,cursor:idx<=0?"default":"pointer",color:idx<=0?T.border:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-left" style={{fontSize:13}}/></button>
+                        <button onClick={()=>setForm(p=>({...p,attachmentId:inboxFiles[idx+1].id}))} disabled={idx>=inboxFiles.length-1} title="Next document" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,width:24,height:24,cursor:idx>=inboxFiles.length-1?"default":"pointer",color:idx>=inboxFiles.length-1?T.border:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-right" style={{fontSize:13}}/></button>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <div style={{height:"calc(100% - 33px)"}}>
                   <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
                 </div>
