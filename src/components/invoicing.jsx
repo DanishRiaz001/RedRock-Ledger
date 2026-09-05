@@ -3896,7 +3896,22 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           icon, which fits its single-line header better. */}
       {isDesktop?(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
-          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+          {/* Entry type moved into this header row, far right, styled as
+              an open/borderless dropdown — not a boxed <select> sitting in
+              the body below — since the header already says "Voucher
+              details" and the type IS the one thing this box exists to
+              pick. */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
+            <span style={{fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</span>
+            <div style={{position:"relative"}}>
+              <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",paddingRight:16,fontFamily:"inherit"}}>
+                <option value="receipt">Receipt</option>
+                <option value="supplier">Supplier Invoice</option>
+                <option value="customer">Customer Sale</option>
+              </select>
+              <span style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>▼</span>
+            </div>
+          </div>
           {/* Guessing one fixed pixel height for all three was the bug —
               the real date <input> (styled via the shared `inp` object)
               renders at whatever height its own font-size/padding/border
@@ -3909,27 +3924,19 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               Save actually assigns one, so it now shows up on the Save
               button itself once the entry is really saved, instead of
               claiming a number up front. */}
-          <div style={{display:"flex",gap:28,padding:"14px 14px",flexWrap:"wrap",alignItems:"flex-start"}}>
-            {/* Date moved out of here for a Receipt entry — it now lives in
-                its own Date/Description box right below this one, same as
-                Supplier Invoice/Customer Sale already keep Date in their
-                own Invoice details section instead of here. */}
-            {/* No "Entry type" caption above this — it's the only control in
-                the Voucher details box, so the section header already says
-                what it is. */}
-            <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{...selSm,width:220,fontSize:13,padding:"9px 12px"}}>
-              <option value="receipt">Receipt</option>
-              <option value="supplier">Supplier Invoice</option>
-              <option value="customer">Customer Sale</option>
-            </select>
-            {/* Comment lives here as an icon, not a permanent full-width row
-                — a filled dot marks when one's actually been typed, and it
-                only shows for Receipt entries since that's the only mode a
-                comment currently attaches to. Pushed to the far right of
-                this same row via marginLeft:auto, same idea as the "Show
-                preview" tab on the attachment panel. */}
-            {entryMode==="receipt"&&(
-              <div style={{position:"relative",marginLeft:"auto"}}>
+          {/* Date moved out of here for a Receipt entry — it now lives in
+              its own Date/Description box right below this one, same as
+              Supplier Invoice/Customer Sale already keep Date in their own
+              Invoice details section instead of here. Comment lives here
+              as an icon, not a permanent full-width row — a filled dot
+              marks when one's actually been typed, and it only shows for
+              Receipt entries since that's the only mode a comment
+              currently attaches to. Row itself only renders for Receipt —
+              Supplier/Customer modes have nothing left to put here now
+              that the type selector moved into the header above. */}
+          {entryMode==="receipt"&&(
+            <div style={{display:"flex",padding:"14px 14px",justifyContent:"flex-end"}}>
+              <div style={{position:"relative"}}>
                 <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4,visibility:"hidden"}}>Comment</div>
                 <button onClick={()=>setShowCommentPopover(s=>!s)} title={form.notes?"Edit comment":"Add a comment"} style={{...inp,width:40,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:form.notes?T.accent:T.sub,background:form.notes?T.accentLight:"#fff",borderColor:form.notes?T.accent:T.border,position:"relative"}}>
                   <i className="ti ti-message-circle" style={{fontSize:16}}/>
@@ -3945,8 +3952,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   </>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       ):(
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
