@@ -78,6 +78,53 @@ function VATCodesScreen({accounts}){
   );
 }
 
+// "+ Add bank account" used to be a bare window.prompt() — a native
+// browser dialog with none of the app's own styling, asking only for a
+// bank name and leaving kontonummer/visibility for a separate "Edit"
+// click right afterward. This asks for everything at once, in the same
+// themed modal shape as BankAccountDetailsModal (the one used to edit an
+// existing bank account), just without a pre-existing account to show.
+function AddBankAccountModal({onSave,onClose}){
+  const[bankName,setBankName]=useState("");
+  const[accountNumber,setAccountNumber]=useState("");
+  const[visibleInReconciliation,setVisibleInReconciliation]=useState(true);
+  const valid=bankName.trim().length>0;
+  const submit=()=>{if(!valid)return;onSave({bankName:bankName.trim(),accountNumber:accountNumber.trim(),visibleInReconciliation});};
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+        <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>New bank account</div>
+        <div style={{fontSize:16,fontWeight:800,color:T.text,marginBottom:20}}>Add a bank</div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:20}}>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Bank name *</div>
+            <input autoFocus value={bankName} onChange={e=>setBankName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}} placeholder="e.g. DNB, Nordea, Sparebank 1" style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Kontonummer (optional)</div>
+            <input value={accountNumber} onChange={e=>setAccountNumber(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}} placeholder="e.g. 1503.12.34567" style={inp}/>
+          </div>
+          <div style={{background:T.bg,borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:T.text}}>Show in Bank Reconciliation</div>
+              <div style={{fontSize:10,color:T.muted,marginTop:2}}>Turn off for accounts with no real bank statement to match against.</div>
+            </div>
+            <label style={{position:"relative",display:"inline-block",width:40,height:22,flexShrink:0}}>
+              <input type="checkbox" checked={visibleInReconciliation} onChange={e=>setVisibleInReconciliation(e.target.checked)} style={{opacity:0,width:0,height:0}}/>
+              <span style={{position:"absolute",inset:0,background:visibleInReconciliation?T.accent:T.border,borderRadius:22,cursor:"pointer",transition:"background .15s"}}/>
+              <span style={{position:"absolute",top:3,left:visibleInReconciliation?21:3,width:16,height:16,background:"#fff",borderRadius:"50%",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </label>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={submit} disabled={!valid} style={{flex:1,background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Add account</button>
+          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Bank settings — payment account agreements, matching Bankinnstillinger.
 // Honest about what needs a real bank API vs. what's genuinely usable now.
 function BankSettingsScreen({accounts,onSaveAccounts}){
@@ -99,6 +146,7 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
   const configured=a=>{const d=bankDetailsFor(a);return!!(d.bankName||d.accountNumber);};
   const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&configured(a));
   const[editingAccount,setEditingAccount]=useState(null);
+  const[addingBank,setAddingBank]=useState(false);
   const saveBankDetails=(code,details)=>{
     if(!onSaveAccounts)return;
     const updated=accounts.map(a=>a.code===code?{...a,notes:JSON.stringify(details)}:a);
@@ -108,32 +156,37 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
   // Reuses an existing, still-unconfigured 1900-series slot from the
   // default chart if one's available, rather than always minting a brand
   // new code — only falls back to a fresh code once every existing slot
-  // is actually in use.
-  const addBankAccount=()=>{
+  // is actually in use. Now takes bank name + kontonummer + visibility all
+  // at once (from AddBankAccountModal) instead of a bare browser
+  // window.prompt() for just the name, with everything else needing a
+  // separate "Edit" click right afterward.
+  const addBankAccount=(details)=>{
     if(!onSaveAccounts)return;
-    const name=(window.prompt("Bank name (e.g. DNB, Nordea, Sparebank 1):")||"").trim();
-    if(!name)return;
     const reusable=accounts.find(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&!configured(a));
     if(reusable){
-      const details={bankName:name,accountNumber:"",visibleInReconciliation:true};
       saveBankDetails(reusable.code,details);
+      setAddingBank(false);
       return;
     }
     const used=new Set(accounts.map(a=>a.code));
     let code=null;
     for(let c=1922;c<1999;c++){if(!used.has(String(c))){code=String(c);break;}}
     if(!code){alert("No free account code available in the 1900 series.");return;}
-    const newAcct={code,name,matchable:false,notes:JSON.stringify({bankName:name,accountNumber:"",visibleInReconciliation:true})};
+    const newAcct={code,name:details.bankName,matchable:false,notes:JSON.stringify(details)};
     onSaveAccounts([...accounts,newAcct]);
+    setAddingBank(false);
   };
   return(
     <div style={{maxWidth:800}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank settings</h1>
-        <button onClick={addBankAccount} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add bank account</button>
+        <button onClick={()=>setAddingBank(true)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add bank account</button>
       </div>
       {editingAccount&&(
         <BankAccountDetailsModal account={editingAccount} initial={bankDetailsFor(editingAccount)} onSave={details=>saveBankDetails(editingAccount.code,details)} onClose={()=>setEditingAccount(null)}/>
+      )}
+      {addingBank&&(
+        <AddBankAccountModal onSave={addBankAccount} onClose={()=>setAddingBank(false)}/>
       )}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
