@@ -310,7 +310,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
 // a label, which only ever worked by clicking to browse. This gives every
 // one of those buttons the same real drop target (drag files onto it, or
 // click through to the same file picker as before).
-function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles,onClose,busy=false}){
+function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles,onClose,busy=false,progress=null}){
   const[dragOver,setDragOver]=useState(false);
   const inputRef=React.useRef(null);
   const handleFiles=fileList=>{
@@ -332,7 +332,12 @@ function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles
           style={{border:`2px dashed ${dragOver?T.accent:T.border}`,borderRadius:12,padding:"40px 20px",textAlign:"center",cursor:busy?"wait":"pointer",background:dragOver?T.accentLight:T.bg,transition:"background .1s,border-color .1s"}}
         >
           <div style={{fontSize:32,marginBottom:10}}>{busy?"⏳":"📎"}</div>
-          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{busy?"Uploading…":dragOver?"Drop to upload":"Drag a file here"}</div>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>{busy?(progress&&progress.total>1?`Uploading ${progress.done} of ${progress.total}…`:"Uploading…"):dragOver?"Drop to upload":"Drag a file here"}</div>
+          {busy&&progress&&progress.total>1&&(
+            <div style={{width:"100%",height:6,borderRadius:4,background:T.border,overflow:"hidden",margin:"2px 0 4px"}}>
+              <div style={{width:`${Math.round((progress.done/progress.total)*100)}%`,height:"100%",background:T.accent,transition:"width .2s ease"}}/>
+            </div>
+          )}
           {!busy&&<div style={{fontSize:11,color:T.muted}}>or click to browse{hint?` · ${hint}`:""}</div>}
           <input ref={inputRef} type="file" accept={accept} multiple={multiple} disabled={busy} style={{display:"none"}} onChange={e=>{handleFiles(e.target.files);e.target.value="";}}/>
         </div>

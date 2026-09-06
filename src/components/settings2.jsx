@@ -1538,6 +1538,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   const[search,setSearch]=useState("");
   const[uploadMenu,setUploadMenu]=useState(false);
   const[showUploadModal,setShowUploadModal]=useState(false);
+  const[uploadProgress,setUploadProgress]=useState(null); // {done,total} while a multi-file upload is running
   const[selected,setSelected]=useState([]);
   const[busy,setBusy]=useState(false);
   const[previewFile,setPreviewFile]=useState(null);
@@ -1556,11 +1557,34 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   const restoreFile=async(id)=>{setBusy(true);await onRestore(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);};
   const permanentDeleteFile=async(id)=>{
     if(!window.confirm("Permanently delete this file? This can't be undone."))return;
-    setBusy(true);await onPermanentDelete(id);setSelected(s=>s.filter(x=>x!==id));setBusy(false);
+    setBusy(true);
+    const res=await onPermanentDelete(id);
+    setBusy(false);
+    if(res&&res.error){alert(`Couldn't delete this file:\n\n${res.error}`);return;}
+    setSelected(s=>s.filter(x=>x!==id));
   };
   const[editingFileId,setEditingFileId]=useState(null);
   const[editingFileName,setEditingFileName]=useState("");
   const startInlineRename=(f)=>{setEditingFileId(f.id);setEditingFileName(f.name);};
+  // `autoFocus` alone was unreliable here: a double-click delivers two
+  // "click" events before the "dblclick" that actually starts editing, and
+  // in some browsers the second click's own default focus/selection
+  // behavior lands AFTER the input mounts and steals focus right back out
+  // of it — the input would appear, but the very first keystroke never
+  // reached it. Focusing (and selecting) explicitly, one tick after the
+  // input actually mounts, wins that race reliably. Two separate refs (row
+  // vs. the preview-pane header) since both can rename the same file id at
+  // once when the file being renamed is also the one currently previewed.
+  const rowRenameRef=useRef(null);
+  const headerRenameRef=useRef(null);
+  useEffect(()=>{
+    if(!editingFileId)return;
+    const t=setTimeout(()=>{
+      const el=rowRenameRef.current||headerRenameRef.current;
+      if(el){el.focus();el.select();}
+    },0);
+    return()=>clearTimeout(t);
+  },[editingFileId]);
   const commitInlineRename=async()=>{
     const trimmed=editingFileName.trim();
     if(trimmed&&editingFileId)await onRename(editingFileId,trimmed);
@@ -1571,9 +1595,14 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
     if(!f)return;
     startInlineRename(f);
   };
-  const registerEntry=(fileId)=>{
+  // entryMode: which transaction view the New Entry form should open in —
+  // "supplier" (Supplier Invoice) is the default now that most Inbox
+  // documents are supplier invoices, not the old "receipt"/Advance Voucher
+  // default. The per-row ⋮ menu overrides this explicitly per file.
+  const registerEntry=(fileId,entryMode="supplier")=>{
     try{
       if(fileId)localStorage.setItem("rr_pending_attachment",fileId);else localStorage.removeItem("rr_pending_attachment");
+      localStorage.setItem("rr_pending_entry_mode",entryMode);
       // Carry the AI suggestion (if any) alongside the attachment id so the
       // New Entry form can pre-fill amount/description — otherwise "Post
       // voucher" is no faster than "Register" was, since you'd still have
@@ -1594,12 +1623,36 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   // that came back empty (unreadable scan) shouldn't count as a suggestion.
   const hasSuggestion=f=>f.aiAnalyzed&&(f.aiSupplier||f.aiAmount!=null||f.aiDescription);
   const[suggestionFilter,setSuggestionFilter]=useState(""); // "" | "with" | "without"
+  // Clicking a column header sorts by it — no dropdown of options, the
+  // header itself is the control. A second click on the same header flips
+  // direction; picking a different header starts that column at its most
+  // useful default (name/date A→Z, amount high→low).
+  const[sortBy,setSortBy]=useState(null); // null | "description" | "supplier" | "amount" | "date"
+  const[sortDir,setSortDir]=useState("asc");
+  const toggleSort=key=>{
+    if(sortBy===key){setSortDir(d=>d==="asc"?"desc":"asc");return;}
+    setSortBy(key);setSortDir(key==="amount"?"desc":"asc");
+  };
+  const sortKeyFor=(f,key)=>{
+    if(key==="description")return(f.aiDescription||f.name||"").toLowerCase();
+    if(key==="supplier")return(f.aiSupplier||"").toLowerCase();
+    if(key==="amount")return f.aiAmount!=null?f.aiAmount:-Infinity;
+    if(key==="date")return f.aiInvoiceDate||f.date||"";
+    return"";
+  };
   const filtered=files
     .filter(f=>viewMode==="deleted"?!!f.deletedAt:!f.deletedAt)
     .filter(f=>viewMode!=="active"||showAttached||!attachedFileIds.has(f.id))
     .filter(f=>!search||f.name.toLowerCase().includes(search.toLowerCase())||(f.aiSupplier||"").toLowerCase().includes(search.toLowerCase()))
     .filter(f=>!typeFilter||(typeFilter==="image"?(f.type||"").startsWith("image"):!(f.type||"").startsWith("image")))
     .filter(f=>!suggestionFilter||(suggestionFilter==="with"?hasSuggestion(f):!hasSuggestion(f)));
+  if(sortBy){
+    filtered.sort((a,b)=>{
+      const av=sortKeyFor(a,sortBy),bv=sortKeyFor(b,sortBy);
+      const cmp=av<bv?-1:av>bv?1:0;
+      return sortDir==="asc"?cmp:-cmp;
+    });
+  }
   // Default to previewing the first file in the current list — an empty
   // preview pane on open just wastes a click most of the time. Re-syncs
   // whenever the visible list changes (filters, folder switch, deletions)
@@ -1664,11 +1717,24 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
               </button>
             </div>
             {showUploadModal&&(
-              <UploadDropModal title="Upload to Inbox" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple busy={busy}
-                onFiles={async files=>{for(const f of files)await addFile(f);setShowUploadModal(false);}}
+              <UploadDropModal title="Upload to Inbox" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" multiple busy={busy} progress={uploadProgress}
+                onFiles={async files=>{
+                  setUploadProgress({done:0,total:files.length});
+                  for(const f of files){
+                    await addFile(f);
+                    setUploadProgress(p=>p?{done:p.done+1,total:p.total}:null);
+                  }
+                  setUploadProgress(null);
+                  setShowUploadModal(false);
+                }}
                 onClose={()=>setShowUploadModal(false)}/>
             )}
-            <p style={{fontSize:12,color:T.muted,marginBottom:12,flexShrink:0}}>{viewMode==="deleted"?"Deleted files — restore or permanently delete.":""}</p>
+            {viewMode==="deleted"&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
+                <p style={{fontSize:12,color:T.muted,margin:0}}>Deleted files — restore or permanently delete.</p>
+                <button onClick={()=>{setViewMode("active");setSelected([]);}} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,whiteSpace:"nowrap",marginLeft:10}}>← Back to Inbox</button>
+              </div>
+            )}
 
             {viewMode==="active"&&(()=>{
               // Counts computed from everything except the suggestion filter
@@ -1709,14 +1775,14 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                   )}
                 </div>
               ):(
-                <div style={{position:"relative",flex:1,minWidth:120}}>
-                  <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:T.muted}}>🔍</span>
-                  <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:38}}/>
+                <div style={{position:"relative",flex:1,minWidth:120,maxWidth:260}}>
+                  <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:12}}>🔍</span>
+                  <input placeholder="Search files..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:32,padding:"6px 10px 6px 32px",fontSize:11.5,height:32,boxSizing:"border-box"}}/>
                 </div>
               )}
               <div style={{position:"relative",flexShrink:0}}>
-                <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"9px 14px",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
-                  <i className="ti ti-filter" style={{fontSize:13}}/>Filter{typeFilter&&` (1)`}
+                <button onClick={()=>setFilterOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:5,border:`1px solid ${typeFilter?T.accent:T.border}`,borderRadius:8,padding:"6px 10px",height:32,boxSizing:"border-box",background:typeFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit",color:typeFilter?T.accent:T.sub,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                  <i className="ti ti-filter" style={{fontSize:12}}/>Filter{typeFilter&&` (1)`}
                 </button>
                 {filterOpen&&(<>
                   <div onClick={()=>setFilterOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
@@ -1729,13 +1795,13 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 </>)}
               </div>
               {viewMode==="active"&&attachedHiddenCount>0&&(
-                <button onClick={()=>setShowAttached(s=>!s)} title={showAttached?"Hide already-attached files":`${attachedHiddenCount} file${attachedHiddenCount===1?"":"s"} already attached to an entry — hidden`} style={{position:"relative",flexShrink:0,background:showAttached?T.accent:"none",border:`1px solid ${showAttached?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:showAttached?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <i className="ti ti-paperclip" style={{fontSize:15}}/>
+                <button onClick={()=>setShowAttached(s=>!s)} title={showAttached?"Hide already-attached files":`${attachedHiddenCount} file${attachedHiddenCount===1?"":"s"} already attached to an entry — hidden`} style={{position:"relative",flexShrink:0,background:showAttached?T.accent:"none",border:`1px solid ${showAttached?T.accent:T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:showAttached?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <i className="ti ti-paperclip" style={{fontSize:13}}/>
                   {!showAttached&&<span style={{position:"absolute",top:-4,right:-4,background:T.muted,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{attachedHiddenCount}</span>}
                 </button>
               )}
-              <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",flexShrink:0,background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <i className="ti ti-trash" style={{fontSize:15}}/>
+              <button onClick={()=>{setViewMode(v=>v==="deleted"?"active":"deleted");setSelected([]);}} title={viewMode==="deleted"?"Back to Inbox":`Deleted (${deletedCount})`} style={{position:"relative",flexShrink:0,background:viewMode==="deleted"?T.accent:"none",border:`1px solid ${viewMode==="deleted"?T.accent:T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:viewMode==="deleted"?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <i className="ti ti-trash" style={{fontSize:13}}/>
                 {deletedCount>0&&viewMode!=="deleted"&&<span style={{position:"absolute",top:-4,right:-4,background:T.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{deletedCount}</span>}
               </button>
             </div>
@@ -1744,17 +1810,30 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 columns (Description / Supplier / Amount / Date) reads much
                 closer to a real "voucher inbox" list, and lines the amount
                 up in its own right-aligned column instead of burying it in
-                a secondary text line. */}
+                a secondary text line. The Register/Post button column is
+                dropped entirely in the Deleted view (there's nothing to put
+                there — no button, no Post) instead of reserving 96px of
+                permanently-empty space in every row; that space goes to
+                Description/Supplier instead, which also makes the list
+                noticeably wider in its most-used columns. */}
+            {(()=>{
+              const gridCols=viewMode==="deleted"?"24px 2.1fr 1.25fr 0.85fr 0.75fr 0.75fr 22px":"24px 1.7fr 1.05fr 0.8fr 0.7fr 0.7fr 78px 22px";
+              const sortHeader=(label,key,align)=>(
+                <span onClick={()=>toggleSort(key)} title="Click to sort" style={{display:"flex",alignItems:"center",justifyContent:align==="right"?"flex-end":"flex-start",gap:3,fontSize:9,fontWeight:700,color:sortBy===key?T.accent:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",cursor:"pointer",userSelect:"none"}}>
+                  {label}{sortBy===key&&<i className={`ti ti-arrow-${sortDir==="asc"?"up":"down"}`} style={{fontSize:10}}/>}
+                </span>
+              );
+              return(
             <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",flexShrink:0}}>
               {!!filtered.length&&(
-                <div style={{display:"grid",gridTemplateColumns:"28px 1.7fr 1.05fr 0.8fr 0.7fr 0.7fr 96px 24px",gap:8,padding:"8px 12px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
+                <div style={{display:"grid",gridTemplateColumns:gridCols,gap:8,padding:"6px 12px",borderBottom:`1px solid ${T.border}`,background:T.bg}}>
                   <span></span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Description</span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Supplier</span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Amount</span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Date</span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Due date</span>
-                  <span></span>
+                  {sortHeader("Description","description")}
+                  {sortHeader("Supplier","supplier")}
+                  {sortHeader("Amount","amount","right")}
+                  {sortHeader("Date","date")}
+                  <span style={{fontSize:9,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Due date</span>
+                  {viewMode!=="deleted"&&<span></span>}
                   <span></span>
                 </div>
               )}
@@ -1762,12 +1841,12 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
               {filtered.map((f,i)=>{
                 const isFocused=previewFile&&previewFile.id===f.id;
                 return(
-                  <div key={f.id} onClick={()=>setPreviewFile(f)} className="rr-table-row" style={{display:"grid",gridTemplateColumns:"28px 1.7fr 1.05fr 0.8fr 0.7fr 0.7fr 96px 24px",gap:8,alignItems:"center",padding:"9px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
+                  <div key={f.id} onClick={()=>setPreviewFile(f)} className="rr-table-row" style={{display:"grid",gridTemplateColumns:gridCols,gap:8,alignItems:"center",padding:"6px 12px",cursor:"pointer",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",background:isFocused?T.accentLight:selected.includes(f.id)?"#FAF9F7":"#fff"}}>
                     <input type="checkbox" checked={selected.includes(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSel(f.id)} style={{width:15,height:15,cursor:"pointer",accentColor:T.accent,flexShrink:0}}/>
                     <div onDoubleClick={e=>{e.stopPropagation();startInlineRename(f);}} title="Double-click to rename" style={{minWidth:0,cursor:"text"}}>
                       {editingFileId===f.id?(
                         <input
-                          autoFocus
+                          ref={rowRenameRef}
                           value={editingFileName}
                           onClick={e=>e.stopPropagation()}
                           onChange={e=>setEditingFileName(e.target.value)}
@@ -1780,22 +1859,28 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                         // line items / "Beskrivelse") when there is one —
                         // "Office supplies" reads much better in a list than
                         // the raw uploaded filename ever did.
-                        <div style={{fontSize:12.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiDescription||f.name}</div>
+                        <div style={{fontSize:11.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiDescription||f.name}</div>
                       )}
-                      {f.aiAnalyzed&&!hasSuggestion(f)&&<div style={{fontSize:10,color:T.muted,marginTop:1}}>No suggestion</div>}
-                      {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<div style={{fontSize:10,color:T.accent,marginTop:1}}>Analyzing…</div>}
+                      {f.aiAnalyzed&&!hasSuggestion(f)&&<div style={{fontSize:9,color:T.muted,marginTop:1}}>No suggestion</div>}
+                      {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<div style={{fontSize:9,color:T.accent,marginTop:1}}>Analyzing…</div>}
                     </div>
-                    <div style={{fontSize:12,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||"—"}</div>
-                    <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
-                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
-                    <div style={{fontSize:11.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiDueDate||"—"}</div>
-                    {viewMode!=="deleted"?(
-                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
-                    ):<span/>}
+                    <div style={{fontSize:11,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||"—"}</div>
+                    <div style={{fontSize:11.5,fontWeight:700,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
+                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
+                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiDueDate||"—"}</div>
+                    {viewMode!=="deleted"&&(
+                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
+                    )}
                     <Menu3 items={viewMode==="deleted"?[
                       {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
                       {label:"Delete permanently",color:T.red,action:()=>permanentDeleteFile(f.id)},
                     ]:[
+                      // Register-as options — pick the transaction view this
+                      // file opens in directly, instead of always landing on
+                      // whatever registerEntry's own default is.
+                      {label:"Register as Advance Voucher",action:()=>registerEntry(f.id,"receipt")},
+                      {label:"Register as Supplier Invoice",action:()=>registerEntry(f.id,"supplier")},
+                      {label:"Register as Income",action:()=>registerEntry(f.id,"customer")},
                       {label:"Rename",action:()=>renameFile(f.id)},
                       {label:"Copy",action:()=>copyFile(f.id)},
                       {label:"Delete",color:T.red,action:()=>deleteFile(f.id)},
@@ -1804,6 +1889,8 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 );
               })}
             </div>
+              );
+            })()}
           </div>
         )} right={(
           <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#fff",borderLeft:`1px solid ${T.border}`}}>
@@ -1812,7 +1899,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,flexShrink:0,gap:8}}>
                   {editingFileId===previewFile.id?(
                     <input
-                      autoFocus
+                      ref={headerRenameRef}
                       value={editingFileName}
                       onChange={e=>setEditingFileName(e.target.value)}
                       onBlur={commitInlineRename}

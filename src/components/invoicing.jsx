@@ -3492,6 +3492,19 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // picked through the dropdown, skipped the VAT auto-fill that only runs
   // on a real onChange.
   const emptyTxn={date:new Date().toISOString().split("T")[0],debitCode:"",creditCode:"",description:"",amount:"",contactId:"",attachmentId:"",moneySourceId:"",projectId:"",notes:""};
+  // Read-only helper (never removes anything) so every piece of state below
+  // that wants a slice of the Inbox's AI suggestion can independently pull
+  // it during the SAME initial render. useState initializers run once each,
+  // in declaration order — an earlier one that deleted this key would leave
+  // every later one (invoiceNo, invContactId, entryMode, ...) with nothing
+  // to read. The actual cleanup happens once, after mount, in the effect
+  // below.
+  const getPendingSuggestion=()=>{
+    try{
+      const raw=localStorage.getItem("rr_pending_attachment_suggestion");
+      return raw?JSON.parse(raw):null;
+    }catch{return null;}
+  };
   const[form,setForm]=useState(()=>{
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
@@ -3506,11 +3519,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       const asNum=Number(pending);
       if(!Number.isNaN(asNum))pending=asNum;
       try{localStorage.removeItem("rr_pending_attachment");}catch{}
-      let suggestion=null;
-      try{
-        const raw=localStorage.getItem("rr_pending_attachment_suggestion");
-        if(raw){suggestion=JSON.parse(raw);localStorage.removeItem("rr_pending_attachment_suggestion");}
-      }catch{}
+      const suggestion=getPendingSuggestion();
       return{
         ...emptyTxn,attachmentId:pending,
         amount:suggestion&&suggestion.amount!=null?String(suggestion.amount):emptyTxn.amount,
@@ -3544,11 +3553,38 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   };
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
-  const[entryMode,setEntryMode]=useState(initialEntryMode); // "receipt" | "supplier" | "customer"
-  const[invContactId,setInvContactId]=useState("");
-  const[invoiceNo,setInvoiceNo]=useState("");
-  const[invDueDate,setInvDueDate]=useState("");
-  const[invAmount,setInvAmount]=useState("");
+  const[entryMode,setEntryMode]=useState(()=>{
+    // A Register click from the Inbox (default action, or its ⋮ menu) can
+    // ask this form to open in a specific mode instead of always landing
+    // on Advance Voucher — read once, same lifetime as the attachment/
+    // suggestion hand-off above.
+    try{
+      const pendingMode=localStorage.getItem("rr_pending_entry_mode");
+      if(pendingMode==="receipt"||pendingMode==="supplier"||pendingMode==="customer")return pendingMode;
+    }catch{}
+    return initialEntryMode;
+  }); // "receipt" | "supplier" | "customer"
+  const[invContactId,setInvContactId]=useState(()=>{
+    const s=getPendingSuggestion();
+    if(s&&s.supplier){
+      const name=String(s.supplier).trim().toLowerCase();
+      const match=contacts.find(c=>c.name&&c.name.trim().toLowerCase()===name);
+      if(match)return match.id;
+    }
+    return "";
+  });
+  const[invoiceNo,setInvoiceNo]=useState(()=>{
+    const s=getPendingSuggestion();
+    return s&&s.invoiceNo?s.invoiceNo:"";
+  });
+  const[invDueDate,setInvDueDate]=useState(()=>{
+    const s=getPendingSuggestion();
+    return s&&s.dueDate?s.dueDate:"";
+  });
+  const[invAmount,setInvAmount]=useState(()=>{
+    const s=getPendingSuggestion();
+    return s&&s.amount!=null?String(s.amount):"";
+  });
   // Foreign-currency posting on the primary cost line — default NOK
   // (nothing extra shown); pick another currency and a second row
   // appears for the NOK-equivalent amount, same idea as the VAT/
@@ -3557,7 +3593,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const[invAmountNok,setInvAmountNok]=useState("");
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invVatCode,setInvVatCode]=useState("");
-  const[invDescription,setInvDescription]=useState("");
+  const[invDescription,setInvDescription]=useState(()=>{
+    const s=getPendingSuggestion();
+    return s&&(s.description||s.supplier)?(s.description||s.supplier):"";
+  });
   const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode}]
   const[invRowMenuOpen,setInvRowMenuOpen]=useState(null); // index of the Costs/Sales-lines row whose ⋮ menu is open, or null
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
@@ -3570,6 +3609,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
   const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");};
+  // The pending-suggestion/entry-mode hand-off keys are read (never deleted)
+  // by several useState initializers above, all during the same first
+  // render — so the actual cleanup happens exactly once, here, after mount.
+  useEffect(()=>{
+    try{localStorage.removeItem("rr_pending_attachment_suggestion");}catch{}
+    try{localStorage.removeItem("rr_pending_entry_mode");}catch{}
+  },[]);
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
