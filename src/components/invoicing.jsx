@@ -3947,7 +3947,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,description:invDescription,projectId:invProjectId},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
@@ -3980,11 +3980,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // every line regardless of what was actually typed on each row.
       let lineDesc=l.description||invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`;
       // Periodization account is reference-only (see state comment above) —
-      // folded into the first line's description so it's not silently lost,
-      // since there's no dedicated column for it yet.
-      if(idx===0&&invShowPeriodization&&invPeriodizationAccount){
-        const pAcc=accounts.find(a=>a.code===invPeriodizationAccount);
-        lineDesc=`${lineDesc} (Periodization: ${invPeriodizationAccount}${pAcc?" · "+pAcc.name:""})`;
+      // folded into THIS line's own description so it's not silently lost,
+      // since there's no dedicated column for it yet. Per-line now (each
+      // cost line can periodize to a different account), not just the
+      // first line.
+      if(invShowPeriodization&&l.periodizationAccount){
+        const pAcc=accounts.find(a=>a.code===l.periodizationAccount);
+        lineDesc=`${lineDesc} (Periodization: ${l.periodizationAccount}${pAcc?" · "+pAcc.name:""})`;
       }
       const res=await onSave({
         date:form.date,
@@ -4787,7 +4789,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 // table-wide grid with Account+Description stacked in a
                 // single wide column.
                 const rows=[
-                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId},
+                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 const fieldLbl={fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"};
@@ -4805,11 +4807,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       if("amountNok"in patch)setInvAmountNok(patch.amountNok);
                       if("description"in patch)setInvDescription(patch.description);
                       if("projectId"in patch)setInvProjectId(patch.projectId);
+                      if("periodizationAccount"in patch)setInvPeriodizationAccount(patch.periodizationAccount);
                     } else {
                       setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                     }
                   };
-                  const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:""});
+                  const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:"",periodizationAccount:""});
                   return(
                     <div key={idx} style={{position:"relative",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 34px 10px 12px",marginBottom:8}}>
                       <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 170px":"1fr",gap:isDesktop?"8px 16px":8}}>
@@ -4872,6 +4875,22 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           </div>
                         )}
                       </div>
+                      {/* Periodization — nested under THIS line's own
+                          account, one per cost line (matching the
+                          reference's own "Kostnader (delbeløp N/M)" boxes,
+                          each carrying its own Periodisering block) instead
+                          of a single section for the whole voucher after
+                          all lines. Gear-toggled, off by default; reference
+                          only for now — folded into this line's saved
+                          description (see saveInvoice), doesn't actually
+                          split the amount across periods yet. */}
+                      {invShowPeriodization&&(
+                        <div style={{marginTop:10,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+                          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization</div>
+                          <div style={fieldLbl}>Periodization account</div>
+                          <AccDrop value={r.periodizationAccount||""} onChange={code=>update({periodizationAccount:code})} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12,padding:"6px 10px"}}/>
+                        </div>
+                      )}
                       {/* Vertical ⋮ menu — Copy duplicates this line, Delete
                           removes it (Delete hidden on the primary line,
                           which can't be removed). */}
@@ -4885,7 +4904,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           <>
                             <div onClick={()=>setInvRowMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
                             <div style={{position:"absolute",top:"100%",right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 22px rgba(20,40,50,0.14)",padding:5,width:118}}>
-                              <div onClick={()=>{setInvExtraLines(p=>[...p,{accountCode:r.accountCode,vatCode:r.vatCode,amount:r.amount,description:r.description,projectId:r.projectId}]);setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>Copy</div>
+                              <div onClick={()=>{setInvExtraLines(p=>[...p,{accountCode:r.accountCode,vatCode:r.vatCode,amount:r.amount,description:r.description,projectId:r.projectId,periodizationAccount:r.periodizationAccount}]);setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>Copy</div>
                               {!r.isPrimary&&<div onClick={()=>{setInvExtraLines(p=>p.filter((_,i)=>i!==r.li));setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.red,cursor:"pointer"}}>Delete</div>}
                             </div>
                           </>
@@ -4940,19 +4959,6 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 );
               })()}
 
-              {/* Periodization — gear-toggled, off by default. Reference-
-                  only for now: it's captured and folded into the saved
-                  description (see saveInvoice) rather than actually
-                  splitting the amount across periods, which would need
-                  real accrual logic this app doesn't have yet. */}
-              {invShowPeriodization&&(
-                <div style={{marginTop:10,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
-                  <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization</div>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Periodization account</div>
-                  <AccDrop value={invPeriodizationAccount} onChange={setInvPeriodizationAccount} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12,padding:"6px 10px"}}/>
-                  <div style={{fontSize:10,color:T.muted,marginTop:4}}>Reference only — noted on the saved entry. Doesn't split the amount across periods automatically yet.</div>
-                </div>
-              )}
               </div>
             </div>
 
