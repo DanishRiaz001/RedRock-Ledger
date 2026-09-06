@@ -3474,7 +3474,35 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   );
 }
 
-function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt",onOpenEntry}){
+// Advance Voucher drafts — saved WITHOUT posting (no bilag, nothing in
+// `transactions`), listed here for resuming or discarding. Deliberately
+// plain: a label, when it was last touched, Resume/Delete — matching the
+// density of the app's other simple list screens (e.g. Quotes).
+function VoucherDraftsScreen({drafts=[],deleteVoucherDraft,onResume}){
+  const sorted=[...drafts].sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")));
+  return(
+    <div style={{maxWidth:700}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:16}}>Voucher drafts</h1>
+      {!sorted.length&&<div style={{textAlign:"center",color:T.muted,padding:30,fontSize:13,border:`1px solid ${T.border}`,borderRadius:12,background:"#fff"}}>No drafts — "Draft" on the Advance Voucher screen saves an in-progress entry here without posting it.</div>}
+      {!!sorted.length&&(
+        <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",background:"#fff"}}>
+          {sorted.map((d,i)=>(
+            <div key={d.id} className="rr-table-row" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:i<sorted.length-1?`1px solid ${T.border}`:"none"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.label||d.form&&d.form.description||"Untitled draft"}</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>{d.entryMode==="supplier"?"Supplier Invoice":d.entryMode==="customer"?"Customer Invoice":"Advance Voucher"} · {(d.updatedAt||d.createdAt||"").slice(0,10)}</div>
+              </div>
+              <button onClick={()=>onResume(d)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Resume</button>
+              <button onClick={()=>{if(confirm("Delete this draft? This can't be undone."))deleteVoucherDraft(d.id);}} style={{background:"none",border:`1px solid ${T.border}`,color:T.red,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt",onOpenEntry,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft}){
   // Quick-create straight from any Debit/Credit AccDrop — "+ New account"
   // and "+ New customer/supplier" both need somewhere to actually create
   // the thing, not just a UI to type it into. Shared across every line's
@@ -3505,7 +3533,25 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       return raw?JSON.parse(raw):null;
     }catch{return null;}
   };
+  // A "Resume" click from the Drafts list — read-only, same pattern as
+  // getPendingSuggestion above, so every dependent piece of state can pull
+  // its own slice during the same first render.
+  const getPendingDraft=()=>{
+    try{
+      const raw=localStorage.getItem("rr_pending_draft_form");
+      return raw?JSON.parse(raw):null;
+    }catch{return null;}
+  };
+  const[resumedDraftId,setResumedDraftId]=useState(()=>{
+    try{return localStorage.getItem("rr_pending_draft_id")||null;}catch{return null;}
+  });
   const[form,setForm]=useState(()=>{
+    // A resumed draft's own `form` snapshot wins outright over the Inbox
+    // attachment/suggestion hand-off — the two hand-offs never happen at
+    // the same time in practice, but a draft is a full form snapshot,
+    // while the attachment path only ever pre-fills a few fields.
+    const draft=getPendingDraft();
+    if(draft&&draft.form)return{...emptyTxn,...draft.form};
     let pending=null;
     try{pending=localStorage.getItem("rr_pending_attachment");}catch{}
     // localStorage always hands back a string, but inbox_files.id is a
@@ -3632,6 +3678,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   useEffect(()=>{
     try{localStorage.removeItem("rr_pending_attachment_suggestion");}catch{}
     try{localStorage.removeItem("rr_pending_entry_mode");}catch{}
+    try{localStorage.removeItem("rr_pending_draft_form");}catch{}
+    try{localStorage.removeItem("rr_pending_draft_id");}catch{}
   },[]);
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
@@ -3824,6 +3872,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       }
       if(primaryResult&&primaryResult.bilag!=null)setLastSavedBilag(primaryResult.bilag);
       setEntrySaved(true);setTimeout(()=>setEntrySaved(false),5000);
+      // Now actually posted (has a real bilag) — the draft it came from, if
+      // any, is done: delete it so it doesn't sit around as a stale
+      // duplicate of something now in the real ledger.
+      if(resumedDraftId&&deleteVoucherDraft){deleteVoucherDraft(resumedDraftId);setResumedDraftId(null);}
       // No manual sinking-fund increment here anymore — a fund's progress
       // is now the real balance of its own account (see balAt above /
       // SinkingFundsScreen), which this entry just updated on its own by
@@ -3831,6 +3883,28 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       setForm(emptyTxn);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // "Draft" — saves the form exactly as it is, with NO bilag and nothing
+  // written to `transactions`, so it can be resumed later from the Drafts
+  // list instead of being lost or forced through half-finished. Needs far
+  // less than a real save (just SOME account picked and a description) —
+  // the whole point is to capture an unfinished entry.
+  const[savingDraft,setSavingDraft]=useState(false);
+  const draftValid=!!(form.debitCode||form.creditCode||parseFloat(form.amount)||form.description);
+  const saveDraft=async()=>{
+    if(!draftValid||savingDraft||!saveVoucherDraft)return;
+    setSavingDraft(true);
+    try{
+      if(resumedDraftId&&updateVoucherDraft){
+        await updateVoucherDraft(resumedDraftId,form,form.description||"");
+      } else {
+        const d=await saveVoucherDraft("receipt",form,form.description||"");
+        if(d)setResumedDraftId(d.id);
+      }
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -4172,12 +4246,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           // (see the note below), the grid just overflowed silently behind
           // the fixed-position preview panel — the Amount column, and part
           // of Credit, vanished under it instead of scrolling into view.
-          // Date and Description live once, above (the master fields box),
-          // not per-line anymore — the grid is just Debit / Credit / Amount
-          // now. No vertical dividers between columns either — an open
-          // list with a hairline under each row, matching the Costs table
-          // redesign, instead of a boxed spreadsheet grid.
-          const GRID_COLS="minmax(180px,1fr) minmax(180px,1fr) 110px 26px";
+          // Date/Description is back as its own per-line column (date on
+          // top, description below, one combined cell) — matching the
+          // approved reference design; the master Date/Description box
+          // above stays too (it's this line's OWN date/description, li 0
+          // of which mirrors the master box exactly, same as every other
+          // line already shares li 0's amount). No vertical dividers
+          // between columns — an open list with a hairline under each row,
+          // matching the Costs table redesign, not a boxed spreadsheet grid.
+          const GRID_COLS="0.975fr minmax(180px,1fr) minmax(180px,1fr) 110px 26px";
           const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
           const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
           return(
@@ -4193,6 +4270,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             {/* Header — same GRID_COLS as every row below, so each label
                 sits exactly above its own column no matter what a row's
                 content measures. */}
+            <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
             <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit</div>
             <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit</div>
             <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
@@ -4210,6 +4288,20 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               const isLast=li===linesArr.length-1;
               const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
               return(<React.Fragment key={li}>
+                <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
+                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                    if(li===0){setForm(p=>({...p,date:v}));return;}
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],date:v};
+                    setForm(p=>({...p,lines}));
+                  }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
+                  <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
+                    if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                    const lines=[...(form.lines||[])];
+                    lines[li]={...lines[li],description:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",fontSize:11.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                </div>
                 <div style={{...rowCell,minWidth:0}}>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
                     const acc=accounts.find(a=>a.code===v);
@@ -4260,7 +4352,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     setForm(p=>({...p,lines}));
                   }} options={vatCodeOptions("output")} disabled={creditLocked}/>
                 </div>
-                <div style={{...rowCell,minWidth:0}}>
+                <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                   {li===0?(
                     <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   ):(
@@ -4270,6 +4362,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       setForm(p=>({...p,lines}));
                     }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
                   )}
+                  {/* Static currency label — Advance Voucher posts in the
+                      books' own currency only (no per-line currency picker
+                      like Supplier/Customer Invoice has); shown for the
+                      same "Beløp (NOK)" clarity as the reference. */}
+                  <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>NOK</span>
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate
@@ -4305,6 +4402,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 always has Debit total = Credit total; once a line is
                 switched to one-sided, this is the real balance check, and
                 Save stays disabled until it reads Balanced. */}
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}/>
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
@@ -4529,7 +4627,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         {/* Desktop: a normal-sized, left-aligned primary button — matching
             how a save/create action sits in the rest of the desktop app's
             forms, instead of a full-width mobile "tap target" button. */}
-        <button disabled={!valid||saving} style={isDesktop?{background:entrySaved?"#059669":T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:valid&&!saving?"pointer":"default",opacity:valid&&!saving?1:0.5,alignSelf:"flex-start",fontFamily:"inherit",transition:"background 0.2s"}:{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":"Save Entry"}</button>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button disabled={!valid||saving} style={isDesktop?{background:entrySaved?"#059669":T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:valid&&!saving?"pointer":"default",opacity:valid&&!saving?1:0.5,fontFamily:"inherit",transition:"background 0.2s"}:{...btnRed,opacity:valid&&!saving?1:0.5,marginTop:4,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:valid&&!saving?"pointer":"default"}} onClick={save}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":"Create"}</button>
+          {/* Draft — saves the entry as-is with NO bilag, resumable later
+              from Voucher → Drafts, instead of posting it or losing it. */}
+          {saveVoucherDraft&&(
+            <button disabled={!draftValid||savingDraft} title="Save without posting — resume later from Voucher › Drafts" style={{background:"#fff",color:T.accent,border:`1.5px solid ${T.accent}`,borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:draftValid&&!savingDraft?"pointer":"default",opacity:draftValid&&!savingDraft?1:0.5,fontFamily:"inherit"}} onClick={saveDraft}>{savingDraft?"Saving…":resumedDraftId?"Update draft":"Draft"}</button>
+          )}
+        </div>
       </div>
       )}
 
@@ -4570,7 +4675,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             <div style={sectionBox}>
               <div style={sectionHead}>{invIsCustomer?"Customer information":"Supplier information"}</div>
               <div style={sectionBody}>
-                <div style={{display:"grid",gridTemplateColumns:isDesktop?"1.3fr 1fr 1fr 1fr":"1fr 1fr",gap:8}}>
+                {/* Two rows of three, matching the reference's own
+                    Fakturadetaljer layout: Supplier / Date / Due date on
+                    top, Invoice No / Amount / Currency underneath. Amount
+                    and Currency mirror the Costs section's own primary
+                    line (invAmount/invCurrency) — same value, shown here
+                    too so the invoice's total is visible without scrolling
+                    down to Costs, exactly like "Totalt beløp"/"Valuta"
+                    sit in Fakturadetaljer rather than only in Kostnader. */}
+                <div style={{display:"grid",gridTemplateColumns:isDesktop?"1.3fr 1fr 1fr":"1fr 1fr",gap:8}}>
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
                     {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
@@ -4584,16 +4697,26 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     )}
                   </div>
                   <div>
-                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
-                  </div>
-                  <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
                     <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",minHeight:36}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
                     <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",minHeight:36}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
+                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Total amount (incl. VAT)</div>
+                    <CalcAmountInput placeholder="0" value={invAmount} onChange={setInvAmount} style={{...inpSm,fontSize:12,fontWeight:700,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Currency</div>
+                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36,cursor:"pointer"}}>
+                      {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -4635,119 +4758,103 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               </div>
               <div style={{padding:isDesktop?"10px 14px 14px":"10px 14px 14px"}}>
               {(()=>{
-                // Account gets most of the width (its own line's Description
-                // sits right underneath it); VAT is widened so the full
-                // "code: (rate%) name" reads without truncating; Amount is
-                // fixed-width, just enough for a number plus the currency
-                // label; Project is optional (gear-toggled), same width as
-                // before it was added.
-                const GRID_COLS=["1.5fr","1.8fr","130px",invShowProject?"110px":null,"30px"].filter(Boolean).join(" ");
-                const cellBase={padding:"8px 6px",boxSizing:"border-box"};
+                // Each line is its own boxed 2-column card now — Account
+                // beside Amount(+currency) on top, Description beside VAT
+                // underneath — matching the reference's own Kostnader
+                // alignment (Kostnadskonto/Beløp inkl. mva on one row,
+                // Beskrivelse/Mva-kode on the next), instead of one shared
+                // table-wide grid with Account+Description stacked in a
+                // single wide column.
                 const rows=[
                   {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
+                const fieldLbl={fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"};
                 return(
-              // No scroll cap here on purpose — a maxHeight+overflow:auto
-              // wrapper clipped the account dropdown's own flyout list the
-              // moment it opened past that box's edge, AND artificially
-              // limited how many lines were comfortably visible. As many
-              // lines as needed just grow the page instead.
-              <div style={{borderRadius:10,marginBottom:8}}>
-                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?520:0,overflowX:isDesktop?"visible":"auto"}}>
-                  {(()=>{const headCell={...cellBase,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"};return(<>
-                    <div style={headCell}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
-                    <div style={headCell}>VAT</div>
-                    <div style={{...headCell,textAlign:"right"}}>Incl. VAT</div>
-                    {invShowProject&&<div style={headCell}>Project</div>}
-                    <div style={headCell}/>
-                  </>);})()}
-                  {rows.map((r,idx)=>{
-                    const acc=accounts.find(a=>a.code===r.accountCode);
-                    const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
-                    const isLastRow=idx===rows.length-1;
-                    const rowCell={...cellBase,borderTop:`1px solid ${T.border}`};
-                    const update=patch=>{
-                      if(r.isPrimary){
-                        if("accountCode"in patch)setInvAccountCode(patch.accountCode);
-                        if("vatCode"in patch)setInvVatCode(patch.vatCode);
-                        if("amount"in patch)setInvAmount(patch.amount);
-                        if("currency"in patch)setInvCurrency(patch.currency);
-                        if("amountNok"in patch)setInvAmountNok(patch.amountNok);
-                        if("description"in patch)setInvDescription(patch.description);
-                        if("projectId"in patch)setInvProjectId(patch.projectId);
-                      } else {
-                        setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
-                      }
-                    };
-                    {/* A line, not a box — Account/VAT/Amount all share this
-                        underline-only look now (flat background, no border
-                        except a hairline underneath), instead of each field
-                        sitting in its own bordered pill. */}
-                    const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,paddingLeft:2,paddingRight:2};
-                    const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:""});
-                    return(<React.Fragment key={idx}>
-                      <div style={rowCell}>
-                        <AccDrop value={r.accountCode||""} onChange={code=>{
-                          const a=accounts.find(x=>x.code===code);
-                          update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
-                        }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={lineField}/>
-                        {/* Description now lives directly under its own
-                            line's account, matching the reference voucher's
-                            Kostnader→Beskrivelse placement — was one field
-                            shared by the whole voucher, up in Supplier
-                            information. */}
-                        <input placeholder="Description (optional)" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...lineField,marginTop:4,fontSize:11,color:T.sub,borderBottomStyle:"dashed",width:"100%"}}/>
-                      </div>
-                      <div style={rowCell}>
-                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={{...lineField,fontSize:11.5}}/>
-                      </div>
-                      <div style={rowCell}>
-                        {/* Amount reordered — the number reads first (left),
-                            currency sits after it on the right with its
-                            native dropdown arrow hidden (appearance:none);
-                            it's still a real <select>, so clicking anywhere
-                            on it opens the picker. Was currency-then-amount,
-                            both right-aligned. Tabbing out of the last row's
-                            Amount box starts a new line automatically. */}
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
-                          <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
-                            if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,newLine()]);
-                          }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"left"}}/>
-                          <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{...lineField,appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:32,cursor:"pointer",textAlign:"right"}}>
-                            {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
-                          </select>
+              <div>
+                {rows.map((r,idx)=>{
+                  const acc=accounts.find(a=>a.code===r.accountCode);
+                  const vLocked=!!(acc&&acc.vatLocked&&acc.defaultVatCode);
+                  const update=patch=>{
+                    if(r.isPrimary){
+                      if("accountCode"in patch)setInvAccountCode(patch.accountCode);
+                      if("vatCode"in patch)setInvVatCode(patch.vatCode);
+                      if("amount"in patch)setInvAmount(patch.amount);
+                      if("currency"in patch)setInvCurrency(patch.currency);
+                      if("amountNok"in patch)setInvAmountNok(patch.amountNok);
+                      if("description"in patch)setInvDescription(patch.description);
+                      if("projectId"in patch)setInvProjectId(patch.projectId);
+                    } else {
+                      setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
+                    }
+                  };
+                  const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:""});
+                  return(
+                    <div key={idx} style={{position:"relative",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 34px 10px 12px",marginBottom:8}}>
+                      <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 170px":"1fr",gap:isDesktop?"8px 16px":8}}>
+                        <div>
+                          <div style={fieldLbl}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
+                          <AccDrop value={r.accountCode||""} onChange={code=>{
+                            const a=accounts.find(x=>x.code===code);
+                            update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
+                          }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12}}/>
                         </div>
-                        {(r.currency||"NOK")!=="NOK"&&(
-                          <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,...lineField,fontSize:10.5,fontWeight:600,color:T.muted,padding:"4px 2px",width:"100%",textAlign:"left"}}/>
+                        <div>
+                          <div style={fieldLbl}>Incl. VAT</div>
+                          {/* Amount + currency kept as their own implemented
+                              feature (number left, currency right, native
+                              arrow hidden but still clickable) — same code
+                              as before, just realigned into this 2-column
+                              layout, not removed, so it's easy to bring
+                              back exactly as it was or swap out later. */}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 8px",boxSizing:"border-box",minHeight:36}}>
+                            <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
+                              if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1)setInvExtraLines(p=>[...p,newLine()]);
+                            }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:"7px 0",width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
+                            <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:32,cursor:"pointer",textAlign:"right",fontFamily:"inherit"}}>
+                              {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          {(r.currency||"NOK")!=="NOK"&&(
+                            <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,fontSize:10.5,fontWeight:600,color:T.muted,padding:"6px 8px",width:"100%",textAlign:"left",marginTop:4}}/>
+                          )}
+                        </div>
+                        <div>
+                          <div style={fieldLbl}>Description</div>
+                          <input placeholder="Description (optional)" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...inpSm,fontSize:12,padding:"7px 10px",width:"100%"}}/>
+                        </div>
+                        <div>
+                          <div style={fieldLbl}>VAT</div>
+                          <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={{...inpSm,fontSize:11.5}}/>
+                        </div>
+                        {invShowProject&&(
+                          <div>
+                            <div style={fieldLbl}>Project</div>
+                            <select value={r.projectId||""} onChange={e=>{
+                              if(e.target.value==="__new__"){
+                                const name=prompt("New project or department name:");
+                                if(name&&name.trim()&&saveProjects){
+                                  const nums=projects.map(p=>parseInt(p.number)||0);
+                                  const number=String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+                                  const newProj={id:"proj_"+Date.now().toString(36),number,name:name.trim(),inactive:false};
+                                  saveProjects([...projects,newProj]);
+                                  update({projectId:newProj.id});
+                                }
+                                return;
+                              }
+                              update({projectId:e.target.value});
+                            }} style={{...inpSm,fontSize:12,padding:"7px 10px",width:"100%"}}>
+                              <option value="">— None —</option>
+                              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
+                              {saveProjects&&<option value="__new__">+ New…</option>}
+                            </select>
+                          </div>
                         )}
                       </div>
-                      {invShowProject&&(
-                        <div style={rowCell}>
-                          <select value={r.projectId||""} onChange={e=>{
-                            if(e.target.value==="__new__"){
-                              const name=prompt("New project or department name:");
-                              if(name&&name.trim()&&saveProjects){
-                                const nums=projects.map(p=>parseInt(p.number)||0);
-                                const number=String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
-                                const newProj={id:"proj_"+Date.now().toString(36),number,name:name.trim(),inactive:false};
-                                saveProjects([...projects,newProj]);
-                                update({projectId:newProj.id});
-                              }
-                              return;
-                            }
-                            update({projectId:e.target.value});
-                          }} style={{...lineField,fontSize:11,padding:"6px 2px",width:"100%"}}>
-                            <option value="">— None —</option>
-                            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
-                            {saveProjects&&<option value="__new__">+ New…</option>}
-                          </select>
-                        </div>
-                      )}
-                      <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",position:"relative",paddingTop:12}}>
-                        {/* Vertical ⋮ menu — Copy duplicates this line,
-                            Delete removes it (Delete hidden on the
-                            primary line, which can't be removed). */}
+                      {/* Vertical ⋮ menu — Copy duplicates this line, Delete
+                          removes it (Delete hidden on the primary line,
+                          which can't be removed). */}
+                      <div style={{position:"absolute",top:6,right:2}}>
                         <button onClick={()=>setInvRowMenuOpen(o=>o===idx?null:idx)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,padding:6,borderRadius:6,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                           <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
                           <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
@@ -4763,9 +4870,9 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           </>
                         )}
                       </div>
-                    </React.Fragment>);
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
                 );
               })()}
@@ -5815,4 +5922,4 @@ function AgedReskontroScreen({contacts,transactions}){
 // Balance lists (Saldolister) — quick standalone list of every customer,
 // supplier, or employee with a nonzero balance/status.
 
-export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, MONTH_NAMES };
+export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES };

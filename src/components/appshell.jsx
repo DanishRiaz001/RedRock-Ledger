@@ -230,6 +230,10 @@ function AppShell({user}){
   const[payrollRuns,setPayrollRuns]=useState([]);
   const[auditLog,setAuditLog]=useState([]);
   const[quotes,setQuotes]=useState([]);
+  // Advance Voucher "Draft" — saved WITHOUT posting (no bilag, nothing in
+  // `transactions`) so it can be resumed later instead of lost or forced
+  // through as a real entry. See sql/add_voucher_drafts.sql.
+  const[voucherDrafts,setVoucherDrafts]=useState([]);
   const[nextQuoteNo,setNextQuoteNo]=useState(1);
   const quoteNoRef=React.useRef(1);
   const[nextInvoiceNo,setNextInvoiceNo]=useState(1);
@@ -376,7 +380,8 @@ function AppShell({user}){
       scoped(sb.from("projects").select("*").eq("user_id",viewingUserId)).order("created_at"),
       scoped(sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId)),
       scoped(sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId)),
-    ]),timeoutPromise]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR])=>{
+      scoped(sb.from("voucher_drafts").select("*").eq("user_id",viewingUserId)).order("updated_at",{ascending:false}),
+    ]),timeoutPromise]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR,vdR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -461,7 +466,7 @@ function AppShell({user}){
         })();
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",orgNumber:c.org_number||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive,isCompany:c.is_company!=null?!!c.is_company:true,category:c.category||"",currency:c.currency||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,projectId:t.project_id||null}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,moneySourceIdCredit:t.money_source_id_credit||null,projectId:t.project_id||null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -492,6 +497,10 @@ function AppShell({user}){
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
       setQuotes((qR.data||[]).map(q=>({id:q.id,quoteNo:q.quote_no,customerId:q.customer_id,date:q.date,validUntil:q.valid_until,saleAccount:q.sale_account,lines:q.lines||[],vatPct:parseFloat(q.vat_pct)||0,subtotal:parseFloat(q.subtotal),vatAmount:parseFloat(q.vat_amount),total:parseFloat(q.total),status:q.status,convertedInvoiceId:q.converted_invoice_id})));
+      // voucher_drafts table may not exist yet (migration not run) — treat
+      // a missing-table error the same as "no drafts" rather than crashing
+      // the whole data load.
+      setVoucherDrafts((vdR&&vdR.data||[]).map(d=>({id:d.id,entryMode:d.entry_mode||"receipt",form:d.form||{},label:d.label||"",createdAt:d.created_at,updatedAt:d.updated_at})));
       setAuditLog((auR.data||[]).map(a=>({id:a.id,changedBy:a.changed_by,entityType:a.entity_type,entityId:a.entity_id,bilag:a.bilag,action:a.action,oldValues:a.old_values,newValues:a.new_values,createdAt:a.created_at})));
       setPosProducts((posR.data||[]).map(p=>({id:p.id,name:p.name,price:parseFloat(p.price),saleAccount:p.sale_account,active:p.active})));
       setPayrollRuns((prR.data||[]).map(r=>({id:r.id,period:r.period,runDate:r.run_date,payAccount:r.pay_account,totalGross:parseFloat(r.total_gross),totalDeductions:parseFloat(r.total_deductions),totalNet:parseFloat(r.total_net),lines:(r.payroll_lines||[]).map(l=>({id:l.id,employeeId:l.employee_id,employeeName:l.employee_name,grossPay:parseFloat(l.gross_pay),deductions:parseFloat(l.deductions),netPay:parseFloat(l.net_pay)}))})));
@@ -1455,6 +1464,30 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     return inv;
   };
 
+  // Voucher drafts — "Draft" on the Advance Voucher screen saves the whole
+  // in-progress form as-is, with NO bilag assigned and nothing written to
+  // `transactions`. Resuming one from the Drafts list reloads the form;
+  // actually posting it (via the real Create button) deletes the draft row.
+  const saveVoucherDraft=async(entryMode,form,label)=>{
+    if(!canEdit)return null;
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),entry_mode:entryMode,form,label:label||""};
+    const{data,error}=await sb.from("voucher_drafts").insert([row]).select().single();
+    if(error){alert("Couldn't save draft: "+error.message);return null;}
+    const newDraft={id:data.id,entryMode,form,label:label||"",createdAt:data.created_at,updatedAt:data.updated_at};
+    setVoucherDrafts(p=>[newDraft,...p]);
+    return newDraft;
+  };
+  const updateVoucherDraft=async(id,form,label)=>{
+    if(!canEdit)return;
+    setVoucherDrafts(p=>p.map(d=>d.id===id?{...d,form,label:label!=null?label:d.label}:d));
+    await sb.from("voucher_drafts").update({form,...(label!=null?{label}:{}),updated_at:new Date().toISOString()}).eq("id",id);
+  };
+  const deleteVoucherDraft=async(id)=>{
+    if(!canEdit)return;
+    await sb.from("voucher_drafts").delete().eq("id",id).eq("user_id",viewingUserId);
+    setVoucherDrafts(p=>p.filter(d=>d.id!==id));
+  };
+
   const saveEdit=async(u)=>{
     const original=transactions.find(t=>t.id===u.id);
     // Used to update local state optimistically BEFORE the DB write (and
@@ -1585,10 +1618,20 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
 
   // Tag (or untag, passing sourceId=null) a single bank transaction to a
   // money source. Optimistic local update + persisted to Supabase.
-  const tagTransaction=async(txnId,sourceId)=>{
-    setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,moneySourceId:sourceId}:t));
+  //
+  // `leg` distinguishes the two sides of a transfer between two of the
+  // user's own bank accounts (one row, debitCode = receiving bank,
+  // creditCode = sending bank) — each side gets its own independent tag,
+  // so retagging what Alfalah's leg belongs to doesn't also relabel DIB's
+  // leg of that same transfer. For an ordinary transaction (only one side
+  // is a bank account), leg is always "debit" and there is no credit-leg
+  // column to worry about.
+  const tagTransaction=async(txnId,sourceId,leg="debit")=>{
+    const field=leg==="credit"?"moneySourceIdCredit":"moneySourceId";
+    const dbField=leg==="credit"?"money_source_id_credit":"money_source_id";
+    setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,[field]:sourceId}:t));
     if(!canEdit)return;
-    await sb.from("transactions").update({money_source_id:sourceId}).eq("id",txnId);
+    await sb.from("transactions").update({[dbField]:sourceId}).eq("id",txnId);
   };
 
   // Projects/departments — same list-management + tagging pattern as money
@@ -1840,14 +1883,24 @@ If you genuinely cannot read useful information from this file, return every fie
     if(error){console.error("Inbox file restore error:",error);return;}
     setInboxFilesState(p=>p.map(f=>f.id===id?{...f,deletedAt:null}:f));
   };
+  // Returns {error} on failure instead of just logging it — a foreign-key
+  // violation (this file is still attached to a voucher entry via
+  // txn_attachments) used to be swallowed here with nothing but a
+  // console.error, so clicking "Delete permanently" looked like it simply
+  // did nothing: no error shown, and the file quietly stays in the Deleted
+  // list because the row was never actually removed.
   const permanentlyDeleteInboxFileEntry=async(id)=>{
-    if(!canEdit)return;
+    if(!canEdit)return{error:"You don't have permission to delete files."};
     const file=inboxFiles.find(f=>f.id===id);
-    if(!file)return;
+    if(!file)return{error:"File not found."};
     await deleteFileFromStorage(file.storagePath);
     const{error}=await sb.from("inbox_files").delete().eq("user_id",viewingUserId).eq("id",id);
-    if(error){console.error("Inbox file permanent-delete error:",error);return;}
+    if(error){
+      console.error("Inbox file permanent-delete error:",error);
+      return{error:error.message.includes("foreign key")?"This file is still attached to a voucher entry — remove that attachment first.":error.message};
+    }
     setInboxFilesState(p=>p.filter(f=>f.id!==id));
+    return{};
   };
   const renameInboxFileEntry=async(id,newName)=>{
     if(!canEdit)return;
@@ -2070,7 +2123,7 @@ If you genuinely cannot read useful information from this file, return every fie
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,fetchTxnAttachments,
     bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
-    invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
+    invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
   };
@@ -2089,7 +2142,19 @@ If you genuinely cannot read useful information from this file, return every fie
           ⚠ Company data scoping is broken (companies table unreachable — likely an RLS policy gap). Anything entered right now won't be linked to a company and may look "missing" later. Fix the RLS policies on the companies table before continuing.
         </div>
       )}
-      {isNativeApp()?<MobileApp {...appProps}/>:<FinanceTracker {...appProps}/>}
+      {isNativeApp()?<MobileApp {...appProps}/>:(
+        // Site-wide density pass — Tripletex reads noticeably smaller/
+        // tighter than every literal font-size hardcoded across this
+        // codebase (there's no shared type-scale variable to change in
+        // one place). `zoom` scales text, spacing and controls together
+        // in lockstep (unlike `transform:scale`, it doesn't break
+        // fixed-position panels like ResizableSplit, which pin to the
+        // true viewport edge) — the web app only; the native/Capacitor
+        // app is untouched. One number to tune if this needs adjusting.
+        <div style={{zoom:0.92,height:"100%"}}>
+          <FinanceTracker {...appProps}/>
+        </div>
+      )}
     </div>
   );
 }
