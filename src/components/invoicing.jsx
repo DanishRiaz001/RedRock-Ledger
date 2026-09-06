@@ -3580,6 +3580,19 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     if(t.creditCode&&t.creditCode!=="1500"&&t.creditCode!=="2400")return t.creditCode;
     return null;
   };
+  // Same idea as lastAccountForContact above, but for Supplier/Customer
+  // Invoice's own Expense/Sales Account field — also hands back that same
+  // transaction's own VAT code, since picking the same supplier almost
+  // always means the same expense category taxed the same way.
+  const lastInvoiceAccountForContact=(contactId)=>{
+    if(!contactId)return null;
+    const matches=transactions.filter(t=>t.contactId===contactId).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+    if(!matches.length)return null;
+    const t=matches[0];
+    if(t.debitCode&&t.debitCode!=="1500"&&t.debitCode!=="2400")return{accountCode:t.debitCode,vatCode:t.vatCode||""};
+    if(t.creditCode&&t.creditCode!=="1500"&&t.creditCode!=="2400")return{accountCode:t.creditCode,vatCode:t.vatCode||""};
+    return null;
+  };
   const[showAddContact,setShowAddContact]=useState(false);
   const[newContact,setNewContact]=useState({name:"",phone:"",email:"",address:"",accountNo:"",type:"supplier"});
   const[entryMode,setEntryMode]=useState(()=>{
@@ -4781,7 +4794,19 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
                       </div>
                     );})():(
-                      <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
+                      <ContactSearchInline contacts={contactList} value={invContactId} onChange={id=>{
+                        setInvContactId(id);
+                        // Picking a supplier/customer that's been posted
+                        // before auto-fills the primary Costs line with
+                        // whatever account (and VAT code) was used for
+                        // them last time — only when that line is still
+                        // blank, so it never overwrites something already
+                        // picked on purpose.
+                        if(!invAccountCode){
+                          const last=lastInvoiceAccountForContact(id);
+                          if(last){setInvAccountCode(last.accountCode);if(last.vatCode)setInvVatCode(last.vatCode);}
+                        }
+                      }} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
                     )}
                   </div>
                   <div>
