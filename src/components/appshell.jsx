@@ -1843,8 +1843,14 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       const prompt=`This file is a scanned invoice, receipt, or bill (often Norwegian). Extract what you can identify from it. Return ONLY valid JSON, no markdown, no explanation:
 {"supplier":"the SENDER's own name — the company issuing this document, normally in the header/letterhead at the top, NOT the customer it's addressed to; or null if not legible","amount":"the total/grand total amount due, as a plain number with no currency symbol or commas, or null","invoiceNo":"the invoice or receipt number — look for a field labeled Fakturanummer, Faktura nr, KID, or similar, or null","invoiceDate":"the invoice's own issue date in YYYY-MM-DD — look for a field labeled Fakturadato, Faktura dato, Dato, or similar, or null","dueDate":"the payment due date in YYYY-MM-DD — look for a field labeled Forfallsdato, Forfall, Due date, or similar, or null","description":"a short (under ~60 characters) plain-language description of what this expense actually is, written from the document's own line items or a Beskrivelse field — e.g. 'Office supplies', 'Monthly phone subscription' — not just the supplier's name repeated, or null","docType":"one of exactly: simple_invoice, detailed_invoice, receipt, unclear"}
 If you genuinely cannot read useful information from this file, return every field as null except docType:"unclear" — never guess or invent values.`;
+      // Haiku, not Sonnet — this is a small, structured JSON-extraction
+      // task with an explicit field list, exactly what the cheapest model
+      // handles reliably. Was claude-sonnet-4-6, which cost meaningfully
+      // more per document for no real accuracy gain on a task this
+      // narrow — every invoice/receipt in Inbox gets analyzed automatically,
+      // so this is the single biggest lever on this feature's real cost.
       const{data,error}=await callClaudeAPI({
-        model:"claude-sonnet-4-6",max_tokens:500,
+        model:"claude-haiku-4-5-20251001",max_tokens:500,
         messages:[{role:"user",content:[contentBlock,{type:"text",text:prompt}]}],
       });
       if(error)return;
