@@ -4066,9 +4066,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               in the app. */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
-              <button onClick={()=>setVoucherDetailsMenuOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+              {/* No visible chevron — same "clickable but no drawn arrow"
+                  treatment as the currency pickers elsewhere in this form;
+                  nothing else sits in this header row now. */}
+              <button onClick={()=>setVoucherDetailsMenuOpen(o=>!o)} style={{background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
                 Voucher details
-                <span style={{fontSize:8,color:T.muted}}>{voucherDetailsMenuOpen?"▲":"▼"}</span>
               </button>
               {voucherDetailsMenuOpen&&(
                 <>
@@ -4685,9 +4687,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const bankAccounts=accounts.filter(a=>["1900","1920","2060"].includes(a.code));
         const invTotalPreview=[{amount:invAmount},...invExtraLines].reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
         const invValid=invContactId&&invAccountCode&&parseFloat(invAmount);
+        // Only three borders on this whole screen now — Supplier/Customer
+        // information, Costs, and Payment, each its own outer box. Every
+        // FIELD inside them is line-based (flat, underline-only), not a
+        // bordered pill or boxed input — was individually-boxed inputs
+        // throughout, plus a border around every single Costs line.
         const sectionBox={border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"};
         const sectionHead={padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub};
         const sectionBody={padding:isDesktop?"12px 14px":14,display:"flex",flexDirection:"column",gap:isDesktop?9:10};
+        const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px",width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"inherit",color:T.text};
         return(
           <div style={{display:"flex",flexDirection:"column",gap:isDesktop?12:14}}>
             {/* One column, full width — Supplier/Customer information first,
@@ -4710,7 +4718,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div>
                     <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
                     {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
-                      <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8,boxSizing:"border-box",minHeight:36}}>
+                      <div style={{...lineField,display:"flex",alignItems:"center",gap:8,padding:"6px 2px"}}>
                         <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
                         <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
                         <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
@@ -4721,23 +4729,23 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
-                    <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",minHeight:36}}/>
+                    <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{...lineField,fontSize:12}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                    <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",minHeight:36}}/>
+                    <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{...lineField,fontSize:12}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...lineField,fontSize:12}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Total amount (incl. VAT)</div>
-                    <CalcAmountInput placeholder="0" value={invAmount} onChange={setInvAmount} style={{...inpSm,fontSize:12,fontWeight:700,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
+                    <CalcAmountInput placeholder="0" value={invAmount} onChange={setInvAmount} style={{...lineField,fontSize:12,fontWeight:700}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Currency</div>
-                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36,cursor:"pointer"}}>
+                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...lineField,fontSize:12,cursor:"pointer"}}>
                       {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
@@ -4814,42 +4822,46 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   };
                   const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:"",periodizationAccount:""});
                   return(
-                    <div key={idx} style={{position:"relative",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 34px 10px 12px",marginBottom:8}}>
+                    // Lines are divided by a hairline only, no per-line box
+                    // — the ONE border around this whole section (Costs) is
+                    // the only border the Costs area gets; each line inside
+                    // it is unboxed/line-based.
+                    <div key={idx} style={{position:"relative",padding:idx===0?"0 34px 14px 0":"14px 34px 14px 0",borderTop:idx===0?"none":`1px solid ${T.border}`,marginTop:idx===0?0:14}}>
                       <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 170px":"1fr",gap:isDesktop?"8px 16px":8}}>
                         <div>
                           <div style={fieldLbl}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
                           <AccDrop value={r.accountCode||""} onChange={code=>{
                             const a=accounts.find(x=>x.code===code);
                             update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
-                          }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12}}/>
+                          }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={{...lineField,fontSize:12}}/>
                         </div>
                         <div>
                           <div style={fieldLbl}>Incl. VAT</div>
                           {/* Amount + currency kept as their own implemented
                               feature (number left, currency right, native
                               arrow hidden but still clickable) — same code
-                              as before, just realigned into this 2-column
-                              layout, not removed, so it's easy to bring
-                              back exactly as it was or swap out later. */}
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 8px",boxSizing:"border-box",minHeight:36}}>
+                              as before, just line-based now instead of
+                              boxed, not removed, so it's easy to bring back
+                              exactly as it was or swap out later. */}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,...lineField,padding:"6px 2px"}}>
                             <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                               if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1)setInvExtraLines(p=>[...p,newLine()]);
-                            }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:"7px 0",width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
-                            <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:32,cursor:"pointer",textAlign:"right",fontFamily:"inherit"}}>
+                            }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:0,width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
+                            <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",fontSize:9,fontWeight:700,color:T.muted,padding:0,flexShrink:0,width:32,cursor:"pointer",textAlign:"right",fontFamily:"inherit"}}>
                               {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
                           {(r.currency||"NOK")!=="NOK"&&(
-                            <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,fontSize:10.5,fontWeight:600,color:T.muted,padding:"6px 8px",width:"100%",textAlign:"left",marginTop:4}}/>
+                            <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>
                           )}
                         </div>
                         <div>
                           <div style={fieldLbl}>Description</div>
-                          <input placeholder="Description (optional)" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...inpSm,fontSize:12,padding:"7px 10px",width:"100%"}}/>
+                          <input placeholder="Description (optional)" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...lineField,fontSize:12}}/>
                         </div>
                         <div>
                           <div style={fieldLbl}>VAT</div>
-                          <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={{...inpSm,fontSize:11.5}}/>
+                          <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={{...lineField,fontSize:11.5}}/>
                         </div>
                         {invShowProject&&(
                           <div>
@@ -4867,7 +4879,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                                 return;
                               }
                               update({projectId:e.target.value});
-                            }} style={{...inpSm,fontSize:12,padding:"7px 10px",width:"100%"}}>
+                            }} style={{...lineField,fontSize:12}}>
                               <option value="">— None —</option>
                               {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
                               {saveProjects&&<option value="__new__">+ New…</option>}
@@ -4888,13 +4900,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         <div style={{marginTop:10,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
                           <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization</div>
                           <div style={fieldLbl}>Periodization account</div>
-                          <AccDrop value={r.periodizationAccount||""} onChange={code=>update({periodizationAccount:code})} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12,padding:"6px 10px"}}/>
+                          <AccDrop value={r.periodizationAccount||""} onChange={code=>update({periodizationAccount:code})} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...lineField,fontSize:12}}/>
                         </div>
                       )}
                       {/* Vertical ⋮ menu — Copy duplicates this line, Delete
                           removes it (Delete hidden on the primary line,
                           which can't be removed). */}
-                      <div style={{position:"absolute",top:6,right:2}}>
+                      <div style={{position:"absolute",top:idx===0?0:14,right:2}}>
                         <button onClick={()=>setInvRowMenuOpen(o=>o===idx?null:idx)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,padding:6,borderRadius:6,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                           <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
                           <span style={{width:3,height:3,borderRadius:"50%",background:"currentColor"}}/>
@@ -4984,17 +4996,17 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div style={{display:"flex",gap:8}}>
                     <div style={{flex:5}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Payment account</div>
-                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...selSm,width:"100%",fontSize:12,padding:"8px 10px"}}>
+                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...lineField,fontSize:12}}>
                         {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                       </select>
                     </div>
                     <div style={{flex:2}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
-                      <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...inpSm,fontSize:12,padding:"8px 10px"}}/>
+                      <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...lineField,fontSize:12}}/>
                     </div>
                     <div style={{flex:2}}>
                       <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
-                      <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{fontSize:12,padding:"7px 10px"}}/>
+                      <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{...lineField,fontSize:12}}/>
                     </div>
                   </div>
                   <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
