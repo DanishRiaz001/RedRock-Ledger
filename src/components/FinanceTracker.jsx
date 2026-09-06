@@ -1095,7 +1095,11 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         </div>
       </div>
 
-      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px",overflowY:"auto",height:"100%"}}>
+      {/* Left padding trimmed from 32 to 20 — every screen's content
+          (Advance Voucher, Supplier/Customer Invoice included) now sits
+          a bit closer to the sidebar instead of leaving an oversized
+          gap, matching the reviewed design. */}
+      <div id="main-content-area" style={{flex:1,minWidth:0,padding:"26px 32px 26px 20px",overflowY:"auto",height:"100%"}}>
         {assistantOpen&&<AssistantPanel onClose={()=>setAssistantOpen(false)}/>}
 
         {currentAccessLevel!=="full"&&(

@@ -3549,6 +3549,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const[invoiceNo,setInvoiceNo]=useState("");
   const[invDueDate,setInvDueDate]=useState("");
   const[invAmount,setInvAmount]=useState("");
+  // Foreign-currency posting on the primary cost line — default NOK
+  // (nothing extra shown); pick another currency and a second row
+  // appears for the NOK-equivalent amount, same idea as the VAT/
+  // Description second row elsewhere in this table.
+  const[invCurrency,setInvCurrency]=useState("NOK");
+  const[invAmountNok,setInvAmountNok]=useState("");
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invVatCode,setInvVatCode]=useState("");
   const[invDescription,setInvDescription]=useState("");
@@ -3563,7 +3569,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // record when a supplier invoice was really paid, separately from the
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");};
   const invIsCustomer=entryMode==="customer";
   const reskontroMode=false; // legacy manual contact-tagging toggle retired in favor of the entryMode dropdown
   const[entrySaved,setEntrySaved]=React.useState(false);
@@ -3899,13 +3905,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           icon, which fits its single-line header better. */}
       {isDesktop?(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
-          {/* Entry type moved into this header row, far right, styled as
-              an open/borderless dropdown — not a boxed <select> sitting in
-              the body below — since the header already says "Voucher
-              details" and the type IS the one thing this box exists to
-              pick. */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
-            <span style={{fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</span>
+          {/* The "Voucher details" label is gone — the dropdown itself
+              IS the header now, styled as an open/borderless combobox
+              instead of a boxed <select> sitting in the body below plus
+              a redundant label saying what it is. */}
+          <div style={{display:"flex",alignItems:"center",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
               <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",paddingRight:16,fontFamily:"inherit"}}>
                 <option value="receipt">Advance Voucher</option>
@@ -4556,7 +4560,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 const GRID_COLS="1.7fr 150px 78px 30px";
                 const cellBase={padding:"8px 6px",boxSizing:"border-box"};
                 const rows=[
-                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
+                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 return(
@@ -4583,6 +4587,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         if("accountCode"in patch)setInvAccountCode(patch.accountCode);
                         if("vatCode"in patch)setInvVatCode(patch.vatCode);
                         if("amount"in patch)setInvAmount(patch.amount);
+                        if("currency"in patch)setInvCurrency(patch.currency);
+                        if("amountNok"in patch)setInvAmountNok(patch.amountNok);
                       } else {
                         setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                       }
@@ -4603,13 +4609,26 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={lineField}/>
                       </div>
                       <div style={rowCell}>
-                        {/* Tabbing out of the last row's Amount box starts a
-                            new line automatically — matches the quick-entry
-                            feel of a real spreadsheet/voucher table instead
-                            of forcing a click on "+ Add Line" every time. */}
-                        <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
-                          if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
-                        }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"right"}}/>
+                        {/* Currency defaults to NOK, shown as nothing extra
+                            — click it to pick a different one, and a
+                            second row appears below for the NOK-equivalent
+                            amount, same idea as the VAT/Description second
+                            row elsewhere in this table. Tabbing out of the
+                            last row's Amount box starts a new line
+                            automatically — matches the quick-entry feel of
+                            a real spreadsheet/voucher table instead of
+                            forcing a click on "+ Add Line" every time. */}
+                        <div style={{display:"flex",alignItems:"center",gap:4}}>
+                          <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{...lineField,background:"transparent",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:38,cursor:"pointer"}}>
+                            {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
+                            if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
+                          }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"right"}}/>
+                        </div>
+                        {(r.currency||"NOK")!=="NOK"&&(
+                          <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,...lineField,fontSize:10.5,fontWeight:600,color:T.muted,padding:"4px 2px",width:"100%",textAlign:"right"}}/>
+                        )}
                       </div>
                       <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
                         {/* Vertical ⋮ menu — Copy duplicates this line,
