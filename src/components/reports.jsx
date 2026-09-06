@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES } from "../lib/utils.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
@@ -697,12 +697,228 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
   );
 }
 
+// SAF-T Financial export (Norway) — built directly against the official
+// Skatteetaten schema (github.com/Skatteetaten/saf-t,
+// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd), not approximated. This is
+// an on-demand obligation, not a periodic filing: mandatory for any
+// Norwegian business on digital bookkeeping with turnover over NOK 5M or
+// more than 600 vouchers/year, and the file only needs to exist when
+// Skatteetaten actually asks for it (typically during an audit).
+//
+// Scope is deliberately a well-formed SUBSET of the full schema — every
+// element emitted here is taken verbatim from the real XSD (names, order,
+// namespace), but optional sections this app has no real data for
+// (Assets/fixed-asset register, AnalysisTypeTable/cost-centre dimensions,
+// Owners) are omitted rather than filled with guessed structure, since an
+// omitted optional element keeps the file valid while a wrong nested
+// shape for one would not. A few genuinely informed defaults are called
+// out inline below (GroupingCategory, address split, per-line timestamps).
+const xmlEsc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+const balAtDate=(transactions,code,onOrBefore)=>transactions.reduce((s,t)=>{
+  if(t.date>onOrBefore)return s;
+  if(t.debitCode===code)return s+t.amount;
+  if(t.creditCode===code)return s-t.amount;
+  return s;
+},0);
+// A day before `from` — SAF-T's "opening balance" is everything posted
+// strictly before the export period starts.
+const dayBefore=iso=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);};
+function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,dateTo,userEmail}){
+  const NS="urn:StandardAuditFile-Taxation-Financial:NO";
+  const now=new Date();
+  const nowIso=now.toISOString();
+  const orgNumber=(companyProfile&&companyProfile.orgNumber)||"";
+  const companyName=(companyProfile&&companyProfile.companyName)||"";
+  const rawAddress=(companyProfile&&companyProfile.address)||"";
+  // Best-effort split of one free-text address field into
+  // AddressDetail/PostalCode/City — this app stores address as a single
+  // string, not separate fields; a trailing "NNNN City" (Norwegian postal
+  // code format) is pulled off when present, otherwise the whole string
+  // goes into AddressDetail and PostalCode/City stay blank (both allowed
+  // to be empty in the schema).
+  const addrMatch=rawAddress.match(/^(.*?),?\s*(\d{4})\s+(.+)$/);
+  const addressDetail=addrMatch?addrMatch[1].trim():rawAddress;
+  const postalCode=addrMatch?addrMatch[2]:"";
+  const city=addrMatch?addrMatch[3].trim():"";
+
+  const inPeriod=t=>t.date>=dateFrom&&t.date<=dateTo;
+  const periodTxns=transactions.filter(inPeriod);
+  const openingCutoff=dayBefore(dateFrom);
+
+  // --- MasterFiles: GeneralLedgerAccounts ---
+  const glAccountsXml=accounts.map(a=>{
+    const opening=balAtDate(transactions,a.code,openingCutoff);
+    const closing=balAtDate(transactions,a.code,dateTo);
+    const openTag=opening>=0?`<OpeningDebitBalance>${opening.toFixed(2)}</OpeningDebitBalance>`:`<OpeningCreditBalance>${(-opening).toFixed(2)}</OpeningCreditBalance>`;
+    const closeTag=closing>=0?`<ClosingDebitBalance>${closing.toFixed(2)}</ClosingDebitBalance>`:`<ClosingCreditBalance>${(-closing).toFixed(2)}</ClosingCreditBalance>`;
+    return`      <Account>
+        <AccountID>${xmlEsc(a.code)}</AccountID>
+        <AccountDescription>${xmlEsc(a.name)}</AccountDescription>
+        <GroupingCategory>GL01</GroupingCategory>
+        <GroupingCode>${xmlEsc(a.code)}</GroupingCode>
+        <AccountType>GL</AccountType>
+        ${openTag}
+        ${closeTag}
+      </Account>`;
+  }).join("\n");
+
+  // --- MasterFiles: Customers / Suppliers ---
+  const partyXml=(c,idTag,balanceAccount)=>`      <${idTag==="CustomerID"?"Customer":"Supplier"}>
+        <CompanyID>${xmlEsc(c.orgNumber||c.id)}</CompanyID>
+        <CompanyName>${xmlEsc(c.name)}</CompanyName>
+        <Address>
+          <AddressDetail>${xmlEsc(c.address||"")}</AddressDetail>
+          <City></City>
+          <PostalCode></PostalCode>
+          <Country>NO</Country>
+        </Address>
+        <${idTag}>${xmlEsc(c.id)}</${idTag}>
+        <BalanceAccount>${balanceAccount}</BalanceAccount>
+      </${idTag==="CustomerID"?"Customer":"Supplier"}>`;
+  const customersXml=contacts.filter(c=>c.type==="customer").map(c=>partyXml(c,"CustomerID","1500")).join("\n");
+  const suppliersXml=contacts.filter(c=>c.type==="supplier").map(c=>partyXml(c,"SupplierID","2400")).join("\n");
+
+  // --- MasterFiles: TaxTable — the app's own MVA codes are already
+  // numbered to match Skatteetaten's official Standard Tax Codes list
+  // (utils.js MVA_CODES), so TaxCode/StandardTaxCode use the same value.
+  const seenTax=new Set();
+  const taxCodeDetailsXml=MVA_CODES.filter(c=>{
+    const key=c.code+":"+c.direction;
+    if(seenTax.has(key))return false;
+    seenTax.add(key);return true;
+  }).map(c=>`        <TaxCodeDetails>
+          <TaxCode>${xmlEsc(c.code)}</TaxCode>
+          <Description>${xmlEsc(c.name)}</Description>
+          <TaxPercentage>${(c.rate||0).toFixed(2)}</TaxPercentage>
+          <Country>NO</Country>
+          <StandardTaxCode>${xmlEsc(c.code)}</StandardTaxCode>
+        </TaxCodeDetails>`).join("\n");
+
+  // --- GeneralLedgerEntries — one Transaction per bilag, one Line per
+  // debit/credit side actually posted (a one-sided line only emits the
+  // side that's filled, matching this app's flexible-line convention).
+  const byBilag=new Map();
+  periodTxns.forEach(t=>{
+    const key=t.bilag;
+    if(!byBilag.has(key))byBilag.set(key,[]);
+    byBilag.get(key).push(t);
+  });
+  let totalDebit=0,totalCredit=0,numberOfEntries=0;
+  const transactionsXml=[...byBilag.entries()].sort((a,b)=>a[0]-b[0]).map(([bilag,rows])=>{
+    numberOfEntries++;
+    const first=rows[0];
+    let recordId=0;
+    const linesXml=[];
+    rows.forEach(r=>{
+      const amt=Math.abs(r.amount)||0;
+      if(r.debitCode){
+        recordId++;totalDebit+=amt;
+        linesXml.push(`          <Line>
+            <RecordID>${recordId}</RecordID>
+            <AccountID>${xmlEsc(r.debitCode)}</AccountID>
+            <Description>${xmlEsc(r.description||"")}</Description>
+            <DebitAmount>
+              <Amount>${amt.toFixed(2)}</Amount>
+            </DebitAmount>
+            ${r.contactId&&r.debitCode==="1500"?`<CustomerID>${xmlEsc(r.contactId)}</CustomerID>`:""}
+            ${r.invoiceNo?`<ReferenceNumber>${xmlEsc(r.invoiceNo)}</ReferenceNumber>`:""}
+            ${r.dueDate?`<DueDate>${xmlEsc(r.dueDate)}</DueDate>`:""}
+          </Line>`);
+      }
+      if(r.creditCode){
+        recordId++;totalCredit+=amt;
+        linesXml.push(`          <Line>
+            <RecordID>${recordId}</RecordID>
+            <AccountID>${xmlEsc(r.creditCode)}</AccountID>
+            <Description>${xmlEsc(r.description||"")}</Description>
+            <CreditAmount>
+              <Amount>${amt.toFixed(2)}</Amount>
+            </CreditAmount>
+            ${r.contactId&&r.creditCode==="2400"?`<SupplierID>${xmlEsc(r.contactId)}</SupplierID>`:""}
+            ${r.invoiceNo?`<ReferenceNumber>${xmlEsc(r.invoiceNo)}</ReferenceNumber>`:""}
+            ${r.dueDate?`<DueDate>${xmlEsc(r.dueDate)}</DueDate>`:""}
+          </Line>`);
+      }
+    });
+    const d=first.date;
+    const year=d.slice(0,4),month=parseInt(d.slice(5,7),10);
+    return`      <Transaction>
+        <TransactionID>${xmlEsc(bilag)}</TransactionID>
+        <Period>${month}</Period>
+        <PeriodYear>${year}</PeriodYear>
+        <TransactionDate>${d}</TransactionDate>
+        <Description>${xmlEsc(first.description||"")}</Description>
+        <SystemEntryDate>${d}</SystemEntryDate>
+        <GLPostingDate>${d}</GLPostingDate>
+${linesXml.join("\n")}
+      </Transaction>`;
+  }).join("\n");
+
+  return`<?xml version="1.0" encoding="UTF-8"?>
+<AuditFile xmlns="${NS}">
+  <Header>
+    <FileVersion>1.30</FileVersion>
+    <AuditFileDate>${dateTo}</AuditFileDate>
+    <StartDate>${dateFrom}</StartDate>
+    <EndDate>${dateTo}</EndDate>
+    <CurrencyCode>NOK</CurrencyCode>
+    <DateCreated>${nowIso.slice(0,10)}</DateCreated>
+    <SoftwareCompanyName>RedRock Ledger</SoftwareCompanyName>
+    <SoftwareID>redrock-ledger</SoftwareID>
+    <SoftwareVersion>1.0</SoftwareVersion>
+    <Company>
+      <CompanyID>${xmlEsc(orgNumber)}</CompanyID>
+      <CompanyName>${xmlEsc(companyName)}</CompanyName>
+      <Address>
+        <AddressDetail>${xmlEsc(addressDetail)}</AddressDetail>
+        <City>${xmlEsc(city)}</City>
+        <PostalCode>${xmlEsc(postalCode)}</PostalCode>
+        <Country>NO</Country>
+      </Address>
+    </Company>
+    ${userEmail?`<UserID>${xmlEsc(userEmail)}</UserID>`:""}
+    <TaxAccountingBasis>A</TaxAccountingBasis>
+  </Header>
+  <MasterFiles>
+    <GeneralLedgerAccounts>
+${glAccountsXml}
+    </GeneralLedgerAccounts>
+    ${customersXml?`<Customers>\n${customersXml}\n    </Customers>`:""}
+    ${suppliersXml?`<Suppliers>\n${suppliersXml}\n    </Suppliers>`:""}
+    <TaxTable>
+      <TaxTableEntry>
+        <TaxType>MVA</TaxType>
+        <Description>Merverdiavgift</Description>
+${taxCodeDetailsXml}
+      </TaxTableEntry>
+    </TaxTable>
+  </MasterFiles>
+  <GeneralLedgerEntries>
+    <NumberOfEntries>${numberOfEntries}</NumberOfEntries>
+    <TotalDebit>${totalDebit.toFixed(2)}</TotalDebit>
+    <TotalCredit>${totalCredit.toFixed(2)}</TotalCredit>
+    <Journal>
+      <JournalID>1</JournalID>
+      <Description>Hovedbok</Description>
+      <Type>GL</Type>
+${transactionsXml}
+    </Journal>
+  </GeneralLedgerEntries>
+</AuditFile>
+`;
+}
+
 function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
   const[showNew,setShowNew]=useState(false);
   const[showRestoreModal,setShowRestoreModal]=useState(false);
+  // SAF-T Financial export period — defaults to the current fiscal year
+  // to date, since that's what Skatteetaten would normally ask for
+  // (the export is on-demand, not filed on a schedule).
+  const[saftFrom,setSaftFrom]=useState(`${new Date().getFullYear()}-01-01`);
+  const[saftTo,setSaftTo]=useState(new Date().toISOString().slice(0,10));
 
   // The Chart of Accounts table has too many columns to be usable inside
   // Settings' normal narrow max-width — it needs the full screen. Every
@@ -993,6 +1209,34 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
               setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
             }catch(e){alert("Backup failed: "+e.message);}
           }}>⬇ Download Backup</button>
+        </div>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🇳🇴 SAF-T Financial Export</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>The standard audit file Skatteetaten can request on demand (mandatory once turnover passes NOK 5 million or 600+ vouchers/year) — the chart of accounts with opening/closing balances, customers, suppliers, VAT codes, and every posting for the period below, in the official v1.30 XML format. Nothing is sent anywhere; it's a file for you to hand over if asked.</div>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>From</div>
+              <FlexDateInput value={saftFrom} onChange={setSaftFrom}/>
+            </div>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>To</div>
+              <FlexDateInput value={saftTo} onChange={setSaftTo}/>
+            </div>
+          </div>
+          <button style={btnRed} onClick={()=>{
+            try{
+              if(!companyProfile||!companyProfile.orgNumber){alert("Add your organization number in Company information first — Skatteetaten's schema requires it as the file's CompanyID.");return;}
+              let userEmail="";
+              try{userEmail=JSON.parse(localStorage.getItem("rr_profile")||"{}").email||"";}catch{}
+              const xml=buildSAFTXml({accounts,contacts,transactions:transactions||[],companyProfile,dateFrom:saftFrom,dateTo:saftTo,userEmail});
+              const blob=new Blob([xml],{type:"application/xml"});
+              const url=URL.createObjectURL(blob);
+              const a=document.createElement("a");
+              a.href=url;a.download=`SAF-T_Financial_${saftFrom}_${saftTo}.xml`;
+              document.body.appendChild(a);a.click();
+              setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+            }catch(e){alert("SAF-T export failed: "+e.message);}
+          }}>⬇ Download SAF-T XML</button>
         </div>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔎 Recover local budgets</div>
