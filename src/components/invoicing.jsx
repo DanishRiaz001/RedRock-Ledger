@@ -3610,6 +3610,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     }catch{}
     return initialEntryMode;
   }); // "receipt" | "supplier" | "customer"
+  const[voucherDetailsMenuOpen,setVoucherDetailsMenuOpen]=useState(false);
   const[invContactId,setInvContactId]=useState(()=>{
     const s=getPendingSuggestion();
     if(s&&s.supplier){
@@ -4054,18 +4055,29 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           icon, which fits its single-line header better. */}
       {isDesktop?(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
-          {/* The "Voucher details" label is gone — the dropdown itself
-              IS the header now, styled as an open/borderless combobox
-              instead of a boxed <select> sitting in the body below plus
-              a redundant label saying what it is. */}
+          {/* The trigger always reads "Voucher details" now — it no longer
+              echoes back whichever type is currently selected ("Advance
+              Voucher ▾" etc.), so the label stays stable no matter which
+              type is picked. A real <select> can't show fixed trigger text
+              (it always displays the selected option), so this is a small
+              themed menu instead, same pattern as every other dropdown
+              in the app. */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
-              <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",paddingRight:16,fontFamily:"inherit"}}>
-                <option value="receipt">Advance Voucher</option>
-                <option value="supplier">Supplier Invoice</option>
-                <option value="customer">Customer Invoice</option>
-              </select>
-              <span style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>▼</span>
+              <button onClick={()=>setVoucherDetailsMenuOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+                Voucher details
+                <span style={{fontSize:8,color:T.muted}}>{voucherDetailsMenuOpen?"▲":"▼"}</span>
+              </button>
+              {voucherDetailsMenuOpen&&(
+                <>
+                  <div onClick={()=>setVoucherDetailsMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                  <div style={{position:"absolute",top:24,right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:5,minWidth:150}}>
+                    {[["receipt","Advance Voucher"],["supplier","Supplier Invoice"],["customer","Customer Invoice"]].map(([v,label])=>(
+                      <div key={v} onClick={()=>{setEntryMode(v);setVoucherDetailsMenuOpen(false);}} style={{padding:"8px 10px",borderRadius:7,fontSize:12,fontWeight:entryMode===v?700:500,color:entryMode===v?T.accent:T.text,background:entryMode===v?T.accentLight:"transparent",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
           {/* Guessing one fixed pixel height for all three was the bug —
@@ -4288,19 +4300,25 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               const isLast=li===linesArr.length-1;
               const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
               return(<React.Fragment key={li}>
-                <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
-                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
-                    if(li===0){setForm(p=>({...p,date:v}));return;}
-                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                    lines[li]={...lines[li],date:v};
-                    setForm(p=>({...p,lines}));
-                  }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
+                <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"center",gap:6}}>
+                  {/* Date and Description sit on ONE row now — a compact
+                      date, then description filling the rest — rather than
+                      stacked (date above, description below) inside the
+                      same column. */}
+                  <div style={{flexShrink:0,width:76}}>
+                    <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                      if(li===0){setForm(p=>({...p,date:v}));return;}
+                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                      lines[li]={...lines[li],date:v};
+                      setForm(p=>({...p,lines}));
+                    }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:11.5,padding:"6px 2px"}}/>
+                  </div>
                   <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
                     if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
                     const lines=[...(form.lines||[])];
                     lines[li]={...lines[li],description:e.target.value};
                     setForm(p=>({...p,lines}));
-                  }} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",fontSize:11.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  }} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
                 </div>
                 <div style={{...rowCell,minWidth:0}}>
                   <AccDrop value={line.debitCode||""} onChange={v=>{
