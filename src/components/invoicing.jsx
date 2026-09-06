@@ -4184,14 +4184,17 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           off of there). */}
       {isDesktop&&entryMode==="receipt"&&(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,overflow:"hidden"}}>
-          <div style={{padding:14,background:"#fff",display:"flex",flexDirection:"column",gap:12}}>
+          {/* Date and Description on one row — a compact date column, then
+              description filling the rest — instead of each stacked on
+              its own full-width row. */}
+          <div style={{padding:14,background:"#fff",display:"grid",gridTemplateColumns:"170px 1fr",gap:20}}>
             <div>
               <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Date</div>
-              <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{maxWidth:220}} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:13,padding:"6px 2px"}}/>
+              <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:13,padding:"6px 2px",width:"100%",boxSizing:"border-box"}}/>
             </div>
             <div>
               <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Description</div>
-              <input placeholder="What is this entry for?" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.text,padding:"6px 2px",width:"100%",fontSize:13,fontWeight:600,outline:"none",boxSizing:"border-box"}}/>
+              <input placeholder="What is this entry for?" value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.text,padding:"6px 2px",width:"100%",fontSize:12,fontWeight:600,outline:"none",boxSizing:"border-box"}}/>
             </div>
           </div>
         </div>
