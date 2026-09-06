@@ -3955,7 +3955,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               IS the header now, styled as an open/borderless combobox
               instead of a boxed <select> sitting in the body below plus
               a redundant label saying what it is. */}
-          <div style={{display:"flex",alignItems:"center",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
               <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",paddingRight:16,fontFamily:"inherit"}}>
                 <option value="receipt">Advance Voucher</option>
