@@ -1264,7 +1264,11 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
   };
 
   return(
-    <ResizableSplit left={(
+    // Same size/position spec as every document preview panel in the
+    // app now (Inbox is the reference): defaultRightWidth 30% of the
+    // window clamped 380–1100, min 380, max 1100 — one consistent
+    // preview everywhere instead of each screen picking its own.
+    <ResizableSplit defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} left={(
       <div>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>New voucher</h1>
         <div style={{display:"flex",gap:8,marginBottom:18}}>
@@ -1652,7 +1656,9 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
       </div>
 
       <div style={{flex:1,minHeight:0,display:"flex"}}>
-      <ResizableSplit defaultRightWidth={560} minRightWidth={360} maxRightWidth={1000} collapsible collapseLabel="Hide document" expandLabel="Show document" left={(
+      {/* Same size/position spec as every document preview in the app
+          now (Inbox is the reference). */}
+      <ResizableSplit defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide document" expandLabel="Show document" left={(
         <div style={{padding:24,height:"100%",overflowY:"auto"}}>
           <div style={{maxWidth:formExpanded?"none":920,display:"flex",justifyContent:"flex-end",marginBottom:4}}>
             <button onClick={()=>setFormExpanded(e=>!e)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
@@ -4751,9 +4757,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         collapsible={true}
         collapseLabel="Hide preview"
         expandLabel="Show preview"
-        defaultRightWidth={400}
-        minRightWidth={300}
-        maxRightWidth={640}
+        // Same size spec as every other document preview in the app now
+        // (Inbox is the reference) — was its own smaller 400/300/640.
+        defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))}
+        minRightWidth={380}
+        maxRightWidth={1100}
         minLeftWidth={580}
         // height:"100%" instead of a fixed 520px on the wrapper below — the
         // panel that wraps this (ResizableSplit's right side) is itself

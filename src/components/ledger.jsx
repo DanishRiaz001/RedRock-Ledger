@@ -1494,9 +1494,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           and the resize handle — exactly the "gray gap that moves when I
           drag" bug. ResizableSplit already constrains this side correctly
           on its own; no second cap needed. */}
+      {/* Same size/position spec as every document preview in the app
+          now (Inbox is the reference) — was its own smaller 22%-based
+          520/300/800. */}
       <ResizableSplit
-        defaultRightWidth={Math.min(520,Math.max(320,Math.round(window.innerWidth*0.22)))}
-        minRightWidth={300} maxRightWidth={800}
+        defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))}
+        minRightWidth={380} maxRightWidth={1100}
         collapsible collapseLabel="Hide attachment" expandLabel="Show attachment"
         left={detailsTab}
         right={(

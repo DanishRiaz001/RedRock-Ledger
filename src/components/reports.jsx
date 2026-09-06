@@ -5963,7 +5963,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </div>
         );
 
-        return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={460} minRightWidth={340} maxRightWidth={900} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef]}/>;
+        // Same size/position spec as every document preview in the app
+        // now (Inbox is the reference) — was its own smaller 460/340/900.
+        return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef]}/>;
       })()}
       {detailTxn&&<DetailModal txn={detailTxn} initialShowEdit addTransaction={addTransaction} accounts={accounts} contacts={contacts} transactions={transactions}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
