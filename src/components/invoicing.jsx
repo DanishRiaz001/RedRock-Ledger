@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -1397,10 +1397,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
               <input type="file" accept="image/*,.pdf" disabled={uploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);}}/>
             </label>
             {inboxFiles.length>0&&(
-              <select value="" onChange={e=>{if(e.target.value)setAttachedFileId(parseInt(e.target.value));}} style={{...inp,fontSize:12}}>
-                <option value="">— or pick from Inbox —</option>
-                {inboxFiles.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
+              <FileDrop files={inboxFiles} onPick={id=>setAttachedFileId(parseInt(id))} placeholder="— or pick from Inbox —"/>
             )}
           </>
         )}
@@ -3911,9 +3908,9 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             <span style={{fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</span>
             <div style={{position:"relative"}}>
               <select value={entryMode} onChange={e=>setEntryMode(e.target.value)} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",paddingRight:16,fontFamily:"inherit"}}>
-                <option value="receipt">Receipt</option>
+                <option value="receipt">Advance Voucher</option>
                 <option value="supplier">Supplier Invoice</option>
-                <option value="customer">Customer Sale</option>
+                <option value="customer">Customer Invoice</option>
               </select>
               <span style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>▼</span>
             </div>
@@ -3992,11 +3989,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       <span style={{fontSize:10.5,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Tap to upload"}</span>
                       <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0]){uploadToInbox(e.target.files[0]);setShowAttachPopover(false);}}}/>
                     </label>
-                    {inboxFiles.length>0&&(
-                      <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value){setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));setShowAttachPopover(false);}}} style={{...selSm,width:"100%",marginTop:8,fontSize:11}}>
-                        <option value="">— or pick from Inbox —</option>
-                        {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                      </select>
+                    {inboxFiles.length>0&&!uploadingReceipt&&(
+                      <div style={{marginTop:8}}><FileDrop files={inboxFiles} onPick={id=>{setForm(p=>({...p,attachmentId:parseInt(id)}));setShowAttachPopover(false);}} placeholder="— or pick from Inbox —"/></div>
                     )}
                   </>)}
                 </div>
@@ -4557,7 +4551,9 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 // — an open list, not a spreadsheet grid — and the
                 // header stays put (position:sticky) once there are more
                 // lines than fit in the scroll area below it.
-                const GRID_COLS="1.7fr 150px 130px 30px";
+                // Amount column narrowed 40% (130px → 78px) — it only
+                // ever holds a number, not an account name.
+                const GRID_COLS="1.7fr 150px 78px 30px";
                 const cellBase={padding:"8px 6px",boxSizing:"border-box"};
                 const rows=[
                   {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount},
@@ -4601,7 +4597,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         <AccDrop value={r.accountCode||""} onChange={code=>{
                           const a=accounts.find(x=>x.code===code);
                           update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
-                        }} accounts={filteredAccounts} inputStyle={lineField}/>
+                        }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={lineField}/>
                       </div>
                       <div style={rowCell}>
                         <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={lineField}/>
@@ -4783,11 +4779,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Upload a file, or drag one here"}</span>
                   <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
                 </label>
-                {inboxFiles.length>0&&(
-                  <select value="" disabled={uploadingReceipt} onChange={e=>{if(e.target.value)setForm(p=>({...p,attachmentId:parseInt(e.target.value)}));}} style={{...selSm,width:"100%",marginTop:2}}>
-                    <option value="">— or pick an existing Inbox file —</option>
-                    {inboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                  </select>
+                {inboxFiles.length>0&&!uploadingReceipt&&(
+                  <div style={{width:"100%",marginTop:2}}><FileDrop files={inboxFiles} onPick={id=>setForm(p=>({...p,attachmentId:parseInt(id)}))} placeholder="— or pick an existing Inbox file —"/></div>
                 )}
               </div>
             ):(
@@ -4893,10 +4886,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             }}/>
           </label>
           {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).length>0&&(
-            <select value="" onChange={e=>{if(e.target.value){setInvAttachmentIds(p=>[...p,parseInt(e.target.value)]);setInvAttOpen(true);}}} style={{...selSm,width:"100%",fontSize:11,padding:"7px 8px",marginTop:8}}>
-              <option value="">— or pick an existing Inbox file —</option>
-              {inboxFiles.filter(f=>!invAttachmentIds.includes(f.id)).map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-            </select>
+            <div style={{marginTop:8}}><FileDrop files={inboxFiles.filter(f=>!invAttachmentIds.includes(f.id))} onPick={id=>{setInvAttachmentIds(p=>[...p,parseInt(id)]);setInvAttOpen(true);}} placeholder="— or pick an existing Inbox file —"/></div>
           )}
         </Card>
         )}

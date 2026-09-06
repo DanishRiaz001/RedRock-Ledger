@@ -135,6 +135,10 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   const[newContactName,setNewContactName]=useState("");
   const[newContactType,setNewContactType]=useState("supplier");
   const[dropPos,setDropPos]=useState(null);
+  // Arrow-key highlight through the combined contact+account list — was
+  // Enter-picks-the-top-match only, with no way to reach anything past
+  // the first row without touching the mouse.
+  const[activeIdx,setActiveIdx]=useState(-1);
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const sel=accounts.find(a=>a.code===value);
@@ -179,6 +183,18 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     onContactPick(c.id);
     closeAndRevert();
   };
+  // One combined list — contacts first, then accounts — so arrow keys
+  // move through exactly what's on screen, top to bottom, regardless of
+  // which section a row belongs to.
+  const combined=useMemo(()=>[
+    ...contactMatches.map(c=>({kind:"contact",item:c})),
+    ...filtered.map(a=>({kind:"account",item:a})),
+  ],[contactMatches,filtered]);
+  const pickCombined=entry=>{
+    if(!entry)return;
+    if(entry.kind==="contact")pickContact(entry.item);
+    else{onChange(entry.item.code);closeAndRevert();}
+  };
 
   // Fixed from the input's own screen coordinates (same fix as Menu3 and
   // AccDropFlat) instead of absolute-relative-to-container — otherwise any
@@ -187,9 +203,9 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   // the moment it opens near that ancestor's edge.
   const openAndSearch=()=>{
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:Math.max(r.width,320)});}
-    setOpen(true);setQ("");
+    setOpen(true);setQ("");setActiveIdx(-1);
   };
-  const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");setCreatingContact(false);setNewContactName("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");setCreatingContact(false);setNewContactName("");setActiveIdx(-1);};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. If it's just moving to the code/name inputs inside the
   // "new account" mini-form (still within containerRef), closing here would
@@ -233,14 +249,17 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
         value={open?q:displayValue}
         placeholder="— Select or type to search —"
         onFocus={openAndSearch}
-        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);}}
+        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);setActiveIdx(-1);}}
         onBlur={handleBlur}
         onKeyDown={e=>{
           if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
-          // Enter picks the top match, same as clicking it — matches every
-          // other combobox in the app and lets someone type-and-Enter
-          // through a whole voucher without touching the mouse.
-          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
+          // Arrow keys move a highlight through the combined list —
+          // was mouse-only past the first row. Enter picks whatever's
+          // highlighted, falling back to the top match (old behavior)
+          // when nothing's been arrowed to yet.
+          if(e.key==="ArrowDown"&&open&&combined.length>0){e.preventDefault();setActiveIdx(i=>Math.min(i+1,combined.length-1));}
+          if(e.key==="ArrowUp"&&open&&combined.length>0){e.preventDefault();setActiveIdx(i=>Math.max(i-1,0));}
+          if(e.key==="Enter"&&open&&combined.length>0){e.preventDefault();pickCombined(combined[activeIdx>=0?activeIdx:0]);}
         }}
         style={{...selSm,minHeight:28,cursor:"text",paddingRight:22,...inputStyle}}
       />
@@ -277,7 +296,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               )}
               {filtered.length===0&&contactMatches.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {contactMatches.map((c,i)=>(
-                <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
+                <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} onMouseEnter={()=>setActiveIdx(i)} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:i===activeIdx?T.bg:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
                   <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.type==="customer"?"1500":"2400"}</span>
                   <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                     <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
@@ -286,13 +305,16 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                   <span/>
                 </div>
               ))}
-              {filtered.map((a,i)=>(
-                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
+              {filtered.map((a,i)=>{
+                const ci=contactMatches.length+i;
+                return(
+                <div key={a.code} onMouseDown={e=>{e.preventDefault();onChange(a.code);closeAndRevert();}} onMouseEnter={()=>setActiveIdx(ci)} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:ci===activeIdx?T.bg:(a.code===value?"#EBF4FF":"#fff"),borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",alignItems:"center"}}>
                   <span style={{fontSize:11,fontWeight:700,color:(SERIES[a.groupKey]?SERIES[a.groupKey].color:undefined)||T.accent}}>{a.code}</span>
                   <span style={{fontSize:11,color:T.text,fontWeight:a.code===value?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
                   <span style={{fontSize:10,color:T.muted,fontWeight:600,textAlign:"right"}}>{a.defaultVatPct!=null?`${a.defaultVatPct}%`:"—"}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
             {onCreateAccount&&(creating?(
               <div style={{padding:"10px",borderTop:`1px solid ${T.border}`,background:T.bg,display:"flex",gap:6}}>
@@ -347,14 +369,16 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
   },[options,q]);
 
   const[dropPos,setDropPos]=useState(null);
+  // Same arrow-key highlight as AccDrop — was Enter-picks-top-match only.
+  const[activeIdx,setActiveIdx]=useState(-1);
   // Fixed from the input's own screen coordinates (same fix as AccDrop/
   // AccDropFlat/Menu3) instead of absolute-relative-to-container.
   const openAndSearch=()=>{
     if(disabled)return;
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
-    setOpen(true);setQ("");
+    setOpen(true);setQ("");setActiveIdx(-1);
   };
-  const closeAndRevert=()=>{setOpen(false);setQ("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");setActiveIdx(-1);};
   const handleBlur=e=>{
     const next=e.relatedTarget;
     if(next&&containerRef.current&&containerRef.current.contains(next))return;
@@ -376,7 +400,9 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
         onBlur={handleBlur}
         onKeyDown={e=>{
           if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
-          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
+          if(e.key==="ArrowDown"&&open&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.min(i+1,filtered.length-1));}
+          if(e.key==="ArrowUp"&&open&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.max(i-1,0));}
+          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[activeIdx>=0?activeIdx:0].code);closeAndRevert();}
         }}
         style={{...selSm,fontSize:10.5,minHeight:28,cursor:disabled?"default":"text",paddingRight:20,...inputStyle}}
       />
@@ -388,7 +414,7 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
             <div style={{overflowY:"auto",maxHeight:230}}>
               {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No VAT codes found</div>}
               {filtered.map((o,i)=>(
-                <div key={o.code} onMouseDown={e=>{e.preventDefault();onChange(o.code);closeAndRevert();}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:o.code===value?"#EBF4FF":"#fff",fontWeight:o.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none"}}>
+                <div key={o.code} onMouseDown={e=>{e.preventDefault();onChange(o.code);closeAndRevert();}} onMouseEnter={()=>setActiveIdx(i)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:i===activeIdx?T.bg:(o.code===value?"#EBF4FF":"#fff"),fontWeight:o.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none"}}>
                   <span style={{fontWeight:700,color:T.accent}}>{o.code}</span>: ({o.rate}%) {o.name}
                 </div>
               ))}
@@ -530,6 +556,70 @@ function FlexDateInput({value,onChange,style,inputStyle}){
 }
 
 // Flat searchable dropdown (for edit modal)
+// Themed replacement for the "— or pick an existing Inbox file —" plain
+// native <select> used on every attachment panel — a native select
+// renders with the OS's own unstyled dropdown (no app colors, no hover
+// state), completely different from every other combobox in the app.
+// Same search/arrow-key/hover pattern as AccDrop/VatDrop, just over a
+// flat {id,name} list instead of accounts or VAT codes.
+function FileDrop({files,onPick,placeholder}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const[activeIdx,setActiveIdx]=useState(-1);
+  const[dropPos,setDropPos]=useState(null);
+  const inputRef=React.useRef(null);
+  const containerRef=React.useRef(null);
+  const filtered=useMemo(()=>{
+    if(!q)return files;
+    const ql=q.toLowerCase();
+    return files.filter(f=>f.name.toLowerCase().includes(ql));
+  },[files,q]);
+  const openAndSearch=()=>{
+    if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
+    setOpen(true);setQ("");setActiveIdx(-1);
+  };
+  const closeAndRevert=()=>{setOpen(false);setQ("");setActiveIdx(-1);};
+  const pick=f=>{onPick(f.id);closeAndRevert();inputRef.current&&inputRef.current.blur();};
+  const handleBlur=e=>{
+    const next=e.relatedTarget;
+    if(next&&containerRef.current&&containerRef.current.contains(next))return;
+    closeAndRevert();
+  };
+  return(
+    <div ref={containerRef} style={{position:"relative"}}>
+      <input
+        ref={inputRef}
+        value={open?q:""}
+        placeholder={placeholder||"— Select a file —"}
+        onFocus={openAndSearch}
+        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);setActiveIdx(-1);}}
+        onBlur={handleBlur}
+        onKeyDown={e=>{
+          if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+          if(e.key==="ArrowDown"&&open&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.min(i+1,filtered.length-1));}
+          if(e.key==="ArrowUp"&&open&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.max(i-1,0));}
+          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();pick(filtered[activeIdx>=0?activeIdx:0]);}
+        }}
+        style={{...selSm,width:"100%",cursor:"text",paddingRight:22,boxSizing:"border-box"}}
+      />
+      <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
+      {open&&dropPos&&(
+        <>
+          <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:230}}>
+            <div style={{overflowY:"auto",maxHeight:230}}>
+              {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No files found</div>}
+              {filtered.map((f,i)=>(
+                <div key={f.id} onMouseDown={e=>{e.preventDefault();pick(f);}} onMouseEnter={()=>setActiveIdx(i)} style={{padding:"8px 10px",fontSize:11,cursor:"pointer",background:i===activeIdx?T.bg:"#fff",color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactId,triggerStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
@@ -3408,4 +3498,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop, FileDrop };
