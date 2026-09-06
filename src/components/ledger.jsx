@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate, INCOME_SK, EXPENSE_SK, nextContactId } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
+import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 // A tiny cross-component navigation hook — set once by FinanceTracker on
@@ -123,17 +124,12 @@ const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,col
 function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact,contactId,inputStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
-  const[creating,setCreating]=useState(false);
-  const[newCode,setNewCode]=useState("");
-  const[newName,setNewName]=useState("");
-  // Quick-create a customer/supplier right from this same dropdown, same
-  // idea as "+ New account" below but for a contact instead — onCreateContact
-  // does the actual creating (nextContactId + setContacts) and hands back
-  // the new id, so this can route the field to 1500/2400 and call
-  // onContactPick exactly like picking an existing contact would.
-  const[creatingContact,setCreatingContact]=useState(false);
-  const[newContactName,setNewContactName]=useState("");
-  const[newContactType,setNewContactType]=useState("supplier");
+  // "+ New account" / "+ New customer/supplier" open the SAME real popups
+  // as the Chart of Accounts / Customers screens (NewAccountModal,
+  // NewContactModal) instead of a cramped inline mini-form squeezed into
+  // the bottom of this dropdown, which could overflow its own border.
+  const[showAccountModal,setShowAccountModal]=useState(false);
+  const[showContactModal,setShowContactModal]=useState(false);
   const[dropPos,setDropPos]=useState(null);
   // Arrow-key highlight through the combined contact+account list — was
   // Enter-picks-the-top-match only, with no way to reach anything past
@@ -205,13 +201,11 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:Math.max(r.width,320)});}
     setOpen(true);setQ("");setActiveIdx(-1);
   };
-  const closeAndRevert=()=>{setOpen(false);setQ("");setCreating(false);setNewCode("");setNewName("");setCreatingContact(false);setNewContactName("");setActiveIdx(-1);};
+  const closeAndRevert=()=>{setOpen(false);setQ("");setActiveIdx(-1);};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
-  // whole component. If it's just moving to the code/name inputs inside the
-  // "new account" mini-form (still within containerRef), closing here would
-  // kill that flow the instant someone clicks into it. relatedTarget tells
-  // us where focus is going; when the browser doesn't supply it (Safari on
-  // some events) fall back to a microtask check against document.activeElement.
+  // whole component. relatedTarget tells us where focus is going; when the
+  // browser doesn't supply it (Safari on some events) fall back to a
+  // microtask check against document.activeElement.
   const handleBlur=e=>{
     const next=e.relatedTarget;
     if(next&&containerRef.current&&containerRef.current.contains(next))return;
@@ -223,23 +217,24 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     }
     closeAndRevert();
   };
-  const startCreate=()=>{setCreating(true);setNewCode(/^\d+$/.test(q)?q:"");setNewName(/^\d+$/.test(q)?"":q);};
-  const submitCreate=()=>{
-    if(!newCode.trim()||!newName.trim())return;
-    if(accounts.some(a=>a.code===newCode.trim())){alert("That account code already exists.");return;}
-    onCreateAccount&&onCreateAccount({code:newCode.trim(),name:newName.trim()});
-    onChange(newCode.trim());
-    closeAndRevert();
+  // The typed search text seeds the modal's Number/Name so typing "6303"
+  // then clicking "+ New account" doesn't throw that typing away.
+  const startCreate=()=>{setShowAccountModal(true);closeAndRevert();};
+  const submitCreate=acc=>{
+    if(accounts.some(a=>a.code===acc.code)){alert("That account code already exists.");return;}
+    onCreateAccount&&onCreateAccount(acc);
+    onChange(acc.code);
+    setShowAccountModal(false);
   };
-  const startCreateContact=()=>{setCreatingContact(true);setNewContactName(q);};
-  const submitCreateContact=()=>{
-    if(!newContactName.trim()||!onCreateContact)return;
-    const newId=onCreateContact(newContactName.trim(),newContactType);
+  const startCreateContact=()=>{setShowContactModal(true);closeAndRevert();};
+  const submitCreateContact=c=>{
+    if(!c.name.trim()||!onCreateContact)return;
+    const newId=onCreateContact(c.name.trim(),c.type,c);
     if(newId){
-      onChange(newContactType==="customer"?"1500":"2400");
+      onChange(c.type==="customer"?"1500":"2400");
       onContactPick&&onContactPick(newId);
     }
-    closeAndRevert();
+    setShowContactModal(false);
   };
 
   return(
@@ -294,7 +289,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                   <span/>
                 </div>
               )}
-              {filtered.length===0&&contactMatches.length===0&&!creating&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
+              {filtered.length===0&&contactMatches.length===0&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {contactMatches.map((c,i)=>(
                 <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} onMouseEnter={()=>setActiveIdx(i)} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:i===activeIdx?T.bg:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
                   <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.type==="customer"?"1500":"2400"}</span>
@@ -316,36 +311,292 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                 );
               })}
             </div>
-            {onCreateAccount&&(creating?(
-              <div style={{padding:"10px",borderTop:`1px solid ${T.border}`,background:T.bg,display:"flex",gap:6}}>
-                <input autoFocus placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,width:60,fontSize:11}}/>
-                <input placeholder="Account name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...selSm,flex:1,fontSize:11}}/>
-                <button onMouseDown={e=>{e.preventDefault();submitCreate();}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"0 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
-              </div>
-            ):(
+            {onCreateAccount&&(
               <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
-            ))}
+            )}
             {/* Same idea, for a brand-new customer/supplier — only where a
                 caller actually wants contact-picking in the first place
                 (onContactPick) AND supplies a way to create one
                 (onCreateContact); every plain account-only AccDrop use is
                 unaffected. */}
-            {onContactPick&&onCreateContact&&(creatingContact?(
-              <div style={{padding:"10px",borderTop:`1px solid ${T.border}`,background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
-                <div style={{display:"flex",gap:6}}>
-                  {["customer","supplier"].map(t=>(
-                    <button key={t} onMouseDown={e=>{e.preventDefault();setNewContactType(t);}} style={{flex:1,background:newContactType===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:newContactType===t?(t==="customer"?T.blue:T.red):T.sub,border:`1px solid ${newContactType===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:6,padding:"5px 6px",fontWeight:700,fontSize:10,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
-                  ))}
-                </div>
-                <input autoFocus placeholder="Name" value={newContactName} onChange={e=>setNewContactName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitCreateContact();if(e.key==="Escape")setCreatingContact(false);}} style={{...selSm,fontSize:11}}/>
-                <button onMouseDown={e=>{e.preventDefault();submitCreateContact();}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Add {newContactType}</button>
-              </div>
-            ):(
+            {onContactPick&&onCreateContact&&(
               <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
-            ))}
+            )}
           </div>
         </>
       )}
+      {showAccountModal&&(
+        <NewAccountModal
+          existingCodes={new Set(accounts.map(a=>a.code))}
+          initialCode={/^\d+$/.test(q)?q:""}
+          onCreate={submitCreate}
+          onClose={()=>setShowAccountModal(false)}
+        />
+      )}
+      {showContactModal&&(
+        // No `initial` here even though the typed search text could seed
+        // the name — NewContactModal treats any `initial` as "editing an
+        // existing contact" (different title, disables live Brreg search),
+        // which would be wrong for a brand-new one.
+        <NewContactModal
+          defaultType="supplier"
+          country="NO"
+          contacts={contacts}
+          onSave={submitCreateContact}
+          onClose={()=>setShowContactModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Centered "New account" popup — replaces the old window.prompt() flow
+// (three blocking browser dialogs with no validation) everywhere an account
+// gets created: the desktop link, the mobile inline card, and the orphan-code
+// quick-add banner. Detects the SAF-T code/category and NS4102 type live from
+// the account number as it's typed (same mapping AccountModal already uses),
+// offers the right VAT-code list for that type (sales codes for income
+// accounts, purchase codes for expense accounts, none for balance-sheet
+// accounts), and a "lock" toggle — once locked, entry screens can't override
+// the VAT code for this account; unchecking it here is the only way back.
+// Moved here (from reports.jsx) so AccDrop's own "+ New account" can open
+// this real modal directly instead of the cramped inline mini-form it used
+// to fall back on.
+// Searchable "Account group" picker — same interaction pattern as VatDrop,
+// for browsing the NS4102 account series by name instead of needing to
+// already know the numeric ranges. Deliberately does NOT store a separate
+// "group" field on the account — every report/VAT-direction/balance-vs-
+// income calculation in this app derives an account's group from its
+// number via getSK(), so a second, independently-editable group field
+// could silently drift out of sync with the number and corrupt those
+// calculations. Instead, picking a group here sets the account number to
+// that group's starting code, keeping the number as the single source of
+// truth while still letting someone browse/select by name.
+function AccountGroupDrop({value,onChange,options}){
+  const[open,setOpen]=useState(false);
+  const[q,setQ]=useState("");
+  const containerRef=React.useRef(null);
+  const inputRef=React.useRef(null);
+  const sel=options.find(o=>o.code===value);
+  const displayValue=sel?`${sel.icon} ${sel.code} — ${sel.name}`:"";
+
+  const filtered=useMemo(()=>{
+    if(!q)return options;
+    const ql=q.toLowerCase();
+    return options.filter(o=>o.code.includes(ql)||o.name.toLowerCase().includes(ql));
+  },[options,q]);
+
+  const openAndSearch=()=>{setOpen(true);setQ("");};
+  const closeAndRevert=()=>{setOpen(false);setQ("");};
+  const handleBlur=e=>{
+    const next=e.relatedTarget;
+    if(next&&containerRef.current&&containerRef.current.contains(next))return;
+    closeAndRevert();
+  };
+
+  return(
+    <div ref={containerRef} style={{position:"relative"}}>
+      <input
+        ref={inputRef}
+        value={open?q:displayValue}
+        placeholder="— Select account group —"
+        onFocus={openAndSearch}
+        onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);}}
+        onBlur={handleBlur}
+        onKeyDown={e=>{
+          if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+          if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();onChange(filtered[0].code);closeAndRevert();}
+        }}
+        style={{...inp,cursor:"text",paddingRight:20}}
+      />
+      <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:9,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
+      {open&&(
+        <>
+          <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
+          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:260}}>
+            <div style={{overflowY:"auto",maxHeight:260}}>
+              {filtered.length===0&&<div style={{padding:"12px",fontSize:11,color:T.muted,textAlign:"center"}}>No account groups found</div>}
+              {filtered.map((o,i)=>(
+                <div key={o.code} onMouseDown={e=>{e.preventDefault();onChange(o.code);closeAndRevert();}} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:o.code===value?T.accentLight:"#fff",fontWeight:o.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none"}}>
+                  {o.icon} <span style={{fontWeight:700,color:T.accent}}>{o.code}</span> — {o.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Nearest-match SAF-T v1.3 lookup — new accounts don't have their own SAF-T
+// mapping, so this reads it off the closest DEFAULT_ACCOUNTS entry instead
+// of asking the user to type a code they'd have to look up themselves. An
+// exact code match wins outright; otherwise the numerically nearest default
+// account that carries a saftCode13 stands in (same idea as "nearest account
+// in this range"), so a brand-new 6305 picks up 6300's code, not nothing.
+function autoSaftFor(trimmedCode){
+  if(!trimmedCode)return"";
+  const exact=DEFAULT_ACCOUNTS.find(a=>a.code===trimmedCode);
+  if(exact&&exact.saftCode13)return exact.saftCode13;
+  const n=parseInt(trimmedCode,10);
+  if(isNaN(n))return"";
+  let best=null,bestDist=Infinity;
+  for(const a of DEFAULT_ACCOUNTS){
+    if(!a.saftCode13)continue;
+    const an=parseInt(a.code,10);
+    if(isNaN(an))continue;
+    const d=Math.abs(an-n);
+    if(d<bestDist){bestDist=d;best=a;}
+  }
+  return best?best.saftCode13:"";
+}
+
+// Small on/off switch used by the Behavior section below — a more compact
+// stand-in for a checkbox+label row when the popup needs to stay short.
+function ToggleSwitch({checked,onChange}){
+  return(
+    <div onClick={()=>onChange(!checked)} style={{width:34,height:20,borderRadius:10,position:"relative",flexShrink:0,cursor:"pointer",background:checked?T.accent:T.border,transition:"background .15s"}}>
+      <div style={{position:"absolute",top:2,left:checked?16:2,width:16,height:16,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.25)",transition:"left .15s"}}/>
+    </div>
+  );
+}
+
+function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
+  const[code,setCode]=useState(initialCode||"");
+  const[name,setName]=useState("");
+  const[currency,setCurrency]=useState("NOK");
+  const[vatCode,setVatCode]=useState("");
+  const[vatLocked,setVatLocked]=useState(false);
+  const[showAtPosting,setShowAtPosting]=useState(true);
+  const[matchable,setMatchable]=useState(false);
+  const[inactive,setInactive]=useState(false);
+  const[error,setError]=useState("");
+
+  const sk=code?getSK(code.trim()):null;
+  const seriesInfo=sk?SERIES[sk]:null;
+  const isBalance=sk&&parseInt(sk)<3000;
+  const reportLabel=seriesInfo?(isBalance?"Balance sheet":"Income statement"):code?"Uncategorized":"—";
+  const vatDirection=sk&&INCOME_SK.has(sk)?"output":sk&&EXPENSE_SK.has(sk)?"input":null;
+  const vatOptions=vatDirection?vatCodeOptions(vatDirection):[];
+
+  // Whichever VAT list applies changed (e.g. the account number moved from
+  // an expense range to an income range) — clear a now-invalid selection
+  // rather than silently keep a code that no longer matches this account.
+  useEffect(()=>{
+    if(vatCode&&!vatOptions.some(c=>c.code===vatCode))setVatCode("");
+  },[vatDirection]);
+
+  const trimmedCode=code.trim();
+  const saftCode13=useMemo(()=>autoSaftFor(trimmedCode),[trimmedCode]);
+  const valid=trimmedCode&&name.trim()&&!existingCodes.has(trimmedCode);
+
+  const submit=()=>{
+    if(!trimmedCode||!name.trim()){setError("Account number and name are both required.");return;}
+    if(existingCodes.has(trimmedCode)){setError(`Account ${trimmedCode} already exists.`);return;}
+    const selectedVat=vatOptions.find(c=>c.code===vatCode);
+    onCreate({
+      code:trimmedCode,name:name.trim(),matchable,currency,
+      notes:"",saftCode13,saftCode12:"",
+      showAtPosting,inactive,
+      defaultVatCode:selectedVat?selectedVat.code:null,
+      defaultVatPct:selectedVat?selectedVat.rate:null,
+      vatLocked:!!(selectedVat&&vatLocked),
+    });
+  };
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:392,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 56px rgba(15,23,32,0.18)"}}>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:15,fontWeight:800,color:T.text}}>New account</div>
+          <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,color:T.sub,fontSize:13,cursor:"pointer",width:26,height:26}}>✕</button>
+        </div>
+        <div style={{padding:"16px 20px 4px",display:"flex",flexDirection:"column",gap:11}}>
+          {error&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600}}>{error}</div>}
+
+          {/* Account group (wide) + Currency (narrow) share a row */}
+          <div style={{display:"grid",gridTemplateColumns:"2.1fr 1fr",gap:9}}>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Account group</div>
+              <AccountGroupDrop value={sk||""} onChange={k=>{setCode(k);setError("");}} options={Object.entries(SERIES).map(([k,s])=>({code:k,name:s.name,icon:s.icon}))}/>
+            </div>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
+              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inp,padding:"8px 8px",fontSize:12.5}}>
+                {["NOK","USD","EUR","GBP"].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Number (small box) + detected account type share a row */}
+          <div style={{display:"grid",gridTemplateColumns:"84px 1fr",gap:9}}>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Number *</div>
+              <input autoFocus value={code} onChange={e=>{setCode(e.target.value);setError("");}} placeholder="6303" style={{...inp,padding:"8px 8px",fontSize:12.5}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Account type (detected)</div>
+              <div style={{background:T.bg,borderRadius:9,padding:"8px 10px",height:34,display:"flex",alignItems:"center",gap:6,overflow:"hidden"}}>
+                <span style={{fontSize:12.5,flexShrink:0}}>{seriesInfo?seriesInfo.icon:"❔"}</span>
+                <span style={{fontSize:11.5,fontWeight:600,color:"#374151",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{seriesInfo?seriesInfo.name:"Uncategorized"}</span>
+                <span style={{width:3,height:3,borderRadius:"50%",background:"#C9DCD9",flexShrink:0}}/>
+                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{reportLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Name — its own row */}
+          <div>
+            <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Name *</div>
+            <input value={name} onChange={e=>{setName(e.target.value);setError("");}} placeholder="e.g. Office Rent" style={{...inp,padding:"8px 10px",fontSize:12.5}}/>
+          </div>
+
+          {/* SAF-T code — auto-derived from the detected category, never typed */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
+              <span style={{fontSize:10.5,color:T.sub,fontWeight:600}}>SAF-T code (v1.3)</span>
+              <span style={{fontSize:9,fontWeight:700,color:T.accent,background:T.accentLight,borderRadius:5,padding:"1px 5px",letterSpacing:.2}}>AUTO</span>
+            </div>
+            <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,color:T.sub,padding:"8px 10px",fontSize:12}}>{saftCode13||"—"}</div>
+          </div>
+
+          {vatDirection?(
+            <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:9,alignItems:"end"}}>
+              <div>
+                <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>VAT code</div>
+                <VatDrop value={vatCode} onChange={setVatCode} options={vatOptions}/>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:10.5,color:vatCode?T.text:T.muted,cursor:vatCode?"pointer":"not-allowed",paddingBottom:8}}>
+                <input type="checkbox" checked={vatLocked} disabled={!vatCode} onChange={e=>setVatLocked(e.target.checked)}/>
+                Lock
+              </label>
+            </div>
+          ):(
+            <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:9,padding:"8px 12px"}}>Balance-sheet accounts don't carry a VAT code.</div>
+          )}
+
+          {/* Behavior — label left, toggle right, tight rows */}
+          <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Show at posting</span>
+              <ToggleSwitch checked={showAtPosting} onChange={setShowAtPosting}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Open items (Reskontro)</span>
+              <ToggleSwitch checked={matchable} onChange={setMatchable}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
+              <span style={{fontSize:12,fontWeight:600,color:T.text}}>Inactive</span>
+              <ToggleSwitch checked={inactive} onChange={setInactive}/>
+            </div>
+          </div>
+        </div>
+        <div style={{padding:"14px 20px 18px",marginTop:6,display:"flex",justifyContent:"flex-end",gap:8}}>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:9,padding:"9px 16px",fontWeight:600,fontSize:12.5,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={submit} disabled={!valid} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:9,padding:"9px 20px",fontWeight:700,fontSize:12.5,cursor:valid?"pointer":"default",fontFamily:"inherit"}}>Create</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -848,7 +1099,7 @@ function ContactSearch({contacts,value,onChange,onCreateContact}){
 // has, and a fake/non-functional "check credit" button would be worse than
 // not having one. Org number only shows for Norway-based books, since it's
 // meaningless for Pakistan-side clients and would just be visual noise there.
-function NewContactModal({defaultType="customer",country="PK",initial=null,companyCurrency="",onSave,onClose,onBulkImport}){
+function NewContactModal({defaultType="customer",country="PK",initial=null,companyCurrency="",contacts=[],onSave,onClose,onBulkImport}){
   const editing=!!initial;
   const[type,setType]=useState(initial?initial.type:defaultType);
   const[name,setName]=useState(initial?initial.name||"":"");
@@ -969,7 +1220,10 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{type==="customer"?"Customer":"Supplier"} number</div>
-            <input value={contactNumber} onChange={e=>setContactNumber(e.target.value)} placeholder={type==="customer"?"e.g. 10000 (auto-assigned if left blank)":"e.g. 20000 (auto-assigned if left blank)"} style={inp}/>
+            {/* Shows the REAL next available number for this type as the
+                placeholder (not just a generic "e.g. 10000" hint) — leaving
+                this blank still auto-assigns exactly that number on save. */}
+            <input value={contactNumber} onChange={e=>setContactNumber(e.target.value)} placeholder={!editing?`${nextContactId(contacts,type)} (auto-assigned if left blank)`:type==="customer"?"e.g. 10000":"e.g. 20000"} style={inp}/>
             {editing&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>Changing this moves every past entry for this contact onto the new number.</div>}
           </div>
 
@@ -3498,4 +3752,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop, FileDrop };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop, FileDrop, NewAccountModal };

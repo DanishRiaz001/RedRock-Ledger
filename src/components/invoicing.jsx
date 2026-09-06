@@ -3383,20 +3383,23 @@ function AccountSwitcherDropdown({accounts,value,onChange}){
 // setContacts — shared by every ContactSearchInline call site so "+ New
 // customer/supplier" behaves identically wherever it appears, matching the
 // id scheme ContactSearch (ledger.jsx) and the SAF-T importer already use.
-const createContactInline=(contacts,setContacts,{name,type,orgNumber})=>{
+// Accepts either the old minimal {name,type,orgNumber} or the full New
+// Customer/Supplier modal payload (email, phone, address, currency,
+// category, payment terms, credit limit, ...) — everything past
+// name/type/id is just spread onto the new contact.
+const createContactInline=(contacts,setContacts,{name,type,orgNumber,id:requestedId,...rest})=>{
   if(!setContacts||!name.trim())return null;
-  const id=nextContactId(contacts,type);
-  setContacts([...contacts,{id,type,name:name.trim(),orgNumber:orgNumber||"",paymentTermsDays:30}]);
+  const id=requestedId&&requestedId.trim()?requestedId.trim():nextContactId(contacts,type);
+  setContacts([...contacts,{id,type,name:name.trim(),orgNumber:orgNumber||"",paymentTermsDays:30,...rest}]);
   return id;
 };
 
 function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
-  const[creating,setCreating]=useState(false);
-  const[newName,setNewName]=useState("");
-  const[newOrgNumber,setNewOrgNumber]=useState("");
-  const[newType,setNewType]=useState(type==="customer"?"customer":"supplier");
+  // "+ New customer/supplier" opens the same real popup as the Customers
+  // screen (NewContactModal) instead of a cramped inline mini-form.
+  const[showContactModal,setShowContactModal]=useState(false);
   // Fixed from the input's own screen coordinates (same fix as AccDrop/
   // VatDrop/FileDrop/Menu3) instead of absolute-relative-to-container —
   // any ancestor with overflow:hidden for its own rounded corners (e.g.
@@ -3411,30 +3414,12 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
     const ql=q.toLowerCase();
     return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql)).slice(0,10);
   },[contacts,q]);
-  const startCreate=()=>{setNewName(q);setCreating(true);};
-  // Same public, no-key Brønnøysundregisteret lookup as the full New
-  // customer/supplier modal — kept here too so this quicker inline path
-  // doesn't lose the "type an org number, get the real registered name"
-  // capability just because it's the compact version of the form.
-  const[brregLookup,setBrregLookup]=useState(false);
-  const[brregError,setBrregError]=useState("");
-  const fetchByOrgNumber=async()=>{
-    const num=newOrgNumber.trim();
-    if(num.length!==9)return;
-    setBrregLookup(true);setBrregError("");
-    try{
-      const res=await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${num}`,{headers:{Accept:"application/json"}});
-      if(!res.ok){setBrregError(res.status===404?"No company found.":"Lookup failed.");setBrregLookup(false);return;}
-      const e=await res.json();
-      if(e.navn)setNewName(e.navn);
-    }catch{setBrregError("Lookup failed.");}
-    setBrregLookup(false);
-  };
-  const submitCreate=()=>{
-    if(!newName.trim()||!onCreateContact)return;
-    const id=onCreateContact({name:newName.trim(),type:isAll?newType:type,orgNumber:newOrgNumber.trim()});
-    if(id){onChange(id);setOpen(false);setQ("");}
-    setCreating(false);setNewName("");setNewOrgNumber("");
+  const startCreate=()=>{setShowContactModal(true);setOpen(false);};
+  const submitCreate=c=>{
+    if(!c.name.trim()||!onCreateContact)return;
+    const id=onCreateContact({...c,type:isAll?c.type:type});
+    if(id)onChange(id);
+    setShowContactModal(false);setQ("");
   };
   return(
     <div style={{position:"relative"}}>
@@ -3457,28 +3442,21 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
                   <span style={{fontSize:9,color:T.muted,fontWeight:700}}>{c.id}</span>
                 </div>
               );})}
-              {onCreateContact&&(creating?(
-                <div style={{padding:10,background:T.bg,display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${T.border}`}}>
-                  <input autoFocus placeholder="Name" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!newOrgNumber)submitCreate();if(e.key==="Escape")setCreating(false);}} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
-                  <div style={{display:"flex",gap:6}}>
-                    <input placeholder="Org number (optional)" value={newOrgNumber} onChange={e=>{setNewOrgNumber(e.target.value.replace(/[^\d]/g,"").slice(0,9));setBrregError("");}} onKeyDown={e=>{if(e.key==="Enter"&&newOrgNumber.trim().length===9){e.preventDefault();fetchByOrgNumber();}}} style={{...inp,flex:1,fontSize:12,padding:"6px 9px"}}/>
-                    <button onClick={fetchByOrgNumber} disabled={newOrgNumber.trim().length!==9||brregLookup} title="Look up on Brønnøysundregisteret" style={{background:newOrgNumber.trim().length===9?T.accent:T.border,color:newOrgNumber.trim().length===9?"#fff":T.muted,border:"none",borderRadius:6,padding:"0 12px",fontWeight:700,fontSize:10.5,cursor:newOrgNumber.trim().length===9?"pointer":"default",fontFamily:"inherit",whiteSpace:"nowrap"}}>{brregLookup?"…":"Fetch"}</button>
-                  </div>
-                  {brregError&&<div style={{fontSize:10,color:T.red}}>{brregError}</div>}
-                  <div style={{display:"flex",gap:6}}>
-                    {isAll&&(<>
-                      <button onClick={()=>setNewType("customer")} style={{flex:1,padding:"6px",borderRadius:6,border:`1.5px solid ${newType==="customer"?T.blue:T.border}`,background:newType==="customer"?T.blueBg:"#fff",color:newType==="customer"?T.blue:T.sub,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Customer</button>
-                      <button onClick={()=>setNewType("supplier")} style={{flex:1,padding:"6px",borderRadius:6,border:`1.5px solid ${newType==="supplier"?T.red:T.border}`,background:newType==="supplier"?T.redLight:"#fff",color:newType==="supplier"?T.red:T.sub,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Supplier</button>
-                    </>)}
-                    <button onClick={submitCreate} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"0 14px",fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
-                  </div>
-                </div>
-              ):(
+              {onCreateContact&&(
                 <div onClick={startCreate} style={{padding:"9px 12px",fontSize:11.5,fontWeight:700,color:T.accent,cursor:"pointer",background:"#fff",borderTop:`1px solid ${T.border}`}}>+ New {isAll?"customer or supplier":isC?"customer":"supplier"}{q?` "${q}"`:""}</div>
-              ))}
+              )}
             </div>
           </div>
         </>
+      )}
+      {showContactModal&&(
+        <NewContactModal
+          defaultType={isAll?"customer":type}
+          country="NO"
+          contacts={contacts}
+          onSave={submitCreate}
+          onClose={()=>setShowContactModal(false)}
+        />
       )}
     </div>
   );
@@ -3517,10 +3495,17 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // and "+ New customer/supplier" both need somewhere to actually create
   // the thing, not just a UI to type it into. Shared across every line's
   // dropdown (debit/credit, desktop/mobile) instead of one-off per call site.
-  const createAccountQuick=setAccounts?({code,name})=>setAccounts([...accounts,{code,name}]):undefined;
-  const createContactQuick=(name,type)=>{
+  // Accepts either the old minimal {code,name} or the New Account modal's
+  // full object (currency, VAT defaults, etc.) — spreads whatever it gets
+  // rather than destructuring just two fields, so the modal's richer data
+  // isn't silently dropped.
+  const createAccountQuick=setAccounts?(acc)=>setAccounts([...accounts,acc]):undefined;
+  // `extra` is optional so every existing (name,type) caller keeps working
+  // unchanged — the New Customer/Supplier modal passes the full payload
+  // (org number, email, phone, address, ...) as this third argument.
+  const createContactQuick=(name,type,extra={})=>{
     const id=nextContactId(contacts,type);
-    setContacts([...contacts,{id,type,name}]);
+    setContacts([...contacts,{id,type,name,...extra}]);
     return id;
   };
   // A New Entry (or "Register" from an Inbox file) always starts with
