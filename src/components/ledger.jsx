@@ -262,7 +262,14 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
       {open&&dropPos&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280}}>
+          {/* maxHeight covers the header row + the scrolling list below
+              (230) + BOTH footer action rows ("+ New account" and
+              "+ New customer/supplier") — it used to cap out at 280,
+              which fit only the first footer row and silently clipped
+              the second one off (overflow:hidden on this same box), so
+              "+ New customer/supplier" never showed even though it was
+              rendering. */}
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:350}}>
             {/* Type dropped — every row already says what it is via its
                 own color/number range or an inline Customer/Supplier tag,
                 so the column never added information. VAT% sits where

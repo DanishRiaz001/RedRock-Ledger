@@ -983,17 +983,18 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         />
       )}
 
-      {/* Trimmed to just Name / Org number / Address — was ID, Contact
-          (email/phone), Terms, and Balance too. Row still opens the full
-          edit popup (name, or the pencil icon), which is where every other
+      {/* Number / Name / Org number / Address — was also showing Contact
+          (email/phone), Terms, and Balance. Row still opens the full edit
+          popup (name, or the pencil icon), which is where every other
           field still lives. */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1.6fr 28px",gap:8,padding:"0 14px",marginBottom:2}}>
-          {["Name","Org number","Address"].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>)}
+        <div style={{display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1.6fr 28px",gap:8,padding:"0 14px",marginBottom:2}}>
+          {["Number","Name","Org number","Address"].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>)}
           <div/>
         </div>
         {list.map(c=>(
-          <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"1.6fr 1fr 1.6fr 28px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
+          <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1.6fr 28px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
+            <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content"}}>{c.id}</div>
             {/* Opens this contact's own settings/details — it used to jump
                 straight to their ledger, which meant there was no way to
                 just look at or fix a supplier's details without going
@@ -3593,6 +3594,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     return initialEntryMode;
   }); // "receipt" | "supplier" | "customer"
   const[voucherDetailsMenuOpen,setVoucherDetailsMenuOpen]=useState(false);
+  const voucherDetailsBtnRef=React.useRef(null);
+  const[voucherDetailsMenuPos,setVoucherDetailsMenuPos]=useState(null);
   const[invContactId,setInvContactId]=useState(()=>{
     const s=getPendingSuggestion();
     if(s&&s.supplier){
@@ -3676,6 +3679,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const[saving,setSaving]=React.useState(false);
   const[showAttachPopover,setShowAttachPopover]=useState(false);
   const[showCommentPopover,setShowCommentPopover]=useState(false);
+  const commentBtnRef=React.useRef(null);
+  const[commentPopoverPos,setCommentPopoverPos]=useState(null);
+  // A separate draft so typing isn't committed to form.notes (and thus the
+  // saved entry) until Add/Save is actually clicked — Cancel discards it.
+  const[commentDraft,setCommentDraft]=useState("");
   const[lineMenuOpen,setLineMenuOpen]=useState(null); // index of the posting line whose ⋮ menu is open, or null
   // Duplicate/Delete consolidated into one ⋮ menu per line instead of a lone
   // "−" button — line 0 is a special case since it's bound directly to the
@@ -3695,6 +3703,25 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     const lines=[...(form.lines||[])];
     lines.splice(li,1);
     setForm(p=>({...p,lines}));
+  };
+  // Swaps this line's Debit and Credit — account AND VAT code together, so
+  // a wrongly-entered line (or a genuine reversal/kreditnota) doesn't need
+  // re-picking both accounts by hand. Line 0 lives directly on `form`
+  // (debitCode/creditCode), not in `form.lines`, same special case every
+  // other per-line action here already handles.
+  const reverseLine=(li)=>{
+    setForm(p=>{
+      if(li===0){
+        const lines=[...(p.lines||[{debitCode:p.debitCode,creditCode:p.creditCode}])];
+        if(lines[0])lines[0]={...lines[0],debitCode:p.creditCode,creditCode:p.debitCode,debitVatCode:lines[0].creditVatCode,creditVatCode:lines[0].debitVatCode};
+        return{...p,debitCode:p.creditCode,creditCode:p.debitCode,lines};
+      }
+      const lines=[...(p.lines||[])];
+      const l=lines[li];
+      if(!l)return p;
+      lines[li]={...l,debitCode:l.creditCode,creditCode:l.debitCode,debitVatCode:l.creditVatCode,creditVatCode:l.debitVatCode};
+      return{...p,lines};
+    });
   };
   const[uploadingReceipt,setUploadingReceipt]=useState(false);
   const[dropHover,setDropHover]=useState(false);
@@ -3730,12 +3757,18 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const lineTotals=(()=>{
     const linesArr=form.lines&&form.lines.length?form.lines:[{debitCode:form.debitCode,creditCode:form.creditCode}];
     let totalDebit=0,totalCredit=0;
+    let totalVat=0;
     linesArr.forEach((l,li)=>{
       const amt=parseFloat(li===0?form.amount:l.amount)||0;
       if(lineDebitCode(li,l))totalDebit+=amt;
       if(lineCreditCode(li,l))totalCredit+=amt;
+      // Same VAT-extraction convention as save() below — the line amount
+      // is VAT-inclusive, pull the tax portion out of it via whichever
+      // side's VAT code is actually set.
+      const vc=findVatCode(l&&l.debitVatCode,"input")||findVatCode(l&&l.creditVatCode,"output");
+      if(vc&&vc.rate&&amt)totalVat+=Math.round((amt-(amt/(1+vc.rate/100)))*100)/100;
     });
-    return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100};
+    return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100,totalVat:Math.round(totalVat*100)/100};
   })();
   const linesBalanced=Math.abs(lineTotals.totalDebit-lineTotals.totalCredit)<0.01;
   const line0AccountsOk=!!(form.debitCode||form.creditCode);
@@ -4056,13 +4089,21 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             <div style={{position:"relative"}}>
               {/* No visible chevron — same "clickable but no drawn arrow"
                   treatment as the currency pickers elsewhere in this form. */}
-              <button onClick={()=>setVoucherDetailsMenuOpen(o=>!o)} style={{background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+              <button ref={voucherDetailsBtnRef} onClick={()=>{
+                if(voucherDetailsBtnRef.current){const r=voucherDetailsBtnRef.current.getBoundingClientRect();setVoucherDetailsMenuPos({top:r.bottom+4,left:r.left});}
+                setVoucherDetailsMenuOpen(o=>!o);
+              }} style={{background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
                 Voucher details
               </button>
-              {voucherDetailsMenuOpen&&(
+              {/* Fixed from the button's own screen coordinates (same fix
+                  as AccDrop/VatDrop/ContactSearchInline/Menu3) instead of
+                  absolute-relative-to-container — this header's own
+                  overflow:hidden (for its rounded corners) otherwise
+                  clipped this menu to invisible. */}
+              {voucherDetailsMenuOpen&&voucherDetailsMenuPos&&(
                 <>
                   <div onClick={()=>setVoucherDetailsMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                  <div style={{position:"absolute",top:24,left:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:5,minWidth:150}}>
+                  <div style={{position:"fixed",top:voucherDetailsMenuPos.top,left:voucherDetailsMenuPos.left,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:5,minWidth:150}}>
                     {[["receipt","Advance Voucher"],["supplier","Supplier Invoice"],["customer","Customer Invoice"]].map(([v,label])=>(
                       <div key={v} onClick={()=>{setEntryMode(v);setVoucherDetailsMenuOpen(false);}} style={{padding:"8px 10px",borderRadius:7,fontSize:12,fontWeight:entryMode===v?700:500,color:entryMode===v?T.accent:T.text,background:entryMode===v?T.accentLight:"transparent",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</div>
                     ))}
@@ -4077,16 +4118,29 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 saveInvoice()), the same thread DetailModal shows whenever
                 this entry is reopened later. */}
             <div style={{position:"relative"}}>
-              <button onClick={()=>setShowCommentPopover(s=>!s)} title={form.notes?"Edit comment":"Add a comment"} style={{background:"none",border:"none",outline:"none",cursor:"pointer",color:form.notes?T.accent:T.muted,padding:0,display:"flex",alignItems:"center",position:"relative",fontFamily:"inherit"}}>
+              <button ref={commentBtnRef} onClick={()=>{
+                if(commentBtnRef.current){const r=commentBtnRef.current.getBoundingClientRect();setCommentPopoverPos({top:r.bottom+6,right:Math.max(4,window.innerWidth-r.right)});}
+                setCommentDraft(form.notes||"");
+                setShowCommentPopover(s=>!s);
+              }} title={form.notes?"Edit comment":"Add a comment"} style={{background:"none",border:"none",outline:"none",cursor:"pointer",color:form.notes?T.accent:T.muted,padding:0,display:"flex",alignItems:"center",position:"relative",fontFamily:"inherit"}}>
                 <i className="ti ti-message-circle" style={{fontSize:16}}/>
                 {form.notes&&<div style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:T.accent,border:"1.5px solid #fff"}}/>}
               </button>
-              {showCommentPopover&&(
+              {/* Fixed from the button's own screen coordinates (same fix
+                  as the Voucher details menu right above) — this header's
+                  own overflow:hidden otherwise clipped it. A real popup
+                  now — its own draft value, only committed to form.notes
+                  by the Add/Save button, with Cancel discarding it. */}
+              {showCommentPopover&&commentPopoverPos&&(
                 <>
                   <div onClick={()=>setShowCommentPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                  <div style={{position:"absolute",right:0,top:24,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:260}}>
+                  <div style={{position:"fixed",top:commentPopoverPos.top,right:commentPopoverPos.right,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:280}}>
                     <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>Comment (optional)</div>
-                    <textarea autoFocus value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+                    <textarea autoFocus value={commentDraft} onChange={e=>setCommentDraft(e.target.value)} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                      <button onClick={()=>{setForm(p=>({...p,notes:commentDraft}));setShowCommentPopover(false);}} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{form.notes?"Save":"Add"}</button>
+                      <button onClick={()=>setShowCommentPopover(false)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                    </div>
                   </div>
                 </>
               )}
@@ -4392,6 +4446,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           <button onClick={()=>{duplicateLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
                             <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
                           </button>
+                          {/* Swaps this line's Debit and Credit (account +
+                              VAT code together) — for a line entered the
+                              wrong way round, or a genuine reversal. */}
+                          <button onClick={()=>{reverseLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                            <i className="ti ti-arrows-left-right" style={{fontSize:14}}/>Reverse
+                          </button>
                           {li>0&&(
                             <button onClick={()=>{deleteLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
                               <i className="ti ti-trash" style={{fontSize:14}}/>Delete
@@ -4408,10 +4468,26 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 always has Debit total = Credit total; once a line is
                 switched to one-sided, this is the real balance check, and
                 Save stays disabled until it reads Balanced. */}
+            {/* Debit/Credit/VAT/Difference — was Debit/Credit plus a plain
+                "Balanced"/"Off by X" text; VAT (extracted from each line's
+                own VAT code, same convention save() uses) and an explicit
+                Difference figure are now shown too, matching the totals
+                box on Supplier/Customer Invoice. */}
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}/>
-            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
-            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
-            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,fontSize:11,color:linesBalanced?T.muted:T.red,fontWeight:linesBalanced?400:700,textAlign:"right"}}>{linesBalanced?"Balanced":`Off by ${fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}`}</div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+              <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalDebit)}</div>
+            </div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
+              <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalCredit)}</div>
+            </div>
+            <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight,textAlign:"right"}}>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
+              <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(lineTotals.totalVat)}</div>
+              <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",marginTop:4}}>Difference</div>
+              <div style={{fontSize:11,fontWeight:700,color:linesBalanced?T.green:T.red}}>{fmt(Math.abs(lineTotals.totalDebit-lineTotals.totalCredit))}</div>
+            </div>
             <div style={{...cellBase,borderBottom:"none",background:linesBalanced?"#fff":T.redLight}}/>
           </div>
         </div>
@@ -4726,7 +4802,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Currency</div>
-                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...lineField,fontSize:12,cursor:"pointer"}}>
+                    {/* Just the currency code, no drawn dropdown arrow —
+                        same "clickable but no chevron" treatment as every
+                        other currency picker in this form; still a real
+                        <select>, so clicking it opens the picker. */}
+                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...lineField,appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:12,cursor:"pointer"}}>
                       {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
@@ -4808,7 +4888,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     // the only border the Costs area gets; each line inside
                     // it is unboxed/line-based.
                     <div key={idx} style={{position:"relative",padding:idx===0?"0 34px 14px 0":"14px 34px 14px 0",borderTop:idx===0?"none":`1px solid ${T.border}`,marginTop:idx===0?0:14}}>
-                      <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 170px":"1fr",gap:isDesktop?"8px 16px":8}}>
+                      {/* Account/Description column narrowed 30% (1fr →
+                          0.7fr), Amount/VAT widened and pushed further
+                          right to take up the freed space. */}
+                      <div style={{display:"grid",gridTemplateColumns:isDesktop?"0.7fr 230px":"1fr",gap:isDesktop?"8px 16px":8}}>
                         <div>
                           <div style={fieldLbl}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
                           <AccDrop value={r.accountCode||""} onChange={code=>{
