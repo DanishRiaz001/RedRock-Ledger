@@ -983,40 +983,27 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         />
       )}
 
+      {/* Trimmed to just Name / Org number / Address — was ID, Contact
+          (email/phone), Terms, and Balance too. Row still opens the full
+          edit popup (name, or the pencil icon), which is where every other
+          field still lives. */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1fr 90px",gap:8,padding:"0 14px",marginBottom:2}}>
-          {["ID","Name","Contact","Terms","Balance"].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:h==="Balance"?"right":"left"}}>{h}</div>)}
+        <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1.6fr 28px",gap:8,padding:"0 14px",marginBottom:2}}>
+          {["Name","Org number","Address"].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>)}
+          <div/>
         </div>
-        {list.map(c=>{
-          const bal=getBalance(c.id);
-          const termsLabel=c.paymentTermsDays===0||c.paymentTermsDays==null?(c.paymentTermsDays===0?"Due immediately":"Net 30"):`Net ${c.paymentTermsDays}`;
-          return(
-            <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1fr 90px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
-              <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content"}}>{c.id}</div>
-              <div>
-                {/* Opens this contact's own settings/details now — it used
-                    to jump straight to their ledger, which meant there was
-                    no way to just look at or fix a supplier's details
-                    without going through the reskontro screen instead. */}
-                <div onClick={()=>startEdit(c)} title="Open settings" style={{cursor:"pointer",fontWeight:700,fontSize:13,color:T.text}}>{c.name}</div>
-                {c.address&&<div style={{fontSize:11,color:T.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.address}</div>}
-              </div>
-              <div style={{fontSize:12,color:T.sub}}>
-                {c.email&&<div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.email}</div>}
-                {c.phone&&<div style={{color:T.muted,fontSize:11,marginTop:1}}>{c.phone}</div>}
-                {!c.email&&!c.phone&&<span style={{color:T.muted}}>—</span>}
-              </div>
-              <div style={{fontSize:11,color:T.sub}}>
-                <div>{termsLabel}</div>
-                {type==="customer"&&c.creditLimit!=null&&<div style={{color:T.muted,marginTop:1}}>Limit {fmt(c.creditLimit)}</div>}
-              </div>
-              <div style={{textAlign:"right",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
-                <span onClick={()=>onOpenReskontro&&onOpenReskontro(type)} title="View ledger" style={{fontWeight:700,fontSize:12,color:bal>=0?T.green:T.red,cursor:onOpenReskontro?"pointer":"default",textDecoration:onOpenReskontro?"underline":"none",textDecorationStyle:"dotted"}}>{sign(bal)}</span>
-                <button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",padding:2}}><i className="ti ti-pencil" style={{fontSize:13}}/></button>
-              </div>
-            </div>
-          );
-        })}
+        {list.map(c=>(
+          <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"1.6fr 1fr 1.6fr 28px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
+            {/* Opens this contact's own settings/details — it used to jump
+                straight to their ledger, which meant there was no way to
+                just look at or fix a supplier's details without going
+                through the reskontro screen instead. */}
+            <div onClick={()=>startEdit(c)} title="Open settings" style={{cursor:"pointer",fontWeight:700,fontSize:13,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+            <div style={{fontSize:12,color:T.sub}}>{c.orgNumber||"—"}</div>
+            <div style={{fontSize:12,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.address||"—"}</div>
+            <button onClick={()=>startEdit(c)} title="Edit" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",padding:2}}><i className="ti ti-pencil" style={{fontSize:13}}/></button>
+          </div>
+        ))}
         {!list.length&&<div style={{background:"#fff",border:`1px dashed ${T.border}`,borderRadius:12,padding:"28px 0",textAlign:"center",color:T.muted,fontSize:12}}>No {type==="customer"?"customers":"suppliers"} yet.</div>}
       </div>
     </div>
@@ -4003,7 +3990,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         // way again, instead of falling back to the generic voucher editor.
         entryMode:invIsCustomer?"customer_invoice":"supplier_invoice",
       });
-      if(idx===0&&res&&res.bilag!=null)firstBilag=res.bilag;
+      if(idx===0&&res&&res.bilag!=null){
+        firstBilag=res.bilag;
+        // Same comment popover as the shared header — now saved for
+        // Supplier/Customer Invoice too (was receipt-only).
+        if(form.notes&&form.notes.trim()&&addEntryComment&&res.id!=null)addEntryComment(res.id,form.notes.trim());
+      }
     }
     if(hasPayment){
       // Payment leg — settles either the full invoice total or, if the
@@ -4026,6 +4018,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     if(firstBilag!=null)setLastSavedBilag(firstBilag);
     setEntrySaved(true);setTimeout(()=>setEntrySaved(false),5000);
     resetInvoiceForm();
+    setForm(p=>({...p,notes:""}));
     setSaving(false);
   };
 
@@ -4059,21 +4052,41 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               (it always displays the selected option), so this is a small
               themed menu instead, same pattern as every other dropdown
               in the app. */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
               {/* No visible chevron — same "clickable but no drawn arrow"
-                  treatment as the currency pickers elsewhere in this form;
-                  nothing else sits in this header row now. */}
+                  treatment as the currency pickers elsewhere in this form. */}
               <button onClick={()=>setVoucherDetailsMenuOpen(o=>!o)} style={{background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
                 Voucher details
               </button>
               {voucherDetailsMenuOpen&&(
                 <>
                   <div onClick={()=>setVoucherDetailsMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                  <div style={{position:"absolute",top:24,right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:5,minWidth:150}}>
+                  <div style={{position:"absolute",top:24,left:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:5,minWidth:150}}>
                     {[["receipt","Advance Voucher"],["supplier","Supplier Invoice"],["customer","Customer Invoice"]].map(([v,label])=>(
                       <div key={v} onClick={()=>{setEntryMode(v);setVoucherDetailsMenuOpen(false);}} style={{padding:"8px 10px",borderRadius:7,fontSize:12,fontWeight:entryMode===v?700:500,color:entryMode===v?T.accent:T.text,background:entryMode===v?T.accentLight:"transparent",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</div>
                     ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {/* Comment — one popup, shared by every entry type now (was
+                receipt-only, in its own row further down). Saved as a real
+                entry comment on whichever line ends up as this voucher's
+                primary posting (addEntryComment, in both save() and
+                saveInvoice()), the same thread DetailModal shows whenever
+                this entry is reopened later. */}
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setShowCommentPopover(s=>!s)} title={form.notes?"Edit comment":"Add a comment"} style={{background:"none",border:"none",outline:"none",cursor:"pointer",color:form.notes?T.accent:T.muted,padding:0,display:"flex",alignItems:"center",position:"relative",fontFamily:"inherit"}}>
+                <i className="ti ti-message-circle" style={{fontSize:16}}/>
+                {form.notes&&<div style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:T.accent,border:"1.5px solid #fff"}}/>}
+              </button>
+              {showCommentPopover&&(
+                <>
+                  <div onClick={()=>setShowCommentPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                  <div style={{position:"absolute",right:0,top:24,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:260}}>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>Comment (optional)</div>
+                    <textarea autoFocus value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
                   </div>
                 </>
               )}
@@ -4091,36 +4104,6 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               Save actually assigns one, so it now shows up on the Save
               button itself once the entry is really saved, instead of
               claiming a number up front. */}
-          {/* Date moved out of here for a Receipt entry — it now lives in
-              its own Date/Description box right below this one, same as
-              Supplier Invoice/Customer Sale already keep Date in their own
-              Invoice details section instead of here. Comment lives here
-              as an icon, not a permanent full-width row — a filled dot
-              marks when one's actually been typed, and it only shows for
-              Receipt entries since that's the only mode a comment
-              currently attaches to. Row itself only renders for Receipt —
-              Supplier/Customer modes have nothing left to put here now
-              that the type selector moved into the header above. */}
-          {entryMode==="receipt"&&(
-            <div style={{display:"flex",padding:"14px 14px",justifyContent:"flex-end"}}>
-              <div style={{position:"relative"}}>
-                <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,textTransform:"uppercase",letterSpacing:0.4,visibility:"hidden"}}>Comment</div>
-                <button onClick={()=>setShowCommentPopover(s=>!s)} title={form.notes?"Edit comment":"Add a comment"} style={{...inp,width:40,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:form.notes?T.accent:T.sub,background:form.notes?T.accentLight:"#fff",borderColor:form.notes?T.accent:T.border,position:"relative"}}>
-                  <i className="ti ti-message-circle" style={{fontSize:16}}/>
-                  {form.notes&&<div style={{position:"absolute",top:-3,right:-3,width:12,height:12,borderRadius:"50%",background:T.accent,border:"2px solid #fff"}}/>}
-                </button>
-                {showCommentPopover&&(
-                  <>
-                    <div onClick={()=>setShowCommentPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
-                    <div style={{position:"absolute",right:0,top:46,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:260}}>
-                      <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>Comment (optional)</div>
-                      <textarea autoFocus value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       ):(
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
@@ -4978,36 +4961,41 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 settle it against, the amount, and when it was really
                 paid (defaults to the invoice date, editable). */}
             <div style={sectionBox}>
-              <div style={{...sectionHead,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              {/* Toggle sits right next to the "Payment" label now — was
+                  pushed to the far right edge via space-between. */}
+              <div style={{...sectionHead,display:"flex",alignItems:"center",gap:8}}>
                 <span>Payment</span>
                 <div onClick={()=>{
                   if(invRegisterPayment){setInvRegisterPayment("");setInvPaymentAmount("");}
                   else if(bankAccounts.length){setInvRegisterPayment(bankAccounts[0].code);if(!invPaymentAmount)setInvPaymentAmount(String(Math.abs(invTotalPreview)));}
-                }} title={invRegisterPayment?"Turn off — post as an open item instead":"Turn on — register a payment now"} style={{width:34,height:20,borderRadius:10,position:"relative",flexShrink:0,cursor:bankAccounts.length?"pointer":"default",background:invRegisterPayment?T.accent:T.border,transition:"background .15s"}}>
-                  <div style={{position:"absolute",top:2,left:invRegisterPayment?16:2,width:16,height:16,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.25)",transition:"left .15s"}}/>
+                }} title={invRegisterPayment?"Turn off — post as an open item instead":"Turn on — register a payment now"} style={{width:30,height:18,borderRadius:9,position:"relative",flexShrink:0,cursor:bankAccounts.length?"pointer":"default",background:invRegisterPayment?T.accent:T.border,transition:"background .15s"}}>
+                  <div style={{position:"absolute",top:2,left:invRegisterPayment?14:2,width:14,height:14,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.25)",transition:"left .15s"}}/>
                 </div>
               </div>
-              <div style={sectionBody}>
+              {/* Once on, the account/amount/date row reads noticeably
+                  smaller/tighter — was the same size as every other field
+                  on the page. */}
+              <div style={invRegisterPayment?{...sectionBody,padding:isDesktop?"9px 14px":10,gap:6}:sectionBody}>
                 {invRegisterPayment?(<>
                   {/* Account / Amount / Date all on one row — there's no
                       reason a payment's three facts need two rows. */}
-                  <div style={{display:"flex",gap:8}}>
+                  <div style={{display:"flex",gap:6}}>
                     <div style={{flex:5}}>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Payment account</div>
-                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...lineField,fontSize:12}}>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Payment account</div>
+                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...lineField,fontSize:10.5,padding:"4px 2px"}}>
                         {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                       </select>
                     </div>
                     <div style={{flex:2}}>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Amount</div>
-                      <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...lineField,fontSize:12}}/>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>
+                      <CalcAmountInput value={invPaymentAmount} onChange={setInvPaymentAmount} style={{...lineField,fontSize:10.5,padding:"4px 2px"}}/>
                     </div>
                     <div style={{flex:2}}>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
-                      <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{...lineField,fontSize:12}}/>
+                      <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Date</div>
+                      <FlexDateInput value={invPaymentDate||form.date} onChange={setInvPaymentDate} inputStyle={{...lineField,fontSize:10.5,padding:"4px 2px"}}/>
                     </div>
                   </div>
-                  <div style={{fontSize:10,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
+                  <div style={{fontSize:9.5,color:T.muted}}>{invIsCustomer?"Records a receipt: selected account debited, Customer credited.":"Records a payment: Supplier debited, selected account credited."}{Math.abs(parseFloat(invPaymentAmount)||0)<Math.abs(invTotalPreview)?" Partial; the rest stays open.":" Full amount."}</div>
                 </>):(
                   <div style={{fontSize:11,color:T.muted}}>Will be registered as an open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"}). Switch on to record a payment against a bank or cash account now.</div>
                 )}

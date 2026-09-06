@@ -8,6 +8,7 @@ import {
   bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText,
 } from "../lib/utils.js";
 import { logBug, ADMIN_KEY, USER_FEATS_KEY } from "./ledger.jsx";
+import { nextContactId } from "../lib/utils.js";
 import { uploadFileToStorage, deleteFileFromStorage, getSignedUrl } from "../lib/storage.js";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { Spinner, LoginScreen, PendingAccessScreen } from "./shell.jsx";
@@ -606,15 +607,29 @@ function AppShell({user}){
   // delete-all), everything else is upserted in place, and any failure
   // surfaces immediately instead of silently destroying data.
   const setContacts=async(list)=>{
-    const removedIds=contacts.filter(c=>!list.some(n=>n.id===c.id)).map(c=>c.id);
-    setContactsState(list);
+    // Self-heal a contact that somehow lost its own id (blank/undefined) —
+    // upserting that row with contact_id left null violates the table's
+    // NOT NULL constraint and previously kept failing forever, every time
+    // ANY contact anywhere was saved, since this upserts the whole list
+    // each call. Assign it a fresh one instead of repeating the same
+    // failure indefinitely.
+    const usedIds=new Set(list.map(c=>c.id).filter(Boolean));
+    const healed=list.map(c=>{
+      if(c.id&&String(c.id).trim())return c;
+      let freshId=nextContactId(list.filter(x=>x.id&&String(x.id).trim()),c.type);
+      while(usedIds.has(freshId))freshId=nextContactId([...list,{id:freshId}],c.type);
+      usedIds.add(freshId);
+      return{...c,id:freshId};
+    });
+    const removedIds=contacts.filter(c=>!healed.some(n=>n.id===c.id)).map(c=>c.id);
+    setContactsState(healed);
     if(!canEdit)return;
     const failures=[];
     if(removedIds.length){
       const{error}=await scoped(sb.from("contacts").delete().eq("user_id",viewingUserId).in("contact_id",removedIds));
       if(error){console.error("Contact delete error:",error);failures.push(`Removing ${removedIds.length} contact(s): ${error.message}`);}
     }
-    for(const c of list){
+    for(const c of healed){
       const{error}=await sb.from("contacts").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),contact_id:c.id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",account_no:c.accountNo||"",org_number:c.orgNumber||"",payment_terms_days:c.paymentTermsDays!=null?c.paymentTermsDays:30,credit_limit:c.creditLimit!=null?c.creditLimit:null,inactive:c.inactive||false,is_company:c.isCompany!=null?c.isCompany:true,category:c.category||null,currency:c.currency||null},{onConflict:cid?"user_id,company_id,contact_id":"user_id,contact_id"});
       if(error){console.error(`Contact save error (${c.name||c.id}):`,error);failures.push(`${c.name||c.id}: ${error.message}`);}
     }
