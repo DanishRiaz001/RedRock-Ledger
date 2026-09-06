@@ -3597,8 +3597,25 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     const s=getPendingSuggestion();
     return s&&(s.description||s.supplier)?(s.description||s.supplier):"";
   });
-  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode}]
+  const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode,description,projectId}]
   const[invRowMenuOpen,setInvRowMenuOpen]=useState(null); // index of the Costs/Sales-lines row whose ⋮ menu is open, or null
+  // Description used to be one voucher-wide field up in Supplier/Customer
+  // information — moved down to live per cost line instead (matching the
+  // reference voucher's own Kostnader→Beskrivelse placement), so the
+  // primary line's own description is what this state now holds.
+  const[invProjectId,setInvProjectId]=useState("");
+  // Gear/settings button on the Costs section header — which optional
+  // per-line columns are showing right now. Off by default so the common
+  // case (Account + Description + VAT + Amount) stays uncluttered.
+  const[invGearOpen,setInvGearOpen]=useState(false);
+  const[invShowProject,setInvShowProject]=useState(false);
+  const[invShowPeriodization,setInvShowPeriodization]=useState(false);
+  // A reference-only note of which account this invoice should eventually
+  // be periodized against — this does NOT split the amount across periods
+  // automatically (that would need real accrual/period-spreading logic);
+  // it's captured here and appended to the saved description so it isn't
+  // lost, same as the reference voucher's own "Periodisering" section.
+  const[invPeriodizationAccount,setInvPeriodizationAccount]=useState("");
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
@@ -3608,7 +3625,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // record when a supplier invoice was really paid, separately from the
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvGearOpen(false);};
   // The pending-suggestion/entry-mode hand-off keys are read (never deleted)
   // by several useState initializers above, all during the same first
   // render — so the actual cleanup happens exactly once, here, after mount.
@@ -3855,7 +3872,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,description:invDescription,projectId:invProjectId},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
@@ -3883,10 +3900,21 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // Every line of one invoice used to get its own separate bilag despite
       // being one logical voucher — every line here now shares whichever
       // bilag the first line was actually assigned.
+      // Each line's own description (falls back to the primary line's, then
+      // a generic default) — this used to be one description shared by
+      // every line regardless of what was actually typed on each row.
+      let lineDesc=l.description||invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`;
+      // Periodization account is reference-only (see state comment above) —
+      // folded into the first line's description so it's not silently lost,
+      // since there's no dedicated column for it yet.
+      if(idx===0&&invShowPeriodization&&invPeriodizationAccount){
+        const pAcc=accounts.find(a=>a.code===invPeriodizationAccount);
+        lineDesc=`${lineDesc} (Periodization: ${invPeriodizationAccount}${pAcc?" · "+pAcc.name:""})`;
+      }
       const res=await onSave({
         date:form.date,
         debitCode,creditCode,
-        description:invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`,
+        description:lineDesc,
         amount:absAmt,
         contactId:invContactId,
         invoiceNo:invoiceNo||null,
@@ -3897,6 +3925,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         vatPct:lineVc?lineVc.rate:null,
         vatAmount:lineVatAmount,
         attachmentIds:idx===0?invAttachmentIds:undefined,
+        projectId:invShowProject?(l.projectId||null):null,
         // Tagged so reopening this entry later (no matter how much later)
         // recognizes it as a supplier/customer invoice and shows it that
         // way again, instead of falling back to the generic voucher editor.
@@ -4514,6 +4543,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const filteredAccounts=invIsCustomer
           ?accounts.filter(a=>a.code.startsWith("3"))
           :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+        // Prepayments & Accrued Income (1700-series) — the natural home for
+        // a periodization/accrual account, same series Tripletex's own
+        // "Periodiseringskonto" picker defaults to.
+        const periodizationAccounts=accounts.filter(a=>a.code.startsWith("17"));
         const invVatDirection=invIsCustomer?"output":"input";
         // Default payment-account choices restricted to Cash, the main
         // bank account, and Owner's Drawings (paid personally) — was every
@@ -4529,84 +4562,89 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const sectionBody={padding:isDesktop?"12px 14px":14,display:"flex",flexDirection:"column",gap:isDesktop?9:10};
         return(
           <div style={{display:"flex",flexDirection:"column",gap:isDesktop?12:14}}>
-            {/* Two-column split on desktop — Invoice details on the left,
-                Costs + Payment stacked on the right — instead of every
-                section stacked in one long column; mobile stays exactly
-                as it was (this wrapper collapses to display:contents,
-                so its children just rejoin the outer flex column). */}
-            <div style={isDesktop?{display:"grid",gridTemplateColumns:"0.85fr 1fr",gap:12,alignItems:"start"}:{display:"contents"}}>
-            {/* Invoice details — supplier/customer, invoice no/due date, and
-                ONE description for the whole voucher, matching the reference
-                voucher's "Fakturadetaljer" section instead of scattering
-                these across the page. */}
+            {/* One column, full width — Supplier/Customer information first,
+                then Costs, then Payment. Was a two-column split (Invoice
+                details left, Costs+Payment right); the per-voucher
+                Description field that used to live here moved down into
+                each cost line instead (see Costs below). */}
             <div style={sectionBox}>
-              <div style={sectionHead}>Invoice details</div>
+              <div style={sectionHead}>{invIsCustomer?"Customer information":"Supplier information"}</div>
               <div style={sectionBody}>
-                {/* Two columns: Supplier + Invoice No stacked on the left,
-                    Date + Due date stacked on the right — same box sizing
-                    in both rows of each column, rather than the date living
-                    up in Voucher details while everything else about this
-                    invoice sits down here. */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
-                      {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
-                        <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8,boxSizing:"border-box",minHeight:36}}>
-                          <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
-                          <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
-                          <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
-                        </div>
-                      );})():(
-                        <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
-                      )}
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
-                      <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
-                    </div>
+                <div style={{display:"grid",gridTemplateColumns:isDesktop?"1.3fr 1fr 1fr 1fr":"1fr 1fr",gap:8}}>
+                  <div>
+                    <div style={{fontSize:9,fontWeight:800,color:invIsCustomer?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{invIsCustomer?"Customer":"Supplier"}</div>
+                    {invContactId?(()=>{const c=contactList.find(x=>x.id===invContactId)||contacts.find(x=>x.id===invContactId);return(
+                      <div style={{background:invIsCustomer?T.blueBg:T.redLight,border:`1px solid ${invIsCustomer?T.blue:T.red}`,borderRadius:10,padding:isDesktop?"6px 10px":"8px 12px",display:"flex",alignItems:"center",gap:8,boxSizing:"border-box",minHeight:36}}>
+                        <span style={{fontSize:12,fontWeight:700,flex:1,color:invIsCustomer?T.blue:T.red}}>{c?c.name:invContactId}</span>
+                        <span style={{fontSize:10,color:T.muted}}>{invContactId}</span>
+                        <button onClick={()=>setInvContactId("")} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,padding:"0 2px"}}>✕</button>
+                      </div>
+                    );})():(
+                      <ContactSearchInline contacts={contactList} value={invContactId} onChange={setInvContactId} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
+                    )}
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
-                      <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",minHeight:36}}/>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
-                      <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",minHeight:36}}/>
-                    </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Invoice No</div>
+                    <input placeholder="e.g. INV-1042" value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",width:"100%",minHeight:36}}/>
                   </div>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Description</div>
-                  <input placeholder="Shown on every posting from this voucher" value={invDescription} onChange={e=>setInvDescription(e.target.value)} style={{...inpSm,fontSize:12,padding:isDesktop?"6px 10px":"7px 10px"}}/>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Date</div>
+                    <FlexDateInput value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} style={{width:"100%"}} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",boxSizing:"border-box",minHeight:36}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Due date</div>
+                    <FlexDateInput value={invDueDate} onChange={setInvDueDate} inputStyle={{fontSize:12,padding:isDesktop?"6px 10px":"7px 10px",minHeight:36}}/>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div style={isDesktop?{display:"flex",flexDirection:"column",gap:12}:{display:"contents"}}>
-            {/* Costs — just Account / VAT / Amount per line, no date or
-                description per row (those live once, above, for the whole
-                voucher) — matching the reference's plain cost-line table. */}
+            {/* Costs — Account and Description now stack in one column per
+                line (Description moved down from the voucher-wide field
+                above), VAT widened so its own "code: (rate%) name" display
+                isn't truncated, Amount reordered (number left, currency
+                right with the browser's own dropdown arrow suppressed —
+                still click it to open the picker). The gear button reveals
+                optional per-line/whole-voucher extras. */}
             <div style={sectionBox}>
-              <div style={sectionHead}>{invIsCustomer?"Sales lines":"Costs"}</div>
+              <div style={{...sectionHead,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span>{invIsCustomer?"Sales lines":"Costs"}</span>
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setInvGearOpen(o=>!o)} title="Display options" style={{background:invGearOpen?T.accentLight:"none",border:`1px solid ${invGearOpen?T.accent:T.border}`,borderRadius:7,width:26,height:26,color:invGearOpen?T.accent:T.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
+                    <i className="ti ti-adjustments-horizontal" style={{fontSize:14}}/>
+                  </button>
+                  {invGearOpen&&(
+                    <>
+                      <div onClick={()=>setInvGearOpen(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
+                      <div style={{position:"absolute",top:32,right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(20,40,50,0.14)",padding:10,width:200}}>
+                        <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>Show on each line</div>
+                        {trackProjects&&(
+                          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,padding:"5px 2px",cursor:"pointer"}}>
+                            <input type="checkbox" checked={invShowProject} onChange={e=>setInvShowProject(e.target.checked)} style={{width:14,height:14,accentColor:T.accent,cursor:"pointer"}}/>
+                            Project
+                          </label>
+                        )}
+                        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,padding:"5px 2px",cursor:"pointer"}}>
+                          <input type="checkbox" checked={invShowPeriodization} onChange={e=>setInvShowPeriodization(e.target.checked)} style={{width:14,height:14,accentColor:T.accent,cursor:"pointer"}}/>
+                          Periodization
+                        </label>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
               <div style={{padding:isDesktop?"10px 14px 14px":"10px 14px 14px"}}>
               {(()=>{
-                // Simplified to just Account / VAT / Amount — the old
-                // Excl. VAT and VAT amt read-only breakdown columns are
-                // gone (that math still runs, it just surfaces once, in
-                // the running totals below, not duplicated per line).
-                // Account gets most of the width; VAT and Amount sit
-                // close together on the right. No cell borders anywhere
-                // — an open list, not a spreadsheet grid — and the
-                // header stays put (position:sticky) once there are more
-                // lines than fit in the scroll area below it.
-                // Amount column narrowed 40% (130px → 78px) — it only
-                // ever holds a number, not an account name.
-                const GRID_COLS="1.7fr 150px 78px 30px";
+                // Account gets most of the width (its own line's Description
+                // sits right underneath it); VAT is widened so the full
+                // "code: (rate%) name" reads without truncating; Amount is
+                // fixed-width, just enough for a number plus the currency
+                // label; Project is optional (gear-toggled), same width as
+                // before it was added.
+                const GRID_COLS=["1.5fr","1.8fr","130px",invShowProject?"110px":null,"30px"].filter(Boolean).join(" ");
                 const cellBase={padding:"8px 6px",boxSizing:"border-box"};
                 const rows=[
-                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok},
+                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 return(
@@ -4616,11 +4654,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               // limited how many lines were comfortably visible. As many
               // lines as needed just grow the page instead.
               <div style={{borderRadius:10,marginBottom:8}}>
-                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?440:0,overflowX:isDesktop?"visible":"auto"}}>
+                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:isDesktop?520:0,overflowX:isDesktop?"visible":"auto"}}>
                   {(()=>{const headCell={...cellBase,fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase"};return(<>
                     <div style={headCell}>{invIsCustomer?"Sales Account":"Expense Account"}</div>
                     <div style={headCell}>VAT</div>
                     <div style={{...headCell,textAlign:"right"}}>Incl. VAT</div>
+                    {invShowProject&&<div style={headCell}>Project</div>}
                     <div style={headCell}/>
                   </>);})()}
                   {rows.map((r,idx)=>{
@@ -4635,6 +4674,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         if("amount"in patch)setInvAmount(patch.amount);
                         if("currency"in patch)setInvCurrency(patch.currency);
                         if("amountNok"in patch)setInvAmountNok(patch.amountNok);
+                        if("description"in patch)setInvDescription(patch.description);
+                        if("projectId"in patch)setInvProjectId(patch.projectId);
                       } else {
                         setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                       }
@@ -4644,39 +4685,66 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         except a hairline underneath), instead of each field
                         sitting in its own bordered pill. */}
                     const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,paddingLeft:2,paddingRight:2};
+                    const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:""});
                     return(<React.Fragment key={idx}>
                       <div style={rowCell}>
                         <AccDrop value={r.accountCode||""} onChange={code=>{
                           const a=accounts.find(x=>x.code===code);
                           update({accountCode:code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:""});
                         }} accounts={filteredAccounts} onCreateAccount={createAccountQuick} inputStyle={lineField}/>
+                        {/* Description now lives directly under its own
+                            line's account, matching the reference voucher's
+                            Kostnader→Beskrivelse placement — was one field
+                            shared by the whole voucher, up in Supplier
+                            information. */}
+                        <input placeholder="Description (optional)" value={r.description||""} onChange={e=>update({description:e.target.value})} style={{...lineField,marginTop:4,fontSize:11,color:T.sub,borderBottomStyle:"dashed",width:"100%"}}/>
                       </div>
                       <div style={rowCell}>
-                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={lineField}/>
+                        <VatDrop value={r.vatCode||""} onChange={v=>update({vatCode:v})} disabled={vLocked} options={vatCodeOptions(invVatDirection)} inputStyle={{...lineField,fontSize:11.5}}/>
                       </div>
                       <div style={rowCell}>
-                        {/* Currency defaults to NOK, shown as nothing extra
-                            — click it to pick a different one, and a
-                            second row appears below for the NOK-equivalent
-                            amount, same idea as the VAT/Description second
-                            row elsewhere in this table. Tabbing out of the
-                            last row's Amount box starts a new line
-                            automatically — matches the quick-entry feel of
-                            a real spreadsheet/voucher table instead of
-                            forcing a click on "+ Add Line" every time. */}
-                        <div style={{display:"flex",alignItems:"center",gap:4}}>
-                          <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{...lineField,background:"transparent",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:38,cursor:"pointer"}}>
+                        {/* Amount reordered — the number reads first (left),
+                            currency sits after it on the right with its
+                            native dropdown arrow hidden (appearance:none);
+                            it's still a real <select>, so clicking anywhere
+                            on it opens the picker. Was currency-then-amount,
+                            both right-aligned. Tabbing out of the last row's
+                            Amount box starts a new line automatically. */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
+                          <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
+                            if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,newLine()]);
+                          }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"left"}}/>
+                          <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{...lineField,appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",fontSize:9,fontWeight:700,color:T.muted,padding:"6px 0",flexShrink:0,width:32,cursor:"pointer",textAlign:"right"}}>
                             {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
                           </select>
-                          <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
-                            if(e.key==="Tab"&&!e.shiftKey&&isLastRow)setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}]);
-                          }} style={{...inpSm,...lineField,fontSize:12,fontWeight:700,padding:"6px 2px",width:"100%",textAlign:"right"}}/>
                         </div>
                         {(r.currency||"NOK")!=="NOK"&&(
-                          <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,...lineField,fontSize:10.5,fontWeight:600,color:T.muted,padding:"4px 2px",width:"100%",textAlign:"right"}}/>
+                          <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...inpSm,...lineField,fontSize:10.5,fontWeight:600,color:T.muted,padding:"4px 2px",width:"100%",textAlign:"left"}}/>
                         )}
                       </div>
-                      <div style={{...rowCell,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                      {invShowProject&&(
+                        <div style={rowCell}>
+                          <select value={r.projectId||""} onChange={e=>{
+                            if(e.target.value==="__new__"){
+                              const name=prompt("New project or department name:");
+                              if(name&&name.trim()&&saveProjects){
+                                const nums=projects.map(p=>parseInt(p.number)||0);
+                                const number=String((nums.length?Math.max(...nums):0)+1).padStart(3,"0");
+                                const newProj={id:"proj_"+Date.now().toString(36),number,name:name.trim(),inactive:false};
+                                saveProjects([...projects,newProj]);
+                                update({projectId:newProj.id});
+                              }
+                              return;
+                            }
+                            update({projectId:e.target.value});
+                          }} style={{...lineField,fontSize:11,padding:"6px 2px",width:"100%"}}>
+                            <option value="">— None —</option>
+                            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
+                            {saveProjects&&<option value="__new__">+ New…</option>}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",position:"relative",paddingTop:12}}>
                         {/* Vertical ⋮ menu — Copy duplicates this line,
                             Delete removes it (Delete hidden on the
                             primary line, which can't be removed). */}
@@ -4689,7 +4757,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           <>
                             <div onClick={()=>setInvRowMenuOpen(null)} style={{position:"fixed",inset:0,zIndex:198}}/>
                             <div style={{position:"absolute",top:"100%",right:0,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 22px rgba(20,40,50,0.14)",padding:5,width:118}}>
-                              <div onClick={()=>{setInvExtraLines(p=>[...p,{accountCode:r.accountCode,vatCode:r.vatCode,amount:r.amount}]);setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>Copy</div>
+                              <div onClick={()=>{setInvExtraLines(p=>[...p,{accountCode:r.accountCode,vatCode:r.vatCode,amount:r.amount,description:r.description,projectId:r.projectId}]);setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>Copy</div>
                               {!r.isPrimary&&<div onClick={()=>{setInvExtraLines(p=>p.filter((_,i)=>i!==r.li));setInvRowMenuOpen(null);}} style={{padding:"7px 9px",borderRadius:7,fontSize:12,fontWeight:600,color:T.red,cursor:"pointer"}}>Delete</div>}
                             </div>
                           </>
@@ -4704,7 +4772,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               {/* Plain text link, not a bordered pill button — a line
                   add is a lightweight, frequent action here, not a
                   "real" button-weight action. */}
-              <div onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:""}])} style={{display:"inline-block",marginTop:6,color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
+              <div onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",description:"",projectId:""}])} style={{display:"inline-block",marginTop:6,color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
 
               {/* Running Debit / Credit / VAT / Difference — debit is what's
                   entered across the cost-account line(s) above; credit is the
@@ -4743,6 +4811,20 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   </div>
                 );
               })()}
+
+              {/* Periodization — gear-toggled, off by default. Reference-
+                  only for now: it's captured and folded into the saved
+                  description (see saveInvoice) rather than actually
+                  splitting the amount across periods, which would need
+                  real accrual logic this app doesn't have yet. */}
+              {invShowPeriodization&&(
+                <div style={{marginTop:10,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization</div>
+                  <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Periodization account</div>
+                  <AccDrop value={invPeriodizationAccount} onChange={setInvPeriodizationAccount} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...inpSm,fontSize:12,padding:"6px 10px"}}/>
+                  <div style={{fontSize:10,color:T.muted,marginTop:4}}>Reference only — noted on the saved entry. Doesn't split the amount across periods automatically yet.</div>
+                </div>
+              )}
               </div>
             </div>
 
@@ -4786,8 +4868,6 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div style={{fontSize:11,color:T.muted}}>Will be registered as an open item ({invIsCustomer?"Accounts Receivable":"Accounts Payable"}). Switch on to record a payment against a bank or cash account now.</div>
                 )}
               </div>
-            </div>
-            </div>
             </div>
 
             <button disabled={!invValid||saving} style={{...btnRed,opacity:invValid&&!saving?1:0.5,background:entrySaved?"#059669":T.accent,transition:"background 0.2s",cursor:invValid&&!saving?"pointer":"default"}} onClick={saveInvoice}>{entrySaved?(lastSavedBilag!=null?`✓ Saved as ${fmtB(lastSavedBilag)}`:"✓ Saved!"):saving?"Saving…":`Save ${invIsCustomer?"Sale":"Purchase"}`}</button>
