@@ -3397,6 +3397,13 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   const[newName,setNewName]=useState("");
   const[newOrgNumber,setNewOrgNumber]=useState("");
   const[newType,setNewType]=useState(type==="customer"?"customer":"supplier");
+  // Fixed from the input's own screen coordinates (same fix as AccDrop/
+  // VatDrop/FileDrop/Menu3) instead of absolute-relative-to-container —
+  // any ancestor with overflow:hidden for its own rounded corners (e.g.
+  // the Supplier information section box) otherwise clips this dropdown
+  // to invisible the moment it opens near that ancestor's edge.
+  const inputRef=React.useRef(null);
+  const[dropPos,setDropPos]=useState(null);
   const isAll=type==="all";
   const isC=type==="customer";
   const filtered=useMemo(()=>{
@@ -3431,13 +3438,16 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
   };
   return(
     <div style={{position:"relative"}}>
-      <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
+      <input ref={inputRef} value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>{
+        if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
+        setOpen(true);
+      }}
         placeholder={isAll?"Search all contacts (customers & suppliers)…":`Search ${isC?"customer":"supplier"}…`}
         style={{...inp,fontSize:12,padding:"8px 12px"}}/>
-      {open&&(
+      {open&&dropPos&&(
         <>
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:200}}>
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:200}}>
             <div style={{overflowY:"auto",maxHeight:200}}>
               {filtered.length===0&&<div style={{padding:"10px 12px",fontSize:9,color:T.muted}}>No contacts found</div>}
               {filtered.map((c,i)=>{const cIsC=c.type==="customer";return(
@@ -4307,20 +4317,23 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               const isLast=li===linesArr.length-1;
               const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
               return(<React.Fragment key={li}>
-                <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"center",gap:6}}>
-                  {/* Date and Description sit on ONE row now — a compact
-                      date, then description filling the rest — rather than
-                      stacked (date above, description below) inside the
-                      same column. */}
-                  <div style={{flexShrink:0,width:76}}>
-                    <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
-                      if(li===0){setForm(p=>({...p,date:v}));return;}
-                      const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                      lines[li]={...lines[li],date:v};
-                      setForm(p=>({...p,lines}));
-                    }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:11.5,padding:"6px 2px"}}/>
-                  </div>
-                  <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
+                <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
+                  {/* Date sits in the ACCOUNT row (top), Description in the
+                      VAT row (below it) — same two-row rhythm as the
+                      Debit/Credit columns (Account on top, VAT underneath),
+                      not side by side on one row. */}
+                  <FlexDateInput value={li===0?form.date:(line.date||form.date)} onChange={v=>{
+                    if(li===0){setForm(p=>({...p,date:v}));return;}
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],date:v};
+                    setForm(p=>({...p,lines}));
+                  }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
+                  {/* li>0's placeholder shows the master (top box)
+                      Description as a hint — leaving this line's own field
+                      blank falls back to that master description when
+                      saved (see save()'s normLines mapping); typing here
+                      overrides it for just this line. */}
+                  <input placeholder={li===0?"Description":(form.description||"Description")} value={li===0?form.description:(line.description||"")} onChange={e=>{
                     if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
                     const lines=[...(form.lines||[])];
                     lines[li]={...lines[li],description:e.target.value};
