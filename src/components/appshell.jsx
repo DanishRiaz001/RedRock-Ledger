@@ -1817,11 +1817,115 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // if the file type can't usefully be read this way (xlsx/csv/docx), or
   // if the request fails — this is enrichment for the inbox list, never a
   // required step, so it must never block or error the actual upload.
+  // Same pdf.js line-reconstruction as parseBankStatementPDFFallback above
+  // (group text items by Y/baseline, sort each line left-to-right by X) —
+  // pulled out so both fallbacks share it instead of duplicating it.
+  const pdfTextLines=async(file)=>{
+    if(!window.pdfjsLib)return null;
+    const buf=await file.arrayBuffer();
+    const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+    const lines=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const content=await page.getTextContent();
+      const byY={};
+      content.items.forEach(it=>{
+        const y=Math.round(it.transform[5]);
+        if(!byY[y])byY[y]=[];
+        byY[y].push(it);
+      });
+      Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
+        const lineText=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>it.str).join(" ").replace(/\s+/g," ").trim();
+        if(lineText)lines.push(lineText);
+      });
+    }
+    return lines;
+  };
+  // Free, no-API-key fallback for Inbox document analysis — same idea as
+  // parseBankStatementPDFFallback above: pull real text out of the PDF
+  // with pdf.js and pattern-match Norwegian invoice field labels instead
+  // of asking an AI to read it. Costs nothing, but is meaningfully less
+  // reliable — only works when the PDF has a real text layer (most
+  // digitally-generated e-invoices; not a scanned/photographed one, and
+  // never an image upload, since there's no text to read there at all),
+  // and the supplier name/amount picks are best-effort heuristics, not a
+  // real understanding of the document's layout.
+  const labelValue=(lines,labelRe)=>{
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(labelRe);
+      if(!m)continue;
+      const rest=lines[i].slice(m.index+m[0].length).replace(/^[:\s.]+/,"").trim();
+      if(rest)return rest;
+      if(lines[i+1]&&lines[i+1].trim())return lines[i+1].trim();
+    }
+    return null;
+  };
+  const labelDate=(lines,labelRe)=>{
+    for(let i=0;i<lines.length;i++){
+      if(!labelRe.test(lines[i]))continue;
+      for(const src of[lines[i],lines[i+1]||""]){
+        for(const p of DATE_LINE_PATTERNS){
+          const m=src.match(p.re);
+          if(m)return p.toISO(m);
+        }
+      }
+    }
+    return null;
+  };
+  const analyzeInboxFilePDFFallback=async(file,fileId)=>{
+    try{
+      const lines=await pdfTextLines(file);
+      if(!lines||!lines.length)return;
+      const invoiceDate=labelDate(lines,/fakturadato|faktura\s*dato|bilagsdato/i);
+      const dueDate=labelDate(lines,/forfallsdato|forfall(?!ende)|betalingsfrist|due\s*date/i);
+      const invoiceNo=labelValue(lines,/fakturanummer|faktura\s*nr\.?|fakturanr\.?|kid[\s-]*nummer|\bkid\b/i);
+      // Amount — prefer a line explicitly labeled as the total ("Totalt",
+      // "Å betale", "Sum å betale", "Beløp"), taking the LARGEST number on
+      // that line (avoids picking up a quantity or a line-item unit price
+      // that happens to sit on the same row); falls back to the single
+      // largest monetary-looking number found anywhere in the document.
+      let amount=null;
+      const totalLabelRe=/totalt\s*beløp|å betale|sum å betale|\btotal\b|\bsum\b|beløp/i;
+      for(const line of lines){
+        if(!totalLabelRe.test(line))continue;
+        const tokens=(line.match(/\d[\d.,]*\d|\d/g)||[]).map(t=>parseAmountToken(t)).filter(n=>n!=null&&n>0);
+        if(tokens.length){const candidate=Math.max(...tokens);if(amount==null||candidate>amount)amount=candidate;}
+      }
+      if(amount==null){
+        const all=lines.join(" ").match(/\d[\d.,]*\d|\d/g)||[];
+        const nums=all.map(t=>parseAmountToken(t)).filter(n=>n!=null&&n>0);
+        if(nums.length)amount=Math.max(...nums);
+      }
+      // Supplier — the letterhead is almost always the first substantial
+      // line of real text on the page; skip anything that's just a
+      // document-type label ("Faktura", "Invoice", "Kvittering").
+      const supplier=lines.find(l=>l.trim().length>2&&!/^faktura$|^invoice$|^kvittering$|^receipt$/i.test(l.trim()))||null;
+      const patch={
+        ai_supplier:supplier,
+        ai_amount:amount,
+        ai_invoice_no:invoiceNo,
+        ai_invoice_date:invoiceDate,
+        ai_due_date:dueDate,
+        ai_description:null, // free-text line-item extraction isn't reliable enough to guess at without AI — left for the user to fill in
+        ai_doc_type:"unclear",
+        ai_analyzed:true,
+      };
+      const{error:updErr}=await sb.from("inbox_files").update(patch).eq("id",fileId);
+      if(updErr){console.error("Inbox fallback suggestion save failed:",updErr);return;}
+      setInboxFilesState(p=>p.map(f=>f.id===fileId?{...f,aiSupplier:patch.ai_supplier,aiAmount:patch.ai_amount,aiInvoiceNo:patch.ai_invoice_no,aiInvoiceDate:patch.ai_invoice_date,aiDueDate:patch.ai_due_date,aiDescription:patch.ai_description,aiDocType:patch.ai_doc_type,aiAnalyzed:true}:f));
+    }catch(e){console.error("Inbox fallback analysis failed:",e);}
+  };
   const analyzeInboxFile=async(file,fileId)=>{
-    if(!getAnthropicKey())return;
     const isImage=(file.type||"").startsWith("image/");
     const isPdf=file.type==="application/pdf";
     if(!isImage&&!isPdf)return;
+    if(!getAnthropicKey()){
+      // No key set — the free fallback only has anything to work with on
+      // a real PDF (a text layer to read); a photographed/scanned receipt
+      // image genuinely needs vision, which this can't do for free.
+      if(isPdf)return analyzeInboxFilePDFFallback(file,fileId);
+      return;
+    }
     try{
       const reader=new FileReader();
       const base64=await new Promise((resolve,reject)=>{
