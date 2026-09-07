@@ -496,7 +496,13 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
 
   const trimmedCode=code.trim();
   const saftCode13=useMemo(()=>autoSaftFor(trimmedCode),[trimmedCode]);
-  const valid=trimmedCode&&name.trim()&&!existingCodes.has(trimmedCode);
+  const isDuplicate=trimmedCode&&existingCodes.has(trimmedCode);
+  const valid=trimmedCode&&name.trim()&&!isDuplicate;
+  // Shows live, as soon as a taken number is typed — the Create button is
+  // disabled the whole time this is true, so without this the modal just
+  // looked stuck with no explanation (submit(), the only place that used
+  // to set this message, never runs while the button stays disabled).
+  const duplicateWarning=isDuplicate?`Account ${trimmedCode} already exists — pick a different number.`:"";
 
   const submit=()=>{
     if(!trimmedCode||!name.trim()){setError("Account number and name are both required.");return;}
@@ -520,7 +526,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
           <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,color:T.sub,fontSize:13,cursor:"pointer",width:26,height:26}}>✕</button>
         </div>
         <div style={{padding:"16px 20px 4px",display:"flex",flexDirection:"column",gap:11}}>
-          {error&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600}}>{error}</div>}
+          {(error||duplicateWarning)&&<div style={{background:T.redLight,color:T.red,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600}}>{error||duplicateWarning}</div>}
 
           {/* Account group (wide) + Currency (narrow) share a row */}
           <div style={{display:"grid",gridTemplateColumns:"2.1fr 1fr",gap:9}}>

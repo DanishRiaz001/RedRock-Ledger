@@ -2267,19 +2267,7 @@ If you genuinely cannot read useful information from this file, return every fie
           ⚠ Company data scoping is broken (companies table unreachable — likely an RLS policy gap). Anything entered right now won't be linked to a company and may look "missing" later. Fix the RLS policies on the companies table before continuing.
         </div>
       )}
-      {isNativeApp()?<MobileApp {...appProps}/>:(
-        // Site-wide density pass — Tripletex reads noticeably smaller/
-        // tighter than every literal font-size hardcoded across this
-        // codebase (there's no shared type-scale variable to change in
-        // one place). `zoom` scales text, spacing and controls together
-        // in lockstep (unlike `transform:scale`, it doesn't break
-        // fixed-position panels like ResizableSplit, which pin to the
-        // true viewport edge) — the web app only; the native/Capacitor
-        // app is untouched. One number to tune if this needs adjusting.
-        <div style={{zoom:0.92,height:"100%"}}>
-          <FinanceTracker {...appProps}/>
-        </div>
-      )}
+      {isNativeApp()?<MobileApp {...appProps}/>:<FinanceTracker {...appProps}/>}
     </div>
   );
 }
