@@ -1359,7 +1359,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // never actually showed the whole voucher together the way it was posted.
   // groupLines is every transaction row sharing this bilag, including this
   // one; more than one flips this modal into a real multi-line editor.
-  const isGroup=groupLines&&groupLines.length>1;
+  // (isGroup itself is declared further down, once groupLinesState exists —
+  // it now tracks LIVE state, not just how many rows the bilag started
+  // with, so adding a line to a bilag that opened single-line flips this
+  // into group mode on the spot instead of requiring a re-open.)
   const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
   // At least one side, not both required — a line saved through New
   // Entry's flexible multi-line balancing (or a bulk bank post) can
@@ -1421,6 +1424,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     };
   };
   const[groupLinesState,setGroupLinesState]=useState(()=>groupLines.map(l=>({...l,amount:String(l.amount),...deriveLineVat(l)})));
+  // Live, not just "did this bilag start out multi-line" — a bilag that
+  // opened with one row (isGroup false, single-line `form` state in
+  // charge) can still turn into a real multi-line voucher the moment
+  // "+ Add line" is used (see addGroupLine below), the same way New
+  // Entry lets a fresh voucher grow past one line.
+  const isGroup=groupLinesState.length>1;
   const[savingGroup,setSavingGroup]=useState(false);
   const[savingSingle,setSavingSingle]=useState(false);
   const[confirmDelGroup,setConfirmDelGroup]=useState(false);
@@ -1513,9 +1522,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     if(!onAddLine||addingLine)return;
     setAddingLine(true);
     const today=new Date().toISOString().split("T")[0];
-    const res=await onAddLine({date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:0,bilag});
+    // A bilag that opened single-line has been living in `form`/
+    // debitVatCode/creditVatCode (not groupLinesState) up to this exact
+    // click — whatever the user already typed there has to carry over
+    // into row 0 the moment this flips into group mode, or it's silently
+    // lost the instant the grid switches to rendering groupLinesState.
+    const row0=isGroup?groupLinesState[0]:{...groupLinesState[0],date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode};
+    if(!isGroup)setGroupLinesState([row0]);
+    const res=await onAddLine({date:row0?.date||today,debitCode:"",creditCode:"",description:row0?.description||"",amount:0,bilag});
     setAddingLine(false);
-    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:groupLinesState[0]?.date||today,debitCode:"",creditCode:"",description:groupLinesState[0]?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
+    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:row0?.date||today,debitCode:"",creditCode:"",description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
     else if(res&&res.error)alert(`Couldn't add a new line:\n\n${res.error}`);
   };
 
@@ -1739,7 +1755,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           Off by {fmt(Math.abs(groupTotals.totalDebit-groupTotals.totalCredit))} — total debit {fmt(groupTotals.totalDebit)} vs total credit {fmt(groupTotals.totalCredit)}. Save is disabled until these match.
         </div>
       )}
-      {isGroup&&onAddLine&&(
+      {onAddLine&&(
         <button onClick={addGroupLine} disabled={addingLine} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>{addingLine?"Adding…":"+ New row"}</button>
       )}
       <div style={{display:"flex",gap:16,alignItems:"center"}}>
@@ -2160,7 +2176,16 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
     setAttUploading(false);
   };
 
+  // Editing now renders as its own full-screen layer — fixed over
+  // whatever list/table opened it, with its own scroll — instead of
+  // sharing the page's scroll position with that underlying content
+  // (which used to bleed through directly below the edit form, e.g. a
+  // General Ledger drill-down table visible right under the Save/Delete
+  // buttons). EditModal's own internal layout (the wide ResizableSplit
+  // attachment split included) is untouched; this just gives it a
+  // dedicated, opaque, top-level surface to render into.
   if(showEdit)return(
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
     <EditModal
       txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
@@ -2189,6 +2214,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       // never re-materialize one behind it.
       onClose={onClose}
     />
+    </div>
   );
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:300,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60,overflowY:"auto"}}>
