@@ -4321,6 +4321,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           const GRID_COLS="0.975fr minmax(180px,1fr) minmax(180px,1fr) 110px 26px";
           const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
           const linesArr=form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}];
+          // Debit/Credit/VAT/Amount fields are line-based (flat, underline
+          // only) now, not boxed pills — same "only the section itself
+          // keeps a border, every field inside it is a hairline" treatment
+          // already applied to Supplier/Customer Invoice.
+          const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"};
           return(
         <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
           <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>Postings</div>
@@ -4394,12 +4399,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     }else{
                       setForm(p=>({...p,contactId:id}));
                     }
-                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inputStyle={lineField}/>
                   <VatDrop value={line.debitVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],debitVatCode:code};
                     setForm(p=>({...p,lines}));
-                  }} options={vatCodeOptions("input")} disabled={debitLocked}/>
+                  }} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...lineField,fontSize:10.5}}/>
                 </div>
                 <div style={{...rowCell,minWidth:0}}>
                   <AccDrop value={line.creditCode||""} onChange={v=>{
@@ -4418,22 +4423,22 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     }else{
                       setForm(p=>({...p,contactId:id}));
                     }
-                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick}/>
+                  }} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inputStyle={lineField}/>
                   <VatDrop value={line.creditVatCode||"0"} onChange={code=>{
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],creditVatCode:code};
                     setForm(p=>({...p,lines}));
-                  }} options={vatCodeOptions("output")} disabled={creditLocked}/>
+                  }} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...lineField,fontSize:10.5}}/>
                 </div>
                 <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                   {li===0?(
-                    <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                    <CalcAmountInput placeholder="0" value={form.amount} onChange={handleAmountChange} style={{...lineField,fontSize:12,fontWeight:700,width:"100%",textAlign:"right"}}/>
                   ):(
                     <CalcAmountInput placeholder="0" value={line.amount||""} onChange={v=>{
                       const lines=[...(form.lines||[])];
                       lines[li]={...lines[li],amount:v};
                       setForm(p=>({...p,lines}));
-                    }} style={{...inpSm,fontSize:12,fontWeight:700,padding:"7px 8px",width:"100%",textAlign:"right"}}/>
+                    }} style={{...lineField,fontSize:12,fontWeight:700,width:"100%",textAlign:"right"}}/>
                   )}
                   {/* Static currency label — Advance Voucher posts in the
                       books' own currency only (no per-line currency picker
@@ -4606,7 +4611,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         {isDesktop&&moneySources&&moneySources.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:190,marginBottom:4}}>
             {moneySources&&moneySources.length>0&&(
-              <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,padding:"7px 8px"}}>
+              <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"7px 2px",color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
                 <option value="">— Whose (optional) —</option>
                 {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
