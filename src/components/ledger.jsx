@@ -2184,8 +2184,17 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   // buttons). EditModal's own internal layout (the wide ResizableSplit
   // attachment split included) is untouched; this just gives it a
   // dedicated, opaque, top-level surface to render into.
+  //
+  // On desktop (FinanceTracker's persistent chrome — a 60px top header
+  // and a 220px sidebar, both defined in FinanceTracker.jsx) this layer
+  // must NOT cover them: an unqualified full-viewport inset:0 sat above
+  // the sidebar too, making it disappear entirely while editing — the
+  // website should stay fully intact/navigable no matter what bilag is
+  // open. Narrow/mobile call sites of this same DetailModal have no such
+  // chrome to protect, so they still get the full viewport.
+  const isDesktopChrome=typeof window!=="undefined"&&window.innerWidth>=900;
   if(showEdit)return(
-    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
+    <div style={{position:"fixed",top:isDesktopChrome?60:0,left:isDesktopChrome?220:0,right:0,bottom:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
     <EditModal
       txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
