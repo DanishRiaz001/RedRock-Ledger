@@ -310,7 +310,7 @@ function ResizableSplit({left,right,defaultRightWidth=360,minRightWidth=260,maxR
 // a label, which only ever worked by clicking to browse. This gives every
 // one of those buttons the same real drop target (drag files onto it, or
 // click through to the same file picker as before).
-function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles,onClose,busy=false,progress=null}){
+function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles,onClose,busy=false,progress=null,children}){
   const[dragOver,setDragOver]=useState(false);
   const inputRef=React.useRef(null);
   const handleFiles=fileList=>{
@@ -341,6 +341,10 @@ function UploadDropModal({title="Upload file",hint,accept,multiple=false,onFiles
           {!busy&&<div style={{fontSize:11,color:T.muted}}>or click to browse{hint?` · ${hint}`:""}</div>}
           <input ref={inputRef} type="file" accept={accept} multiple={multiple} disabled={busy} style={{display:"none"}} onChange={e=>{handleFiles(e.target.files);e.target.value="";}}/>
         </div>
+        {/* Optional extra content below the drop zone — e.g. an "or pick
+            an existing Inbox file" picker, passed in by callers that have
+            an inbox to offer instead of always forcing a fresh upload. */}
+        {children&&<div style={{marginTop:12}} onClick={e=>e.stopPropagation()}>{children}</div>}
       </div>
     </div>
   );

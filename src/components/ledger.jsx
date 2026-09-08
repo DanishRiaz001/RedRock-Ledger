@@ -1573,6 +1573,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     if("debitCode"in patch)formPatch.debitCode=patch.debitCode;
     if("creditCode"in patch)formPatch.creditCode=patch.creditCode;
     if("amount"in patch)formPatch.amount=patch.amount;
+    if("currency"in patch)formPatch.currency=patch.currency;
     if(Object.keys(formPatch).length)setForm(f=>({...f,...formPatch}));
     if("debitVatCode"in patch)setDebitVatCode(patch.debitVatCode);
     if("creditVatCode"in patch)setCreditVatCode(patch.creditVatCode);
@@ -1643,7 +1644,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"baseline",gap:5}}>
                 <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
-                <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>NOK</span>
+                {/* Plain text, no drawn chevron — a real <select> though,
+                    same as every other currency picker in the app. */}
+                <select value={l.currency||"NOK"} onChange={e=>updateRow(li,{currency:e.target.value})} style={{background:"transparent",border:"none",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:10,color:T.muted,fontWeight:700,flexShrink:0,padding:0,cursor:"pointer",fontFamily:"inherit"}}>
+                  {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(

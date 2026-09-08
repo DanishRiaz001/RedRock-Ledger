@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES } from "../lib/utils.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -5059,6 +5059,18 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       for(const t of already)await attachFilesToTxnEntry(t.id,[uploaded.id]);
     }
   };
+  // Same as handleAttachStatement, but for a file that's already sitting in
+  // the Inbox — no upload step needed, just point this account/month's
+  // attachment at that file's existing storage path.
+  const handleAttachExistingInbox=async(fileId)=>{
+    const f=inboxFiles.find(x=>String(x.id)===String(fileId));
+    if(!f)return;
+    if(onAttach)onAttach(attachKey,{name:f.name,type:f.type,period:month,code:selectedAccount,inboxFileId:f.id,storagePath:f.storagePath});
+    if(attachFilesToTxnEntry){
+      const already=transactions.filter(t=>t.date.slice(0,7)===month&&(t.debitCode===selectedAccount||t.creditCode===selectedAccount));
+      for(const t of already)await attachFilesToTxnEntry(t.id,[f.id]);
+    }
+  };
   // The attachment is what stands in as "proof" when posting straight from
   // the statement (Bokfør) — already a real uploaded inbox file (above), so
   // this just returns its id. Older attachments saved before this fix (the
@@ -5991,7 +6003,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               {showAttachUpload&&(
                 <UploadDropModal title="Attach bank statement" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" busy={uploadingProof}
                   onFiles={files=>{if(files[0])handleAttachStatement(files[0]);setShowAttachUpload(false);}}
-                  onClose={()=>setShowAttachUpload(false)}/>
+                  onClose={()=>setShowAttachUpload(false)}>
+                  {inboxFiles.length>0&&(
+                    <FileDrop files={inboxFiles} onPick={id=>{handleAttachExistingInbox(id);setShowAttachUpload(false);}} placeholder="— or pick an existing Inbox file —"/>
+                  )}
+                </UploadDropModal>
               )}
             </div>
             <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>

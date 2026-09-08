@@ -4100,13 +4100,16 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               in the app. */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff"}}>
             <div style={{position:"relative"}}>
-              {/* No visible chevron — same "clickable but no drawn arrow"
-                  treatment as the currency pickers elsewhere in this form. */}
+              {/* A small chevron now marks this as a dropdown trigger —
+                  the earlier "no visible arrow" treatment (still used by
+                  the currency pickers elsewhere in this form) left this
+                  one reading as a plain, non-interactive label. */}
               <button ref={voucherDetailsBtnRef} onClick={()=>{
                 if(voucherDetailsBtnRef.current){const r=voucherDetailsBtnRef.current.getBoundingClientRect();setVoucherDetailsMenuPos({top:r.bottom+4,left:r.left});}
                 setVoucherDetailsMenuOpen(o=>!o);
-              }} style={{background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+              }} style={{display:"flex",alignItems:"center",gap:4,background:"none",border:"none",outline:"none",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
                 Voucher details
+                <i className={voucherDetailsMenuOpen?"ti ti-chevron-up":"ti ti-chevron-down"} style={{fontSize:13,color:T.muted}}/>
               </button>
               {/* Fixed from the button's own screen coordinates (same fix
                   as AccDrop/VatDrop/ContactSearchInline/Menu3) instead of
@@ -4440,11 +4443,19 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       setForm(p=>({...p,lines}));
                     }} style={{...lineField,fontSize:12,fontWeight:700,width:"100%",textAlign:"right"}}/>
                   )}
-                  {/* Static currency label — Advance Voucher posts in the
-                      books' own currency only (no per-line currency picker
-                      like Supplier/Customer Invoice has); shown for the
-                      same "Beløp (NOK)" clarity as the reference. */}
-                  <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>NOK</span>
+                  {/* Reads as plain text (no drawn chevron) but is a real
+                      <select> — same "clickable but no arrow" treatment as
+                      every other currency picker in the app — so a line
+                      can be posted in a foreign currency without a boxy
+                      dropdown cluttering the amount column. */}
+                  <select value={li===0?(form.currency||"NOK"):(line.currency||"NOK")} onChange={e=>{
+                    if(li===0){setForm(p=>({...p,currency:e.target.value}));return;}
+                    const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
+                    lines[li]={...lines[li],currency:e.target.value};
+                    setForm(p=>({...p,lines}));
+                  }} style={{background:"transparent",border:"none",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:10,color:T.muted,fontWeight:700,flexShrink:0,padding:0,cursor:"pointer",fontFamily:"inherit"}}>
+                    {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate
