@@ -1352,7 +1352,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,attUploading=false,groupLines=[],bilag,onAddLine}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,onAddLine}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1373,6 +1373,8 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   const valid=(form.debitCode||form.creditCode)&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
   const[dropHover,setDropHover]=useState(false);
+  const[confirmRemoveAtt,setConfirmRemoveAtt]=useState(false);
+  const[removingAtt,setRemovingAtt]=useState(false);
 
   // A P&L account on the debit side takes input VAT (a purchase); one on
   // the credit side takes output VAT (a sale) — the two are independent,
@@ -1613,6 +1615,22 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     // form in the app.
     const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
     const flatField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0};
+    // Same Debit/Credit/VAT/Difference totals row as New Entry's own
+    // Postings table — this editor only ever showed a red "Off by X"
+    // warning (and only for a multi-line bilag at that), never the
+    // running totals themselves.
+    const gridTotals=(()=>{
+      let totalDebit=0,totalCredit=0,totalVat=0;
+      gridRows.forEach(l=>{
+        const amt=parseFloat(l.amount)||0;
+        if(l.debitCode)totalDebit+=amt;
+        if(l.creditCode)totalCredit+=amt;
+        const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
+        if(vc&&vc.rate&&amt)totalVat+=Math.round((amt-(amt/(1+vc.rate/100)))*100)/100;
+      });
+      return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100,totalVat:Math.round(totalVat*100)/100};
+    })();
+    const gridBalanced=Math.abs(gridTotals.totalDebit-gridTotals.totalCredit)<0.01;
     return(
       <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
         <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
@@ -1659,6 +1677,22 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
               </div>
             </React.Fragment>);
           })}
+          <div style={{...cellBase,borderBottom:"none",background:gridBalanced?"#fff":T.redLight}}/>
+          <div style={{...cellBase,borderBottom:"none",background:gridBalanced?"#fff":T.redLight}}>
+            <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div>
+            <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(gridTotals.totalDebit)}</div>
+          </div>
+          <div style={{...cellBase,borderBottom:"none",background:gridBalanced?"#fff":T.redLight}}>
+            <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit</div>
+            <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(gridTotals.totalCredit)}</div>
+          </div>
+          <div style={{...cellBase,borderBottom:"none",background:gridBalanced?"#fff":T.redLight,textAlign:"right"}}>
+            <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div>
+            <div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(gridTotals.totalVat)}</div>
+            <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase",marginTop:4}}>Difference</div>
+            <div style={{fontSize:11,fontWeight:700,color:gridBalanced?T.green:T.red}}>{fmt(Math.abs(gridTotals.totalDebit-gridTotals.totalCredit))}</div>
+          </div>
+          <div style={{...cellBase,borderBottom:"none",background:gridBalanced?"#fff":T.redLight}}/>
         </div>
       </div>
     );
@@ -1801,8 +1835,21 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
       {attached?(<>
         {/* A dark toolbar strip, same idea as Tripletex's own file-viewer
             chrome, instead of a bare filename label above the preview. */}
-        <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</span>
+        <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{attached.name}</span>
+          {onRemoveFile&&(
+            confirmRemoveAtt?(
+              <button disabled={removingAtt} onClick={async()=>{
+                setRemovingAtt(true);
+                const res=await onRemoveFile(attached.id);
+                setRemovingAtt(false);
+                if(res&&res.error){alert(`Couldn't remove this attachment:\n\n${res.error}`);return;}
+                setConfirmRemoveAtt(false);
+              }} style={{background:T.red,border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:removingAtt?"wait":"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>{removingAtt?"Removing…":"Confirm remove"}</button>
+            ):(
+              <button onClick={()=>setConfirmRemoveAtt(true)} title="Remove this document from the entry — the file itself stays in Inbox" style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>Remove</button>
+            )
+          )}
         </div>
         <div style={{height:"calc(100% - 38px)"}}>
           <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
@@ -1951,7 +1998,7 @@ function resolveUserName(userId,profiles,currentUserId){
   if(p)return p.display_name||p.email||"Team member";
   return"Team member";
 }
-const FIELD_LABELS={date:"Date",debitCode:"Debit account",creditCode:"Credit account",description:"Description",amount:"Amount",status:"Status",reversedBy:"Reversed by"};
+const FIELD_LABELS={date:"Date",debitCode:"Debit account",creditCode:"Credit account",description:"Description",amount:"Amount",status:"Status",reversedBy:"Reversed by",attachment:"Attachment"};
 // Shows who matched a group of entries and when (pulled from the audit log,
 // which already records this), with a real Unmatch action — replacing a bare
 // browser confirm() dialog that gave no context about the match itself.
@@ -2006,8 +2053,8 @@ function ChangeLogModal({entries,profiles,currentUserId,onClose}){
             const who=resolveUserName(log.changedBy,profiles,currentUserId);
             const when=new Date(log.createdAt);
             const changedFields=log.oldValues&&log.newValues?Object.keys(log.newValues).filter(k=>FIELD_LABELS[k]&&log.oldValues[k]!==log.newValues[k]):[];
-            const actionLabel={create:"Created",update:"Edited",delete:"Deleted",reverse:"Reversed"}[log.action]||log.action;
-            const actionColor={create:T.waterTeal,update:T.accent,delete:T.red,reverse:T.orange}[log.action]||T.sub;
+            const actionLabel={create:"Created",update:"Edited",delete:"Deleted",reverse:"Reversed",attach:"Attachment added",detach:"Attachment removed"}[log.action]||log.action;
+            const actionColor={create:T.waterTeal,update:T.accent,delete:T.red,reverse:T.orange,attach:T.waterTeal,detach:T.muted}[log.action]||T.sub;
             return(
               <div key={log.id} style={{border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -2071,7 +2118,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
   // Clicking a bilag from a list is meant to go straight into editing —
   // left the lines, right the document preview, no "view details" popup
   // step in between. Callers that still want the read-only view-first
@@ -2209,6 +2256,11 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
       onUploadFile={uploadInboxFile?handleAttach:undefined}
       onAttachExisting={attachFilesToTxnEntry?attachExistingFile:undefined}
+      onRemoveFile={onRemoveAttachment?async(fileId)=>{
+        const res=await onRemoveAttachment(txn.id,fileId);
+        if(!res||!res.error)setAttList(p=>p.filter(f=>f.id!==fileId));
+        return res;
+      }:undefined}
       groupLines={groupTxnLines}
       bilag={txn.bilag}
       onAddLine={addTransaction}

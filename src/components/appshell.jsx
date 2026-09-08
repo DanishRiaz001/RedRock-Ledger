@@ -2091,6 +2091,29 @@ If you genuinely cannot read useful information from this file, return every fie
     }
     setAttachedTxnIds(p=>new Set([...p,txnId]));
     setAttachedFileIds(p=>new Set([...p,...(Array.isArray(fileIds)?fileIds:[fileIds])]));
+    // Logged so the bilag's own change log shows who attached a document
+    // and when — same record editing any other field already leaves.
+    const original=transactions.find(t=>t.id===txnId);
+    const ids=Array.isArray(fileIds)?fileIds:[fileIds];
+    const names=ids.map(id=>{const f=inboxFiles.find(x=>String(x.id)===String(id));return f?f.name:String(id);}).join(", ");
+    logAudit("transaction",txnId,original?original.bilag:null,"attach",{attachment:null},{attachment:names});
+    return{ok:true};
+  };
+  // Removes just the LINK between this entry and a document (the file
+  // itself stays in Inbox) — mirrors attachFilesToTxnEntry above, and logs
+  // the same way, so the change log shows a document was removed and by
+  // whom, not just silently gone the next time the bilag is opened.
+  const removeTxnAttachmentEntry=async(txnId,fileId)=>{
+    if(!canEdit)return{error:"You don't have permission to remove attachments."};
+    const f=inboxFiles.find(x=>String(x.id)===String(fileId));
+    const{error}=await sb.from("txn_attachments").delete().eq("user_id",getCurrentBooksOwnerId()).eq("txn_id",txnId).eq("file_id",fileId);
+    if(error){
+      logBug("DB_ERROR","Failed to remove txn attachment",error.message,"removeTxnAttachmentEntry");
+      return{error:error.message};
+    }
+    fetchAttachedTxnIds().then(({txnIds,fileIds})=>{setAttachedTxnIds(txnIds);setAttachedFileIds(fileIds);}); // this may have been the entry's/file's only link
+    const original=transactions.find(t=>t.id===txnId);
+    logAudit("transaction",txnId,original?original.bilag:null,"detach",{attachment:f?f.name:String(fileId)},{attachment:null});
     return{ok:true};
   };
 
@@ -2246,7 +2269,7 @@ If you genuinely cannot read useful information from this file, return every fie
     inboxFiles,attachedTxnIds,attachedFileIds,
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
-    attachFilesToTxnEntry,fetchTxnAttachments,
+    attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,
     bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,

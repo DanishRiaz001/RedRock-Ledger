@@ -2849,7 +2849,7 @@ function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose})
   );
 }
 
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[filterFrom,setFilterFrom]=useState(initFrom);
@@ -3019,7 +3019,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           onEdit={u=>onEditTxn(u)}
           onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
@@ -3164,16 +3164,32 @@ const TERMINER=[
   {n:5,label:"Sep–Oct",from:"09-01",to:"10-31"},
   {n:6,label:"Nov–Dec",from:"11-01",to:"12-31"},
 ];
+// Feb's last day depends on the year (leap years) — the exact from/to for
+// a given termin number + year, computed rather than reading TERMINER's
+// own hardcoded "02-28" straight (which is wrong every 4th year).
+const terminRangeFor=(year,n)=>{
+  const t=TERMINER[n-1];
+  const to=n===1?`${year}-02-${String(new Date(year,2,0).getDate()).padStart(2,"0")}`:`${year}-${t.to}`;
+  return[`${year}-${t.from}`,to];
+};
+// Recognizes a filterFrom/filterTo pair as exactly one termin's range (not
+// just "some 2-month span that happens to overlap one") — used to show
+// "1. termin 2026" instead of raw dates, and to step by termin instead of
+// by month, whenever the current period actually IS a termin.
+const terminMatchFor=(from,to)=>{
+  const year=parseInt((from||"").slice(0,4),10);
+  if(!year||(to||"").slice(0,4)!==String(year))return null;
+  for(const t of TERMINER){
+    const[tf,tt]=terminRangeFor(year,t.n);
+    if(from===tf&&to===tt)return{year,n:t.n};
+  }
+  return null;
+};
 function TerminPeriodPicker({initialFrom,initialTo,onApply,onClose}){
   const[year,setYear]=useState(parseInt((initialFrom||"").slice(0,4),10)||new Date().getFullYear());
   const[mode,setMode]=useState("year"); // "year" | "termin" | "month"
   const apply=(from,to)=>{onApply(from,to);onClose();};
-  const terminRange=(t)=>{
-    // Feb's last day depends on the year (leap years) — computed instead
-    // of hardcoded so a termin picked in a leap year is exactly right.
-    const to=t.n===1?`${year}-02-${String(new Date(year,2,0).getDate()).padStart(2,"0")}`:`${year}-${t.to}`;
-    return[`${year}-${t.from}`,to];
-  };
+  const terminRange=(t)=>terminRangeFor(year,t.n);
   return(
     <div onClick={e=>e.stopPropagation()} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 8px 24px rgba(20,40,40,0.14)",width:280,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",borderBottom:`1px solid ${T.border}`}}>
@@ -3258,12 +3274,21 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   const[reportSearch,setReportSearch]=useState("");
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;
   const isFullYear=filterFrom.slice(5)==="01-01"&&filterTo.slice(5)==="12-31"&&filterFrom.slice(0,4)===filterTo.slice(0,4);
-  const isSingleMonth=filterFrom.slice(8)==="01"&&filterFrom.slice(0,7)===filterTo.slice(0,7)&&filterTo.slice(8)===String(new Date(parseInt(filterTo.slice(0,4)),parseInt(filterTo.slice(5,7)),0).getDate()).padStart(2,"0");
-  const periodLabel=isFullYear?filterFrom.slice(0,4):isSingleMonth?new Date(filterFrom).toLocaleString("default",{month:"long",year:"numeric"}):`${filterFrom} – ${filterTo}`;
+  // Checked before isSingleMonth — a termin span (2 months) would never
+  // match isSingleMonth anyway, but ordering it first keeps the intent
+  // clear: an exact termin match always wins its own label/step behavior.
+  const terminMatch=isFullYear?null:terminMatchFor(filterFrom,filterTo);
+  const isSingleMonth=!terminMatch&&filterFrom.slice(8)==="01"&&filterFrom.slice(0,7)===filterTo.slice(0,7)&&filterTo.slice(8)===String(new Date(parseInt(filterTo.slice(0,4)),parseInt(filterTo.slice(5,7)),0).getDate()).padStart(2,"0");
+  // A recognized period (year/termin/month) shows its NAME; anything else
+  // — an arbitrary range picked with the From/To fields — shows the raw
+  // dates, since there's no shorter name for it.
+  const periodLabel=isFullYear?filterFrom.slice(0,4):terminMatch?`${terminMatch.n}. termin ${terminMatch.year}`:isSingleMonth?new Date(filterFrom).toLocaleString("default",{month:"long",year:"numeric"}):`${filterFrom} – ${filterTo}`;
   const stepReportMonth=(dir)=>{
-    // Steps by one month if currently viewing a single month or full year;
-    // for an arbitrary custom range, stepping isn't well-defined, so this
-    // just nudges both dates forward/back by a month as a reasonable default.
+    // Steps by whatever unit the CURRENT period actually is — a full year
+    // steps by year, a termin steps to the next/previous termin (wrapping
+    // into the next/previous year at the Jan/Dec boundary), a single month
+    // steps by month; an arbitrary custom range has no well-defined unit,
+    // so it just nudges both dates forward/back by a month as before.
     if(isFullYear){
       // Full-year view always starts on Jan 1st — stepping that by a month
       // with setMonth() only crosses a year boundary going backward (Jan minus
@@ -3271,6 +3296,14 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       // plus 1 month is still Feb of the same year). Step the year directly.
       const y=parseInt(filterFrom.slice(0,4),10)+dir;
       setFilterFrom(`${y}-01-01`);setFilterTo(`${y}-12-31`);
+      return;
+    }
+    if(terminMatch){
+      const n0=terminMatch.n-1+dir;
+      const y=terminMatch.year+Math.floor(n0/6);
+      const n=((n0%6)+6)%6+1;
+      const[f,t]=terminRangeFor(y,n);
+      setFilterFrom(f);setFilterTo(t);
       return;
     }
     const d=new Date(filterFrom);d.setMonth(d.getMonth()+dir);
@@ -4902,7 +4935,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[]}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[]}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -6033,7 +6066,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         return <ResizableSplit left={matchingGrid} right={attachmentPanel} defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide statement" expandLabel="Show statement" extraMarginRefs={[toolbarActionsRef,summaryCardsRef]}/>;
       })()}
       {detailTxn&&<DetailModal txn={detailTxn} initialShowEdit addTransaction={addTransaction} accounts={accounts} contacts={contacts} transactions={transactions}
-        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
+        fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         initialShowComments={detailTxnShowComments}
         // onEdit/onDelete used to close this immediately on every call —
@@ -6065,7 +6098,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,tagTransaction}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,tagTransaction}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
@@ -6381,7 +6414,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           // Must return the inner promise — see the matching comment on
           // BankReconciliationScreen's DetailModal above; a bare
           // `x&&x(u);` wrapper here resolves before the actual database
