@@ -3087,7 +3087,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
           <td style={{padding:"8px 10px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
           <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={1} align="center"/>
           <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2} align="center"/>
-          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3} align="center"/>
+          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3} align="left"/>
           <SortTh label="Amount" col="amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={4} align="center"/>
           {colPrefs.showVat&&<td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center"}}>VAT code</td>}
           {colPrefs.showContact&&<SortTh label="Customer/Supplier" col="contact" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="center"/>}
@@ -3119,7 +3119,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                 </td>
                 <td onClick={()=>setDetailTxn(r)} style={{padding:"7px 6px",textAlign:"center",color:T.accent,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{fmtB(r.bilag)}</td>
                 <td style={{padding:"7px 6px",textAlign:"center",color:T.text,whiteSpace:"nowrap"}}>{r.date}</td>
-                <td style={{padding:"7px 6px",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
+                <td style={{padding:"7px 6px",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
                 <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>{sign(r.movement)}</td>
                 {colPrefs.showVat&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
                 {colPrefs.showContact&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
