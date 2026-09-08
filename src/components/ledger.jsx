@@ -1606,22 +1606,21 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
 
   const postingsGrid=(()=>{
     const GRID_COLS="150px 1.3fr 1.3fr 130px 60px";
-    // "Open areas" per feedback — no card border, no vertical rules between
-    // columns, no boxed inputs. The only line left is the one under each
-    // row (cellBase's borderBottom), which is what actually separates one
-    // posting from the next; everything else was just visual weight with
-    // no informational job.
-    const cellBase={padding:"10px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
-    const flatField={background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0};
+    // Same bordered-panel + compact-font treatment as New Entry's own
+    // Postings table (Advance Voucher) — this used to be a bare label
+    // with no border and a noticeably larger font than every other entry
+    // form in the app.
+    const cellBase={padding:"8px 10px",borderBottom:`1px solid ${T.border}`,boxSizing:"border-box"};
+    const flatField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0};
     return(
-      <div>
-        <div style={{padding:"0 0 10px",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
+      <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
+        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
         <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
-          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
-          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
-          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
-          <div style={{...cellBase,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount (NOK)</div>
-          <div style={{...cellBase}}/>
+          <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
+          <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
+          <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
+          <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
+          <div style={{...cellBase,background:"#fff"}}/>
           {gridRows.map((l,li)=>{
             const isLast=li===gridRows.length-1;
             const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
@@ -1630,20 +1629,21 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
-              <div style={{...rowCell,display:"flex",flexDirection:"column",gap:4}}>
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
-                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{...selSm,...flatField,fontSize:11,padding:"6px 2px"}}/>
+              <div style={{...rowCell,display:"flex",flexDirection:"column",gap:2}}>
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:12,padding:"6px 2px"}}/>
+                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
               <div style={{...rowCell}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
-                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={flatField}/></div>
+                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
               <div style={{...rowCell}}>
                 <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
-                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={flatField}/></div>
+                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
-              <div style={{...rowCell}}>
-                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...selSm,...flatField,fontSize:12,fontWeight:700,padding:"6px 2px",textAlign:"right"}}/>
+              <div style={{...rowCell,display:"flex",alignItems:"baseline",gap:5}}>
+                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
+                <span style={{fontSize:10,color:T.muted,fontWeight:700,flexShrink:0}}>NOK</span>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(
@@ -1660,10 +1660,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   })();
 
   const voucherDetailsBox=(
-    <div>
-      <div style={{padding:"0 0 10px",fontSize:12,fontWeight:700,color:T.sub}}>Voucher details</div>
+    // Same bordered-panel treatment as New Entry's own "Voucher details"
+    // box — this used to be a bare label with no border at all, at a
+    // noticeably larger font than the rest of the app's entry forms.
+    <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+      <div style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:T.text,borderBottom:isInvoiceMode||(moneySources&&moneySources.length>0)?`1px solid ${T.border}`:"none",background:"#fff"}}>Voucher details</div>
+      <div style={{padding:isInvoiceMode||(moneySources&&moneySources.length>0)?"0 14px":0}}>
       {isInvoiceMode&&(
-        <div style={{padding:"14px 14px 0"}}>
+        <div style={{padding:"14px 0 0"}}>
           <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
             <i className={entryModeVal==="customer_invoice"?"ti ti-file-invoice":"ti ti-receipt-2"} style={{fontSize:13}}/>
             {entryModeVal==="customer_invoice"?"Customer invoice":"Supplier invoice"}
@@ -1683,40 +1687,40 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
           thing again was redundant. Voucher number field removed too —
           it just repeated the big "EDITING B040" heading right above
           this whole page, in a duller box, for no extra information. */}
-      {/* Invoice number / due date — these were already saved reliably
-          (saveEdit's DB update always carries them through, and every
-          save path here spreads the full original txn/line object, so
-          editing one field never wiped the others) but had NO visible
-          field anywhere in this editor, so there was no way to see them
-          were kept, correct them, or add them to an entry that didn't
-          start with any. Shown/edited here now — on a multi-line
-          voucher these are one property of the whole bilag, so editing
-          either applies to every line, keeping them consistent. */}
-      <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <div>
-          <SL>Invoice number</SL>
-          <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
-            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
-            else setForm(f=>({...f,invoiceNo:e.target.value}));
-          }} placeholder="Optional" style={{...inp,background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}/>
+      {/* Invoice number / due date — a Supplier/Customer Invoice property
+          only. An Advance Voucher (or any other non-invoice entry) never
+          has these to begin with — New Entry's own Advance Voucher screen
+          never shows them either — so showing empty "Invoice number"/
+          "Due date" fields here for that kind of entry was just noise
+          that didn't belong to it. */}
+      {isInvoiceMode&&(
+        <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div>
+            <SL>Invoice number</SL>
+            <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
+              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
+              else setForm(f=>({...f,invoiceNo:e.target.value}));
+            }} placeholder="Optional" style={{...inp,fontSize:12,background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}/>
+          </div>
+          <div>
+            <SL>Due date</SL>
+            <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
+              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
+              else setForm(f=>({...f,dueDate:v}));
+            }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
+          </div>
         </div>
-        <div>
-          <SL>Due date</SL>
-          <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
-            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
-            else setForm(f=>({...f,dueDate:v}));
-          }} inputStyle={{background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}/>
-        </div>
-      </div>
+      )}
       {moneySources&&moneySources.length>0&&(
-        <div style={{padding:"0 0 14px"}}>
+        <div style={{padding:"14px 0"}}>
           <SL>Whose</SL>
-          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${T.border}`,borderRadius:0,padding:"8px 2px"}}>
+          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}>
             <option value="">— Select source (optional) —</option>
             {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
       )}
+      </div>
     </div>
   );
 
@@ -1725,10 +1729,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // above). Single-line entries just have the one date already in Voucher
   // details/the grid — no separate master needed.
   const masterDateRow=isGroup?(
-    <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 14px"}}>
-      <span style={{fontSize:11.5,fontWeight:700,color:T.sub,whiteSpace:"nowrap"}}>Date for all lines</span>
-      <FlexDateInput value={masterDate} onChange={applyMasterDate} style={{width:150}}/>
-      <span style={{fontSize:10.5,color:T.muted}}>Changing a line's own date below keeps that line on its own date from then on.</span>
+    <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px"}}>
+      <span style={{fontSize:11,fontWeight:700,color:T.sub,whiteSpace:"nowrap"}}>Date for all lines</span>
+      <FlexDateInput value={masterDate} onChange={applyMasterDate} style={{width:150}} inputStyle={{fontSize:12}}/>
+      <span style={{fontSize:10,color:T.muted}}>Changing a line's own date below keeps that line on its own date from then on.</span>
     </div>
   ):null;
 
@@ -1756,7 +1760,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
         </div>
       )}
       {onAddLine&&(
-        <button onClick={addGroupLine} disabled={addingLine} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>{addingLine?"Adding…":"+ New row"}</button>
+        <button onClick={addGroupLine} disabled={addingLine} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>{addingLine?"Adding…":"+ Add line"}</button>
       )}
       <div style={{display:"flex",gap:16,alignItems:"center"}}>
         <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:(isGroup?groupValid&&groupBalanced:valid)&&!savingAny?1:0.5}} onClick={saveAll}>{savingAny?"Saving…":"Save"}</button>
