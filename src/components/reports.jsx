@@ -4902,7 +4902,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[]}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -4982,6 +4982,21 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   };
   const[monthDropdownOpen,setMonthDropdownOpen]=useState(false);
   const[showAttachPanel,setShowAttachPanel]=useState(false);
+  // Clicking the 📎 on a ledger-side entry that already has a document
+  // opens THAT entry's own attachment on the right — a separate, per-line
+  // thing from showAttachPanel above (which is the whole month's bank
+  // statement, one file per account/month). Only one right-hand panel
+  // shows at a time; opening an entry's attachment takes over the slot.
+  const[viewAttachTxn,setViewAttachTxn]=useState(null);
+  const[viewAttachList,setViewAttachList]=useState([]);
+  const[viewAttachLoading,setViewAttachLoading]=useState(false);
+  useEffect(()=>{
+    if(!viewAttachTxn||!fetchTxnAttachments){setViewAttachList([]);return;}
+    let alive=true;
+    setViewAttachLoading(true);
+    fetchTxnAttachments(viewAttachTxn.id).then(list=>{if(alive){setViewAttachList(list||[]);setViewAttachLoading(false);}});
+    return()=>{alive=false;};
+  },[viewAttachTxn&&viewAttachTxn.id]);
   // The filter bar's right-aligned icon/upload cluster sits above the
   // matching grid and outside the split's own `left` content — without this
   // it stayed pinned to the true screen edge and ended up hidden behind the
@@ -5818,6 +5833,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                         </div>
                       </div>
                       <div style={{fontWeight:700,fontSize:11,color:T.text,flexShrink:0}}>{fmtBal(mv(t))}</div>
+                      {hasId(attachedTxnIds,t.id)&&<i onClick={e=>{e.stopPropagation();setViewAttachTxn(t);}} title="View attached document" className="ti ti-paperclip" style={{fontSize:13,color:viewAttachTxn&&viewAttachTxn.id===t.id?T.accent:T.muted,cursor:"pointer",flexShrink:0}}/>}
                       {addEntryComment&&<i onClick={e=>{e.stopPropagation();openTxnComments(t);}} title="Comment on this entry" className="ti ti-message-circle" style={{fontSize:13,color:T.muted,cursor:"pointer",flexShrink:0}}/>}
                     </div>
                   );
@@ -5927,6 +5943,33 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
           </div>
         );
+
+        // A ledger entry's own document (the 📎 on its row, above) takes
+        // over the right-hand slot ahead of the whole-month bank
+        // statement — same three-column shape either way, just showing
+        // whichever one you actually clicked.
+        if(viewAttachTxn){
+          const entryAttachmentPanel=(
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,height:"100%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmtB(viewAttachTxn.bilag)} · {viewAttachTxn.description}</div>
+                <button onClick={()=>setViewAttachTxn(null)} style={{background:"none",border:"none",color:T.muted,fontSize:16,cursor:"pointer",flexShrink:0,padding:"0 0 0 8px"}}>✕</button>
+              </div>
+              <div style={{flex:1,minHeight:0,overflowY:"auto",padding:16}}>
+                {viewAttachLoading?(
+                  <div style={{fontSize:11,color:T.muted}}>Loading…</div>
+                ):viewAttachList.length?(
+                  <div style={{height:"100%",minHeight:400}}>
+                    <SignedFileViewer storagePath={viewAttachList[0].storagePath} type={viewAttachList[0].type} name={viewAttachList[0].name} style={{width:"100%",height:"100%"}}/>
+                  </div>
+                ):(
+                  <div style={{fontSize:11,color:T.muted}}>No document attached to this entry.</div>
+                )}
+              </div>
+            </div>
+          );
+          return <ResizableSplit left={matchingGrid} right={entryAttachmentPanel} defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide document" expandLabel="Show document" extraMarginRefs={[toolbarActionsRef,summaryCardsRef]}/>;
+        }
 
         if(!showAttachPanel)return matchingGrid;
 
