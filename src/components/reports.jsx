@@ -3019,7 +3019,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           onEdit={u=>onEditTxn(u)}
           onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
