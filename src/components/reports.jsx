@@ -4205,6 +4205,17 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
 
   const markReconciled=(r)=>{setVatStatus(year,r.n,{reconciled:true});forceTick(x=>x+1);};
 
+  // A year-level stat strip — how many terminer are filed, what's actually
+  // been paid, what's still outstanding, and the next due date — instead
+  // of only being readable by scanning every row's own status column.
+  const yearStats=(()=>{
+    const filedCount=rows.filter(r=>r.status.filed).length;
+    const paidTotal=rows.filter(r=>r.status.paid).reduce((s,r)=>s+Math.abs(r.netVat),0);
+    const outstandingTotal=rows.filter(r=>!r.status.paid&&r.netVat>0).reduce((s,r)=>s+r.netVat,0);
+    const nextDueRow=rows.filter(r=>!r.status.filed).sort((a,b)=>a.due.localeCompare(b.due))[0];
+    return{filedCount,paidTotal,outstandingTotal,nextDue:nextDueRow?nextDueRow.due:null};
+  })();
+
   const exportYearXlsx=()=>{
     const aoa=[["Periode","Meldingstype","Forfallsdato","Beløp","Betalingsstatus"]];
     rows.forEach(r=>aoa.push([r.label,"Alminnelig næring",r.due,r.netVat,r.status.paid?"Betaling registrert":"Ikke betalt"]));
@@ -4223,6 +4234,26 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
       <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:100,marginBottom:14,fontSize:12,padding:"6px 8px"}}>
         {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
       </select>
+      {/* Year shape at a glance — filed/paid/outstanding/next due — instead
+          of only being readable by scanning every row's own status column. */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Sendt i {year}</div>
+          <div style={{fontSize:16,fontWeight:800,color:T.text,marginTop:2}}>{yearStats.filedCount} av {rows.length}</div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Betalt i {year}</div>
+          <div style={{fontSize:16,fontWeight:800,color:T.text,marginTop:2}}>{fmt(yearStats.paidTotal)}</div>
+        </div>
+        <div style={{background:yearStats.outstandingTotal>0?T.redLight:"#fff",border:`1px solid ${yearStats.outstandingTotal>0?T.red:T.border}`,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{fontSize:9.5,color:yearStats.outstandingTotal>0?T.red:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Utestående</div>
+          <div style={{fontSize:16,fontWeight:800,color:yearStats.outstandingTotal>0?T.red:T.text,marginTop:2}}>{fmt(yearStats.outstandingTotal)}</div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Neste frist</div>
+          <div style={{fontSize:16,fontWeight:800,color:T.text,marginTop:2}}>{yearStats.nextDue||"—"}</div>
+        </div>
+      </div>
       {/* A wide plain table stretched every column to fill the row, which
           left short text ("Alminnelig næring", a date) sitting in the
           middle of a huge gap on any real desktop width. Each card uses the
@@ -4242,10 +4273,16 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
             <div/>
           </div>
           {rows.map((r,i)=>{
-            const paymentDot=r.status.paid?T.green:r.status.filed?"#F59E0B":T.border;
-            const paymentText=r.status.paid?"Betaling registrert":r.status.filed?"Ikke betalt":"Ikke betalt";
             const overdue=r.due<today&&!r.status.filed;
             const st=statusLabel(r);
+            // A colored pill (background tint + dot + label together) reads
+            // as one scannable state at a glance, instead of a bare dot in
+            // its own column plus a separate plain-text status column that
+            // used to say the same "Ikke betalt" regardless of whether the
+            // melding had even been sent yet.
+            const pillBg=r.status.paid?T.greenBg:r.status.filed?T.orangeBg:overdue?T.redLight:T.bg;
+            const pillColor=r.status.paid?T.green:r.status.filed?T.orange:overdue?T.red:T.muted;
+            const pillText=r.status.paid?"Betaling registrert":r.status.filed?"Sendt · ikke betalt":"Ikke betalt";
             return(
               <div key={r.n} style={{display:"grid",gridTemplateColumns:gridCols,gap:20,alignItems:"center",padding:"14px 18px",borderTop:i>0?`1px solid ${T.border}`:"none"}}>
                 <div style={{width:8,height:8,borderRadius:"50%",background:st.dot}}/>
@@ -4255,9 +4292,9 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
                 </div>
                 <div style={{fontSize:12,fontWeight:600,color:overdue?T.red:T.sub}}>{r.due}</div>
                 <div style={{fontSize:14,fontWeight:800,color:T.text}}>{fmt(r.netVat)}</div>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{width:7,height:7,borderRadius:"50%",background:paymentDot,flexShrink:0}}/>
-                  <span style={{fontSize:11,color:T.sub,fontWeight:600}}>{paymentText}</span>
+                <div style={{display:"inline-flex",alignItems:"center",gap:6,background:pillBg,color:pillColor,borderRadius:20,padding:"4px 10px 4px 8px",width:"fit-content"}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:pillColor,flexShrink:0}}/>
+                  <span style={{fontSize:10.5,fontWeight:700}}>{pillText}</span>
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>onOpenTermin({year,n:r.n})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{r.status.filed?"Detaljer":"Start innlevering"}</button>
@@ -4283,7 +4320,16 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const[,forceTick]=useState(0);
   const status=(getVatStatuses()[`${termin.year}-${termin.n}`])||{};
   const markFiled=()=>{setVatStatus(termin.year,termin.n,{filed:true,filedDate:new Date().toISOString().slice(0,10)});forceTick(x=>x+1);};
-  const markPaid=()=>{setVatStatus(termin.year,termin.n,{paid:true});forceTick(x=>x+1);};
+  const markPaid=()=>{setVatStatus(termin.year,termin.n,{paid:true,paidDate:new Date().toISOString().slice(0,10)});forceTick(x=>x+1);};
+  // Undoes filed/paid — for a melding sent by mistake, or before the real
+  // numbers were final. Doesn't touch "reconciled" (Avstem, a separate
+  // step from the terminer list) since reversing a filing has no bearing
+  // on whether the underlying ledger entries were reconciled.
+  const reverseFiling=()=>{
+    if(!window.confirm(`Reverser mva-meldingen for ${info.label}? Dette fjerner sendt-/betalt-status.`))return;
+    setVatStatus(termin.year,termin.n,{filed:false,filedDate:null,paid:false,paidDate:null});
+    forceTick(x=>x+1);
+  };
 
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=info.from&&t.date<=info.to),[transactions,info.from,info.to]);
   const salesTxns=periodTxns.filter(t=>isIncomeSK(t.creditCode)&&t.vatAmount!=null&&t.vatAmount!==0);
@@ -4374,6 +4420,27 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // table below, closed with its own Back button — a real navigation, not
   // a toggle on the same page.
   const[specView,setSpecView]=useState(null); // {key,direction,rate,rows} | null
+  const[specSearch,setSpecSearch]=useState("");
+  // Set from the spec drill's own "View full VAT code ledger" link — the
+  // code (and matching VatCode record) to show across the WHOLE year
+  // instead of just this one termin's rows.
+  const[vlcCode,setVlcCode]=useState(null); // {code,vc,direction} | null
+  // Every VAT code actually used somewhere this year — the VAT code
+  // ledger's own chip row. Computed unconditionally (not inside the
+  // vlcCode branch below) since hooks can't be called conditionally.
+  const vlcUsedCodes=useMemo(()=>{
+    const yearTxns=transactions.filter(t=>t.date.slice(0,4)===String(termin.year));
+    const seen=new Map();
+    yearTxns.forEach(t=>{
+      const code=t.vatCode||"0";
+      if(!t.vatAmount&&code==="0")return; // skip untagged non-VAT noise
+      if(!seen.has(code)){
+        const dir=isIncomeSK(t.creditCode)?"output":"input";
+        seen.set(code,{code,vc:findVatCode(code,dir)||findVatCode(code,"output")||findVatCode(code,"input"),direction:dir});
+      }
+    });
+    return[...seen.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+  },[transactions,termin.year]);
 
   // No Skatteetaten/Altinn filing integration — instead, an extractable
   // report: the same Mva-kode/Sats/Grunnlag/Mva summary as a real filing,
@@ -4403,12 +4470,128 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`Mva-melding_${termin.year}_termin${termin.n}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
   };
 
+  // VAT code ledger — every account that has EVER posted under one VAT
+  // code, across the whole year (not just this one termin), reached from
+  // the spec drill's own exit link below. Reuses the exact same table
+  // shape/columns as Mva-melding spesifikasjon so nothing new has to be
+  // learned to read it — the only real difference is scope.
+  if(vlcCode){
+    const yearTxns=transactions.filter(t=>t.date.slice(0,4)===String(termin.year));
+    const codeTxns=yearTxns.filter(t=>(t.vatCode||"0")===vlcCode.code);
+    const usedCodes=vlcUsedCodes;
+    const vlcGroupKeyOf=t=>{
+      if(isExpenseSK(t.debitCode))return getName(t.debitCode);
+      if(isIncomeSK(t.creditCode))return getName(t.creditCode);
+      return`${getName(t.debitCode)} / ${getName(t.creditCode)}`;
+    };
+    const vlcFiltered=codeTxns.filter(t=>!specSearch||t.description.toLowerCase().includes(specSearch.toLowerCase())||String(t.bilag).includes(specSearch));
+    const vlcSorted=[...vlcFiltered].sort((a,b)=>a.date.localeCompare(b.date)||a.bilag-b.bilag);
+    const vlcGroups=[];
+    const vlcIdxByKey={};
+    vlcSorted.forEach(t=>{
+      const key=vlcGroupKeyOf(t);
+      if(vlcIdxByKey[key]==null){vlcIdxByKey[key]=vlcGroups.length;vlcGroups.push({key,rows:[]});}
+      vlcGroups[vlcIdxByKey[key]].rows.push(t);
+    });
+    vlcGroups.sort((a,b)=>a.key.localeCompare(b.key));
+    vlcGroups.forEach(g=>{
+      let running=0;
+      g.rows=g.rows.map(t=>{running+=t.amount;return{...t,saldo:running};});
+      g.vatSum=g.rows.reduce((s,t)=>s+(t.vatAmount||0),0);
+      g.amountSum=g.rows.reduce((s,t)=>s+t.amount,0);
+    });
+    const vlcGrandVat=vlcGroups.reduce((s,g)=>s+g.vatSum,0);
+    const vlcGrandAmount=vlcGroups.reduce((s,g)=>s+g.amountSum,0);
+    return(
+      <div style={{maxWidth:1100}}>
+        {!openTxn&&(<>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:11,color:T.muted}}>
+          <span onClick={()=>{setVlcCode(null);setSpecView(null);}} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding</span>
+          <span>/</span><span onClick={()=>setVlcCode(null)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding spesifikasjon</span>
+          <span>/</span><span>VAT code ledger</span>
+        </div>
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 4px"}}>VAT code ledger</h1>
+        <div style={{fontSize:12,color:T.muted,marginBottom:14}}>Alle kontoer som har brukt denne koden i {termin.year}.</div>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:14}}>
+          {usedCodes.map(c=>(
+            <div key={c.code} onClick={()=>setVlcCode(c)} style={{background:c.code===vlcCode.code?T.accent:"#fff",color:c.code===vlcCode.code?"#fff":T.sub,border:`1px solid ${c.code===vlcCode.code?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>{c.code} · {c.vc?c.vc.name:"—"}</div>
+          ))}
+          <div style={{marginLeft:"auto",position:"relative",flex:"0 1 220px"}}>
+            <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:T.muted}}/>
+            <input value={specSearch} onChange={e=>setSpecSearch(e.target.value)} placeholder="Søk" style={{...inp,paddingLeft:28,fontSize:12,padding:"8px 10px 8px 28px"}}/>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
+            <div style={{fontSize:10,color:T.muted,textTransform:"uppercase"}}>Kontoer som bruker denne koden</div>
+            <div style={{fontSize:17,fontWeight:800,color:T.text}}>{vlcGroups.length}</div>
+          </div>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
+            <div style={{fontSize:10,color:T.muted,textTransform:"uppercase"}}>Grunnlag hittil i år</div>
+            <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmt(vlcGrandAmount-vlcGrandVat)}</div>
+          </div>
+          <div style={{background:T.greenBg,border:`1px solid ${T.accentMid}`,borderRadius:10,padding:14}}>
+            <div style={{fontSize:10,color:T.green,textTransform:"uppercase"}}>Mva hittil i år</div>
+            <div style={{fontSize:17,fontWeight:800,color:T.green}}>{fmt(vlcGrandVat)}</div>
+          </div>
+        </div>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+          <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
+            <colgroup>
+              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:"24%"}}/>
+              <col style={{width:"13%"}}/><col style={{width:"13%"}}/>
+              <col style={{width:"9%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"9%"}}/>
+            </colgroup>
+            <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>Leverandør</td><td>Kunde</td>
+              <td>Termin</td><td style={{textAlign:"right"}}>Mva-beløp</td><td>Valuta</td><td style={{textAlign:"right",padding:"9px 12px"}}>Beløp</td>
+            </tr></thead>
+            <tbody>
+              {vlcGroups.map(g=>(
+                <React.Fragment key={g.key}>
+                  <tr><td colSpan={9} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  {g.rows.map(t=>{
+                    const contact=t.contactId?contacts.find(c=>c.id===t.contactId):null;
+                    const n=VAT_TERMINER.find(vt=>t.date>=terminInfo(termin.year,vt.n).from&&t.date<=terminInfo(termin.year,vt.n).to);
+                    return(
+                      <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
+                        <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
+                        <td style={{color:T.sub}}>{t.date}</td>
+                        <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
+                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>
+                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>
+                        <td style={{color:T.sub}}>{n?`Termin ${n.n}`:"—"}</td>
+                        <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
+                        <td style={{color:T.muted,fontSize:10.5}}>{t.currency||"NOK"}</td>
+                        <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{borderTop:`1px solid ${T.border}`}}>
+                    <td colSpan={6} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
+                    <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
+                    <td></td>
+                    <td style={{textAlign:"right",padding:"6px 12px",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
+                  </tr>
+                </React.Fragment>
+              ))}
+              {!vlcGroups.length&&<tr><td colSpan={9} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner for denne koden i {termin.year}.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        </>)}
+        {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} initialShowEdit onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
+      </div>
+    );
+  }
+
   // The actual "Mva-melding spesifikasjon" window — a real separate view,
   // not an inline expand, matching Tripletex's own layout: Bilagsnr / Dato
   // / Beskrivelse / Leverandør or Kunde / Mva-kode / Mva-beløp / Beløp /
   // running Saldo, in date order down this one code's transactions.
   if(specView){
-    const sorted=[...specView.rows].sort((a,b)=>a.date.localeCompare(b.date)||a.bilag-b.bilag);
+    const specFiltered=specView.rows.filter(t=>!specSearch||t.description.toLowerCase().includes(specSearch.toLowerCase())||String(t.bilag).includes(specSearch));
+    const sorted=[...specFiltered].sort((a,b)=>a.date.localeCompare(b.date)||a.bilag-b.bilag);
     // Grouped by whatever the Konto/Kunde/Leverandør column actually shows —
     // a flat, date-only ordering mixed entirely unrelated accounts together
     // (e.g. bank fees, taxi purchases, and a sale all interleaved under one
@@ -4463,48 +4646,62 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           <span onClick={()=>setSpecView(null)} style={{color:T.accent,fontWeight:700,cursor:"pointer"}}>Mva-melding</span>
           <span>/</span><span>Mva-melding spesifikasjon</span>
         </div>
-        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Mva-melding spesifikasjon <span style={{fontWeight:500,color:T.muted}}>{info.label} — {specView.direction==="none"?`Mva-kode ${specView.code} · Ingen avgiftsbehandling`:specView.vc?`${specView.vc.code}: (${specView.rate}%) ${specView.vc.name}`:`${specView.rate}% mva-sats`}</span></h1>
+        <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 12px"}}>Mva-melding spesifikasjon <span style={{fontWeight:500,color:T.muted}}>{info.label} — {specView.direction==="none"?`Mva-kode ${specView.code} · Ingen avgiftsbehandling`:specView.vc?`${specView.vc.code}: (${specView.rate}%) ${specView.vc.name}`:`${specView.rate}% mva-sats`}</span></h1>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{position:"relative",flex:"0 1 220px"}}>
+            <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:T.muted}}/>
+            <input value={specSearch} onChange={e=>setSpecSearch(e.target.value)} placeholder="Søk" style={{...inp,paddingLeft:28,fontSize:12,padding:"8px 10px 8px 28px"}}/>
+          </div>
+        </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
             <colgroup>
-              <col style={{width:"9%"}}/><col style={{width:"9%"}}/><col style={{width:showKontoCol?"26%":"36%"}}/>
-              {showKontoCol&&<col style={{width:"16%"}}/>}
-              <col style={{width:"9%"}}/><col style={{width:"11%"}}/><col style={{width:"10%"}}/><col style={{width:"10%"}}/>
+              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:showKontoCol?"20%":"32%"}}/>
+              {showKontoCol&&<><col style={{width:"13%"}}/><col style={{width:"13%"}}/></>}
+              <col style={{width:"8%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"10%"}}/><col style={{width:"9%"}}/>
             </colgroup>
             <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
               <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
-              {showKontoCol&&<td>{specView.direction==="output"?"Kunde":"Leverandør"}</td>}
-              <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
+              {showKontoCol&&(<><td>Leverandør</td><td>Kunde</td></>)}
+              <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td>Valuta</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
             </tr></thead>
             <tbody>
               {groups.map(g=>(
                 <React.Fragment key={g.key}>
-                  <tr><td colSpan={showKontoCol?8:7} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
-                  {g.rows.map(t=>(
+                  <tr><td colSpan={showKontoCol?10:8} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  {g.rows.map(t=>{
+                    const contact=t.contactId?contacts.find(c=>c.id===t.contactId):null;
+                    return(
                     <tr key={t.id} onClick={()=>setOpenTxn(t)} className="rr-table-row" style={{borderTop:`1px solid ${T.border}`,cursor:"pointer"}}>
                       <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.date}</td>
                       <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                      {showKontoCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contactNameOf(t)===NO_CONTACT_KEY?"—":contactNameOf(t)}</td>}
+                      {showKontoCol&&(<>
+                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>
+                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>
+                      </>)}
                       <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                       <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
+                      <td style={{color:T.muted,fontSize:10.5}}>{t.currency||"NOK"}</td>
                       <td style={{textAlign:"right",color:T.text,fontWeight:600}}>{fmt(t.amount)}</td>
                       <td style={{textAlign:"right",padding:"7px 12px",color:T.text,fontWeight:700}}>{fmt(t.saldo)}</td>
                     </tr>
-                  ))}
+                  );})}
                   <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td colSpan={showKontoCol?5:4} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Sum {g.key}</td>
+                    <td colSpan={showKontoCol?7:5} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
                     <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
+                    <td></td>
                     <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
                     <td style={{padding:"6px 12px"}}></td>
                   </tr>
                 </React.Fragment>
               ))}
-              {!groups.length&&<tr><td colSpan={showKontoCol?8:7} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+              {!groups.length&&<tr><td colSpan={showKontoCol?10:8} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
               {groups.length>1&&(
                 <tr style={{borderTop:`2px solid ${T.border}`}}>
-                  <td colSpan={showKontoCol?5:4} style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
+                  <td colSpan={showKontoCol?7:5} style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.accent}}>{fmt(grandVat)}</td>
+                  <td></td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.text}}>{fmt(grandAmount)}</td>
                   <td style={{padding:"9px 12px"}}></td>
                 </tr>
@@ -4512,6 +4709,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             </tbody>
           </table>
         </div>
+        {/* This spec is scoped to just this one termin's rows — the exit
+            below opens the SAME shape of table but across the whole year
+            for this exact code, so "what's ever been coded 3 (25%)" is
+            answerable without hunting through termin after termin. */}
+        {(specView.vc||specView.code)&&(
+          <div onClick={()=>setVlcCode({code:specView.vc?specView.vc.code:specView.code,vc:specView.vc,direction:specView.direction})} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer",marginTop:14}}>
+            Se hele VAT code ledger for {specView.vc?`${specView.vc.code} (${specView.rate}%)`:specView.code} — alle kontoer, hele året <i className="ti ti-arrow-right" style={{fontSize:13}}/>
+          </div>
+        )}
         </>)}
         {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} initialShowEdit onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
       </div>
@@ -4521,20 +4727,65 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   return(
     <div style={{maxWidth:1000}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:T.accent,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",padding:0,marginBottom:10}}>‹ Mva-meldinger</button>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>{info.label}</h1>
-          <div style={{fontSize:12,color:T.muted}}>Forfall {info.due}</div>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 14px"}}>Mva-melding</h1>
+
+      {/* Filing stepper — the terminer LIST already shows a one-word status
+          per row; once you're actually inside one termin, seeing WHERE it
+          sits in the real 3-step flow (create → send → register payment)
+          is what a real filing screen leads with, not a button whose only
+          state is its own label. */}
+      <div style={{display:"flex",alignItems:"center",marginBottom:16,borderBottom:`1px solid ${T.border}`,paddingBottom:14}}>
+        {[["Opprett mva-melding",true],["Send til Skatteetaten",status.filed],["Registrer betaling",status.paid]].map(([label,done],i)=>(
+          <React.Fragment key={label}>
+            {i>0&&<div style={{flex:1,height:1,background:T.border,margin:"0 14px",minWidth:24}}/>}
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:700,color:done?(i===2?T.green:T.text):T.muted,whiteSpace:"nowrap"}}>
+              <span style={{width:18,height:18,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0,background:done?T.green:T.border,color:done?"#fff":T.muted}}>{done?"✓":i+1}</span>
+              {i+1}. {label}
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:20,padding:18}}>
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>{info.label} · {netVat>=0?"Terminbeløp":"Til gode"}</div>
+            <div style={{fontSize:16,fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(Math.abs(netVat))}</div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Forfall</div>
+            <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:status.filed?T.green:info.due<new Date().toISOString().slice(0,10)?T.red:T.border,marginTop:4,flexShrink:0}}/>
+              <div style={{fontSize:13,fontWeight:600,color:T.text}}>{info.due}</div>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Leveringsstatus</div>
+            <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:status.filed?T.green:T.border,marginTop:4,flexShrink:0}}/>
+              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.filed?(<>Sendt til Skatteetaten<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>Sendt {status.filedDate}</div></>):"Ikke sendt"}</div>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Betalingsstatus</div>
+            <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:status.paid?T.green:status.filed?T.orange:T.border,marginTop:4,flexShrink:0}}/>
+              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.paid?(<>Betalt<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>{status.paidDate}</div></>):"Ikke betalt"}</div>
+            </div>
+          </div>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={exportPdf} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>Last ned PDF</button>
-          <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",borderTop:`1px solid ${T.border}`,padding:"12px 18px"}}>
           {!status.filed?(
-            <button onClick={markFiled} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Merk som sendt</button>
+            <button onClick={markFiled} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Merk som sendt</button>
           ):!status.paid?(
-            <button onClick={markPaid} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Merk som betalt</button>
+            <button onClick={markPaid} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Registrer betaling</button>
           ):(
-            <span style={{fontSize:12,fontWeight:700,color:T.green,alignSelf:"center"}}>✓ Sendt & betalt</span>
+            <span style={{fontSize:12,fontWeight:700,color:T.green,alignSelf:"center",padding:"9px 0"}}>✓ Sendt & betalt</span>
+          )}
+          <button onClick={exportPdf} style={{background:T.accentLight,border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>Last ned PDF</button>
+          <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
+          {status.filed&&(
+            <button onClick={reverseFiling} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-arrow-back-up" style={{fontSize:13,marginRight:5}}/>Reverser mva-melding</button>
           )}
         </div>
       </div>
