@@ -1648,19 +1648,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
-              <div style={{...rowCell,display:"flex",flexDirection:"column",gap:2}}>
+              <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
                 <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:12,padding:"6px 2px"}}/>
                 <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
-              <div style={{...rowCell}}>
+              <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
                 <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
-              <div style={{...rowCell}}>
+              <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
                 <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
-              <div style={{...rowCell,display:"flex",alignItems:"baseline",gap:5}}>
+              <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                 <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
                 {/* Plain text, no drawn chevron — a real <select> though,
                     same as every other currency picker in the app. */}
@@ -1782,8 +1782,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     </div>
   );
 
+  // New Entry's own Advance Voucher screen reads as one continuous white
+  // card holding Voucher details/Date-Description/Postings/Save together —
+  // this editor had the same inner sections but no outer card wrapping
+  // them, so it read as plain page background instead.
   const detailsTab=(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:16}}>
       {isInvoiceMode?(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:18,alignItems:"start"}}>
           {voucherDetailsBox}
@@ -1898,7 +1902,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
   // (right where the row that opened it lives) might not already be at
   // the top of the viewport.
   const rootRef=useRef(null);
-  useEffect(()=>{rootRef.current&&rootRef.current.scrollIntoView({behavior:"smooth",block:"start"});},[]);
+  // Instant, not smooth — this editor now opens inside its own fixed,
+  // already-scrolled-to-top overlay layer (see DetailModal's showEdit
+  // branch), so there's nothing left to actually scroll TO most of the
+  // time; a smooth animated scroll just meant the "EDITING B0xx" heading
+  // could still be mid-slide (partly off the top edge) at the exact
+  // moment the page was looked at or screenshotted right after opening.
+  useEffect(()=>{rootRef.current&&rootRef.current.scrollIntoView({behavior:"auto",block:"start"});},[]);
   const header=(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
       <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
