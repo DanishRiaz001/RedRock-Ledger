@@ -884,9 +884,15 @@ function FileDrop({files,onPick,placeholder}){
   );
 }
 
-function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactId,triggerStyle}){
+function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreateAccount,onCreateContact,contactId,triggerStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
+  // Same "+ New account" / "+ New customer/supplier" capability AccDrop
+  // already has — this flat/underline variant (used by the bilag-edit
+  // Postings grid) never had it, so editing an entry couldn't reach an
+  // account or contact that didn't already exist yet, unlike New Entry.
+  const[showAccountModal,setShowAccountModal]=useState(false);
+  const[showContactModal,setShowContactModal]=useState(false);
   const sel=accounts.find(a=>a.code===value);
   // 1500/2400 are the generic "Kundefordringer"/"Leverandørgjeld" account
   // names — once a real customer/supplier is actually linked to this line,
@@ -928,6 +934,23 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
     setPos({top:r.bottom+3,left:r.left,width:r.width});
     setQ("");setOpen(true);
   };
+  const startCreate=()=>{setShowAccountModal(true);setOpen(false);};
+  const submitCreate=acc=>{
+    if(accounts.some(a=>a.code===acc.code)){alert("That account code already exists.");return;}
+    onCreateAccount&&onCreateAccount(acc);
+    onChange(acc.code);
+    setShowAccountModal(false);
+  };
+  const startCreateContact=()=>{setShowContactModal(true);setOpen(false);};
+  const submitCreateContact=c=>{
+    if(!c.name.trim()||!onCreateContact)return;
+    const newId=onCreateContact(c.name.trim(),c.type,c);
+    if(newId){
+      onChange(c.type==="customer"?"1500":"2400");
+      onContactPick&&onContactPick(newId);
+    }
+    setShowContactModal(false);
+  };
   return(
     <div style={{position:"relative"}}>
       <div ref={triggerRef} onClick={openDrop} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",minHeight:28,...triggerStyle}}>
@@ -940,7 +963,12 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
       {open&&pos&&(
         <>
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:220}}>
+          {/* maxHeight raised from 220 — too short to fit the search box,
+              the scrolling list, AND both new "+ New account"/"+ New
+              customer/supplier" footer rows; the second footer row was
+              silently clipped invisible at 220, same bug AccDrop's own
+              popup had before it was raised to 350. */}
+          <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:290}}>
             <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
               <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
             </div>
@@ -964,8 +992,31 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,contactI
                 </div>
               ))}
             </div>
+            {onCreateAccount&&(
+              <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
+            )}
+            {onContactPick&&onCreateContact&&(
+              <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
+            )}
           </div>
         </>
+      )}
+      {showAccountModal&&(
+        <NewAccountModal
+          existingCodes={new Set(accounts.map(a=>a.code))}
+          initialCode={/^\d+$/.test(q)?q:""}
+          onCreate={submitCreate}
+          onClose={()=>setShowAccountModal(false)}
+        />
+      )}
+      {showContactModal&&(
+        <NewContactModal
+          defaultType="supplier"
+          country="NO"
+          contacts={contacts}
+          onSave={submitCreateContact}
+          onClose={()=>setShowContactModal(false)}
+        />
       )}
     </div>
   );
@@ -1352,7 +1403,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,onAddLine}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,onAddLine,onCreateAccount,onCreateContact}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1653,11 +1704,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
                 <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
-                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
+                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
                 <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
               <div style={{...rowCell,minWidth:0}}>
-                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} triggerStyle={flatField}/>
+                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
                 <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
               </div>
               <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
@@ -2128,7 +2179,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
   // Clicking a bilag from a list is meant to go straight into editing —
   // left the lines, right the document preview, no "view details" popup
   // step in between. Callers that still want the read-only view-first
@@ -2271,6 +2322,8 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
         if(!res||!res.error)setAttList(p=>p.filter(f=>f.id!==fileId));
         return res;
       }:undefined}
+      onCreateAccount={onCreateAccount}
+      onCreateContact={onCreateContact}
       groupLines={groupTxnLines}
       bilag={txn.bilag}
       onAddLine={addTransaction}

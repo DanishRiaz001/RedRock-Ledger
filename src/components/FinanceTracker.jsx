@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, isExpenseSK, fmt, fmtB } from "../lib/utils.js";
+import { isIncomeSK, isExpenseSK, fmt, fmtB, nextContactId } from "../lib/utils.js";
 import { LOGO_B64 } from "../lib/logo.js";
 import { sb } from "../lib/supabaseClient.js";
 import {
@@ -20,7 +20,7 @@ import {
   InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen,
   PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, NewEntryForm,
   SinkingFundsScreen, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen,
-  VoucherDraftsScreen,
+  VoucherDraftsScreen, createContactInline,
 } from "./invoicing.jsx";
 import {
   BalanceListsScreen, ReportsScreen, ImportScreen, BudgetScreen, ProfileScreen, FilesScreen,
@@ -332,6 +332,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     });
     return map;
   },[reconciliationFiles,inboxFiles]);
+  // Same "+ New account" / "+ New customer/supplier" quick-create
+  // NewEntryForm's own AccDrop calls already use, shared here so the
+  // bilag-edit view (General ledger drill-down, Bank reconciliation,
+  // Customer/Supplier ledger) can offer the exact same capability —
+  // editing a bilag couldn't reach an account/contact that didn't
+  // already exist, unlike creating a brand-new entry.
+  const createAccountQuick=acc=>setAccounts([...accounts,acc]);
+  const createContactQuick=(name,type,extra={})=>createContactInline(contacts,setContacts,{name,type,...extra});
   const attachBankStatement=(key,att)=>{
     const idx=key.lastIndexOf("_");
     const code=key.slice(0,idx),period=key.slice(idx+1);
@@ -1115,7 +1123,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {registrationQueue?(
           <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} renameInboxFileEntry={renameInboxFileEntry} onDone={()=>setRegistrationQueue(null)} setAccounts={setAccounts}/>
         ):ledgerAcc?(
-          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
+          <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
         ):(<>
 
         {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog} profile={profile} companyProfile={companyProfile}/>}
@@ -1356,7 +1364,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} tagTransaction={tagTransaction}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -1368,7 +1376,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds}/>
+            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
