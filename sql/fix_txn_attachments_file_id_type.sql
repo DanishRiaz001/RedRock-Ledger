@@ -1,0 +1,17 @@
+-- RESOLVED 2026-09-09.
+--
+-- Root cause of "Couldn't save that attachment: invalid input syntax for
+-- type uuid: '15'" (surfaced when attaching/syncing a bank reconciliation
+-- statement): inbox_files.id is bigint, but reconciliation_files
+-- .inbox_file_id was created as uuid — a type mismatch from when that table
+-- was built, not a bad row or a runtime logic bug. Every attach attempt
+-- with a real inbox_files.id was doomed to fail this way; reconciliation_
+-- files had 0 rows, confirming no attach through this path had ever
+-- actually succeeded.
+--
+-- txn_attachments (the OTHER attachment table, used by every other
+-- "attach a document to a bilag" flow in the app) was already correct —
+-- txn_id uuid, file_id bigint, 163 real rows — and was never touched.
+--
+-- The fix that was applied:
+alter table reconciliation_files alter column inbox_file_id type bigint using inbox_file_id::text::bigint;
