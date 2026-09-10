@@ -4775,14 +4775,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Leveringsstatus</div>
             <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:status.filed?T.green:T.border,marginTop:4,flexShrink:0}}/>
-              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.filed?(<>Sendt til Skatteetaten<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>Sendt {status.filedDate}</div></>):"Ikke sendt"}</div>
+              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.filed?(<>Sendt til Skatteetaten{status.filedDate&&<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>Sendt {status.filedDate}</div>}</>):"Ikke sendt"}</div>
             </div>
           </div>
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Betalingsstatus</div>
             <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:status.paid?T.green:status.filed?T.orange:T.border,marginTop:4,flexShrink:0}}/>
-              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.paid?(<>Betalt<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>{status.paidDate}</div></>):"Ikke betalt"}</div>
+              <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{status.paid?(<>Betalt{status.paidDate&&<div style={{fontSize:10.5,color:T.muted,fontWeight:500,marginTop:2}}>{status.paidDate}</div>}</>):"Ikke betalt"}</div>
             </div>
           </div>
         </div>
@@ -5348,6 +5348,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   // Reskontro, not just posted to the generic AR/AP control account with
   // no idea which customer/supplier it was.
   const[bulkOffsetContactId,setBulkOffsetContactId]=useState("");
+  // Which payment type the user actually picked — tracked explicitly, not
+  // derived from the account code, so two types mapping to the same
+  // account (Bankgebyr + Kortgebyr → 7770) don't make the dropdown jump
+  // to whichever one happens to be listed first.
+  const[bulkPostingTypeId,setBulkPostingTypeId]=useState("");
   // Curated "payment types" for the post popup — seeded on first use from
   // DEFAULT_BANK_POSTING_TYPES, filtered to accounts that actually exist
   // in this company's chart so a default never points at a missing one.
@@ -5537,7 +5542,6 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       const approved=isBankReconApproved(selectedAccount,m);
       return{key:m,label:new Date(year,i,1).toLocaleString("default",{month:"short"}),hasActivity,done,approved};
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[bankStatementLines,transactions,selectedAccount,month,reconApprovedTick]);
 
   const searchMatch=(text)=>!searchQuery||String(text||"").toLowerCase().includes(searchQuery.toLowerCase());
@@ -5580,6 +5584,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     setBulkPostOpen(false);
     setBulkOffsetCode("");
     setBulkOffsetContactId("");
+    setBulkPostingTypeId("");
     clearSelection();
   };
 
@@ -6118,7 +6123,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         );
       })()}
       {bulkPostOpen&&(()=>{
-        const closeModal=()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");setAdvancedPickerOpen(false);};
+        const closeModal=()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");setBulkPostingTypeId("");setAdvancedPickerOpen(false);};
         const pickedAcc=accounts.find(a=>a.code===bulkOffsetCode);
         const pickedContact=bulkOffsetContactId?contacts.find(c=>c.id===bulkOffsetContactId):null;
         const vc=pickedAcc&&pickedAcc.defaultVatCode?(findVatCode(pickedAcc.defaultVatCode,"input")||findVatCode(pickedAcc.defaultVatCode,"output")):null;
@@ -6130,7 +6135,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const leadDir=outCount>=selectedLines.length-outCount?"out":"in";
         const acctName=c=>{const a=accounts.find(x=>x.code===c);return a?`${a.code} ${a.name}`:c;};
         const typesFor=dir=>postingTypes.filter(t=>t.direction===dir&&!t.inactive&&accounts.some(a=>a.code===t.accountCode));
-        const activeType=postingTypes.find(t=>t.accountCode===bulkOffsetCode&&!bulkOffsetContactId);
+        const activeType=(!bulkOffsetContactId&&bulkPostingTypeId)?postingTypes.find(t=>t.id===bulkPostingTypeId&&t.accountCode===bulkOffsetCode):null;
         return(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
@@ -6163,11 +6168,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               {/* Curated payment-type shortlist — the common cases (bank
                   fees, interest, open items) as one click, each mapped to
                   a real account, instead of an account search every time.
-                  "Manage payment types" edits the list; the advanced
-                  section below still reaches any account or contact. */}
+                  "Manage payment types" jumps to Bank → Settings where the
+                  list is edited; the advanced section below still reaches
+                  any account or contact. */}
               <select value={activeType?activeType.id:""} onChange={e=>{
                 const t=postingTypes.find(x=>x.id===e.target.value);
-                if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setAdvancedPickerOpen(false);}
+                if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);}
+                else{setBulkOffsetCode("");setBulkPostingTypeId("");}
               }} style={{...inp,fontSize:12.5,cursor:"pointer"}}>
                 <option value="">— Select a payment type —</option>
                 {[leadDir,leadDir==="out"?"in":"out"].map(dir=>{
@@ -6188,7 +6195,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 </button>
                 {advancedPickerOpen&&(
                   <div style={{marginTop:8}}>
-                    <AccDrop value={activeType?"":bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)} onCreateContact={onCreateContact}/>
+                    <AccDrop value={activeType?"":bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");setBulkPostingTypeId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={id=>{setBulkOffsetContactId(id);setBulkPostingTypeId("");}} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)} onCreateContact={onCreateContact}/>
                   </div>
                 )}
               </div>

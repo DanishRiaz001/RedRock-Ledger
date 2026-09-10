@@ -1603,7 +1603,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
     window.addEventListener("resize",onResize);
     return()=>window.removeEventListener("resize",onResize);
   },[]);
-  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode,contactId:form.contactId}];
+  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,currency:form.currency,debitVatCode,creditVatCode,contactId:form.contactId}];
   // What this entry was actually created AS (a supplier invoice, a
   // customer invoice, or nothing tracked — receipt/manual/bank/etc.) —
   // tagged once at creation (invoicing.jsx's saveInvoice), never touched
