@@ -7,6 +7,24 @@ import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
+// Render a print-area element to PDF and OPEN IT in a new tab (the browser's
+// own PDF viewer — preview, print and save all built in) instead of forcing an
+// immediate download the user never got to look at first. Falls back to a
+// direct download only if the popup is blocked.
+const pdfPreview=(elId,filename,opts={})=>{
+  const el=document.getElementById(elId);
+  if(!el||!window.html2pdf)return;
+  const periodEl=el.querySelector(".print-only-period");
+  if(periodEl)periodEl.style.display="block";
+  const cleanup=()=>{if(periodEl)periodEl.style.display="none";};
+  const worker=window.html2pdf().from(el).set({margin:20,filename,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:opts.landscape?"landscape":"portrait"}});
+  worker.outputPdf("bloburl").then(url=>{
+    const w=window.open(url,"_blank");
+    if(!w)worker.save(); // popup blocked — just download it
+    cleanup();
+  }).catch(()=>{worker.save().then(cleanup);});
+};
+
 // The VAT-return "grunnlag" (taxable base) for a transaction. On a split
 // entry the P&L row's `amount` is ALREADY net (the VAT is a separate 27xx
 // row), so don't subtract it again; on a normal gross row, base = amount − VAT.
@@ -3497,12 +3515,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
     );
   };
 
-  const exportPdf=()=>{
-    const el=document.getElementById("resultat-print-area");
-    const periodEl=el&&el.querySelector(".print-only-period");
-    if(periodEl)periodEl.style.display="block";
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
-  };
+  const exportPdf=()=>pdfPreview("resultat-print-area",`IncomeStatement_${periodLabel.replace(/\s/g,"_")}.pdf`);
 
   return(
     <div>
@@ -3694,12 +3707,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
     );
   };
 
-  const exportPdf=()=>{
-    const el=document.getElementById("balancesheet-print-area");
-    const periodEl=el&&el.querySelector(".print-only-period");
-    if(periodEl)periodEl.style.display="block";
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`BalanceSheet_${asOf}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
-  };
+  const exportPdf=()=>pdfPreview("balancesheet-print-area",`BalanceSheet_${asOf}.pdf`);
 
   return(
     <div>
@@ -3813,10 +3821,7 @@ function VATReportScreen({invoices,contacts,transactions}){
   const totalPurchaseVat=periodPurchases.reduce((s,t)=>s+(t.vatAmount||0),0);
   const totalPurchaseNet=periodPurchases.reduce((s,t)=>s+vatBase(t),0);
   const netVatPosition=totalVat-totalPurchaseVat;
-  const exportPdf=()=>{
-    const el=document.getElementById("vatreport-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
-  };
+  const exportPdf=()=>pdfPreview("vatreport-print-area",`VATReport_${periodLabel.replace(/\s/g,"_")}.pdf`);
 
   return(
     <div>
@@ -4289,10 +4294,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     XLSX.utils.book_append_sheet(wb,ws,"Mva-melding");
     XLSX.writeFile(wb,`Mva-melding_${termin.year}_termin${termin.n}.xlsx`);
   };
-  const exportPdf=()=>{
-    const el=document.getElementById("vatTermin-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`Mva-melding_${termin.year}_termin${termin.n}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
-  };
+  const exportPdf=()=>pdfPreview("vatTermin-print-area",`Mva-melding_${termin.year}_termin${termin.n}.pdf`);
 
   // VAT code ledger — every account that has EVER posted under one VAT
   // code, across the whole year (not just this one termin), reached from
@@ -4606,7 +4608,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           ):(
             <span style={{fontSize:12,fontWeight:700,color:T.green,alignSelf:"center",padding:"9px 0"}}>✓ Sendt & betalt</span>
           )}
-          <button onClick={exportPdf} style={{background:T.accentLight,border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>Last ned PDF</button>
+          <button onClick={exportPdf} style={{background:T.accentLight,border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-file-type-pdf" style={{fontSize:13,marginRight:5}}/>PDF</button>
           <button onClick={exportXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:13,marginRight:5}}/>Excel</button>
           {status.filed&&(
             <button onClick={reverseFiling} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-arrow-back-up" style={{fontSize:13,marginRight:5}}/>Reverser mva-melding</button>
@@ -4834,10 +4836,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
     XLSX.writeFile(wb,`GeneralLedger_${from}_${to}.xlsx`);
   };
 
-  const exportPdf=()=>{
-    const el=document.getElementById("generalledger-print-area");
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`GeneralLedger_${from}_${to}.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save();
-  };
+  const exportPdf=()=>pdfPreview("generalledger-print-area",`GeneralLedger_${from}_${to}.pdf`);
 
   return(
     <div>
