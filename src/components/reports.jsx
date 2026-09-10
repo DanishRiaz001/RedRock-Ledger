@@ -6862,7 +6862,7 @@ const _download=(name,text,type)=>{
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 };
 
-function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],contacts=[],transactions=[],userEmail,onNavigate,initialYear}){
+function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],setAccounts,contacts=[],transactions=[],addTransaction,userEmail,onNavigate,initialYear}){
   const thisYear=new Date().getFullYear();
   const firstYear=useMemo(()=>{
     const ys=transactions.map(t=>parseInt((t.date||"").slice(0,4))).filter(Boolean);
@@ -6937,6 +6937,45 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],con
     saveCompanyProfile({...companyProfile,periodCloseDate:d});
   };
 
+  // The year's P&L result = income − expenses. Movement of a P&L account =
+  // debit − credit; income (3xxx) is credit-heavy (negative), expense (4–7xxx)
+  // debit-heavy (positive). Exclude the disposition lines (88xx/89xx) so we
+  // measure the result BEFORE it's been disposed.
+  const yearResult=()=>{
+    let pre=0;
+    transactions.forEach(t=>{
+      if((t.date||"").slice(0,4)!==String(year))return;
+      const move=(c)=>{const n=parseInt(c);return n>=3000&&n<8800;};
+      if(move(t.debitCode))pre+=Math.abs(t.amount||0);
+      if(move(t.creditCode))pre-=Math.abs(t.amount||0);
+    });
+    // pre = expenses − income; profit = −pre
+    return Math.round(-pre*100)/100;
+  };
+  const[closing,setClosing]=useState(false);
+  const closeYear=async()=>{
+    if(yearClosed(year)||priorYearOpen(year)||closing)return;
+    const profit=yearResult();
+    const eq="2050",res="8800",loss="2080";
+    const need=[res,eq,loss].filter(c=>!accounts.some(a=>a.code===c));
+    if(need.length&&setAccounts){
+      const names={"2050":"Annen egenkapital","8800":"Årsresultat","2080":"Udekket tap"};
+      setAccounts([...accounts,...need.map(c=>({code:c,name:names[c]}))]);
+    }
+    const msg=profit>=0
+      ? `Close ${year}?\n\nÅrsresultat (profit): ${fmt(profit)}\n\nPosts on ${year}-12-31:\n  Dr 8800 Årsresultat   ${fmt(profit)}\n  Cr 2050 Annen egenkapital   ${fmt(profit)}\n\nThen every period in ${year} is locked.`
+      : `Close ${year}?\n\nÅrsresultat (LOSS): ${fmt(profit)}\n\nPosts on ${year}-12-31:\n  Dr 2050 Annen egenkapital   ${fmt(-profit)}\n  Cr 8800 Årsresultat   ${fmt(-profit)}\n\nThen every period in ${year} is locked.`;
+    if(!window.confirm(msg))return;
+    setClosing(true);
+    const d=`${year}-12-31`;
+    if(addTransaction&&Math.abs(profit)>=0.01){
+      if(profit>=0)await addTransaction({date:d,debitCode:res,creditCode:eq,description:`Årsavslutning ${year} — disponering av årsresultat`,amount:Math.abs(profit)});
+      else await addTransaction({date:d,debitCode:eq,creditCode:res,description:`Årsavslutning ${year} — dekning av underskudd`,amount:Math.abs(profit)});
+    }
+    saveCompanyProfile({...companyProfile,periodCloseDate:d});
+    setClosing(false);
+  };
+
   return(
     <div style={{maxWidth:1100}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
@@ -7002,10 +7041,10 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],con
         <button onClick={()=>downloadHovedbokCsv(year)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Kontospesifikasjon CSV</button>
         <button onClick={()=>downloadSaft(year)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Regnskapseksport (SAF-T)</button>
         <button onClick={()=>onNavigate&&onNavigate("TrialBalance")} style={{background:"#fff",color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Åpne saldobalanse</button>
-        <button onClick={()=>lockThrough(12)} disabled={yearClosed(year)||priorYearOpen(year)} style={{background:yearClosed(year)||priorYearOpen(year)?T.border:T.accent,color:yearClosed(year)||priorYearOpen(year)?T.muted:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:yearClosed(year)||priorYearOpen(year)?"default":"pointer",fontFamily:"inherit"}}>{yearClosed(year)?"Året er avsluttet":"Avslutt år (lås alle perioder)"}</button>
+        <button onClick={closeYear} disabled={yearClosed(year)||priorYearOpen(year)||closing} style={{background:yearClosed(year)||priorYearOpen(year)?T.border:T.accent,color:yearClosed(year)||priorYearOpen(year)?T.muted:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:yearClosed(year)||priorYearOpen(year)?"default":"pointer",fontFamily:"inherit"}}>{closing?"Avslutter…":yearClosed(year)?"Året er avsluttet":`Avslutt år (resultat ${fmt(yearResult())})`}</button>
       </div>
       <p style={{fontSize:10.5,color:T.muted,marginTop:8}}>
-        "Avslutt år" locks every period in {year} against further edits. The statutory result-to-equity posting and the roll-forward of closing balances into next year's opening balance are not automated yet — post those manually for now.
+        "Avslutt år" posts the årsresultat disposition on {year}-12-31 (Dr 8800 / Cr 2050 for a profit, reversed for a loss) and locks every period in {year}. Balance-sheet accounts carry forward automatically — the running balance already includes every prior year, so no separate opening-balance voucher is posted. A more detailed disposition (fond, utbytte, konsern) still has to be booked by hand.
       </p>
     </div>
   );

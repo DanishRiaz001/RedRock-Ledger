@@ -1328,7 +1328,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="AnnualAccounts"&&(
           <ScreenErrorBoundary name="Årsregnskap">
-            <AnnualAccountsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} contacts={contacts} transactions={transactions} userEmail={(profile&&profile.email)||(user&&user.email)||""} onNavigate={setTab}/>
+            <AnnualAccountsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} setAccounts={setAccounts} contacts={contacts} transactions={transactions} addTransaction={addTransactionNotified} userEmail={(profile&&profile.email)||(user&&user.email)||""} onNavigate={setTab}/>
           </ScreenErrorBoundary>
         )}
 
