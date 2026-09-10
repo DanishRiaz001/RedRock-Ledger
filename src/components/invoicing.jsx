@@ -3548,7 +3548,7 @@ function VoucherDraftsScreen({drafts=[],deleteVoucherDraft,onResume}){
   );
 }
 
-function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,saveProjects,initialEntryMode="receipt",onOpenEntry,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft}){
+function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,splitVat=true,saveProjects,initialEntryMode="receipt",onOpenEntry,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft}){
   // Quick-create straight from any Debit/Credit AccDrop — "+ New account"
   // and "+ New customer/supplier" both need somewhere to actually create
   // the thing, not just a UI to type it into. Shared across every line's
@@ -3742,6 +3742,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // it's captured here and appended to the saved description so it isn't
   // lost, same as the reference voucher's own "Periodisering" section.
   const[invPeriodizationAccount,setInvPeriodizationAccount]=useState("");
+  const[invPeriodizationMonths,setInvPeriodizationMonths]=useState("");
+  const[invPeriodizationStart,setInvPeriodizationStart]=useState("");
   const[invAttachmentIds,setInvAttachmentIds]=useState([]);
   const[invAttOpen,setInvAttOpen]=useState(true);
   const[uploadingInvAtt,setUploadingInvAtt]=useState(false);
@@ -3751,7 +3753,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // record when a supplier invoice was really paid, separately from the
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvHeaderTotal("");setInvLinesManual(false);setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvGearOpen(false);};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvHeaderTotal("");setInvLinesManual(false);setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvPeriodizationMonths("");setInvPeriodizationStart("");setInvGearOpen(false);};
   // The pending-suggestion/entry-mode hand-off keys are read (never deleted)
   // by several useState initializers above, all during the same first
   // render — so the actual cleanup happens exactly once, here, after mount.
@@ -4056,11 +4058,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,vatCode:invVatCode,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,vatCode:invVatCode,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount,periodizationMonths:invPeriodizationMonths,periodizationStart:invPeriodizationStart},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
     let firstBilag=null;
+    const perLines=[]; // periodization jobs, run after the invoice lines
     for(let idx=0;idx<allLines.length;idx++){
       const l=allLines[idx];
       // Foreign currency → resolve to NOK here so every downstream figure
@@ -4095,14 +4098,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // a generic default) — this used to be one description shared by
       // every line regardless of what was actually typed on each row.
       let lineDesc=l.description||invDescription||`${invIsCustomer?"Sale":"Purchase"}${invoiceNo?" · "+invoiceNo:""}`;
-      // Periodization account is reference-only (see state comment above) —
-      // folded into THIS line's own description so it's not silently lost,
-      // since there's no dedicated column for it yet. Per-line now (each
-      // cost line can periodize to a different account), not just the
-      // first line.
-      if(invShowPeriodization&&l.periodizationAccount){
-        const pAcc=accounts.find(a=>a.code===l.periodizationAccount);
-        lineDesc=`${lineDesc} (Periodization: ${l.periodizationAccount}${pAcc?" · "+pAcc.name:""})`;
+      // Periodization: the invoice line still posts completely normally
+      // (VAT and all). Real deferral postings are added AFTER it, once per
+      // line, below the loop — using perLines[] collected here.
+      const perN=invShowPeriodization&&l.periodizationAccount?parseInt(l.periodizationMonths):0;
+      if(perN>=2){
+        // amount that landed on the P&L account = net when VAT is split, else gross
+        const onExpense=(splitVat&&lineVc&&lineVc.autoSplit&&lineVatAmount)?absAmt-Math.abs(lineVatAmount):absAmt;
+        perLines.push({expenseCode:l.accountCode,balanceCode:l.periodizationAccount,total:Math.round(onExpense*100)/100,n:perN,start:l.periodizationStart||form.date,isCustomer:invIsCustomer,desc:lineDesc});
       }
       const res=await onSave({
         date:form.date,
@@ -4133,6 +4136,37 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         if(form.notes&&form.notes.trim()&&addEntryComment&&res.id!=null)addEntryComment(res.id,form.notes.trim());
       }
     }
+
+    // ---- Periodization: defer each flagged line's cost over N months ----
+    // The invoice line already hit the P&L account in full. Now move the
+    // whole amount out to the balance account (17xx prepaid / 29xx deferred
+    // income) and recognise 1/N back into the P&L on the 1st of each month.
+    for(const pj of perLines){
+      const per=Math.floor((pj.total/pj.n)*100)/100;
+      const last=Math.round((pj.total-per*(pj.n-1))*100)/100; // remainder on the final month
+      const pGrp=`per-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      // 1) reclass the full amount P&L -> balance account, at the invoice date
+      if(pj.isCustomer){
+        await onSave({date:form.date,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — periodisering (utsatt inntekt)`,amount:pj.total,groupRef:pGrp,entryMode:invIsCustomer?"customer_invoice":"supplier_invoice"});
+      }else{
+        await onSave({date:form.date,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — periodisering (forskuddsbetalt)`,amount:pj.total,groupRef:pGrp,entryMode:"supplier_invoice"});
+      }
+      // 2) recognise 1/N per month, 1st of the month, starting from `start`
+      const[sy,sm]=(pj.start||form.date).split("-").map(Number);
+      for(let m=0;m<pj.n;m++){
+        const y=sy+Math.floor((sm-1+m)/12);
+        const mo=((sm-1+m)%12)+1;
+        const d=`${y}-${String(mo).padStart(2,"0")}-01`;
+        const amt=m===pj.n-1?last:per;
+        if(amt<=0)continue;
+        if(pj.isCustomer){
+          await onSave({date:d,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — inntektsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,entryMode:"customer_invoice"});
+        }else{
+          await onSave({date:d,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — kostnadsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,entryMode:"supplier_invoice"});
+        }
+      }
+    }
+
     if(hasPayment){
       // Payment leg — settles either the full invoice total or, if the
       // amount was overridden, just a partial payment (the rest stays open
@@ -4995,7 +5029,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 // table-wide grid with Account+Description stacked in a
                 // single wide column.
                 const rows=[
-                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},
+                  {isPrimary:true,accountCode:invAccountCode,vatCode:invVatCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount,periodizationMonths:invPeriodizationMonths,periodizationStart:invPeriodizationStart},
                   ...invExtraLines.map((l,li)=>({isPrimary:false,li,...l})),
                 ];
                 const fieldLbl={fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"};
@@ -5016,12 +5050,14 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       if("description"in patch)setInvDescription(patch.description);
                       if("projectId"in patch)setInvProjectId(patch.projectId);
                       if("periodizationAccount"in patch)setInvPeriodizationAccount(patch.periodizationAccount);
+                      if("periodizationMonths"in patch)setInvPeriodizationMonths(patch.periodizationMonths);
+                      if("periodizationStart"in patch)setInvPeriodizationStart(patch.periodizationStart);
                     } else {
                       if("amount"in patch)setInvLinesManual(true);
                       setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                     }
                   };
-                  const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:"",periodizationAccount:""});
+                  const newLine=()=>({accountCode:"",amount:"",vatCode:"",description:"",projectId:"",periodizationAccount:"",periodizationMonths:"",periodizationStart:""});
                   return(
                     // Lines are divided by a hairline only, no per-line box
                     // — the ONE border around this whole section (Costs) is
@@ -5102,9 +5138,24 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           split the amount across periods yet. */}
                       {invShowPeriodization&&(
                         <div style={{marginTop:10,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
-                          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization</div>
-                          <div style={fieldLbl}>Periodization account</div>
-                          <AccDrop value={r.periodizationAccount||""} onChange={code=>update({periodizationAccount:code})} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...lineField,fontSize:12}}/>
+                          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6}}>Periodization {r.periodizationAccount&&parseInt(r.periodizationMonths)>=2?<span style={{color:T.accent}}>· {r.periodizationMonths} mnd fra {r.periodizationStart||form.date}</span>:""}</div>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 80px 130px",gap:8}}>
+                            <div>
+                              <div style={fieldLbl}>Balansekonto (17xx / 29xx)</div>
+                              <AccDrop value={r.periodizationAccount||""} onChange={code=>update({periodizationAccount:code})} accounts={periodizationAccounts} onCreateAccount={createAccountQuick} inputStyle={{...lineField,fontSize:12}}/>
+                            </div>
+                            <div>
+                              <div style={fieldLbl}>Måneder</div>
+                              <input type="number" min="2" placeholder="12" value={r.periodizationMonths||""} onChange={e=>update({periodizationMonths:e.target.value})} style={{...lineField,fontSize:12}}/>
+                            </div>
+                            <div>
+                              <div style={fieldLbl}>Start</div>
+                              <FlexDateInput value={r.periodizationStart||form.date} onChange={v=>update({periodizationStart:v})} inputStyle={{...lineField,fontSize:12}}/>
+                            </div>
+                          </div>
+                          {r.periodizationAccount&&parseInt(r.periodizationMonths)>=2&&(
+                            <div style={{fontSize:10.5,color:T.muted,marginTop:5}}>Full beløp bokføres på {r.periodizationAccount} nå, og {(Math.abs(parseFloat(r.amount||0))/parseInt(r.periodizationMonths)||0).toFixed(2)} flyttes til {r.accountCode||"resultatkontoen"} den 1. hver måned i {r.periodizationMonths} måneder.</div>
+                          )}
                         </div>
                       )}
                       {/* Vertical ⋮ menu — Copy duplicates this line, Delete
