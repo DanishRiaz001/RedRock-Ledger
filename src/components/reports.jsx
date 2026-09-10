@@ -7,6 +7,11 @@ import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 
+// The VAT-return "grunnlag" (taxable base) for a transaction. On a split
+// entry the P&L row's `amount` is ALREADY net (the VAT is a separate 27xx
+// row), so don't subtract it again; on a normal gross row, base = amount − VAT.
+const vatBase=t=>t.vatSplit?t.amount:(t.amount-(t.vatAmount||0));
+
 function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
@@ -3806,7 +3811,7 @@ function VATReportScreen({invoices,contacts,transactions}){
   // isExpenseSK(debitCode) matches Mva-meldinger's own purchase-VAT logic.
   const periodPurchases=useMemo(()=>(transactions||[]).filter(t=>inPeriod(t.date)&&t.vatAmount!=null&&t.vatAmount!==0&&isExpenseSK(t.debitCode)).sort((a,b)=>a.date.localeCompare(b.date)),[transactions,viewMonth,fullYear]);
   const totalPurchaseVat=periodPurchases.reduce((s,t)=>s+(t.vatAmount||0),0);
-  const totalPurchaseNet=periodPurchases.reduce((s,t)=>s+(t.amount-(t.vatAmount||0)),0);
+  const totalPurchaseNet=periodPurchases.reduce((s,t)=>s+vatBase(t),0);
   const netVatPosition=totalVat-totalPurchaseVat;
   const exportPdf=()=>{
     const el=document.getElementById("vatreport-print-area");
@@ -3923,7 +3928,7 @@ function VATReportScreen({invoices,contacts,transactions}){
               <td style={{padding:"7px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
               <td>{t.description}</td>
               <td style={{color:T.sub}}>{t.date}</td>
-              <td style={{textAlign:"right"}}>{fmt(t.amount-(t.vatAmount||0))}</td>
+              <td style={{textAlign:"right"}}>{fmt(vatBase(t))}</td>
               <td style={{textAlign:"right"}}>{fmt(t.vatAmount||0)}</td>
               <td style={{textAlign:"right",fontWeight:700}}>{fmt(t.amount)}</td>
             </tr>
@@ -4171,7 +4176,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
 
   const groupByRate=(rows)=>{
     const m={};
-    rows.forEach(t=>{const r=t.vatPct||0;if(!m[r])m[r]={rate:r,rows:[],net:0,vat:0};m[r].rows.push(t);m[r].net+=(t.amount-(t.vatAmount||0));m[r].vat+=(t.vatAmount||0);});
+    rows.forEach(t=>{const r=t.vatPct||0;if(!m[r])m[r]={rate:r,rows:[],net:0,vat:0};m[r].rows.push(t);m[r].net+=vatBase(t);m[r].vat+=(t.vatAmount||0);});
     return Object.values(m).sort((a,b)=>b.rate-a.rate);
   };
   const salesByRate=groupByRate(salesTxns);
@@ -4215,7 +4220,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     rows.forEach(t=>{
       const code=t[codeField];
       if(!m[code])m[code]={code,rows:[],net:0,vat:0};
-      m[code].rows.push(t);m[code].net+=(t.amount-(t.vatAmount||0));m[code].vat+=(t.vatAmount||0);
+      m[code].rows.push(t);m[code].net+=vatBase(t);m[code].vat+=(t.vatAmount||0);
     });
     return Object.values(m).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
   };

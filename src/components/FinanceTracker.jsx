@@ -1355,7 +1355,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="VoucherSettings"&&<VoucherSettingsScreen companyProfile={companyProfile}/>}
         {tab==="InvoiceSettings"&&<InvoiceSettingsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>}
         {tab==="AccountingSettings"&&<AccountingSettingsScreen onNavigate={setTab}/>}
-        {tab==="VATCodes"&&<div style={{maxWidth:900}}>{feat.vat?<VATCodesScreen accounts={accounts}/>:<DisabledScreen title="VAT codes" onBack={()=>setTab("Dashboard")}/>}</div>}
+        {tab==="VATCodes"&&<div style={{maxWidth:900}}>{feat.vat?<VATCodesScreen accounts={accounts} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile}/>:<DisabledScreen title="VAT codes" onBack={()=>setTab("Dashboard")}/>}</div>}
         {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts} onSaveAccounts={setAccounts}/>}
         {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
         {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}

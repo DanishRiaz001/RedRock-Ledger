@@ -16,9 +16,10 @@ import { BankAccountDetailsModal, ConicChart } from "./reports.jsx";
 // need them, and burying them among the everyday codes just makes the
 // common ones harder to find.
 const STANDARD_MVA_CODES=new Set(["0","1","11","12","13","3","31","32","33","5","51","52","6","7"]);
-function VATCodesScreen({accounts}){
+function VATCodesScreen({accounts,companyProfile,saveCompanyProfile}){
   const[showAdvanced,setShowAdvanced]=useState(false);
   const nameFor=code=>{const a=accounts.find(x=>x.code===code);return a?a.name:null;};
+  const splitOn=!!(companyProfile&&companyProfile.splitVat);
   const isStandard=c=>STANDARD_MVA_CODES.has(c.code);
   const outputCodes=MVA_CODES.filter(c=>c.direction==="output"&&isStandard(c));
   const inputCodes=MVA_CODES.filter(c=>c.direction==="input"&&isStandard(c));
@@ -51,6 +52,25 @@ function VATCodesScreen({accounts}){
     <div style={{maxWidth:900}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 8px"}}>VAT codes</h1>
       <p style={{fontSize:12,color:T.muted,marginBottom:20}}>The standard Norwegian mva-koder — the same set Skatteetaten and Tripletex use. Picking a sale or expense account with a matching rate auto-suggests the right code's rate; this page is the reference for which account each code's VAT amount belongs to.</p>
+
+      {saveCompanyProfile&&(
+        <div style={{background:"#fff",border:`1px solid ${splitOn?T.accent:T.border}`,borderRadius:12,padding:16,marginBottom:22,display:"flex",alignItems:"flex-start",gap:14}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Post VAT to its own ledger line</div>
+            <div style={{fontSize:11.5,color:T.muted,marginTop:3,lineHeight:1.5}}>
+              When on, a VAT-inclusive entry is booked as <strong>two rows</strong>: the net amount on the
+              expense/income account and the VAT on its 27xx account (2700/2710/…). Trial balance then shows
+              net figures and real input/output-VAT balances. Only affects <strong>new</strong> entries — turn
+              on for one company and check a test entry first. Reverse-charge / import codes still post as one row.
+            </div>
+          </div>
+          <label style={{position:"relative",display:"inline-block",width:44,height:24,flexShrink:0,marginTop:2}}>
+            <input type="checkbox" checked={splitOn} onChange={e=>saveCompanyProfile({...companyProfile,splitVat:e.target.checked})} style={{opacity:0,width:0,height:0}}/>
+            <span style={{position:"absolute",inset:0,background:splitOn?T.accent:T.border,borderRadius:24,cursor:"pointer",transition:"background .15s"}}/>
+            <span style={{position:"absolute",top:3,left:splitOn?23:3,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+          </label>
+        </div>
+      )}
 
       <div style={{fontSize:12,fontWeight:800,color:T.green,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Utgående avgift (sales)</div>
       <Table codes={outputCodes}/>

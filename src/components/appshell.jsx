@@ -9,6 +9,7 @@ import {
 } from "../lib/utils.js";
 import { logBug, ADMIN_KEY, USER_FEATS_KEY } from "./ledger.jsx";
 import { nextContactId } from "../lib/utils.js";
+import { vatSplit } from "../lib/vatsplit.js";
 import { uploadFileToStorage, deleteFileFromStorage, getSignedUrl } from "../lib/storage.js";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { Spinner, LoginScreen, PendingAccessScreen } from "./shell.jsx";
@@ -23,7 +24,7 @@ import MobileApp from "./mobile/MobileApp.jsx";
 // whichever profile was already in memory on screen (and editable/
 // saveable) as if it belonged to the newly-selected company — the
 // "changes to one company leaking into another" symptom.
-const DEFAULT_COMPANY_PROFILE={companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",phone:"",faxNumber:"",website:"",postcode:"",city:"",formOfBusiness:"",currency:"PKR",language:"English",country:"PK",trackProjects:false,municipality:"",municipalityStartDate:""};
+const DEFAULT_COMPANY_PROFILE={companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",phone:"",faxNumber:"",website:"",postcode:"",city:"",formOfBusiness:"",currency:"PKR",language:"English",country:"PK",trackProjects:false,splitVat:false,municipality:"",municipalityStartDate:""};
 
 function AppShell({user}){
   const[profile,setProfile]=useState(null);
@@ -467,7 +468,7 @@ function AppShell({user}){
         })();
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",orgNumber:c.org_number||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive,isCompany:c.is_company!=null?!!c.is_company:true,category:c.category||"",currency:c.currency||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,moneySourceId:t.money_source_id||null,moneySourceIdCredit:t.money_source_id_credit||null,projectId:t.project_id||null}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,vatSplit:!!t.vat_split,moneySourceId:t.money_source_id||null,moneySourceIdCredit:t.money_source_id_credit||null,projectId:t.project_id||null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -488,7 +489,7 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,splitVat:!!d.split_vat,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
       } else {
         // This company has no company_profile row yet (e.g. it was just
         // created) — reset to blank instead of leaving whichever other
@@ -739,6 +740,25 @@ function AppShell({user}){
     if(form.amount>10000000)logBug("ACCOUNTING","Unusually large transaction amount (>10M)","amount:"+form.amount+" desc:"+form.description,ctx);
   };
 
+  // VAT split — when the company has `splitVat` on and the line carries a
+  // plain VAT-inclusive code, `vatSplit()` returns {net, vatLeg}: the P&L row
+  // is posted for `net` (marked vat_split so reports don't subtract the VAT
+  // again) and a second row books the VAT to its 27xx account under the same
+  // bilag. Returns {mainAmount, vatSplit, vatLeg}. No-op unless the flag is on.
+  const planVatSplit=(f)=>{
+    if(!companyProfile.splitVat)return{mainAmount:f.amount,vatSplit:false,vatLeg:null};
+    const s=vatSplit({debitCode:f.debitCode,creditCode:f.creditCode,amount:parseFloat(f.amount),vatCode:f.vatCode,vatAmount:f.vatAmount,description:f.description},accounts);
+    if(!s)return{mainAmount:f.amount,vatSplit:false,vatLeg:null};
+    return{mainAmount:s.net,vatSplit:true,vatLeg:s.vatLeg};
+  };
+  // Books the 27xx VAT leg of a split entry under an already-reserved bilag.
+  const insertVatLeg=async(vatLeg,bilagNum,date)=>{
+    if(!vatLeg)return;
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date,debit_code:vatLeg.debitCode,credit_code:vatLeg.creditCode,description:vatLeg.description,amount:vatLeg.amount,vat_split:true}]).select().single();
+    if(error){logBug("DB_ERROR","Failed to insert VAT leg",error.message,"insertVatLeg");return;}
+    if(data)setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date,debitCode:vatLeg.debitCode,creditCode:vatLeg.creditCode,description:vatLeg.description,amount:vatLeg.amount,vatSplit:true}]);
+  };
+
   const addTransaction=async(form)=>{
     if(!canEdit)return{error:"You don't have permission to add entries."};
     if(blockIfLocked(form.date))return{error:"This period is closed."};
@@ -755,7 +775,8 @@ function AppShell({user}){
     let nb;
     if(form.bilag!=null){nb=form.bilag;}
     else{nb=bilagRef.current;bilagRef.current=nb+1;setNextBilag(bilagRef.current);}
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:form.amount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
+    const svs=planVatSplit(form);
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:svs.mainAmount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,vat_split:svs.vatSplit,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return{error:error.message};
@@ -779,10 +800,11 @@ function AppShell({user}){
         if(r&&r.error)attachmentError=r.error;
         else{setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
       }
-      if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:form.amount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
-      logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:form.amount});
-      return{id:data.id,bilag:nb,description:form.description,amount:form.amount,attachmentError};
+      if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,debitCode:form.debitCode,creditCode:form.creditCode});
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,vatSplit:svs.vatSplit,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
+      await insertVatLeg(svs.vatLeg,nb,form.date);
+      logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount});
+      return{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,attachmentError};
     }
     return{error:"No data returned from the database."};
   };
@@ -1085,10 +1107,12 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const vatCode=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatCode:null;
     const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
     const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,contact_id:contactId||null}]).select().single();
+    const svs=planVatSplit({debitCode,creditCode,amount,vatCode,vatAmount,description:line.description});
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:svs.mainAmount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,vat_split:svs.vatSplit,contact_id:contactId||null}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount,vatCode,vatPct,vatAmount,contactId:contactId||null}]);
-    if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount,debitCode,creditCode});
+    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount:svs.mainAmount,vatCode,vatPct,vatAmount,vatSplit:svs.vatSplit,contactId:contactId||null}]);
+    await insertVatLeg(svs.vatLeg,bilagNum,line.date);
+    if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount:svs.mainAmount,debitCode,creditCode});
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
     if(updErr)console.error("Bank line post-flag error:",updErr);
     setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:true,postedTxnId:data.id}:l));
@@ -1183,9 +1207,17 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
     const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
 
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:form.total,contact_id:form.customerId}]).select().single();
+    // VAT split (only when splitVat is on): the full invoice's ledger row
+    // otherwise stays exactly as before — one gross Dr 1500 / Cr sale row with
+    // no VAT metadata (VATTermin reads invoice VAT from the invoices table).
+    const saleAcct=accounts.find(a=>a.code===form.saleAccount);
+    const invVatCode=(saleAcct&&saleAcct.defaultVatCode)||((vatCodeForRate(form.vatPct,"output")||{}).code)||null;
+    const svs=companyProfile.splitVat?planVatSplit({debitCode:"1500",creditCode:form.saleAccount,amount:form.total,vatCode:invVatCode,vatAmount:form.vatAmount,description:desc}):{mainAmount:form.total,vatSplit:false,vatLeg:null};
+    const vatCols=svs.vatSplit?{vat_code:invVatCode,vat_pct:form.vatPct||null,vat_amount:form.vatAmount||null,vat_split:true}:{};
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:svs.mainAmount,...vatCols,contact_id:form.customerId}]).select().single();
     if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
-    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:form.total,contactId:form.customerId}]);
+    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:svs.mainAmount,...(svs.vatSplit?{vatCode:invVatCode,vatPct:form.vatPct||null,vatAmount:form.vatAmount||null,vatSplit:true}:{}),contactId:form.customerId}]);
+    await insertVatLeg(svs.vatLeg,nb,form.date);
 
     const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
@@ -1273,7 +1305,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // still flashed "Saved!" regardless, since that flash isn't wired to
     // this call's outcome either. That's exactly "I set the country/name
     // and it didn't save" with zero visible error. Now it actually surfaces.
-    const{error}=await sb.from("company_profile").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
+    const{error}=await sb.from("company_profile").upsert({user_id:viewingUserId,...(cid?{company_id:cid}:{}),company_name:profile.companyName,address:profile.address,mobile:profile.mobile,email:profile.email,org_number:profile.orgNumber,bank_account:profile.bankAccount,vat_pct:profile.vatPct,fiscal_year_start_month:profile.fiscalYearStartMonth||1,logo_data_url:profile.logoDataUrl||null,period_close_date:profile.periodCloseDate||null,phone:profile.phone||null,fax_number:profile.faxNumber||null,website:profile.website||null,postcode:profile.postcode||null,city:profile.city||null,form_of_business:profile.formOfBusiness||null,currency:profile.currency||"PKR",language:profile.language||"English",country:profile.country||"PK",track_projects:!!profile.trackProjects,split_vat:!!profile.splitVat,municipality:profile.municipality||null,municipality_start_date:profile.municipalityStartDate||null,updated_at:new Date().toISOString()},{onConflict:cid?"user_id,company_id":"user_id"});
     if(error){
       alert("Company information didn't save:\n\n"+error.message+"\n\nYour changes are shown here but will revert on reload until this is fixed.");
       logBug&&logBug("DB_ERROR","Failed to save company_profile",error.message,"saveCompanyProfile");
@@ -1552,12 +1584,17 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // once the delete is confirmed.
     if(original&&blockIfLocked(original.date))return{error:"This period is closed."};
     if(!canEdit)return{error:"You don't have permission to delete entries."};
-    const{error}=await sb.from("transactions").delete().eq("id",id);
+    // Deleting one leg of a VAT-split voucher would leave it unbalanced — take
+    // the whole bilag (net P&L row + its 27xx VAT row) together.
+    const ids=(original&&original.vatSplit)
+      ? transactions.filter(t=>t.bilag===original.bilag&&t.vatSplit).map(t=>t.id)
+      : [id];
+    const{error}=await sb.from("transactions").delete().in("id",ids);
     if(error){
       logBug("DB_ERROR","Failed to delete transaction",error.message,"deleteTxn");
       return{error:error.message};
     }
-    setTransactionsState(p=>p.filter(t=>t.id!==id));
+    setTransactionsState(p=>p.filter(t=>!ids.includes(t.id)));
     if(original)logAudit("transaction",id,original.bilag,"delete",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},null);
     return{ok:true};
   };
@@ -1570,12 +1607,20 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setNextBilag(bilagRef.current);
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
-    const desc="Reversal of "+fmtB(t.bilag)+" — "+t.description;
-    const{data}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:t.creditCode,credit_code:t.debitCode,description:desc,amount:t.amount,matched_with:grp,reversal_of:t.bilag}]).select().single();
-    await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",t.id);
-    if(data){
-      setTransactionsState(p=>[...p.map(x=>x.id===t.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:t.creditCode,creditCode:t.debitCode,description:desc,amount:t.amount,matchedWith:grp,reversalOf:t.bilag}]);
-      logAudit("transaction",t.id,t.bilag,"reverse",{reversedBy:null},{reversedBy:rb,reversalBilag:rb});
+    // A VAT-split entry is 2 rows sharing a bilag (net P&L + 27xx VAT) —
+    // reversing one leg alone would leave the voucher unbalanced, so reverse
+    // every not-yet-reversed row of that bilag together.
+    const legs=t.vatSplit
+      ? transactions.filter(x=>x.bilag===t.bilag&&!x.reversedBy&&!x.reversalOf)
+      : [t];
+    for(const leg of legs){
+      const desc="Reversal of "+fmtB(leg.bilag)+" — "+leg.description;
+      const{data}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:leg.creditCode,credit_code:leg.debitCode,description:desc,amount:leg.amount,matched_with:grp,reversal_of:leg.bilag}]).select().single();
+      await sb.from("transactions").update({reversed_by:rb,matched_with:grp}).eq("id",leg.id);
+      if(data){
+        setTransactionsState(p=>[...p.map(x=>x.id===leg.id?{...x,reversedBy:rb,matchedWith:grp}:x),{id:data.id,bilag:rb,date:today,debitCode:leg.creditCode,creditCode:leg.debitCode,description:desc,amount:leg.amount,matchedWith:grp,reversalOf:leg.bilag}]);
+        logAudit("transaction",leg.id,leg.bilag,"reverse",{reversedBy:null},{reversedBy:rb,reversalBilag:rb});
+      }
     }
   };
 

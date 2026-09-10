@@ -200,7 +200,8 @@ function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,da
     const vc=MVA_CODES.find(c=>String(c.code)===String(t.vatCode));
     const dir=vc?vc.direction:(sideWanted==="debit"?"input":"output");
     if(dir!==(sideWanted==="debit"?"input":"output"))return"";
-    const base=Math.abs(t.amount||0)-Math.abs(t.vatAmount||0);
+    // On a split entry the P&L row's amount is already net; otherwise net = gross − VAT.
+    const base=t.vatSplit?Math.abs(t.amount||0):Math.abs(t.amount||0)-Math.abs(t.vatAmount||0);
     const amtTag=sideWanted==="debit"
       ?`<DebitTaxAmount><Amount>${money(Math.abs(t.vatAmount))}</Amount></DebitTaxAmount>`
       :`<CreditTaxAmount><Amount>${money(Math.abs(t.vatAmount))}</Amount></CreditTaxAmount>`;
