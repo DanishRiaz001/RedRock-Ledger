@@ -54,6 +54,24 @@ One row per fiscal year:
   General ledger — all exist, just not tied together per-period.
 - **No** period-lock, **no** year-close concept, **no** consolidated matrix.
 
+## STATUS (2026-09-11, commit d5cd63c)
+
+- **Phase 1 (opening balance) — DONE.** Rebuilt as a single voucher view
+  ("Bilag 0 · Åpningsbalanse") with inline per-invoice open items, Dimensjon
+  (project) column, Kontrollsum. No currency columns (currency isn't persisted).
+- **Phase 3 (Årsregnskap section UI) — DONE, lean version.** Sidebar
+  Accounting → Årsregnskap. `AnnualAccountsScreen` in reports.jsx:
+  Regnskapsoversikt (year rows + CSV + SAF-T + Avsluttet), per-year period
+  matrix (lock months, Mva-melding status, bank-recon status, "Avslutt år").
+- **Phase 2 (period lock) — used the EXISTING `companyProfile.periodCloseDate`**
+  (one "closed up to" date, advanced a month at a time) instead of a new
+  per-period table. `blockIfLocked` already enforces it on every write. Good
+  enough; a true per-period lock/reopen with audit is still a possible upgrade.
+- **Phase 4 (year close) — NOT done.** "Avslutt år" only locks the 12 periods.
+  The result-to-equity posting (8xxx net → 2050/2080 dated 31.12) and the
+  roll-forward of every balance-sheet account's closing balance into next
+  year's opening voucher are still manual. This is the main remaining piece.
+
 ## Build plan
 
 ### Phase 1 — Åpningsbalanse upgrade (small, do first)
