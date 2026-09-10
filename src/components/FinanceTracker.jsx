@@ -10,7 +10,7 @@ import {
 } from "./ledger.jsx";
 import {
   Dashboard, DesktopDashboard, SettingsMenu, AccountPlanScreen, TrialBalanceScreen,
-  ResultatScreen, BalanceSheetScreen, VATReportScreen, VATTerminScreen, VATTerminDetailScreen,
+  ResultatScreen, BalanceSheetScreen, VATReportScreen, VATTerminScreen, VATTerminDetailScreen, AnnualAccountsScreen,
   GeneralLedgerScreen, BankDashboardScreen, BankReconciliationScreen, ReskontroDesktopScreen,
   LedgerDrilldownScreen, PeriodSelector, AssistantPanel, OnboardingWizard, ReconciliationScreen,
 } from "./reports.jsx";
@@ -141,7 +141,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",AnnualAccounts:"Årsregnskap",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -990,6 +990,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               {tab:"AgedReskontro",label:"Aged receivables/payables",featureKey:"reskontro"},
               {tab:"VATTermin",label:"Mva-meldinger",featureKey:"vat"},
               {tab:"VATCodes",label:"VAT codes",featureKey:"vat"},
+              {tab:"AnnualAccounts",label:"Årsregnskap"},
               {tab:"AccountingSettings",label:"Settings"},
             ]},
             {id:"reports",label:"Reports",icon:"ti-chart-bar",items:[
@@ -1321,7 +1322,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="OpeningBalance"&&(
           <ScreenErrorBoundary name="Opening Balance">
-            <OpeningBalanceScreen accounts={accounts} contacts={contacts} setContacts={setContacts} transactions={transactions} addTransaction={addTransactionNotified} onSave={setAccounts} onBack={()=>setTab("Settings")} uploadInboxFile={uploadInboxFile}/>
+            <OpeningBalanceScreen accounts={accounts} contacts={contacts} setContacts={setContacts} transactions={transactions} projects={projects} addTransaction={addTransactionNotified} onSave={setAccounts} onBack={()=>setTab("Settings")} uploadInboxFile={uploadInboxFile}/>
+          </ScreenErrorBoundary>
+        )}
+
+        {tab==="AnnualAccounts"&&(
+          <ScreenErrorBoundary name="Årsregnskap">
+            <AnnualAccountsScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} accounts={accounts} contacts={contacts} transactions={transactions} userEmail={(profile&&profile.email)||(user&&user.email)||""} onNavigate={setTab}/>
           </ScreenErrorBoundary>
         )}
 

@@ -6848,4 +6848,168 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
   );
 }
 
-export { AccountPlanScreen, NewAccountModal, AccountModal, SettingsMenu, BankSlider, MiniBar, PeriodSelector, Dashboard, ConicChart, AssistantPanel, OnboardingWizard, DesktopDashboard, AccountEditModal, PeriodPickerModal, LedgerDrilldownScreen, TrialBalanceScreen, ResultatScreen, BalanceSheetScreen, VATReportScreen, VATTerminScreen, VATTerminDetailScreen, GeneralLedgerScreen, BankDashboardScreen, BankAccountDetailsModal, BankReconciliationScreen, ReskontroDesktopScreen, ReconciliationScreen };
+// ── Årsregnskap (year-end) ────────────────────────────────────────────────
+// Regnskapsoversikt (a row per fiscal year) + a per-year detail with the
+// period-lock state, Mva-melding status per termin, bank-reconciliation status,
+// and the statutory exports (SAF-T + hovedbok CSV). Period locking reuses the
+// app's existing single `companyProfile.periodCloseDate` — advancing it one
+// month at a time from here — rather than a new per-period table.
+const _lastDayOfMonth=(y,m)=>new Date(y,m,0).toISOString().slice(0,10); // m 1-12
+const _download=(name,text,type)=>{
+  const blob=new Blob([text],{type:type||"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+};
+
+function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],contacts=[],transactions=[],userEmail,onNavigate,initialYear}){
+  const thisYear=new Date().getFullYear();
+  const firstYear=useMemo(()=>{
+    const ys=transactions.map(t=>parseInt((t.date||"").slice(0,4))).filter(Boolean);
+    return ys.length?Math.min(...ys):thisYear;
+  },[transactions,thisYear]);
+  const years=[];for(let y=thisYear;y>=firstYear;y--)years.push(y);
+  const[year,setYear]=useState(initialYear||null);
+
+  const pcd=companyProfile.periodCloseDate||"";
+  const monthLocked=(y,m)=>pcd&&pcd>=_lastDayOfMonth(y,m);
+  const yearClosed=(y)=>pcd&&pcd>=`${y}-12-31`;
+  const priorYearOpen=(y)=>years.some(yy=>yy<y)&&!yearClosed(y-1)&&y-1>=firstYear;
+
+  const acctName=c=>{const a=accounts.find(x=>x.code===c);return a?a.name:c;};
+
+  const downloadSaft=(y)=>{
+    try{
+      const xml=buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom:`${y}-01-01`,dateTo:`${y}-12-31`,userEmail});
+      _download(`SAF-T_Financial_${y}.xml`,xml,"application/xml");
+    }catch(e){alert("SAF-T export failed: "+e.message);}
+  };
+  const downloadHovedbokCsv=(y)=>{
+    const rows=transactions.filter(t=>(t.date||"").slice(0,4)===String(y)).sort((a,b)=>(a.bilag||0)-(b.bilag||0)||(a.date>b.date?1:-1));
+    const esc=s=>{s=String(s==null?"":s);return /[";\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;};
+    const out=["Bilag;Dato;Konto;Kontonavn;Beskrivelse;Debet;Kredit"];
+    rows.forEach(t=>{
+      const amt=Math.abs(t.amount||0).toFixed(2);
+      if(t.debitCode)out.push([t.bilag,t.date,t.debitCode,esc(acctName(t.debitCode)),esc(t.description),amt,""].join(";"));
+      if(t.creditCode)out.push([t.bilag,t.date,t.creditCode,esc(acctName(t.creditCode)),esc(t.description),"",amt].join(";"));
+    });
+    _download(`Kontospesifikasjon_${y}.csv`,out.join("\n"));
+  };
+
+  // ── overview table ──
+  if(year==null){
+    return(
+      <div style={{maxWidth:1000}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Regnskapsoversikt</h1>
+        <p style={{fontSize:12,color:T.muted,margin:"0 0 18px"}}>One row per accounting year — its lock status, the statutory reports, and the SAF-T export Skatteetaten asks for.</p>
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:12,padding:"10px 16px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:9.5,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:0.4}}>
+            <div>Årsregnskap</div><div>Rapporter</div><div style={{textAlign:"center"}}>Avsluttet</div><div>Regnskapseksport (SAF-T)</div>
+          </div>
+          {years.map((y,i)=>(
+            <div key={y} style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:12,padding:"13px 16px",alignItems:"center",borderTop:i>0?`1px solid ${T.border}`:"none"}}>
+              <div>
+                <button onClick={()=>setYear(y)} style={{background:"none",border:"none",color:T.accent,fontWeight:800,fontSize:13.5,cursor:"pointer",fontFamily:"inherit",padding:0}}>Årsregnskap {y}</button>
+                <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>{y}-01-01 – {y}-12-31</div>
+              </div>
+              <div><button onClick={()=>downloadHovedbokCsv(y)} style={{background:"none",border:"none",color:T.link||T.blue,fontSize:11.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0}}>Kontospesifikasjon CSV</button></div>
+              <div style={{textAlign:"center"}}>
+                <span style={{width:15,height:15,display:"inline-block",borderRadius:4,border:`1.5px solid ${yearClosed(y)?T.accent:T.border}`,background:yearClosed(y)?T.accent:"#fff",position:"relative"}}>{yearClosed(y)&&<i className="ti ti-check" style={{position:"absolute",top:0,left:1,fontSize:11,color:"#fff"}}/>}</span>
+              </div>
+              <div><button onClick={()=>downloadSaft(y)} style={{background:"none",border:"none",color:T.link||T.blue,fontSize:11.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"inline-flex",alignItems:"center",gap:4}}>Last ned <i className="ti ti-download" style={{fontSize:12}}/></button></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── year detail ──
+  const MONTHS=["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"];
+  const bankAccounts=accounts.filter(a=>{const n=parseInt(a.code);return n>=1900&&n<2000&&!a.inactive;});
+  const vs=getVatStatuses();
+  const terminStatus=(n)=>{const s=vs[`${year}-${n}`]||{};return s.paid?{t:`${n}. termin · Betalt`,c:"g"}:s.filed?{t:`${n}. termin · Sendt`,c:"o"}:{t:`${n}. termin · Ikke sendt`,c:"r"};};
+  const pill={g:{background:T.greenBg,color:T.green},o:{background:T.orangeBg,color:T.orange},r:{background:T.redLight,color:T.red}};
+  const lockThrough=(m)=>{
+    const d=_lastDayOfMonth(year,m);
+    if(pcd&&pcd>=d)return; // already locked at least this far
+    if(!window.confirm(`Lock every period through ${d}? Entries dated on or before then can no longer be changed (an admin can move the lock date back in Settings).`))return;
+    saveCompanyProfile({...companyProfile,periodCloseDate:d});
+  };
+
+  return(
+    <div style={{maxWidth:1100}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <button onClick={()=>setYear(null)} style={{background:"none",border:"none",color:T.sub,fontSize:18,cursor:"pointer",padding:2}}><i className="ti ti-arrow-left"/></button>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Årsregnskap {year} — {yearClosed(year)?"Avsluttet":"Åpent"}</h1>
+      </div>
+      {priorYearOpen(year)&&(
+        <div style={{display:"flex",gap:8,alignItems:"flex-start",background:T.accentLight,border:`1px solid ${T.borderActive||T.border}`,borderRadius:10,padding:"10px 14px",fontSize:12,margin:"10px 0 16px"}}>
+          <span>ℹ️</span><span>{year} can't be closed yet — <b>{year-1} is still open</b>. Years must be closed in order.</span>
+        </div>
+      )}
+
+      {/* period lock matrix */}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"auto",marginTop:12}}>
+        <div style={{padding:"11px 16px",borderBottom:`1px solid ${T.border}`,fontWeight:800,fontSize:14}}>Perioder</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:780}}>
+          <thead><tr style={{background:T.bg}}>
+            <th style={{textAlign:"left",padding:"8px 12px",fontSize:9.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.4}}>Beskrivelse</th>
+            {MONTHS.map(m=><th key={m} style={{padding:"8px 6px",fontSize:9.5,color:T.muted,fontWeight:700}}>{m}</th>)}
+          </tr></thead>
+          <tbody>
+            <tr style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"9px 12px",fontWeight:600}}>Periode låst</td>
+              {MONTHS.map((m,i)=>{const locked=monthLocked(year,i+1);return(
+                <td key={m} style={{textAlign:"center",padding:"7px 6px"}}>
+                  <button onClick={()=>lockThrough(i+1)} title={locked?"Låst":"Lås til og med denne måneden"} style={{background:"none",border:"none",cursor:locked?"default":"pointer",padding:2}}>
+                    <i className={`ti ${locked?"ti-lock":"ti-lock-open"}`} style={{fontSize:14,color:locked?T.green:T.muted}}/>
+                  </button>
+                </td>
+              );})}
+            </tr>
+            <tr style={{borderTop:`1px solid ${T.border}`,background:T.bg}}>
+              <td colSpan={13} style={{padding:"6px 12px",fontSize:9,fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:0.5}}>Mva-melding</td>
+            </tr>
+            <tr style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"9px 12px",fontWeight:600}}>Termin</td>
+              {[1,2,3,4,5,6].map(n=>{const s=terminStatus(n);return(
+                <td key={n} colSpan={2} style={{textAlign:"center",padding:"7px 4px"}}>
+                  <button onClick={()=>onNavigate&&onNavigate("VATTermin")} style={{border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:20,padding:"3px 8px",fontSize:9.5,fontWeight:700,...pill[s.c]}}>{s.t}</button>
+                </td>
+              );})}
+            </tr>
+            {bankAccounts.length>0&&(
+              <tr style={{borderTop:`1px solid ${T.border}`,background:T.bg}}>
+                <td colSpan={13} style={{padding:"6px 12px",fontSize:9,fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:0.5}}>Avstemminger — bank</td>
+              </tr>
+            )}
+            {bankAccounts.map(ba=>(
+              <tr key={ba.code} style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"9px 12px",fontWeight:600,whiteSpace:"nowrap"}}>{ba.code} {ba.name}</td>
+                {MONTHS.map((m,i)=>{const ok=isBankReconApproved(ba.code,`${year}-${String(i+1).padStart(2,"0")}`);return(
+                  <td key={m} style={{textAlign:"center",padding:"7px 6px"}}>
+                    {ok?<i className="ti ti-check" style={{fontSize:13,color:T.green}}/>:<span style={{color:T.border}}>–</span>}
+                  </td>
+                );})}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
+        <button onClick={()=>downloadHovedbokCsv(year)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Kontospesifikasjon CSV</button>
+        <button onClick={()=>downloadSaft(year)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Regnskapseksport (SAF-T)</button>
+        <button onClick={()=>onNavigate&&onNavigate("TrialBalance")} style={{background:"#fff",color:T.sub,border:`1px solid ${T.border}`,borderRadius:9,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Åpne saldobalanse</button>
+        <button onClick={()=>lockThrough(12)} disabled={yearClosed(year)||priorYearOpen(year)} style={{background:yearClosed(year)||priorYearOpen(year)?T.border:T.accent,color:yearClosed(year)||priorYearOpen(year)?T.muted:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:yearClosed(year)||priorYearOpen(year)?"default":"pointer",fontFamily:"inherit"}}>{yearClosed(year)?"Året er avsluttet":"Avslutt år (lås alle perioder)"}</button>
+      </div>
+      <p style={{fontSize:10.5,color:T.muted,marginTop:8}}>
+        "Avslutt år" locks every period in {year} against further edits. The statutory result-to-equity posting and the roll-forward of closing balances into next year's opening balance are not automated yet — post those manually for now.
+      </p>
+    </div>
+  );
+}
+
+export { AnnualAccountsScreen, AccountPlanScreen, NewAccountModal, AccountModal, SettingsMenu, BankSlider, MiniBar, PeriodSelector, Dashboard, ConicChart, AssistantPanel, OnboardingWizard, DesktopDashboard, AccountEditModal, PeriodPickerModal, LedgerDrilldownScreen, TrialBalanceScreen, ResultatScreen, BalanceSheetScreen, VATReportScreen, VATTerminScreen, VATTerminDetailScreen, GeneralLedgerScreen, BankDashboardScreen, BankAccountDetailsModal, BankReconciliationScreen, ReskontroDesktopScreen, ReconciliationScreen };
