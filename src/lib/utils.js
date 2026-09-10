@@ -369,4 +369,39 @@ const nextContactId=(contacts,type)=>{
   return String((nums.length?Math.max(...nums):base-1)+1);
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId };
+// Named "payment types" for posting straight from a bank statement line —
+// a curated shortlist (Bankgebyr, Kortgebyr, Renteinntekter, …) each
+// mapped to a real GL account, so the common cases don't need an account
+// search every time. Editable from Bank → Settings and from the post
+// popup; stored per browser like the other lightweight bank-reconciliation
+// settings. Shared here so both screens read/write the same list.
+const BANK_POSTING_TYPES_KEY = "rr_bank_posting_types";
+const DEFAULT_BANK_POSTING_TYPES = [
+  { name: "Bankgebyr", accountCode: "7770", direction: "out" },
+  { name: "Kortgebyr", accountCode: "7770", direction: "out" },
+  { name: "Rentekostnader", accountCode: "8150", direction: "out" },
+  { name: "Bank åpne poster", accountCode: "1790", direction: "out" },
+  { name: "Gjeld til eiere", accountCode: "2250", direction: "out" },
+  { name: "Renteinntekter", accountCode: "8050", direction: "in" },
+  { name: "Bank åpne poster", accountCode: "1790", direction: "in" },
+];
+const getBankPostingTypes = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BANK_POSTING_TYPES_KEY) || "null");
+    return Array.isArray(raw) ? raw : null;
+  } catch { return null; }
+};
+const saveBankPostingTypes = (list) => {
+  try { localStorage.setItem(BANK_POSTING_TYPES_KEY, JSON.stringify(list)); } catch {}
+};
+// The list an account-aware screen should use — saved list if the user has
+// one, else the defaults filtered to accounts that actually exist in this
+// company's chart, each given a stable id.
+const seededBankPostingTypes = (accounts) => {
+  const saved = getBankPostingTypes();
+  if (saved) return saved;
+  const codes = new Set((accounts || []).map(a => a.code));
+  return DEFAULT_BANK_POSTING_TYPES.filter(t => codes.has(t.accountCode)).map((t, i) => ({ ...t, id: `pt_${i}` }));
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes };

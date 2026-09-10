@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
@@ -147,6 +147,20 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
   const bankAccounts=accounts.filter(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&configured(a));
   const[editingAccount,setEditingAccount]=useState(null);
   const[addingBank,setAddingBank]=useState(false);
+  // Named "payment types" — the shortlist shown in Bank reconciliation's
+  // "Post as" dropdown, each mapped to a real account. Same list the post
+  // popup reads (via localStorage), edited here as a proper table.
+  const[postingTypes,setPostingTypesState]=useState(()=>seededBankPostingTypes(accounts));
+  const savePT=(list)=>{setPostingTypesState(list);saveBankPostingTypes(list);};
+  const updPT=(id,patch)=>savePT(postingTypes.map(t=>t.id===id?{...t,...patch}:t));
+  const addPT=(dir)=>savePT([...postingTypes,{id:`pt_${Date.now().toString(36)}`,name:"",accountCode:"",direction:dir,inactive:false}]);
+  const delPT=(id)=>savePT(postingTypes.filter(t=>t.id!==id));
+  const resetPT=()=>{
+    if(!window.confirm("Reset the payment-type list to the defaults? Custom entries will be replaced."))return;
+    const codes=new Set(accounts.map(a=>a.code));
+    savePT(DEFAULT_BANK_POSTING_TYPES.filter(t=>codes.has(t.accountCode)).map((t,i)=>({...t,id:`pt_${i}`})));
+  };
+  const ptCreateAccount=onSaveAccounts?(a=>onSaveAccounts([...accounts,a])):undefined;
   const saveBankDetails=(code,details)=>{
     if(!onSaveAccounts)return;
     const updated=accounts.map(a=>a.code===code?{...a,notes:JSON.stringify(details)}:a);
@@ -210,9 +224,42 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
           </tbody>
         </table>
       </div>
-      <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"14px 16px",fontSize:11,color:T.muted}}>
+      <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"14px 16px",fontSize:11,color:T.muted,marginBottom:24}}>
         Direct bank connections (auto-approving payments, live balance sync) need a real bank API agreement — that's a separate integration to set up per bank, not something to fake here. Statement import via CSV/Excel already works from Bank → Bank reconciliation.
       </div>
+
+      {/* Payment types — the "Post as" shortlist in Bank reconciliation.
+          A named type (Bankgebyr, Renteinntekter, …) mapped to a real
+          account, so the common cases post in one pick. Split by direction,
+          same as the bank statement's own "Ut av konto" / "Inn på konto". */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div>
+          <h2 style={{fontSize:15,fontWeight:800,color:T.text,margin:0}}>Payment types</h2>
+          <div style={{fontSize:11,color:T.muted,marginTop:2}}>Shown in Bank reconciliation's "Post as" dropdown when booking a statement line straight to an account.</div>
+        </div>
+        <button onClick={resetPT} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Reset to defaults</button>
+      </div>
+      {[["out","Ut av konto (money out)"],["in","Inn på konto (money in)"]].map(([dir,label])=>(
+        <div key={dir} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:14}}>
+          <div style={{padding:"9px 16px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:0.4}}>{label}</div>
+          <div style={{padding:"10px 16px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1.1fr 1.6fr 70px 28px",gap:10,fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,padding:"0 0 6px"}}>
+              <div>Beskrivelse</div><div>Regnskapskonto</div><div style={{textAlign:"center"}}>Inaktiv</div><div/>
+            </div>
+            {postingTypes.filter(t=>t.direction===dir).map(t=>(
+              <div key={t.id} style={{display:"grid",gridTemplateColumns:"1.1fr 1.6fr 70px 28px",gap:10,alignItems:"center",padding:"5px 0",opacity:t.inactive?0.55:1}}>
+                <input value={t.name} onChange={e=>updPT(t.id,{name:e.target.value})} placeholder={dir==="out"?"e.g. Bankgebyr":"e.g. Renteinntekter"} style={{...inp,fontSize:12,padding:"7px 10px"}}/>
+                <AccDrop value={t.accountCode} onChange={v=>updPT(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={ptCreateAccount}/>
+                <div style={{textAlign:"center"}}><input type="checkbox" checked={!!t.inactive} onChange={e=>updPT(t.id,{inactive:e.target.checked})}/></div>
+                <button onClick={()=>delPT(t.id)} title="Remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1}}>✕</button>
+              </div>
+            ))}
+            {!postingTypes.some(t=>t.direction===dir)&&<div style={{fontSize:11.5,color:T.muted,padding:"8px 0"}}>None yet.</div>}
+            <button onClick={()=>addPT(dir)} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0 0"}}>+ Ny rad</button>
+          </div>
+        </div>
+      ))}
+      <div style={{fontSize:10.5,color:T.muted}}>Saved automatically. Blank rows are ignored. Kept per browser, alongside the other bank-reconciliation settings.</div>
     </div>
   );
 }
