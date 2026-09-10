@@ -110,7 +110,17 @@ code, code has no `settleAccount`, VAT ≈ 0 or ≥ gross, a **negative** amount
 (kreditnota / reversal — left one-line), or the settlement account is missing
 from the chart.
 
-### Wiring — NOT done (the risky part)
+### Wiring — DONE (2026-09-11, commit 674b4a7)
+
+Wired into `addTransaction`, `insertBankLineTxn`, `createInvoice` behind
+`companyProfile.splitVat` (default OFF). `reverseTransaction` / `deleteTxn`
+take the whole bilag when a leg is `vat_split`. Reporting uses `vatBase(t)` so
+the Mva-melding is unchanged (verified: grunnlag + VAT identical split vs not).
+Toggle: Accounting settings → VAT codes. Needs `sql/add_vat_split.sql`.
+Still v1: EditModal shows a split voucher as 2 grid rows but editing the net
+amount won't auto-recompute the VAT leg; reverse-charge codes not split.
+
+### Original wiring notes
 
 Three DB insert points in `appshell.jsx` need it:
 - `addTransaction` (line ~758) — advance voucher + supplier/customer quick invoice
