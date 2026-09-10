@@ -1564,7 +1564,16 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // distinctive rate (reverse-derivable from vat_pct alone) but showed as
     // simply gone anywhere that reads vatCode directly, like the General
     // ledger's own VAT code column.
-    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_code:u.vatCode!=null?u.vatCode:null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null}).eq("id",u.id);
+    // project / money-source / currency are only written when the editor
+    // actually carries them (it now has fields for project + money source) —
+    // otherwise a partial UPDATE leaves the stored value alone.
+    const extra={};
+    if("projectId"in u)extra.project_id=u.projectId||null;
+    if("moneySourceId"in u)extra.money_source_id=u.moneySourceId||null;
+    if("moneySourceIdCredit"in u)extra.money_source_id_credit=u.moneySourceIdCredit||null;
+    if("currency"in u)extra.currency=u.currency||null;
+    if("amountNok"in u)extra.amount_nok=u.amountNok!=null&&u.amountNok!==""?u.amountNok:null;
+    const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_code:u.vatCode!=null?u.vatCode:null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null,...extra}).eq("id",u.id);
     if(error){
       logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
       return{error:error.message};
@@ -1577,7 +1586,16 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // would show the just-saved entry as a plain generic voucher until the
     // next full reload — carrying the original's entryMode through keeps
     // the local copy in sync with what the database actually still has.
-    setTransactionsState(p=>p.map(t=>t.id===u.id?{...u,entryMode:original?original.entryMode:u.entryMode}:t));
+    // Carry through everything the generic editor's `u` doesn't include, so
+    // the local cache matches what the DB still has (a partial UPDATE left
+    // those columns untouched): entry mode, project, money source, vat_split.
+    setTransactionsState(p=>p.map(t=>t.id===u.id?{...t,...u,
+      entryMode:original?original.entryMode:u.entryMode,
+      projectId:("projectId"in u)?u.projectId:(original?original.projectId:null),
+      moneySourceId:("moneySourceId"in u)?u.moneySourceId:(original?original.moneySourceId:null),
+      moneySourceIdCredit:("moneySourceIdCredit"in u)?u.moneySourceIdCredit:(original?original.moneySourceIdCredit:null),
+      vatSplit:original?original.vatSplit:false,
+    }:t));
     if(original)logAudit("transaction",u.id,u.bilag,"update",{date:original.date,debitCode:original.debitCode,creditCode:original.creditCode,description:original.description,amount:original.amount},{date:u.date,debitCode:u.debitCode,creditCode:u.creditCode,description:u.description,amount:u.amount});
     return{id:u.id};
   };
