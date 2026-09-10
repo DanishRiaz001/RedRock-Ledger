@@ -4380,15 +4380,23 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // real rows in that same table — clickable Grunnlag/Mva opening the same
   // spec window every other code uses — makes it "category 0" exactly like
   // the 25%/15%/etc. rows above it, instead of a visually different bucket.
-  const noVatByCode=useMemo(()=>{
+  // Split by direction (same isIncomeSK/isExpenseSK test nonVatTxns itself
+  // was already filtered by) and rendered inside Salg/Kjøp respectively,
+  // instead of one flat "Uten avgiftsbehandling" bucket mixing a sales
+  // line (code 5, "Ingen utgående avgift") with a purchase line (code 0)
+  // under a heading that named neither — a no-VAT sale is still a sale,
+  // a no-VAT purchase is still a purchase.
+  const groupNoVatByCode=rows=>{
     const m={};
-    nonVatTxns.forEach(t=>{
+    rows.forEach(t=>{
       const code=t.vatCode||"0";
       if(!m[code])m[code]={code,rows:[],net:0};
       m[code].rows.push(t);m[code].net+=t.amount;
     });
     return Object.values(m).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
-  },[nonVatTxns]);
+  };
+  const noVatSalesByCode=useMemo(()=>groupNoVatByCode(nonVatTxns.filter(t=>isIncomeSK(t.creditCode))),[nonVatTxns]);
+  const noVatPurchaseByCode=useMemo(()=>groupNoVatByCode(nonVatTxns.filter(t=>!isIncomeSK(t.creditCode)&&isExpenseSK(t.debitCode))),[nonVatTxns]);
   // Further breakdown within each rate group — which actual income/expense
   // account the VAT base came from, not just the total for the rate. Sales
   // group by the credit side (the revenue account itself); purchases group
@@ -4449,12 +4457,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const exportXlsx=()=>{
     const aoa=[["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg","","","",""],["Salg innenlands","","","",""]];
     salesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"output");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,g.net,g.vat]);});
-    aoa.push(["Salg til utlandet","","","",""]);
-    if(exportTxns.length)aoa.push(["52","Avgiftsfri utførsel av varer og tjenester",0,exportTotal,0]);
+    // Section header only pushed alongside its own row now — matching the
+    // on-screen table, which no longer shows "Salg/Kjøp til/fra utlandet"
+    // at all when there's nothing under it that period.
+    if(exportTxns.length){aoa.push(["Salg til utlandet","","","",""]);aoa.push(["52","Avgiftsfri utførsel av varer og tjenester",0,exportTotal,0]);}
+    if(noVatSalesByCode.length){aoa.push(["Salg uten avgiftsbehandling","","","",""]);noVatSalesByCode.forEach(g=>{const vc=findVatCode(g.code,"output");aoa.push([g.code,vc?vc.name:"Ingen avgiftsbehandling",0,g.net,0]);});}
     aoa.push(["Kjøp","","","",""],["Kjøp innenlands","","","",""]);
     purchasesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"input");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,-g.net,-g.vat]);});
-    aoa.push(["Kjøp fra utlandet","","","",""]);
-    if(foreignPurchaseTxns.length)aoa.push([foreignPurchaseTxns[0].vatCode,"Kjøp av varer/tjenester fra utlandet",0,-foreignPurchaseTotal,0]);
+    if(foreignPurchaseTxns.length){aoa.push(["Kjøp fra utlandet","","","",""]);aoa.push([foreignPurchaseTxns[0].vatCode,"Kjøp av varer/tjenester fra utlandet",0,-foreignPurchaseTotal,0]);}
+    if(noVatPurchaseByCode.length){aoa.push(["Kjøp uten avgiftsbehandling","","","",""]);noVatPurchaseByCode.forEach(g=>{const vc=findVatCode(g.code,"input");aoa.push([g.code,vc?vc.name:"Ingen avgiftsbehandling",0,g.net,0]);});}
     aoa.push([],[netVat>=0?"Skyldig terminbeløp":"Terminbeløp til gode","","","",Math.abs(netVat)]);
     aoa.push([],["Spesifikasjon","","","",""],["Bilag","Dato","Beskrivelse","Konto","Beløp","Mva"]);
     [...salesTxns,...purchaseTxns,...exportTxns,...foreignPurchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
@@ -4824,15 +4835,16 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
             <td style={{padding:"10px 14px"}}>Mva-kode</td><td>Beskrivelse</td><td style={{textAlign:"right"}}>Sats</td><td style={{textAlign:"right"}}>Grunnlag</td><td style={{textAlign:"right",padding:"10px 14px"}}>Mva</td>
           </tr></thead>
           <tbody>
-            {/* Grouped SALG → KJØP → Uten avgiftsbehandling, each with a
-                bold top-level header; Salg and Kjøp each get a lighter
-                "innenlands" sub-header for their normal-rate rows and a
-                separate "til/fra utlandet" sub-header nested right under
-                it — same real Skatteetaten distinction (3.1–3.3 domestic
-                vs. 3.7 export; equivalently 3.9–3.12 domestic purchases
-                vs. import) that used to be invisible here: export sales
-                and any future foreign-purchase rows were indistinguishable
-                from ordinary no-VAT postings in one flat bucket below. */}
+            {/* Grouped SALG → KJØP, each with a bold top-level header;
+                Salg and Kjøp each get a lighter "innenlands" sub-header
+                for their normal-rate rows, a "til/fra utlandet" sub-header
+                nested right under it, and their own "uten avgiftsbehandling"
+                sub-header for that side's no-VAT codes — same real
+                Skatteetaten distinction (3.1–3.3 domestic vs. 3.7 export;
+                equivalently 3.9–3.12 domestic purchases vs. import), with
+                no shared top-level bucket mixing sales-side and
+                purchase-side no-VAT codes together under one heading that
+                named neither. */}
             <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Salg</td></tr>
             <tr><td colSpan="5" style={{padding:"6px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg innenlands</td></tr>
             {salesByRate.map(g=>{
@@ -4850,8 +4862,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               );
             })}
             {!salesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg med mva denne perioden.</td></tr>}
-            <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg til utlandet</td></tr>
-            {exportTxns.length?(
+            {/* Only shown at all once there's actually export sales this
+                period — an always-visible "Salg til utlandet" header
+                followed by "Ingen salg til utlandet denne perioden" added
+                a subsection to every single termin whether or not it was
+                ever relevant, permanently, for a business that may never
+                sell abroad. */}
+            {exportTxns.length>0&&(<>
+              <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg til utlandet</td></tr>
               <tr style={{borderTop:`1px solid ${T.border}`}}>
                 <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>52</td>
                 <td style={{color:T.text}}>Avgiftsfri utførsel av varer og tjenester</td>
@@ -4859,7 +4877,29 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                 <td onClick={()=>setSpecView({key:"export",direction:"output",rate:0,code:"52",vc:findVatCode("52","output"),rows:exportTxns,otherField:"debitCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(exportTotal)}</td>
                 <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>0</td>
               </tr>
-            ):<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen salg til utlandet denne perioden.</td></tr>}
+            </>)}
+            {/* A no-VAT sale (code 5, "Ingen utgående avgift", etc.) is
+                still a sale — grouped here, inside Salg, instead of a
+                separate top-level "Uten avgiftsbehandling" bucket that
+                mixed sales-side and purchase-side no-VAT codes together
+                under a heading naming neither. */}
+            {noVatSalesByCode.length>0&&(<>
+              <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Salg uten avgiftsbehandling</td></tr>
+              {noVatSalesByCode.map(g=>{
+                const vc=findVatCode(g.code,"output");
+                const key="ns"+g.code;
+                const openSpec=()=>setSpecView({key,direction:"none",rate:0,code:g.code,vc,rows:g.rows});
+                return(
+                  <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
+                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{g.code}</td>
+                    <td style={{color:T.text}}>{vc?vc.name:"Ingen avgiftsbehandling"}</td>
+                    <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
+                    <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
+                    <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(0)}</td>
+                  </tr>
+                );
+              })}
+            </>)}
             <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Kjøp</td></tr>
             <tr><td colSpan="5" style={{padding:"6px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp innenlands</td></tr>
             {purchasesByRate.map(g=>{
@@ -4877,8 +4917,14 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               );
             })}
             {!purchasesByRate.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp med mva denne perioden.</td></tr>}
-            <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp fra utlandet</td></tr>
-            {foreignPurchaseTxns.length?(
+            {/* Same as Salg til utlandet above — only shown once there's
+                real activity. Was always visible with an "Ingen kjøp fra
+                utlandet" placeholder, which was ALSO permanently the only
+                thing that could ever show here (FOREIGN_PURCHASE_CODES
+                14/15/21 aren't assignable anywhere in this app yet), so
+                the section could never once have shown real content. */}
+            {foreignPurchaseTxns.length>0&&(<>
+              <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp fra utlandet</td></tr>
               <tr style={{borderTop:`1px solid ${T.border}`}}>
                 <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{foreignPurchaseTxns[0].vatCode}</td>
                 <td style={{color:T.text}}>Kjøp av varer/tjenester fra utlandet</td>
@@ -4886,30 +4932,27 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                 <td onClick={()=>setSpecView({key:"foreignPurchase",direction:"input",rate:0,code:foreignPurchaseTxns[0].vatCode,vc:null,rows:foreignPurchaseTxns,otherField:"creditCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-foreignPurchaseTotal)}</td>
                 <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>0</td>
               </tr>
-            ):(
-              // Always empty for now — the real Skatteetaten import codes
-              // (14/15/21) aren't assignable anywhere in this app yet (see
-              // FOREIGN_PURCHASE_CODES above), so there's nothing that
-              // could ever land here. The group still shows, structurally
-              // ready for when that support is added.
-              <tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen kjøp fra utlandet denne perioden.</td></tr>
-            )}
-            <tr><td colSpan="5" style={{padding:"9px 14px",fontWeight:800,fontSize:12,color:T.text,background:T.bg}}>Uten avgiftsbehandling</td></tr>
-            {noVatByCode.map(g=>{
-              const vc=findVatCode(g.code,"output")||findVatCode(g.code,"input");
-              const key="n"+g.code;
-              const openSpec=()=>setSpecView({key,direction:"none",rate:0,code:g.code,vc,rows:g.rows});
-              return(
-                <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
-                  <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{g.code}</td>
-                  <td style={{color:T.text}}>{vc?vc.name:"Ingen avgiftsbehandling"}</td>
-                  <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
-                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
-                  <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(0)}</td>
-                </tr>
-              );
-            })}
-            {!noVatByCode.length&&<tr><td colSpan="5" style={{padding:"10px 14px",color:T.muted,fontSize:12}}>Ingen posteringer uten avgift denne perioden.</td></tr>}
+            </>)}
+            {/* Same idea, purchase side — a no-VAT purchase (code 0, an
+                exempt cost, etc.) grouped inside Kjøp instead of the old
+                shared "Uten avgiftsbehandling" bucket. */}
+            {noVatPurchaseByCode.length>0&&(<>
+              <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp uten avgiftsbehandling</td></tr>
+              {noVatPurchaseByCode.map(g=>{
+                const vc=findVatCode(g.code,"input");
+                const key="np"+g.code;
+                const openSpec=()=>setSpecView({key,direction:"none",rate:0,code:g.code,vc,rows:g.rows});
+                return(
+                  <tr key={key} style={{borderTop:`1px solid ${T.border}`}}>
+                    <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{g.code}</td>
+                    <td style={{color:T.text}}>{vc?vc.name:"Ingen avgiftsbehandling"}</td>
+                    <td style={{textAlign:"right",color:T.sub}}>0.00 %</td>
+                    <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(g.net)}</td>
+                    <td onClick={openSpec} title="Åpne spesifikasjon" style={{textAlign:"right",padding:"8px 14px",color:T.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(0)}</td>
+                  </tr>
+                );
+              })}
+            </>)}
             <tr style={{borderTop:`2px solid ${T.border}`}}>
               {/* Skyldig (owed to Skatteetaten) when net VAT is positive,
                   Til gode (refund/credit) when purchases' input VAT exceeds
@@ -6066,32 +6109,67 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </div>
         );
       })()}
-      {bulkPostOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text}}>Post transactions</div>
-              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16}}>✕</button>
+      {bulkPostOpen&&(()=>{
+        const closeModal=()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");};
+        const pickedAcc=accounts.find(a=>a.code===bulkOffsetCode);
+        const pickedContact=bulkOffsetContactId?contacts.find(c=>c.id===bulkOffsetContactId):null;
+        const vc=pickedAcc&&pickedAcc.defaultVatCode?(findVatCode(pickedAcc.defaultVatCode,"input")||findVatCode(pickedAcc.defaultVatCode,"output")):null;
+        const vatRate=pickedAcc?(pickedAcc.defaultVatPct!=null?pickedAcc.defaultVatPct:(vc?vc.rate:null)):null;
+        return(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${T.border}`}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:T.text}}>Post {selectedLines.length} transaction{selectedLines.length===1?"":"s"}</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>Net {fmtBal(selLinesTotal)} · each posts as its own entry{currentAttachment?", with the bank statement kept as proof":""}</div>
+              </div>
+              <button onClick={closeModal} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
             </div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:16,lineHeight:1.5}}>{selectedLines.length} line{selectedLines.length===1?"":"s"} selected · {fmtBal(selLinesTotal)} total. Each will post as its own entry against the account you choose{currentAttachment?", with the attached bank statement kept as proof.":"."}</div>
-            <div style={{fontSize:11,color:T.sub,fontWeight:700,marginBottom:6}}>POST AS *</div>
-            <div style={{marginBottom:16}}>
-              {/* Typing a customer/supplier's name routes straight to their
-                  control account (1500/2400), same shortcut every other
-                  entry screen offers — picking one also carries their
-                  contactId through to the posted transaction (see
-                  runBulkPost/postBankStatementLinesBulk) so it shows up
-                  properly linked in Reskontro, not just posted to the
-                  generic AR/AP account with no idea whose it was. */}
-              <AccDrop value={bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined}/>
+
+            <div style={{padding:20}}>
+              {/* Which lines are about to post — a quick sanity check, not
+                  a full editor. */}
+              {selectedLines.length>0&&(
+                <div style={{border:`1px solid ${T.border}`,borderRadius:10,maxHeight:132,overflowY:"auto",marginBottom:16}}>
+                  {selectedLines.map((l,i)=>(
+                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 12px",borderTop:i>0?`1px solid ${T.border}`:"none",fontSize:11.5}}>
+                      <span style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.date} · {l.description||"—"}</span>
+                      <span style={{fontWeight:700,color:l.amount>=0?T.green:T.red,flexShrink:0}}>{fmtBal(l.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{fontSize:10.5,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>Post against account *</div>
+              <AccDrop value={bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)} onCreateContact={onCreateContact}/>
+
+              {/* What VAT this account carries, so you know before posting
+                  rather than finding out in the VAT report later. */}
+              <div style={{marginTop:12,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",fontSize:11.5}}>
+                {!pickedAcc?(
+                  <span style={{color:T.muted}}>Pick an account to see its VAT treatment.</span>
+                ):pickedContact?(
+                  <span style={{color:T.sub}}>Routes to <b style={{color:T.text}}>{bulkOffsetCode}</b> · linked to <b style={{color:T.text}}>{pickedContact.name}</b> in the sub-ledger. VAT is set on the invoice, not here.</span>
+                ):pickedAcc.defaultVatCode?(
+                  <span style={{color:T.sub}}>MVA-kode <b style={{color:T.text}}>{pickedAcc.defaultVatCode}</b>{vatRate!=null?` · ${vatRate}%`:""}{vc?` · ${vc.name}`:""}{pickedAcc.vatLocked?" · locked":""} — applied automatically.</span>
+                ):(
+                  <span style={{color:T.sub}}>No default VAT on <b style={{color:T.text}}>{bulkOffsetCode} {pickedAcc.name}</b> — posts without VAT. Set one in Chart of accounts if it should carry VAT.</span>
+                )}
+              </div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{flex:1,background:bulkOffsetCode?T.accent:T.border,color:bulkOffsetCode?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):"Post"}</button>
-              <button onClick={()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");}} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 20px",borderTop:`1px solid ${T.border}`,background:T.bg}}>
+              {onNavigate&&(
+                <button onClick={()=>{closeModal();onNavigate("AccountPlan");}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-settings" style={{fontSize:12,marginRight:5}}/>Account settings</button>
+              )}
+              <div style={{flex:1}}/>
+              <button onClick={closeModal} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{background:bulkOffsetCode&&!bulkPosting?T.accent:T.border,color:bulkOffsetCode&&!bulkPosting?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode&&!bulkPosting?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):`Post ${selectedLines.length}`}</button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
       {matchBlockedByBothMulti&&(
         <div style={{background:T.orangeBg,border:`1px solid ${T.orange}`,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:T.orange,fontWeight:600}}>Narrow one side to a single entry — a match can be several lines to one ledger entry, or one line to several entries, but not many on both sides at once.</div>
       )}
