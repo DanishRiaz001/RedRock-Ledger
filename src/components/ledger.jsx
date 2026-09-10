@@ -1416,7 +1416,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,onAddLine,onCreateAccount,onCreateContact}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1874,7 +1874,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onClose,moneySources,t
         {/* Text-link secondary actions — matches Tripletex's own row of
             plain Delete/Copy/Reverse links under the Save button, instead
             of every action being its own colored box. */}
-        {isGroup?(
+        {!isLastBilag?(
+          /* Bilag series must stay unbroken — once a later voucher exists this
+             one can only be corrected here or reversed, never deleted. */
+          onReverse?(
+            <button onClick={()=>{onReverse(txn);onClose();}} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Reverse entry</button>
+          ):(
+            <span style={{fontSize:11,color:T.muted}}>Later vouchers exist — reverse this from the entry view, it can't be deleted.</span>
+          )
+        ):isGroup?(
           confirmDelGroup?(
             <button onClick={deleteWholeGroup} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete whole bilag</button>
           ):(
@@ -2339,6 +2347,10 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       onCreateContact={onCreateContact}
       groupLines={groupTxnLines}
       bilag={txn.bilag}
+      // The bilag series can't have gaps — a voucher is only deletable while
+      // it's still the last one entered; after that it's Edit or Reverse only.
+      isLastBilag={!transactions.some(t=>(t.bilag||0)>(txn.bilag||0))}
+      onReverse={onReverse}
       onAddLine={addTransaction}
       // Closing is now EditModal's own call — the single-line Save button
       // closes right after its one save, same as before; the multi-line

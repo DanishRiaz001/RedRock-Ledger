@@ -1291,7 +1291,13 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   const deleteInvoice=async(id)=>{
     if(!canEdit)return;
     const inv=invoices.find(i=>i.id===id);
-    if(inv&&inv.txnId)await deleteTxn(inv.txnId);
+    if(inv&&inv.txnId){
+      const res=await deleteTxn(inv.txnId);
+      // If the ledger voucher can't be deleted (a later bilag exists, or the
+      // period is locked) the invoice record must NOT be removed either —
+      // otherwise it's orphaned from its posting. Surface the reason.
+      if(res&&res.error){alert("Can't delete this invoice:\n\n"+res.error+"\n\nUse a credit note instead.");return;}
+    }
     await sb.from("invoices").delete().eq("id",id).eq("user_id",viewingUserId);
     setInvoices(p=>p.filter(i=>i.id!==id));
   };
@@ -1584,6 +1590,15 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // once the delete is confirmed.
     if(original&&blockIfLocked(original.date))return{error:"This period is closed."};
     if(!canEdit)return{error:"You don't have permission to delete entries."};
+    // Bokføring rule: the bilag series must stay unbroken. A voucher can only
+    // be deleted while it's still the most recent one — as soon as a later
+    // bilag exists, deleting this one would leave a gap in the numbered
+    // series, so it can only be corrected (Edit) or Reversed (which cancels
+    // its effect on every account and keeps both entries on the audit trail).
+    if(original){
+      const laterBilag=transactions.some(t=>(t.bilag||0)>(original.bilag||0));
+      if(laterBilag)return{error:`Bilag ${original.bilag} can't be deleted — it's not the most recent entry, and removing it would break the voucher number sequence. Reverse it instead (that cancels its effect on every account and keeps the audit trail).`};
+    }
     // Deleting one leg of a VAT-split voucher would leave it unbalanced — take
     // the whole bilag (net P&L row + its 27xx VAT row) together.
     const ids=(original&&original.vatSplit)
@@ -1607,12 +1622,11 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setNextBilag(bilagRef.current);
     const grp="rev-"+Date.now();
     const today=new Date().toISOString().split("T")[0];
-    // A VAT-split entry is 2 rows sharing a bilag (net P&L + 27xx VAT) —
-    // reversing one leg alone would leave the voucher unbalanced, so reverse
-    // every not-yet-reversed row of that bilag together.
-    const legs=t.vatSplit
-      ? transactions.filter(x=>x.bilag===t.bilag&&!x.reversedBy&&!x.reversalOf)
-      : [t];
+    // Reverse the WHOLE voucher — every not-yet-reversed line of this bilag
+    // (multi-line entries and VAT-split legs alike) — so the reversal cancels
+    // the effect on every account it touched, not just the one row clicked.
+    const legs=transactions.filter(x=>x.bilag===t.bilag&&!x.reversedBy&&!x.reversalOf);
+    if(!legs.length)legs.push(t);
     for(const leg of legs){
       const desc="Reversal of "+fmtB(leg.bilag)+" — "+leg.description;
       const{data}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:rb,date:today,debit_code:leg.creditCode,credit_code:leg.debitCode,description:desc,amount:leg.amount,matched_with:grp,reversal_of:leg.bilag}]).select().single();
