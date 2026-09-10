@@ -12,3 +12,4 @@ Not code. Ignored by the build. One file per topic, dated.
 | `2026-09-10-backup-strategy.md` | Recommended backup strategy for the accounting data |
 | `2026-09-10-vat-not-posted-as-ledger-line.md` | VAT isn't split into its own posting — expenses/income booked gross; fix plan |
 | `2026-09-10-arsregnskap-year-end-section.md` | Year-end / Årsregnskap section (overview + period matrix + opening-balance voucher) — 4-phase build plan |
+| `2026-09-10-vat-split-feature-research.md` | Norwegian VAT account structure confirmed vs Skatteetaten; MVA settleAccount bugs fixed; VAT-split feature design + rollout plan |

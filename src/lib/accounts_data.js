@@ -234,8 +234,17 @@ const DEFAULT_ACCOUNTS=[
   {code:"2710",name:"Inngående merverdiavgift, høy sats",accountType:"Balanse - gjeld",saftCode13:"2740"},
   {code:"2711",name:"Inngående merverdiavgift, middels sats",accountType:"Balanse - gjeld",saftCode13:"2740"},
   {code:"2712",name:"Inngående merverdiavgift, lav sats",accountType:"Balanse - gjeld",saftCode13:"2740"},
-  {code:"2713",name:"Direktepostert inngående merverdiavgift ved innførsel, høy sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // source Mva-kode 14 not yet supported
-  {code:"2714",name:"Direktepostert inngående merverdiavgift ved innførsel, middels sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // source Mva-kode 15 not yet supported
+  {code:"2713",name:"Direktepostert inngående merverdiavgift ved innførsel, høy sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 14
+  {code:"2714",name:"Direktepostert inngående merverdiavgift ved innførsel, middels sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 15
+  // Input-side (deduction) accounts for the reverse-charge / import codes —
+  // paired with the output-side 2703–2707 above so every reverse-charge code
+  // has both a "utgående" and an "inngående" 27xx account. Mva-kode links:
+  // 81→2715, 83→2716, 86→2717, 88→2718, 91→2719.
+  {code:"2715",name:"Inngående merverdiavgift ved innførsel av varer, høy sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 81
+  {code:"2716",name:"Inngående merverdiavgift ved innførsel av varer, middels sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 83
+  {code:"2717",name:"Inngående merverdiavgift ved kjøp av tjenester fra utlandet, høy sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 86
+  {code:"2718",name:"Inngående merverdiavgift ved kjøp av tjenester fra utlandet, lav sats",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 88
+  {code:"2719",name:"Inngående merverdiavgift ved kjøp av klimakvoter og gull",accountType:"Balanse - gjeld",saftCode13:"2740"},  // Mva-kode 91
   {code:"2740",name:"Oppgjørskonto merverdiavgift",accountType:"Balanse - gjeld",saftCode13:"2740"},
   {code:"2770",name:"Skyldig arbeidsgiveravgift",accountType:"Balanse - gjeld",saftCode13:"2770"},
   {code:"2771",name:"Skyldig finansskatt av lønn",accountType:"Balanse - gjeld",saftCode13:"2770"},
