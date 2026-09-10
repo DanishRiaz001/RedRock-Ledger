@@ -54,14 +54,17 @@ function VATCodesScreen({accounts,companyProfile,saveCompanyProfile}){
       <p style={{fontSize:12,color:T.muted,marginBottom:20}}>The standard Norwegian mva-koder — the same set Skatteetaten and Tripletex use. Picking a sale or expense account with a matching rate auto-suggests the right code's rate; this page is the reference for which account each code's VAT amount belongs to.</p>
 
       {saveCompanyProfile&&(
-        <div style={{background:"#fff",border:`1px solid ${splitOn?T.accent:T.border}`,borderRadius:12,padding:16,marginBottom:22,display:"flex",alignItems:"flex-start",gap:14}}>
+        <div style={{background:"#fff",border:`1px solid ${splitOn?T.accent:T.orange}`,borderRadius:12,padding:16,marginBottom:22,display:"flex",alignItems:"flex-start",gap:14}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Post VAT to its own ledger line</div>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Post VAT to its own ledger line <span style={{fontSize:10,fontWeight:700,color:T.accent,background:T.accentLight,borderRadius:5,padding:"1px 6px",marginLeft:4}}>standard</span></div>
             <div style={{fontSize:11.5,color:T.muted,marginTop:3,lineHeight:1.5}}>
-              When on, a VAT-inclusive entry is booked as <strong>two rows</strong>: the net amount on the
-              expense/income account and the VAT on its 27xx account (2700/2710/…). Trial balance then shows
-              net figures and real input/output-VAT balances. Only affects <strong>new</strong> entries — turn
-              on for one company and check a test entry first. Reverse-charge / import codes still post as one row.
+              A VAT-inclusive entry is booked as <strong>two rows</strong>: the net amount on the
+              expense/income account and the VAT on its 27xx account (2700/2710/…), so Trial balance shows
+              net figures and real input/output-VAT balances — the normal way Norwegian VAT-registered books
+              are kept. {splitOn
+                ? <>On. Only turn it off for a set of books that deliberately posts gross.</>
+                : <><strong style={{color:T.orange}}>Currently off</strong> — new VAT entries are being posted gross (VAT hidden inside the expense/income account). Turn it on unless you have a specific reason not to.</>}
+              {" "}Affects <strong>new</strong> entries only; reverse-charge / import codes still post as one row.
             </div>
           </div>
           <label style={{position:"relative",display:"inline-block",width:44,height:24,flexShrink:0,marginTop:2}}>

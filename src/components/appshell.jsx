@@ -24,7 +24,7 @@ import MobileApp from "./mobile/MobileApp.jsx";
 // whichever profile was already in memory on screen (and editable/
 // saveable) as if it belonged to the newly-selected company — the
 // "changes to one company leaking into another" symptom.
-const DEFAULT_COMPANY_PROFILE={companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",phone:"",faxNumber:"",website:"",postcode:"",city:"",formOfBusiness:"",currency:"PKR",language:"English",country:"PK",trackProjects:false,splitVat:false,municipality:"",municipalityStartDate:""};
+const DEFAULT_COMPANY_PROFILE={companyName:"",address:"",mobile:"",email:"",orgNumber:"",bankAccount:"",vatPct:0,fiscalYearStartMonth:1,logoDataUrl:"",periodCloseDate:"",phone:"",faxNumber:"",website:"",postcode:"",city:"",formOfBusiness:"",currency:"PKR",language:"English",country:"PK",trackProjects:false,splitVat:true,municipality:"",municipalityStartDate:""};
 
 function AppShell({user}){
   const[profile,setProfile]=useState(null);
@@ -489,7 +489,7 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,splitVat:!!d.split_vat,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,splitVat:d.split_vat!==false,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
       } else {
         // This company has no company_profile row yet (e.g. it was just
         // created) — reset to blank instead of leaving whichever other
