@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate-saft": "node scripts/validate-saft.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

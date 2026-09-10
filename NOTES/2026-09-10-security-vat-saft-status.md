@@ -176,3 +176,43 @@ skip *for now* (we barely use dimensions), but projects won't appear.
 
 This is a focused ~1-day rewrite of `buildSAFTXml()` (reports.jsx ~726). Safe
 to do in isolation — it's a pure function, output only.
+
+---
+
+## SAF-T — DONE: rewritten to conform to the official v1.3 XSD (2026-09-10)
+
+`buildSAFTXml()` was rewritten against the real
+`Norwegian_SAF-T_Financial_Schema_v_1.30.xsd` (Skatteetaten) and now:
+
+- **Validates** — `npm run validate-saft` generates a SAF-T XML from a
+  synthetic dataset and runs `xmllint --noout --schema` against the bundled
+  official XSD (`scripts/saft/`). Passes clean.
+- Moved to its own React-free module `src/lib/saft.js` so the test can import it.
+- **Structurally equivalent to a real Tripletex export** (diffed element paths):
+  same element names, order and nesting through Header → MasterFiles →
+  GeneralLedgerEntries → Journal → Transaction → Line. Fixed everything in the
+  gap table above (AuditFileVersion, RegistrationNumber, StreetName,
+  DefaultCurrencyCode, SelectionCriteria, Contact, TaxRegistration, BankAccount,
+  complex BalanceAccount, PartyInfo, HeaderComment, TransactionType, SystemID,
+  ValueDate, Line ordering).
+- **Adds per-line `<TaxInformation>`** (TaxType/TaxCode/TaxPercentage/TaxBase +
+  Debit/CreditTaxAmount) on the line matching the VAT direction — Tripletex's
+  sample file lacked it only because that file had no VAT.
+
+### Still not 100% — the remaining honest caveats
+1. **VAT is posted gross in the GL** (separate issue —
+   [[2026-09-10-vat-not-posted-as-ledger-line.md]]). The SAF-T is now
+   schema-valid and the `<TaxInformation>` breaks out base+tax correctly, but
+   account 3000/4000 etc. movements in the file are VAT-inclusive. An auditor
+   reconciling GL account totals against the VAT base could flag the gap. Fix
+   the posting model and this closes.
+2. **No dimensions** — Tripletex emits `AnalysisTypeTable` + `<Analysis>` on
+   lines (Bilagsart, projects, departments). We don't export projects/dept
+   tags. Optional per XSD; add if a company relies on project reporting in SAF-T.
+3. `GroupingCategory` is a coarse class label; `GroupingCode` is the 2-digit
+   kontogruppe prefix. XSD-valid, but a full mapping to the Norwegian standard
+   chart grouping would be more precise.
+4. Company/contact address is still split from one free-text field by regex.
+5. Not yet run through Skatteetaten's own SAF-T test tool (only xmllint + the
+   Tripletex structural diff). Worth doing before it's handed to an auditor.
+6. **v1.40** (mandatory 2027-01-01) not done — this is v1.30.
