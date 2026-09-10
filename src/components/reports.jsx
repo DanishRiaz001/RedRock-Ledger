@@ -4157,6 +4157,24 @@ const terminInfo=(year,n)=>{
 // lightweight settings elsewhere in the app.
 const VAT_STATUS_KEY="rr_vat_termin_status";
 const getVatStatuses=()=>{try{return JSON.parse(localStorage.getItem(VAT_STATUS_KEY)||"{}");}catch{return{};}};
+
+// Named "payment types" for posting straight from a bank statement line —
+// a curated shortlist (Bankgebyr, Kortgebyr, Renteinntekter, …) each
+// mapped to a real GL account, so the common cases don't need an account
+// search every time. Editable from the post popup itself; stored per
+// browser like the other lightweight bank-reconciliation settings.
+const BANK_POSTING_TYPES_KEY="rr_bank_posting_types";
+const DEFAULT_BANK_POSTING_TYPES=[
+  {name:"Bankgebyr",accountCode:"7770",direction:"out"},
+  {name:"Kortgebyr",accountCode:"7770",direction:"out"},
+  {name:"Rentekostnader",accountCode:"8150",direction:"out"},
+  {name:"Bank åpne poster",accountCode:"1790",direction:"out"},
+  {name:"Gjeld til eiere",accountCode:"2250",direction:"out"},
+  {name:"Renteinntekter",accountCode:"8050",direction:"in"},
+  {name:"Bank åpne poster",accountCode:"1790",direction:"in"},
+];
+const getBankPostingTypes=()=>{try{const raw=JSON.parse(localStorage.getItem(BANK_POSTING_TYPES_KEY)||"null");return Array.isArray(raw)?raw:null;}catch{return null;}};
+const saveBankPostingTypes=(list)=>{try{localStorage.setItem(BANK_POSTING_TYPES_KEY,JSON.stringify(list));}catch{}};
 const setVatStatus=(year,n,updates)=>{
   const all=getVatStatuses();
   const key=`${year}-${n}`;
@@ -5347,6 +5365,18 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   // Reskontro, not just posted to the generic AR/AP control account with
   // no idea which customer/supplier it was.
   const[bulkOffsetContactId,setBulkOffsetContactId]=useState("");
+  // Curated "payment types" for the post popup — seeded on first use from
+  // DEFAULT_BANK_POSTING_TYPES, filtered to accounts that actually exist
+  // in this company's chart so a default never points at a missing one.
+  const[postingTypes,setPostingTypesState]=useState(()=>{
+    const saved=getBankPostingTypes();
+    if(saved)return saved;
+    const codes=new Set(accounts.map(a=>a.code));
+    return DEFAULT_BANK_POSTING_TYPES.filter(t=>codes.has(t.accountCode)).map((t,i)=>({...t,id:`pt_${i}`}));
+  });
+  const setPostingTypes=(list)=>{setPostingTypesState(list);saveBankPostingTypes(list);};
+  const[postingTypesEditorOpen,setPostingTypesEditorOpen]=useState(false);
+  const[advancedPickerOpen,setAdvancedPickerOpen]=useState(false);
   const[bulkPosting,setBulkPosting]=useState(false);
   const[uploadingProof,setUploadingProof]=useState(false);
   const[syncingProof,setSyncingProof]=useState(false);
@@ -6110,11 +6140,19 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         );
       })()}
       {bulkPostOpen&&(()=>{
-        const closeModal=()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");};
+        const closeModal=()=>{setBulkPostOpen(false);setBulkOffsetCode("");setBulkOffsetContactId("");setAdvancedPickerOpen(false);};
         const pickedAcc=accounts.find(a=>a.code===bulkOffsetCode);
         const pickedContact=bulkOffsetContactId?contacts.find(c=>c.id===bulkOffsetContactId):null;
         const vc=pickedAcc&&pickedAcc.defaultVatCode?(findVatCode(pickedAcc.defaultVatCode,"input")||findVatCode(pickedAcc.defaultVatCode,"output")):null;
         const vatRate=pickedAcc?(pickedAcc.defaultVatPct!=null?pickedAcc.defaultVatPct:(vc?vc.rate:null)):null;
+        // Which side the selected lines mostly are — outgoing (money left
+        // the account) or incoming — decides which payment-type group
+        // leads. Both groups are still shown, just ordered by relevance.
+        const outCount=selectedLines.filter(l=>l.amount<0).length;
+        const leadDir=outCount>=selectedLines.length-outCount?"out":"in";
+        const acctName=c=>{const a=accounts.find(x=>x.code===c);return a?`${a.code} ${a.name}`:c;};
+        const typesFor=dir=>postingTypes.filter(t=>t.direction===dir&&!t.inactive&&accounts.some(a=>a.code===t.accountCode));
+        const activeType=postingTypes.find(t=>t.accountCode===bulkOffsetCode&&!bulkOffsetContactId);
         return(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
@@ -6140,14 +6178,48 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 </div>
               )}
 
-              <div style={{fontSize:10.5,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>Post against account *</div>
-              <AccDrop value={bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)} onCreateContact={onCreateContact}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+                <div style={{fontSize:10.5,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Post as *</div>
+                <button onClick={()=>setPostingTypesEditorOpen(true)} style={{background:"none",border:"none",color:T.accent,fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Manage payment types</button>
+              </div>
+              {/* Curated payment-type shortlist — the common cases (bank
+                  fees, interest, open items) as one click, each mapped to
+                  a real account, instead of an account search every time.
+                  "Manage payment types" edits the list; the advanced
+                  section below still reaches any account or contact. */}
+              <select value={activeType?activeType.id:""} onChange={e=>{
+                const t=postingTypes.find(x=>x.id===e.target.value);
+                if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setAdvancedPickerOpen(false);}
+              }} style={{...inp,fontSize:12.5,cursor:"pointer"}}>
+                <option value="">— Select a payment type —</option>
+                {[leadDir,leadDir==="out"?"in":"out"].map(dir=>{
+                  const ts=typesFor(dir);
+                  if(!ts.length)return null;
+                  return(
+                    <optgroup key={dir} label={dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"}>
+                      {ts.map(t=><option key={t.id} value={t.id}>{t.name} — {acctName(t.accountCode)}</option>)}
+                    </optgroup>
+                  );
+                })}
+              </select>
+
+              <div style={{marginTop:10}}>
+                <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
+                  <i className={advancedPickerOpen?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:12}}/>
+                  {activeType?"Or post against a different account / customer / supplier":"Or search any account / customer / supplier"}
+                </button>
+                {advancedPickerOpen&&(
+                  <div style={{marginTop:8}}>
+                    <AccDrop value={activeType?"":bulkOffsetCode} onChange={v=>{setBulkOffsetCode(v);setBulkOffsetContactId("");}} accounts={offsetOptions} contacts={contacts} contactId={bulkOffsetContactId} onContactPick={setBulkOffsetContactId} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)} onCreateContact={onCreateContact}/>
+                  </div>
+                )}
+              </div>
 
               {/* What VAT this account carries, so you know before posting
                   rather than finding out in the VAT report later. */}
               <div style={{marginTop:12,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",fontSize:11.5}}>
                 {!pickedAcc?(
-                  <span style={{color:T.muted}}>Pick an account to see its VAT treatment.</span>
+                  <span style={{color:T.muted}}>Pick a payment type or account to see its VAT treatment.</span>
                 ):pickedContact?(
                   <span style={{color:T.sub}}>Routes to <b style={{color:T.text}}>{bulkOffsetCode}</b> · linked to <b style={{color:T.text}}>{pickedContact.name}</b> in the sub-ledger. VAT is set on the invoice, not here.</span>
                 ):pickedAcc.defaultVatCode?(
@@ -6160,11 +6232,56 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 20px",borderTop:`1px solid ${T.border}`,background:T.bg}}>
               {onNavigate&&(
-                <button onClick={()=>{closeModal();onNavigate("AccountPlan");}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-settings" style={{fontSize:12,marginRight:5}}/>Account settings</button>
+                <button onClick={()=>{closeModal();onNavigate("AccountPlan");}} title="Open Chart of accounts to add or edit GL accounts" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-settings" style={{fontSize:12,marginRight:5}}/>Account settings</button>
               )}
               <div style={{flex:1}}/>
               <button onClick={closeModal} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
               <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{background:bulkOffsetCode&&!bulkPosting?T.accent:T.border,color:bulkOffsetCode&&!bulkPosting?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode&&!bulkPosting?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):`Post ${selectedLines.length}`}</button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+      {postingTypesEditorOpen&&(()=>{
+        const upd=(id,patch)=>setPostingTypes(postingTypes.map(t=>t.id===id?{...t,...patch}:t));
+        const add=()=>setPostingTypes([...postingTypes,{id:`pt_${Date.now().toString(36)}`,name:"",accountCode:"",direction:"out",inactive:false}]);
+        const del=id=>setPostingTypes(postingTypes.filter(t=>t.id!==id));
+        const resetDefaults=()=>{
+          if(!window.confirm("Reset the payment-type list to the defaults? Your custom entries will be replaced."))return;
+          const codes=new Set(accounts.map(a=>a.code));
+          setPostingTypes(DEFAULT_BANK_POSTING_TYPES.filter(t=>codes.has(t.accountCode)).map((t,i)=>({...t,id:`pt_${i}`})));
+        };
+        return(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:810,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setPostingTypesEditorOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:560,width:"100%",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${T.border}`}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:T.text}}>Payment types</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>The shortlist shown when posting straight from a bank statement line. Each maps to a real account.</div>
+              </div>
+              <button onClick={()=>setPostingTypesEditorOpen(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+            </div>
+            <div style={{padding:"12px 20px",overflowY:"auto",flex:1}}>
+              <div style={{display:"grid",gridTemplateColumns:"1.1fr 1.4fr 80px 26px",gap:8,fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,padding:"0 0 6px"}}>
+                <div>Name</div><div>Account</div><div>Direction</div><div/>
+              </div>
+              {postingTypes.map(t=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"1.1fr 1.4fr 80px 26px",gap:8,alignItems:"center",padding:"5px 0",opacity:t.inactive?0.5:1}}>
+                  <input value={t.name} onChange={e=>upd(t.id,{name:e.target.value})} placeholder="e.g. Bankgebyr" style={{...inp,fontSize:11.5,padding:"7px 9px"}}/>
+                  <AccDrop value={t.accountCode} onChange={v=>upd(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={onCreateAccount||(onSaveAccounts?a=>onSaveAccounts([...accounts,{code:a.code,name:a.name}]):undefined)}/>
+                  <select value={t.direction} onChange={e=>upd(t.id,{direction:e.target.value})} style={{...inp,fontSize:11,padding:"7px 6px",cursor:"pointer"}}>
+                    <option value="out">Ut</option><option value="in">Inn</option>
+                  </select>
+                  <button onClick={()=>del(t.id)} title="Remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1}}>✕</button>
+                </div>
+              ))}
+              {!postingTypes.length&&<div style={{fontSize:11.5,color:T.muted,padding:"12px 0"}}>No payment types yet — add one below.</div>}
+              <button onClick={add} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0 0"}}>+ Add payment type</button>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 20px",borderTop:`1px solid ${T.border}`,background:T.bg}}>
+              <button onClick={resetDefaults} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Reset to defaults</button>
+              <div style={{flex:1}}/>
+              <button onClick={()=>setPostingTypesEditorOpen(false)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Done</button>
             </div>
           </div>
         </div>
