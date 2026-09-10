@@ -4056,14 +4056,21 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     setSaving(true);
     const contactCode=invIsCustomer?"1500":"2400";
     const invVatDirection=invIsCustomer?"output":"input";
-    const allLines=[{accountCode:invAccountCode,amount:invAmount,vatCode:invVatCode,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
+    const allLines=[{accountCode:invAccountCode,amount:invAmount,currency:invCurrency,amountNok:invAmountNok,vatCode:invVatCode,description:invDescription,projectId:invProjectId,periodizationAccount:invPeriodizationAccount},...invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))];
     const invTotal=allLines.reduce((s,l)=>s+parseFloat(l.amount||0),0);
     const hasPayment=!!invRegisterPayment&&Math.abs(invTotal)>0;
     const groupRef=(allLines.length+(hasPayment?1:0))>1?`grp-${Date.now()}`:null;
     let firstBilag=null;
     for(let idx=0;idx<allLines.length;idx++){
       const l=allLines[idx];
-      const amt=parseFloat(l.amount);
+      // Foreign currency → resolve to NOK here so every downstream figure
+      // (VAT, ledger amount) is in NOK; the original foreign amount rides
+      // along as currencyAmount.
+      const rawAmt=parseFloat(l.amount);
+      const lineCur=(l.currency||"NOK").toUpperCase();
+      const lineNok=parseFloat(l.amountNok);
+      const useNok=lineCur!=="NOK"&&lineNok>0;
+      const amt=useNok?(rawAmt<0?-lineNok:lineNok):rawAmt;
       const isReverse=amt<0; // negative amount = kreditnote/kreditnota, reverses the normal debit/credit
       const absAmt=Math.abs(amt);
       let debitCode,creditCode;
@@ -4110,6 +4117,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         vatCode:l.vatCode||null,
         vatPct:lineVc?lineVc.rate:null,
         vatAmount:lineVatAmount,
+        currency:useNok?lineCur:null,
+        currencyAmount:useNok?Math.abs(rawAmt):null,
         attachmentIds:idx===0?invAttachmentIds:undefined,
         projectId:invShowProject?(l.projectId||null):null,
         // Tagged so reopening this entry later (no matter how much later)

@@ -13,68 +13,21 @@ const balAtDate=(transactions,code,onOrBefore)=>transactions.reduce((s,t)=>{
 // A day before `from` — SAF-T's "opening balance" is everything posted
 // strictly before the export period starts.
 const dayBefore=iso=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);};
-// Norwegian SAF-T Financial v1.3 export.
-//
-// Rewritten 2026-09-10 to conform to the ACTUAL
-// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd (Skatteetaten) — element names,
-// element ORDER, text-length limits and required elements all follow the XSD,
-// and the output was validated with `xmllint --schema` against a real
-// Tripletex export of the same shape.
-//
-// Known best-effort areas (XSD-valid, but an accountant should still review):
-//  - GroupingCategory is a coarse label derived from the account's first digit;
-//    GroupingCode is the 2-digit "kontogruppe" prefix. A full mapping to the
-//    Norwegian standard chart would be more precise.
-//  - Company address is split from one free-text field.
-//  - Amounts are emitted positive with the sign carried by Debit/Credit, as
-//    SAF-T requires; a stored negative amount is abs()'d.
-// Norwegian SAF-T Financial v1.3 export.
-//
-// Rewritten 2026-09-10 to conform to the ACTUAL
-// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd (Skatteetaten) — element names,
-// element ORDER, text-length limits and required elements all follow the XSD,
-// and the output was validated with `xmllint --schema` against a real
-// Tripletex export of the same shape.
-//
-// Known best-effort areas (XSD-valid, but an accountant should still review):
-//  - GroupingCategory is a coarse label derived from the account's first digit;
-//    GroupingCode is the 2-digit "kontogruppe" prefix. A full mapping to the
-//    Norwegian standard chart would be more precise.
-//  - Company address is split from one free-text field.
-//  - Amounts are emitted positive with the sign carried by Debit/Credit, as
-//    SAF-T requires; a stored negative amount is abs()'d.
 
-export // Norwegian SAF-T Financial v1.3 export.
-//
-// Rewritten 2026-09-10 to conform to the ACTUAL
+// Norwegian SAF-T Financial v1.3 export. Conforms to the actual
 // Norwegian_SAF-T_Financial_Schema_v_1.30.xsd (Skatteetaten) — element names,
-// element ORDER, text-length limits and required elements all follow the XSD,
-// and the output was validated with `xmllint --schema` against a real
-// Tripletex export of the same shape.
+// order, text-length limits and required elements all follow the XSD, and the
+// output is validated with `xmllint --schema` (npm run validate-saft) against
+// a real Tripletex export of the same shape.
 //
 // Known best-effort areas (XSD-valid, but an accountant should still review):
-//  - GroupingCategory is a coarse label derived from the account's first digit;
-//    GroupingCode is the 2-digit "kontogruppe" prefix. A full mapping to the
-//    Norwegian standard chart would be more precise.
+//  - GroupingCategory is a coarse class label; GroupingCode is the 2-digit
+//    "kontogruppe" prefix. A full standard-chart mapping would be more precise.
 //  - Company address is split from one free-text field.
-//  - Amounts are emitted positive with the sign carried by Debit/Credit, as
-//    SAF-T requires; a stored negative amount is abs()'d.
-// Norwegian SAF-T Financial v1.3 export.
-//
-// Rewritten 2026-09-10 to conform to the ACTUAL
-// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd (Skatteetaten) — element names,
-// element ORDER, text-length limits and required elements all follow the XSD,
-// and the output was validated with `xmllint --schema` against a real
-// Tripletex export of the same shape.
-//
-// Known best-effort areas (XSD-valid, but an accountant should still review):
-//  - GroupingCategory is a coarse label derived from the account's first digit;
-//    GroupingCode is the 2-digit "kontogruppe" prefix. A full mapping to the
-//    Norwegian standard chart would be more precise.
-//  - Company address is split from one free-text field.
-//  - Amounts are emitted positive with the sign carried by Debit/Credit, as
-//    SAF-T requires; a stored negative amount is abs()'d.
-function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,dateTo,userEmail}){
+//  - Amounts are positive with the sign on Debit/Credit; a stored negative
+//    amount is abs()'d. Foreign currency: Amount is NOK, CurrencyCode +
+//    CurrencyAmount carry the original.
+export function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,dateTo,userEmail}){
   const NS="urn:StandardAuditFile-Taxation-Financial:NO";
   const now=new Date();
 
@@ -216,12 +169,15 @@ function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,da
             </TaxInformation>`;
   };
 
-  const line=(recordId,code,side,amt,desc,contactId,invoiceNo,dueDate,valueDate,taxInfo)=>{
+  const line=(recordId,code,side,amt,desc,contactId,invoiceNo,dueDate,valueDate,taxInfo,fx)=>{
     const cust=side==="debit"&&code==="1500"&&contactId?`\n            <CustomerID>${t35(contactId)}</CustomerID>`:"";
     const sup=side==="credit"&&code==="2400"&&contactId?`\n            <SupplierID>${t35(contactId)}</SupplierID>`:"";
+    // AmountStructure: Amount (NOK) then optionally CurrencyCode + CurrencyAmount.
+    const curEls=(fx&&fx.currency&&fx.currency!=="NOK"&&fx.currencyAmount)
+      ?`\n              <CurrencyCode>${t9(fx.currency)}</CurrencyCode>\n              <CurrencyAmount>${money(Math.abs(fx.currencyAmount))}</CurrencyAmount>`:"";
     const amtEl=side==="debit"
-      ?`<DebitAmount>\n              <Amount>${money(amt)}</Amount>\n            </DebitAmount>`
-      :`<CreditAmount>\n              <Amount>${money(amt)}</Amount>\n            </CreditAmount>`;
+      ?`<DebitAmount>\n              <Amount>${money(amt)}</Amount>${curEls}\n            </DebitAmount>`
+      :`<CreditAmount>\n              <Amount>${money(amt)}</Amount>${curEls}\n            </CreditAmount>`;
     return`          <Line>
             <RecordID>${t18(String(recordId))}</RecordID>
             <AccountID>${t70(code)}</AccountID>
@@ -242,11 +198,11 @@ function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,da
       const amt=Math.abs(r.amount)||0;
       if(r.debitCode){
         recordId++;totalDebit+=amt;
-        linesXml.push(line(recordId,r.debitCode,"debit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"debit")));
+        linesXml.push(line(recordId,r.debitCode,"debit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"debit"),{currency:r.currency,currencyAmount:r.currencyAmount}));
       }
       if(r.creditCode){
         recordId++;totalCredit+=amt;
-        linesXml.push(line(recordId,r.creditCode,"credit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"credit")));
+        linesXml.push(line(recordId,r.creditCode,"credit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"credit"),{currency:r.currency,currencyAmount:r.currencyAmount}));
       }
     });
     return`        <Transaction>

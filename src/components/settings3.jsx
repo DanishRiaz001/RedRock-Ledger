@@ -299,7 +299,16 @@ function AccountingSettingsScreen({onNavigate}){
 // transaction against a "Opening balance equity" suspense account (2960).
 function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projects=[],addTransaction,onSave,onBack,uploadInboxFile}){
   const OPENING_BALANCE_CODE="2960";
-  const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:"",projectId:""});
+  const CURRENCIES=["NOK","USD","EUR","GBP","SEK","DKK","PKR"];
+  const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:"",currency:"NOK",amountNok:"",projectId:""});
+  // NOK value of a row — the NOK field when the currency is foreign, else the debit/credit itself.
+  const rowNok=(r)=>{
+    const foreign=r.currency&&r.currency!=="NOK";
+    if(foreign)return parseFloat(r.amountNok)||0;
+    return (parseFloat(r.debit)||0)||(parseFloat(r.credit)||0);
+  };
+  const rowDebitNok=(r)=>{const n=rowNok(r);return (parseFloat(r.debit)||0)?n:0;};
+  const rowCreditNok=(r)=>{const n=rowNok(r);return (parseFloat(r.credit)||0)?n:0;};
   const[rows,setRows]=useState([newRow()]);
   const[importing,setImporting]=useState(false);
   const[showImportModal,setShowImportModal]=useState(false);
@@ -364,8 +373,8 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
     await onSave([...accounts,{code:OPENING_BALANCE_CODE,name:"Opening balance equity",matchable:false}]);
   };
 
-  const totalDebit=rows.reduce((s,r)=>s+(parseFloat(r.debit)||0),0);
-  const totalCredit=rows.reduce((s,r)=>s+(parseFloat(r.credit)||0),0);
+  const totalDebit=rows.reduce((s,r)=>s+rowDebitNok(r),0);
+  const totalCredit=rows.reduce((s,r)=>s+rowCreditNok(r),0);
   const difference=Math.round((totalDebit-totalCredit)*100)/100;
   const balanced=Math.abs(difference)<0.01&&rows.some(r=>r.accountCode&&(parseFloat(r.debit)||parseFloat(r.credit)));
 
@@ -373,8 +382,8 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
   const reconRowBalance=(ra)=>{
     const row=rows.find(r=>r.accountCode===ra.code);
     if(!row)return 0;
-    const own=parseFloat(row[ra.side])||0;
-    const opp=parseFloat(row[ra.offside])||0;
+    const own=ra.side==="debit"?rowDebitNok(row):rowCreditNok(row);
+    const opp=ra.offside==="debit"?rowDebitNok(row):rowCreditNok(row);
     return Math.round((own-opp)*100)/100;
   };
   const activeReconAccounts=RECON_ACCOUNTS.filter(ra=>Math.abs(reconRowBalance(ra))>=0.01);
@@ -406,8 +415,9 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
       if(!r.accountCode||(!debit&&!credit))continue;
       if(brokenDown.has(r.accountCode))continue;
       const proj=r.projectId||null;
-      if(debit>0)await addTransaction({date:asOfDate,debitCode:r.accountCode,creditCode:OPENING_BALANCE_CODE,description:"Åpningsbalanse",amount:debit,projectId:proj});
-      else if(credit>0)await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:r.accountCode,description:"Åpningsbalanse",amount:credit,projectId:proj});
+      const fxc=(r.currency&&r.currency!=="NOK")?{currency:r.currency,amountNok:r.amountNok}:{};
+      if(debit>0)await addTransaction({date:asOfDate,debitCode:r.accountCode,creditCode:OPENING_BALANCE_CODE,description:"Åpningsbalanse",amount:debit,projectId:proj,...fxc});
+      else if(credit>0)await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:r.accountCode,description:"Åpningsbalanse",amount:credit,projectId:proj,...fxc});
     }
     for(const ra of RECON_ACCOUNTS){
       for(const l of (openItems[ra.code]||[])){
@@ -448,7 +458,10 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
 
   const num={textAlign:"right",fontVariantNumeric:"tabular-nums"};
   const th={fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3};
-  const GRID="1.7fr 130px 130px 1fr 34px"; // Konto · Debet · Kredit · Dimensjon · ✕
+  const anyForeign=rows.some(r=>r.currency&&r.currency!=="NOK");
+  const GRID=anyForeign
+    ? "1.5fr 96px 96px 62px 96px 1fr 34px"  // Konto · Debet · Kredit · Valuta · Beløp NOK · Dimensjon · ✕
+    : "1.7fr 118px 118px 62px 1fr 34px";     // Konto · Debet · Kredit · Valuta · Dimensjon · ✕
 
   return(
     <div style={{maxWidth:1180}}>
@@ -503,6 +516,8 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
               <div style={th}>Konto</div>
               <div style={{...th,...num}}>Debet</div>
               <div style={{...th,...num}}>Kredit</div>
+              <div style={th}>Valuta</div>
+              {anyForeign&&<div style={{...th,...num}}>Beløp NOK</div>}
               <div style={th}>Dimensjon</div>
               <div/>
             </div>
@@ -516,6 +531,14 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
                     <AccDrop value={r.accountCode} onChange={v=>updateRow(r.rid,{accountCode:v})} accounts={accounts} onCreateAccount={a=>onSave([...accounts,{code:a.code,name:a.name}])}/>
                     <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
                     <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} onKeyDown={e=>{if(e.key==="Enter"&&i===rows.length-1){e.preventDefault();addRow();}}} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
+                    <select value={r.currency||"NOK"} onChange={e=>updateRow(r.rid,{currency:e.target.value,...(e.target.value==="NOK"?{amountNok:""}:{})})} style={{...inp,fontSize:11,padding:"6px 4px"}}>
+                      {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {anyForeign&&(
+                      r.currency&&r.currency!=="NOK"
+                        ? <input type="number" placeholder="NOK" value={r.amountNok} onChange={e=>updateRow(r.rid,{amountNok:e.target.value})} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
+                        : <span style={{fontSize:10.5,color:T.muted,textAlign:"right"}}>{fmt((parseFloat(r.debit)||0)||(parseFloat(r.credit)||0))}</span>
+                    )}
                     {projects.length>0?(
                       <select value={r.projectId||""} onChange={e=>updateRow(r.rid,{projectId:e.target.value})} style={{...inp,fontSize:11.5,padding:"6px 8px"}}>
                         <option value="">(ikke valgt)</option>
@@ -581,7 +604,9 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
               <div style={{fontSize:12.5,fontWeight:800,color:Math.abs(difference)<0.01?T.green:T.red}}>Kontrollsum</div>
               <div style={{...num,fontSize:12,fontWeight:700}}>{fmt(totalDebit)}</div>
               <div style={{...num,fontSize:12,fontWeight:700}}>{fmt(totalCredit)}</div>
-              <div style={{fontSize:11,fontWeight:700,color:Math.abs(difference)<0.01?T.green:T.red}}>{Math.abs(difference)<0.01?"Debet = Kredit ✓":`Differanse ${fmt(difference)}`}</div>
+              <div/>
+              {anyForeign&&<div/>}
+              <div style={{fontSize:11,fontWeight:700,color:Math.abs(difference)<0.01?T.green:T.red}}>{Math.abs(difference)<0.01?"= ✓":`Diff ${fmt(difference)}`}</div>
               <div/>
             </div>
           </div>

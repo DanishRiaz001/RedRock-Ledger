@@ -468,7 +468,7 @@ function AppShell({user}){
         })();
       }
       setContactsState((cR.data||[]).map(c=>({id:c.contact_id,type:c.type,name:c.name,notes:c.notes||"",email:c.email||"",phone:c.phone||"",address:c.address||"",accountNo:c.account_no||"",orgNumber:c.org_number||"",paymentTermsDays:c.payment_terms_days!=null?c.payment_terms_days:30,creditLimit:c.credit_limit!=null?parseFloat(c.credit_limit):null,inactive:!!c.inactive,isCompany:c.is_company!=null?!!c.is_company:true,category:c.category||"",currency:c.currency||""})));
-      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,vatSplit:!!t.vat_split,moneySourceId:t.money_source_id||null,moneySourceIdCredit:t.money_source_id_credit||null,projectId:t.project_id||null}));
+      const txns=(tR.data||[]).map(t=>({id:t.id,bilag:t.bilag,date:t.date,debitCode:t.debit_code,creditCode:t.credit_code,description:t.description,amount:parseFloat(t.amount),contactId:t.contact_id,matchedWith:t.matched_with,matchedAccount:t.matched_account,reversedBy:t.reversed_by,reversalOf:t.reversal_of,invoiceNo:t.invoice_no,dueDate:t.due_date,entryMode:t.entry_mode||null,reconciled:!!t.reconciled,vatCode:t.vat_code||null,vatPct:t.vat_pct!=null?parseFloat(t.vat_pct):null,vatAmount:t.vat_amount!=null?parseFloat(t.vat_amount):null,vatSplit:!!t.vat_split,currency:t.currency||null,currencyAmount:t.currency_amount!=null?parseFloat(t.currency_amount):null,moneySourceId:t.money_source_id||null,moneySourceIdCredit:t.money_source_id_credit||null,projectId:t.project_id||null}));
       setTransactionsState(txns);
       const startBilag=txns.reduce((m,t)=>Math.max(m,t.bilag),0)+1;
       bilagRef.current=startBilag;
@@ -759,6 +759,20 @@ function AppShell({user}){
     if(data)setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date,debitCode:vatLeg.debitCode,creditCode:vatLeg.creditCode,description:vatLeg.description,amount:vatLeg.amount,vatSplit:true}]);
   };
 
+  // Foreign currency → { amount (NOK, booked), currency, currencyAmount }.
+  // `form.amount` is the amount as typed (in the entry's currency); when that
+  // currency isn't NOK and a NOK equivalent (`form.amountNok`) was given, the
+  // NOK figure becomes the booked `amount` and the foreign figure is kept
+  // alongside for the entry view + SAF-T. Otherwise it's a plain NOK entry.
+  const resolveFx=(form)=>{
+    const cur=(form.currency||"NOK").toUpperCase();
+    // Already resolved by the caller (amount is NOK, currencyAmount is foreign).
+    if(cur!=="NOK"&&form.currencyAmount!=null)return{amount:form.amount,currency:cur,currencyAmount:parseFloat(form.currencyAmount)||null};
+    const nok=parseFloat(form.amountNok);
+    if(cur!=="NOK"&&nok>0)return{amount:Math.round(nok*100)/100,currency:cur,currencyAmount:parseFloat(form.amount)||null};
+    return{amount:form.amount,currency:null,currencyAmount:null};
+  };
+
   const addTransaction=async(form)=>{
     if(!canEdit)return{error:"You don't have permission to add entries."};
     if(blockIfLocked(form.date))return{error:"This period is closed."};
@@ -775,8 +789,9 @@ function AppShell({user}){
     let nb;
     if(form.bilag!=null){nb=form.bilag;}
     else{nb=bilagRef.current;bilagRef.current=nb+1;setNextBilag(bilagRef.current);}
-    const svs=planVatSplit(form);
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:svs.mainAmount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,vat_split:svs.vatSplit,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
+    const fx=resolveFx(form);
+    const svs=planVatSplit({...form,amount:fx.amount});
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:svs.mainAmount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,vat_split:svs.vatSplit,currency:fx.currency,currency_amount:fx.currencyAmount,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return{error:error.message};
@@ -801,7 +816,7 @@ function AppShell({user}){
         else{setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
       }
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,vatSplit:svs.vatSplit,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,vatSplit:svs.vatSplit,currency:fx.currency,currencyAmount:fx.currencyAmount,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
       await insertVatLeg(svs.vatLeg,nb,form.date);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount});
       return{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,attachmentError};
@@ -1571,8 +1586,8 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if("projectId"in u)extra.project_id=u.projectId||null;
     if("moneySourceId"in u)extra.money_source_id=u.moneySourceId||null;
     if("moneySourceIdCredit"in u)extra.money_source_id_credit=u.moneySourceIdCredit||null;
-    if("currency"in u)extra.currency=u.currency||null;
-    if("amountNok"in u)extra.amount_nok=u.amountNok!=null&&u.amountNok!==""?u.amountNok:null;
+    if("currency"in u)extra.currency=(u.currency&&u.currency!=="NOK")?u.currency:null;
+    if("currencyAmount"in u)extra.currency_amount=u.currencyAmount!=null&&u.currencyAmount!==""?u.currencyAmount:null;
     const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_code:u.vatCode!=null?u.vatCode:null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null,...extra}).eq("id",u.id);
     if(error){
       logBug("DB_ERROR","Failed to update transaction",error.message,"saveEdit");
