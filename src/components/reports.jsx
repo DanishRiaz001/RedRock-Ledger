@@ -738,7 +738,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
 // shape for one would not. A few genuinely informed defaults are called
 // out inline below (GroupingCategory, address split, per-line timestamps).
 
-function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange}){
+function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -1058,7 +1058,7 @@ function SettingsMenu({accounts,onSave,onAddAccount,onUpdateAccount,contacts,set
               if(!companyProfile||!companyProfile.orgNumber){alert("Add your organization number in Company information first — Skatteetaten's schema requires it as the file's CompanyID.");return;}
               let userEmail="";
               try{userEmail=JSON.parse(localStorage.getItem("rr_profile")||"{}").email||"";}catch{}
-              const xml=buildSAFTXml({accounts,contacts,transactions:transactions||[],companyProfile,dateFrom:saftFrom,dateTo:saftTo,userEmail});
+              const xml=buildSAFTXml({accounts,contacts,transactions:transactions||[],companyProfile,dateFrom:saftFrom,dateTo:saftTo,userEmail,projects});
               const blob=new Blob([xml],{type:"application/xml"});
               const url=URL.createObjectURL(blob);
               const a=document.createElement("a");
@@ -6862,7 +6862,7 @@ const _download=(name,text,type)=>{
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 };
 
-function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],setAccounts,contacts=[],transactions=[],addTransaction,userEmail,onNavigate,initialYear}){
+function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],setAccounts,contacts=[],transactions=[],projects=[],addTransaction,userEmail,onNavigate,initialYear}){
   const thisYear=new Date().getFullYear();
   const firstYear=useMemo(()=>{
     const ys=transactions.map(t=>parseInt((t.date||"").slice(0,4))).filter(Boolean);
@@ -6880,7 +6880,7 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],set
 
   const downloadSaft=(y)=>{
     try{
-      const xml=buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom:`${y}-01-01`,dateTo:`${y}-12-31`,userEmail});
+      const xml=buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom:`${y}-01-01`,dateTo:`${y}-12-31`,userEmail,projects});
       _download(`SAF-T_Financial_${y}.xml`,xml,"application/xml");
     }catch(e){alert("SAF-T export failed: "+e.message);}
   };

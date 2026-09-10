@@ -21,13 +21,13 @@ const dayBefore=iso=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()-1)
 // a real Tripletex export of the same shape.
 //
 // Known best-effort areas (XSD-valid, but an accountant should still review):
-//  - GroupingCategory is a coarse class label; GroupingCode is the 2-digit
-//    "kontogruppe" prefix. A full standard-chart mapping would be more precise.
+//  - GroupingCode uses the account's mapped Skatteetaten SAF-T standard
+//    account (saftCode13); unmapped accounts fall back to the 2-digit prefix.
 //  - Company address is split from one free-text field.
 //  - Amounts are positive with the sign on Debit/Credit; a stored negative
 //    amount is abs()'d. Foreign currency: Amount is NOK, CurrencyCode +
 //    CurrencyAmount carry the original.
-export function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,dateTo,userEmail}){
+export function buildSAFTXml({accounts,contacts,transactions,companyProfile,dateFrom,dateTo,userEmail,projects=[]}){
   const NS="urn:StandardAuditFile-Taxation-Financial:NO";
   const now=new Date();
 
@@ -65,7 +65,10 @@ export function buildSAFTXml({accounts,contacts,transactions,companyProfile,date
   };
 
   // --- MasterFiles > GeneralLedgerAccounts
-  // GroupingCategory: coarse class label; GroupingCode: 2-digit kontogruppe.
+  // GroupingCategory names the reference chart; GroupingCode is this account's
+  // slot in it — the app already maps each account to a Skatteetaten SAF-T
+  // standard account (`saftCode13`), so use that; fall back to the 2-digit
+  // kontogruppe prefix when an account isn't mapped.
   const CLASS_LABEL={1:"Eiendeler",2:"Egenkapital og gjeld",3:"Salgs- og driftsinntekt",4:"Varekostnad",5:"Lonnskostnad",6:"Annen driftskostnad",7:"Annen driftskostnad",8:"Finansinntekt og finanskostnad"};
   const glAccountsXml=accounts.map(a=>{
     const code=String(a.code||"");
@@ -73,11 +76,13 @@ export function buildSAFTXml({accounts,contacts,transactions,companyProfile,date
     const closing=balAtDate(transactions,a.code,dateTo);
     const openTag=opening>=0?`<OpeningDebitBalance>${money(opening)}</OpeningDebitBalance>`:`<OpeningCreditBalance>${money(-opening)}</OpeningCreditBalance>`;
     const closeTag=closing>=0?`<ClosingDebitBalance>${money(closing)}</ClosingDebitBalance>`:`<ClosingCreditBalance>${money(-closing)}</ClosingCreditBalance>`;
+    const grpCode=(a.saftCode13&&/^[0-9anAN]{1,20}$/.test(a.saftCode13))?a.saftCode13:(code.slice(0,2)||code);
+    const grpCat=a.saftCode13?"Standard Norwegian SAF-T account":(CLASS_LABEL[code[0]]||"Andre kontoer");
     return`        <Account>
           <AccountID>${t70(code)}</AccountID>
           <AccountDescription>${t256(a.name||code)}</AccountDescription>
-          <GroupingCategory>${t256(CLASS_LABEL[code[0]]||"Andre kontoer")}</GroupingCategory>
-          <GroupingCode>${t35(code.slice(0,2)||code)}</GroupingCode>
+          <GroupingCategory>${t256(grpCat)}</GroupingCategory>
+          <GroupingCode>${t35(grpCode)}</GroupingCode>
           <AccountType>GL</AccountType>
           ${openTag}
           ${closeTag}
@@ -169,9 +174,12 @@ export function buildSAFTXml({accounts,contacts,transactions,companyProfile,date
             </TaxInformation>`;
   };
 
-  const line=(recordId,code,side,amt,desc,contactId,invoiceNo,dueDate,valueDate,taxInfo,fx)=>{
+  const projById={};projects.forEach(p=>{projById[p.id]=p;});
+  const line=(recordId,code,side,amt,desc,contactId,invoiceNo,dueDate,valueDate,taxInfo,fx,projectId)=>{
     const cust=side==="debit"&&code==="1500"&&contactId?`\n            <CustomerID>${t35(contactId)}</CustomerID>`:"";
     const sup=side==="credit"&&code==="2400"&&contactId?`\n            <SupplierID>${t35(contactId)}</SupplierID>`:"";
+    const proj=projById[projectId];
+    const analysis=proj?`\n            <Analysis>\n              <AnalysisType>P</AnalysisType>\n              <AnalysisID>${t35(proj.number||proj.id)}</AnalysisID>\n            </Analysis>`:"";
     // AmountStructure: Amount (NOK) then optionally CurrencyCode + CurrencyAmount.
     const curEls=(fx&&fx.currency&&fx.currency!=="NOK"&&fx.currencyAmount)
       ?`\n              <CurrencyCode>${t9(fx.currency)}</CurrencyCode>\n              <CurrencyAmount>${money(Math.abs(fx.currencyAmount))}</CurrencyAmount>`:"";
@@ -180,7 +188,7 @@ export function buildSAFTXml({accounts,contacts,transactions,companyProfile,date
       :`<CreditAmount>\n              <Amount>${money(amt)}</Amount>${curEls}\n            </CreditAmount>`;
     return`          <Line>
             <RecordID>${t18(String(recordId))}</RecordID>
-            <AccountID>${t70(code)}</AccountID>
+            <AccountID>${t70(code)}</AccountID>${analysis}
             <ValueDate>${valueDate}</ValueDate>${cust}${sup}
             <Description>${t256(desc||"")}</Description>
             ${amtEl}${taxInfo||""}${invoiceNo?`\n            <ReferenceNumber>${t35(invoiceNo)}</ReferenceNumber>`:""}${dueDate?`\n            <DueDate>${dueDate}</DueDate>`:""}
@@ -198,11 +206,11 @@ export function buildSAFTXml({accounts,contacts,transactions,companyProfile,date
       const amt=Math.abs(r.amount)||0;
       if(r.debitCode){
         recordId++;totalDebit+=amt;
-        linesXml.push(line(recordId,r.debitCode,"debit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"debit"),{currency:r.currency,currencyAmount:r.currencyAmount}));
+        linesXml.push(line(recordId,r.debitCode,"debit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"debit"),{currency:r.currency,currencyAmount:r.currencyAmount},r.projectId));
       }
       if(r.creditCode){
         recordId++;totalCredit+=amt;
-        linesXml.push(line(recordId,r.creditCode,"credit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"credit"),{currency:r.currency,currencyAmount:r.currencyAmount}));
+        linesXml.push(line(recordId,r.creditCode,"credit",amt,r.description,r.contactId,r.invoiceNo,r.dueDate,r.date,taxInfoFor(r,"credit"),{currency:r.currency,currencyAmount:r.currencyAmount},r.projectId));
       }
     });
     return`        <Transaction>
@@ -270,7 +278,15 @@ ${glAccountsXml}
         <Description>Merverdiavgift</Description>
 ${taxCodeDetailsXml}
       </TaxTableEntry>
-    </TaxTable>
+    </TaxTable>${projects.length?`
+    <AnalysisTypeTable>
+${projects.map(p=>`      <AnalysisTypeTableEntry>
+        <AnalysisType>P</AnalysisType>
+        <AnalysisTypeDescription>Prosjekt</AnalysisTypeDescription>
+        <AnalysisID>${t35(p.number||p.id)}</AnalysisID>
+        <AnalysisIDDescription>${t256(p.name||p.id)}</AnalysisIDDescription>
+      </AnalysisTypeTableEntry>`).join("\n")}
+    </AnalysisTypeTable>`:""}
   </MasterFiles>
   <GeneralLedgerEntries>
     <NumberOfEntries>${numberOfEntries}</NumberOfEntries>
