@@ -41,10 +41,19 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
   // place balances are shown, so what you see here always matches what's
   // actually posted to the bank, on either device, no separate "sources"
   // total that can drift out of sync with it.
+  // A transfer between two of the user's own bank accounts is one
+  // transaction row (debitCode = receiving bank, creditCode = sending
+  // bank) with two INDEPENDENT tags: moneySourceId for the debit side,
+  // moneySourceIdCredit for the credit side — matches the desktop fix, so
+  // retagging one bank's leg never touches the other bank's leg of the
+  // same transfer.
+  const tagFor=(t,bankCode)=>t.debitCode===bankCode?(t.moneySourceId||null):(t.moneySourceIdCredit||null);
+  const legFor=(t,bankCode)=>t.debitCode===bankCode?"debit":"credit";
+
   const perBank=useMemo(()=>bankAccounts.map(bank=>{
     const txns=transactions.filter(t=>t.debitCode===bank.code||t.creditCode===bank.code).sort((a,b)=>b.date.localeCompare(a.date));
     const tagged=txns.reduce((s,t)=>{
-      if(!t.moneySourceId)return s;
+      if(!tagFor(t,bank.code))return s;
       if(t.debitCode===bank.code)return s+t.amount; // incoming = debit
       return s-t.amount; // outgoing = credit
     },0);
@@ -58,9 +67,8 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
   const totalsFor=id=>{
     const src=moneySources.find(m=>m.id===id);
     if(!src)return{received:0,used:0,remaining:0};
-    const tagged=bankTxns.filter(t=>t.moneySourceId===id);
-    const taggedReceived=tagged.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
-    const taggedUsed=tagged.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const taggedReceived=bankTxns.filter(t=>bankCodes.has(t.debitCode)&&tagFor(t,t.debitCode)===id).reduce((s,t)=>s+t.amount,0);
+    const taggedUsed=bankTxns.filter(t=>bankCodes.has(t.creditCode)&&tagFor(t,t.creditCode)===id).reduce((s,t)=>s+t.amount,0);
     const received=(src.openingReceived||0)+taggedReceived;
     const used=(src.openingUsed||0)+taggedUsed;
     return{received,used,remaining:received-used};
@@ -68,13 +76,13 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
   const monthlyFor=(id,from,to)=>{
     const src=moneySources.find(m=>m.id===id);
     if(!src)return{opening:0,received:0,used:0,closing:0};
-    const before=bankTxns.filter(t=>t.moneySourceId===id&&t.date<from);
-    const beforeReceived=(src.openingReceived||0)+before.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
-    const beforeUsed=(src.openingUsed||0)+before.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const before=bankTxns.filter(t=>t.date<from);
+    const beforeReceived=(src.openingReceived||0)+before.filter(t=>bankCodes.has(t.debitCode)&&tagFor(t,t.debitCode)===id).reduce((s,t)=>s+t.amount,0);
+    const beforeUsed=(src.openingUsed||0)+before.filter(t=>bankCodes.has(t.creditCode)&&tagFor(t,t.creditCode)===id).reduce((s,t)=>s+t.amount,0);
     const opening=beforeReceived-beforeUsed;
-    const inMonth=bankTxns.filter(t=>t.moneySourceId===id&&t.date>=from&&t.date<=to);
-    const received=inMonth.filter(t=>bankCodes.has(t.debitCode)).reduce((s,t)=>s+t.amount,0);
-    const used=inMonth.filter(t=>bankCodes.has(t.creditCode)).reduce((s,t)=>s+t.amount,0);
+    const inMonth=bankTxns.filter(t=>t.date>=from&&t.date<=to);
+    const received=inMonth.filter(t=>bankCodes.has(t.debitCode)&&tagFor(t,t.debitCode)===id).reduce((s,t)=>s+t.amount,0);
+    const used=inMonth.filter(t=>bankCodes.has(t.creditCode)&&tagFor(t,t.creditCode)===id).reduce((s,t)=>s+t.amount,0);
     return{opening,received,used,closing:opening+received-used};
   };
   const deficitSources=activeSources.filter(m=>totalsFor(m.id).remaining<0);
@@ -93,7 +101,7 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
     resetForm();setShowAdd(false);
   };
   const removeSource=id=>{
-    if(bankTxns.some(t=>t.moneySourceId===id)){alert("This source has tagged transactions — untag them first before deleting.");return;}
+    if(bankTxns.some(t=>t.moneySourceId===id||t.moneySourceIdCredit===id)){alert("This source has tagged transactions — untag them first before deleting.");return;}
     if(!window.confirm("Delete this money source?"))return;
     saveMoneySources(moneySources.filter(m=>m.id!==id));
   };
@@ -156,7 +164,7 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
             const b=perBank.find(x=>x.code===(selectedBank||perBank[0].code))||perBank[0];
             const bankTotalNet=b.txns.reduce((s,t)=>t.debitCode===b.code?s+t.amount:s-t.amount,0);
             const persons=activeSources.map(m=>{
-              const srcTxns=b.txns.filter(t=>t.moneySourceId===m.id);
+              const srcTxns=b.txns.filter(t=>tagFor(t,b.code)===m.id);
               const taggedIn=srcTxns.filter(t=>t.debitCode===b.code).reduce((s,t)=>s+t.amount,0);
               const taggedOut=srcTxns.filter(t=>t.creditCode===b.code).reduce((s,t)=>s+t.amount,0);
               const adj=(m.bankAdjustments&&m.bankAdjustments[b.code])||{received:0,used:0};
@@ -230,7 +238,7 @@ export default function MobileWhose({moneySources=[],saveMoneySources,transactio
                         </div>
                         <div style={{textAlign:"right",flexShrink:0}}>
                           <div style={{fontSize:12,fontWeight:800,color:isIn?"#0E9F6E":"#E14848",marginBottom:4}}>{isIn?"+":"−"}{fmt(t.amount)}</div>
-                          <select value={t.moneySourceId||""} onChange={e=>tagTransaction(t.id,e.target.value||null)} style={{background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 6px",fontSize:10.5,fontFamily:"inherit",maxWidth:130}}>
+                          <select value={tagFor(t,b.code)||""} onChange={e=>tagTransaction(t.id,e.target.value||null,legFor(t,b.code))} style={{background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 6px",fontSize:10.5,fontFamily:"inherit",maxWidth:130}}>
                             <option value="">— untagged —</option>
                             {activeSources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                           </select>

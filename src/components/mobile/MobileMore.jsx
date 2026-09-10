@@ -7,8 +7,10 @@ import MobileInvoices from "./MobileInvoices.jsx";
 import MobileTrialBalance from "./MobileTrialBalance.jsx";
 import MobileLedger from "./MobileLedger.jsx";
 import MobileCompanySwitcher from "./MobileCompanySwitcher.jsx";
+import DailyLogScreen from "../dailylog.jsx";
 
 const MENU=[
+  {id:"dailylog",label:"Daily Log",sub:"Snap receipts & notes from your day",icon:"ti-camera-plus",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
   {id:"customers",label:"Customers & Suppliers",sub:"AR/AP contacts & ledgers",icon:"ti-users-group",bg:"rgba(13,148,136,0.12)",fg:"#0D9488"},
   {id:"invoices",label:"Invoices",sub:"Create, send & track payments",icon:"ti-file-invoice",bg:"rgba(36,97,217,0.12)",fg:"#2461D9"},
   {id:"trialbalance",label:"Trial balance",sub:"Every account, opening to closing",icon:"ti-scale",bg:"rgba(124,58,237,0.12)",fg:"#7C3AED"},
@@ -30,6 +32,12 @@ export default function MobileMore(props){
     <MobileCompanySwitcher user={user} isAdmin={isAdmin} viewingUserId={viewingUserId} setViewingUserId={setViewingUserId}
       myClientAccess={myClientAccess} companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId}
       createCompany={createCompany} onClose={()=>setShowSwitcher(false)}/>
+  );
+
+  if(screen==="dailylog")return(
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:100,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"calc(env(safe-area-inset-top) + 8px) 12px 24px"}}>
+      <DailyLogScreen onBack={()=>setScreen(null)}/>
+    </div>
   );
 
   if(screen==="customers")return(

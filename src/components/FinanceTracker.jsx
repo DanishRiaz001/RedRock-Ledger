@@ -28,6 +28,7 @@ import {
 } from "./settings2.jsx";
 import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
+import DailyLogScreen from "./dailylog.jsx";
 
 function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany}){
   // The active tab used to live ONLY in this state, never in the URL
@@ -140,7 +141,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -960,6 +961,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           {[
             {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
               {tab:"Files",label:"Inbox"},
+              {tab:"DailyLog",label:"Daily Log"},
               {tab:"NewVoucher",label:"Advance Voucher",requiresWrite:true},
               {tab:"VoucherDrafts",label:"Drafts",requiresWrite:true},
               {tab:"Entries",label:"Voucher overview"},
@@ -1380,6 +1382,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
+        {tab==="DailyLog"&&(
+          <DailyLogScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>
+        )}
         {tab==="Files"&&(
           <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} attachedFileIds={attachedFileIds} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRestore={restoreInboxFileEntry} onPermanentDelete={permanentlyDeleteInboxFileEntry} onRename={renameInboxFileEntry} onMove={moveInboxFileEntry} onCopy={copyInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
         )}

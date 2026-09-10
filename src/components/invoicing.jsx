@@ -3429,7 +3429,7 @@ const createContactInline=(contacts,setContacts,{name,type,orgNumber,id:requeste
   return id;
 };
 
-function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
+function ContactSearchInline({contacts,value,onChange,type,onCreateContact,inputStyle}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
   // "+ New customer/supplier" opens the same real popup as the Customers
@@ -3463,7 +3463,7 @@ function ContactSearchInline({contacts,value,onChange,type,onCreateContact}){
         setOpen(true);
       }}
         placeholder={isAll?"Search all contacts (customers & suppliers)…":`Search ${isC?"customer":"supplier"}…`}
-        style={{...inp,fontSize:12,padding:"8px 12px"}}/>
+        style={{...inp,fontSize:12,padding:"8px 12px",...(inputStyle||{})}}/>
       {open&&dropPos&&(
         <>
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
@@ -3690,6 +3690,17 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     return s&&(s.description||s.supplier)?(s.description||s.supplier):"";
   });
   const[invExtraLines,setInvExtraLines]=useState([]); // [{accountCode,amount,vatCode,description,projectId}]
+  // The invoice's stated total incl. VAT (what the supplier/customer billed).
+  // Kept separate from the first cost line's amount: typing here PRE-FILLS the
+  // first line for convenience, but only until the user has split the invoice
+  // across lines or hand-edited a line amount — after that `invLinesManual` is
+  // set and the header total never rewrites the lines again (the user's own
+  // split is the source of truth). "Difference" then shows header − line sum.
+  const[invHeaderTotal,setInvHeaderTotal]=useState(()=>{
+    const s=getPendingSuggestion();
+    return s&&s.amount!=null?String(s.amount):"";
+  });
+  const[invLinesManual,setInvLinesManual]=useState(false);
   const[invRowMenuOpen,setInvRowMenuOpen]=useState(null); // index of the Costs/Sales-lines row whose ⋮ menu is open, or null
   // Description used to be one voucher-wide field up in Supplier/Customer
   // information — moved down to live per cost line instead (matching the
@@ -3717,7 +3728,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // record when a supplier invoice was really paid, separately from the
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvGearOpen(false);};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvHeaderTotal("");setInvLinesManual(false);setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvGearOpen(false);};
   // The pending-suggestion/entry-mode hand-off keys are read (never deleted)
   // by several useState initializers above, all during the same first
   // render — so the actual cleanup happens exactly once, here, after mount.
@@ -4869,7 +4880,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           const last=lastInvoiceAccountForContact(id);
                           if(last){setInvAccountCode(last.accountCode);if(last.vatCode)setInvVatCode(last.vatCode);}
                         }
-                      }} type={invIsCustomer?"customer":"supplier"} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
+                      }} type={invIsCustomer?"customer":"supplier"} inputStyle={{...lineField,fontSize:12,padding:"6px 2px"}} onCreateContact={c=>createContactInline(contacts,setContacts,c)}/>
                     )}
                   </div>
                   <div>
@@ -4886,7 +4897,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Total amount (incl. VAT)</div>
-                    <CalcAmountInput placeholder="0" value={invAmount} onChange={setInvAmount} style={{...lineField,fontSize:12,fontWeight:700}}/>
+                    <CalcAmountInput placeholder="0" value={invHeaderTotal} onChange={v=>{
+                      setInvHeaderTotal(v);
+                      // Pre-fill the first cost line only while the user hasn't
+                      // split the invoice or hand-edited a line — once they
+                      // have, their own numbers stand and we never touch them.
+                      if(!invLinesManual&&invExtraLines.length===0)setInvAmount(v);
+                    }} style={{...lineField,fontSize:12,fontWeight:700}}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Currency</div>
@@ -4959,13 +4976,16 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     if(r.isPrimary){
                       if("accountCode"in patch)setInvAccountCode(patch.accountCode);
                       if("vatCode"in patch)setInvVatCode(patch.vatCode);
-                      if("amount"in patch)setInvAmount(patch.amount);
+                      // Hand-editing the first line's amount pins the split —
+                      // the header total will no longer auto-fill it.
+                      if("amount"in patch){setInvAmount(patch.amount);setInvLinesManual(true);}
                       if("currency"in patch)setInvCurrency(patch.currency);
                       if("amountNok"in patch)setInvAmountNok(patch.amountNok);
                       if("description"in patch)setInvDescription(patch.description);
                       if("projectId"in patch)setInvProjectId(patch.projectId);
                       if("periodizationAccount"in patch)setInvPeriodizationAccount(patch.periodizationAccount);
                     } else {
+                      if("amount"in patch)setInvLinesManual(true);
                       setInvExtraLines(p=>p.map((x,i)=>i===r.li?{...x,...patch}:x));
                     }
                   };
@@ -4997,7 +5017,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                               exactly as it was or swap out later. */}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,...lineField,padding:"6px 2px"}}>
                             <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
-                              if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1)setInvExtraLines(p=>[...p,newLine()]);
+                              if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1){setInvLinesManual(true);setInvExtraLines(p=>[...p,newLine()]);}
                             }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:0,width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
                             <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",fontSize:9,fontWeight:700,color:T.muted,padding:0,flexShrink:0,width:32,cursor:"pointer",textAlign:"right",fontFamily:"inherit"}}>
                               {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
@@ -5083,7 +5103,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               {/* Plain text link, not a bordered pill button — a line
                   add is a lightweight, frequent action here, not a
                   "real" button-weight action. */}
-              <div onClick={()=>setInvExtraLines(p=>[...p,{accountCode:"",amount:"",vatCode:"",description:"",projectId:""}])} style={{display:"inline-block",marginTop:6,color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
+              <div onClick={()=>{
+                // New line defaults to the amount still unaccounted for
+                // (invoice total − everything already on the lines), so the
+                // common "split the rest onto line 2" needs no math.
+                const sumSoFar=[{amount:invAmount},...invExtraLines].reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
+                const remaining=Math.round(((parseFloat(invHeaderTotal)||0)-sumSoFar)*100)/100;
+                setInvLinesManual(true);
+                setInvExtraLines(p=>[...p,{accountCode:"",amount:remaining>0.009?String(remaining):"",vatCode:"",description:"",projectId:""}]);
+              }} style={{display:"inline-block",marginTop:6,color:T.accent,fontWeight:700,fontSize:11.5,cursor:"pointer"}}>+ Add line</div>
 
               {/* Running Debit / Credit / VAT / Difference — debit is what's
                   entered across the cost-account line(s) above; credit is the
@@ -5092,8 +5120,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   each line's own VAT dropdown. Shown here purely as a
                   running-total confirmation before posting. */}
               {(()=>{
-                const invLineAmounts=[invAmount,...invExtraLines.map(l=>l.amount)];
-                const invLineVatCodes=[invVatCode,...invExtraLines.map(l=>l.vatCode)];
+                // Only count lines that will actually post — saveInvoice
+                // filters extra lines to those with BOTH an account and an
+                // amount, so a half-filled row (amount typed, account not yet
+                // picked) must not inflate this running total.
+                const postableExtra=invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount));
+                const invLineAmounts=[invAmount,...postableExtra.map(l=>l.amount)];
+                const invLineVatCodes=[invVatCode,...postableExtra.map(l=>l.vatCode)];
                 const invTotal=invLineAmounts.reduce((s,a)=>s+(parseFloat(a)||0),0);
                 const invVatTotal=invLineAmounts.reduce((s,a,i)=>{
                   const amt=Math.abs(parseFloat(a)||0);
@@ -5101,6 +5134,13 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   const vc=findVatCode(invLineVatCodes[i],invVatDirection);
                   return s+(vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:0);
                 },0);
+                // "Difference" = invoice total (what was billed) minus what the
+                // cost lines actually add up to — the number that matters when
+                // the invoice is split across several accounts. 0 = the split
+                // covers the whole invoice.
+                const headerT=parseFloat(invHeaderTotal)||0;
+                const lineDiff=headerT?Math.round((headerT-Math.abs(invTotal))*100)/100:0;
+                const diffOk=Math.abs(lineDiff)<0.01;
                 return(
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 10px",marginTop:8}}>
                     <div>
@@ -5117,7 +5157,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     </div>
                     <div>
                       <div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div>
-                      <div style={{fontSize:12,fontWeight:700,color:T.green}}>{fmt(0)}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:diffOk?T.green:T.orange}}>{fmt(lineDiff)}</div>
                     </div>
                   </div>
                 );

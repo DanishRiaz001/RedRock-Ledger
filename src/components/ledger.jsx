@@ -1181,7 +1181,10 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   // rather than shown as non-functional decoration.
   const[isCompany,setIsCompany]=useState(initial?initial.isCompany!==false:true);
   const[category,setCategory]=useState(initial?initial.category||"":"");
-  const[currency,setCurrency]=useState(initial&&initial.currency?initial.currency:companyCurrency||"");
+  // New contacts default to NOK (this is a Norway-first firm) unless the
+  // company has its own working currency set; editing a contact keeps whatever
+  // it was saved with.
+  const[currency,setCurrency]=useState(initial&&initial.currency?initial.currency:(companyCurrency||"NOK"));
   const[inactive,setInactive]=useState(initial?!!initial.inactive:false);
   // The contact's own number — normally auto-assigned (10000s for
   // customers, 20000s for suppliers), but editable here so an existing
@@ -1225,16 +1228,22 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   },[name,country,brregPicked]);
   const pickBrregResult=(e)=>{
     setBrregPicked(true);setBrregOpen(false);setBrregResults([]);
+    // REPLACE every registry-derived field with what this company actually
+    // has — don't merge. Picking a different company must not leave the
+    // previous one's email / phone / address sitting underneath. Brreg no
+    // longer publishes email or phone, so those simply clear (the user fills
+    // them in) rather than keeping a stale value from an earlier lookup.
     setName(e.navn||name);
-    if(e.organisasjonsnummer)setOrgNumber(e.organisasjonsnummer);
+    setOrgNumber(e.organisasjonsnummer||"");
+    setIsCompany(true);
     const addr=e.forretningsadresse||e.postadresse;
     if(addr){
       const line=(addr.adresse||[]).filter(Boolean).join(", ");
       const cityLine=[addr.postnummer,addr.poststed].filter(Boolean).join(" ");
       setAddress([line,cityLine].filter(Boolean).join(", "));
-    }
-    if(e.epostadresse)setEmail(e.epostadresse);
-    if(e.telefon||e.mobil)setPhone(e.telefon||e.mobil);
+    }else setAddress("");
+    setEmail(e.epostadresse||"");
+    setPhone(e.telefon||e.mobil||"");
   };
 
   // The reverse lookup — org number known, look up the company directly
