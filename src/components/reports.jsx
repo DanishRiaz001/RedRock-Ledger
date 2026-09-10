@@ -5230,7 +5230,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[]}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[]}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -6430,9 +6430,18 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 <UploadDropModal title="Attach bank statement" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" busy={uploadingProof}
                   onFiles={files=>{if(files[0])handleAttachStatement(files[0]);setShowAttachUpload(false);}}
                   onClose={()=>setShowAttachUpload(false)}>
-                  {inboxFiles.length>0&&(
-                    <FileDrop files={inboxFiles} onPick={id=>{handleAttachExistingInbox(id);setShowAttachUpload(false);}} placeholder="— or pick an existing Inbox file —"/>
-                  )}
+                  {(()=>{
+                    // Only offer files that are actually LIVE in the Inbox
+                    // right now — not ones already soft-deleted, already
+                    // attached to a posted voucher, or already sitting as a
+                    // bank statement on some account/month. Same "live" set
+                    // the Inbox screen itself shows.
+                    const usedAsStatement=new Set(Object.values(attachments||{}).map(a=>a&&a.inboxFileId).filter(v=>v!=null).map(String));
+                    const liveInbox=inboxFiles.filter(f=>!f.deletedAt&&!hasId(attachedFileIds,f.id)&&!usedAsStatement.has(String(f.id)));
+                    return liveInbox.length>0?(
+                      <FileDrop files={liveInbox} onPick={id=>{handleAttachExistingInbox(id);setShowAttachUpload(false);}} placeholder="— or pick an existing Inbox file —"/>
+                    ):null;
+                  })()}
                 </UploadDropModal>
               )}
             </div>

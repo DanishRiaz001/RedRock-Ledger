@@ -834,9 +834,13 @@ function FileDrop({files,onPick,placeholder}){
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const filtered=useMemo(()=>{
-    if(!q)return files;
+    // A soft-deleted inbox file is gone from the Inbox — it must never be
+    // offered as something to attach. (Callers can still pre-filter further,
+    // e.g. hiding files already attached elsewhere.)
+    const live=(files||[]).filter(f=>!f.deletedAt);
+    if(!q)return live;
     const ql=q.toLowerCase();
-    return files.filter(f=>f.name.toLowerCase().includes(ql));
+    return live.filter(f=>f.name.toLowerCase().includes(ql));
   },[files,q]);
   const openAndSearch=()=>{
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
