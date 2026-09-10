@@ -82,3 +82,97 @@ usually mid-audit), so there's time to get it reviewed.
 
 **If picking this up:** add per-line TaxInformation, do an element-ordering pass
 against the XSD, then run it through a SAF-T validator.
+
+---
+
+## SAF-T — compared against a REAL Tripletex export (2026-09-10)
+
+Diffed our `buildSAFTXml()` against an actual Tripletex SAF-T Financial export
+(`887124132`, Motex Engineering, FY2026, 19 transactions, valid file).
+
+**Verdict: our export will NOT have the same structure and would very likely
+FAIL Skatteetaten's XSD validation.** The conceptual skeleton matches
+(Header → MasterFiles{Accounts, Customers, Suppliers, TaxTable} →
+GeneralLedgerEntries{Journal → Transaction → Line}), but many element NAMES and
+sub-structures are wrong. Our version looks written against a generic/older
+SAF-T guess, not the Norwegian v1.3 schema.
+
+### Header — many wrong element names (this is the worst area)
+| Norwegian SAF-T v1.3 (Tripletex) | RedRock currently emits | Status |
+|---|---|---|
+| `<AuditFileVersion>1.30` | `<FileVersion>1.30` | ❌ wrong name |
+| `<AuditFileCountry>NO` | — | ❌ missing (required) |
+| `<AuditFileDateCreated>` | `<AuditFileDate>` + `<DateCreated>` | ❌ wrong names |
+| `<Company><RegistrationNumber>` | `<Company><CompanyID>` | ❌ wrong name |
+| `<Company><Name>` | `<Company><CompanyName>` | ❌ wrong name |
+| `<Company><Address><StreetName>` | `…<AddressDetail>` | ❌ wrong name |
+| `<Company><Contact>` (ContactPerson, Telephone, Email) | — | ❌ missing |
+| `<Company><TaxRegistration><TaxRegistrationNumber>NO…MVA` | — | ❌ missing |
+| `<Company><BankAccount>` | — | ❌ missing |
+| `<DefaultCurrencyCode>NOK` | `<CurrencyCode>NOK` (in Header) | ❌ wrong name |
+| `<SelectionCriteria><SelectionStartDate>/<SelectionEndDate>` | loose `<StartDate>`/`<EndDate>` | ❌ not wrapped |
+| `<HeaderComment>` | — | optional, fine to skip |
+| `<TaxAccountingBasis>A` | `<TaxAccountingBasis>A` | ✅ |
+| `<UserID>` | `<UserID>` | ✅ |
+
+### MasterFiles / GeneralLedgerAccounts — shape OK, content thin
+- `AccountID`, `AccountDescription`, `AccountType=GL`, Opening/Closing balances → ✅ match.
+- `GroupingCategory`: Tripletex uses real Norwegian standard categories
+  (`balanseverdiForAnleggsmiddel` etc.); we hardcode `GL01`. ❌
+- `GroupingCode`: Tripletex uses the Norwegian standard-chart grouping code;
+  we just repeat the account's own code. ❌
+- Tripletex adds `StandardAccountID` on mapped accounts; we don't.
+
+### Customers / Suppliers — wrong element names + missing sub-elements
+| Tripletex | RedRock | Status |
+|---|---|---|
+| `<RegistrationNumber>` | `<CompanyID>` | ❌ |
+| `<Name>` | `<CompanyName>` | ❌ |
+| `<Address><StreetName>` | `<Address><AddressDetail>` | ❌ |
+| `<BalanceAccount><AccountID>+Opening/ClosingDebitBalance` (complex) | `<BalanceAccount>1500</BalanceAccount>` (bare text) | ❌ wrong type |
+| `<PartyInfo><Type>/<Status>` | — | ❌ missing |
+| Supplier `<TaxRegistration>` | — | ❌ missing |
+| `<CustomerID>` / `<SupplierID>` | same | ✅ |
+
+### TaxTable — close
+- `TaxTableEntry{TaxType=MVA, Description, TaxCodeDetails{TaxCode, Description,
+  TaxPercentage, Country=NO, StandardTaxCode, BaseRate}}`.
+- We emit all of that EXCEPT `<BaseRate>` (Tripletex: `100.0`). Minor. ✅-ish.
+- Note: MVA code 15 rate was 25 in our table — fixed to 15 on 2026-09-10.
+
+### AnalysisTypeTable — absent in ours
+Tripletex emits it (89 entries: Bilagsart, projects, departments) and every
+`<Line>` carries `<Analysis>` tags. We have no dimensions in the export. OK to
+skip *for now* (we barely use dimensions), but projects won't appear.
+
+### GeneralLedgerEntries / Transaction / Line
+- Wrapper: `NumberOfEntries`, `TotalDebit`, `TotalCredit`, one `<Journal>` → ✅ match.
+- Transaction: we're missing `<TransactionType>` (Tripletex: `Normal`) and
+  `<SystemID>`. Order otherwise close.
+- Line: Tripletex order is `RecordID, AccountID, Analysis*, ValueDate,
+  [SupplierID|CustomerID], Description, DebitAmount|CreditAmount, ReferenceNumber`.
+  Ours: `RecordID, AccountID, Description, DebitAmount|CreditAmount,
+  [CustomerID|SupplierID], ReferenceNumber, DueDate`. ❌ Description is in the
+  wrong position; we emit `<DueDate>` which isn't a Line child at that spot in
+  1.3; we're missing `<ValueDate>`.
+- **`<TaxInformation>` per line**: NOT present in this Tripletex file either —
+  but only because none of its 19 transactions carried VAT. When a line has a
+  tax code it's required, and we still don't emit it (see the VAT-not-split
+  note — [[2026-09-10-vat-not-posted-as-ledger-line.md]]).
+
+### To make ours actually conform
+1. Rewrite the **Header** to the v1.3 element names above (biggest single fix).
+2. Customers/Suppliers: `RegistrationNumber`/`Name`/`StreetName`, complex
+   `BalanceAccount`, add `PartyInfo`.
+3. Accounts: real `GroupingCategory` + `GroupingCode` from the Norwegian
+   standard chart (need a mapping table — the RF-1167/"Norsk standard
+   kontoplan" grouping).
+4. Line: reorder to the v1.3 sequence, add `ValueDate`, drop `DueDate` from the
+   Line, add `TransactionType`/`SystemID`.
+5. Add `<TaxInformation>` once VAT is a real posting.
+6. `AnalysisTypeTable` + `<Analysis>` lines if/when dimensions matter.
+7. Validate against `Norwegian_SAF-T_Financial_Schema_v_1.30.xsd` (or 1.40)
+   with a real XSD validator before calling it done.
+
+This is a focused ~1-day rewrite of `buildSAFTXml()` (reports.jsx ~726). Safe
+to do in isolation — it's a pure function, output only.
