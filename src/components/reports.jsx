@@ -6043,16 +6043,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       <div style={{display:"flex",gap:3,marginBottom:16,padding:4,background:T.bg,border:`1px solid ${T.border}`,borderRadius:11,overflowX:"auto"}}>
         {monthTabs.map(mt=>{
           const active=mt.key===month;
-          const readyToApprove=mt.hasActivity&&mt.done&&!mt.approved;
           return(
             <button key={mt.key} onClick={()=>{setMonth(mt.key);clearSelection();}} style={{background:active?"#fff":"none",border:"none",boxShadow:active?"0 1px 4px rgba(20,60,50,0.1)":"none",borderRadius:8,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,flexShrink:0,transition:"background .12s"}}>
               {mt.hasActivity?(
                 mt.approved?<i className="ti ti-lock" style={{fontSize:12,color:T.green}}/>:mt.done?<i className="ti ti-circle-check-filled" style={{fontSize:12,color:T.green}}/>:<i className="ti ti-clock" style={{fontSize:12,color:active?T.accent:T.muted}}/>
               ):<i className="ti ti-point" style={{fontSize:12,color:T.border}}/>}
               <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.text:T.sub}}>{mt.label}</span>
-              {readyToApprove&&(
-                <span onClick={e=>{e.stopPropagation();setBankReconApproved(selectedAccount,mt.key,true);setReconApprovedTick(t=>t+1);}} title={`Approve reconciliation for ${mt.label}`} style={{background:T.accent,color:"#fff",borderRadius:6,padding:"2px 7px",fontSize:9.5,fontWeight:700,marginLeft:2,cursor:"pointer"}}>Approve</span>
-              )}
             </button>
           );
         })}

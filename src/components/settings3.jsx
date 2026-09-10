@@ -328,13 +328,23 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
     if(uploaded)setAttachment(uploaded);
     setUploadingAttachment(false);
   };
-  // Per-contact open-item breakdown for AR (1500) / AP (2400) — matches how
-  // real systems handle this: the trial balance gives one lump AR/AP figure,
-  // but the ledger needs it split across actual customers/suppliers to be
-  // useful (aged receivables, statements, etc). Only shown if 1500 or 2400
-  // actually has a balance in what was just imported.
-  const[custOpenItems,setCustOpenItems]=useState([]);
-  const[supOpenItems,setSupOpenItems]=useState([]);
+  // Per-contact open-item breakdown for the reskontro accounts — the trial
+  // balance gives one lump figure per account, but the ledger needs it split
+  // across the actual customers / suppliers / people it's owed to or from,
+  // each as its own dated line (invoice no + date + due date), so aged
+  // reports and statements work from day one. Only the reskontro accounts
+  // that actually carry a balance in the imported trial balance are shown.
+  // { "1500": [{rid,contactId,invoiceNo,date,dueDate,amount}], "2400": [...], "2910": [...] }
+  const[openItems,setOpenItems]=useState({});
+  // side = which column of the trial balance this account's balance sits in;
+  // sign of each open-item line follows that (a customer owing money is a
+  // debit on 1500, a supplier we owe is a credit on 2400).
+  const RECON_ACCOUNTS=[
+    {code:"1500",label:"Kundefordringer — Accounts Receivable",side:"debit",contactType:"customer",offside:"credit"},
+    {code:"2400",label:"Leverandørgjeld — Accounts Payable",side:"credit",contactType:"supplier",offside:"debit"},
+    {code:"2910",label:"Gjeld til ansatte og eiere",side:"credit",contactType:"any",offside:"debit"},
+  ];
+  const newOpenLine=()=>({rid:Date.now()+Math.random().toString(36).slice(2),contactId:"",invoiceNo:"",date:"",dueDate:"",amount:""});
 
   const updateRow=(rid,updates)=>setRows(rows.map(r=>r.rid===rid?{...r,...updates}:r));
   const addRow=()=>setRows([...rows,newRow()]);
@@ -379,36 +389,56 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
     await onSave([...accounts,{code:OPENING_BALANCE_CODE,name:"Opening balance equity",matchable:false}]);
   };
 
+  // The net balance sitting on a reskontro account, signed toward its own
+  // side (a 1500 debit balance is positive, a 2400 credit balance is positive).
+  const reconRowBalance=(ra)=>{
+    const row=rows.find(r=>r.accountCode===ra.code);
+    if(!row)return 0;
+    const own=parseFloat(row[ra.side])||0;
+    const opp=parseFloat(row[ra.offside])||0;
+    return Math.round((own-opp)*100)/100;
+  };
+  const activeReconAccounts=RECON_ACCOUNTS.filter(ra=>Math.abs(reconRowBalance(ra))>=0.01);
+  // How much of a reskontro account's balance is still unaccounted for after
+  // the open-item lines entered for it.
+  const unallocatedFor=(ra)=>{
+    const target=Math.abs(reconRowBalance(ra));
+    const allocated=(openItems[ra.code]||[]).reduce((s,l)=>s+Math.abs(parseFloat(l.amount)||0),0);
+    return Math.round((target-allocated)*100)/100;
+  };
+  const allOpenItemsAllocated=activeReconAccounts.every(ra=>Math.abs(unallocatedFor(ra))<0.01);
+  const setGroup=(code,list)=>setOpenItems(p=>({...p,[code]:list}));
+
   const goToOpenItems=()=>{
-    const arRow=rows.find(r=>r.accountCode==="1500");
-    const apRow=rows.find(r=>r.accountCode==="2400");
-    const needsAR=arRow&&(parseFloat(arRow.debit)||0)>0;
-    const needsAP=apRow&&(parseFloat(apRow.credit)||0)>0;
-    if(needsAR)setCustOpenItems([{rid:Date.now()+"a",contactId:"",amount:""}]);
-    if(needsAP)setSupOpenItems([{rid:Date.now()+"b",contactId:"",amount:""}]);
-    if(needsAR||needsAP)setStep("openItems");
-    else doPost();
+    if(!activeReconAccounts.length){doPost();return;}
+    const seeded={};
+    activeReconAccounts.forEach(ra=>{seeded[ra.code]=(openItems[ra.code]&&openItems[ra.code].length)?openItems[ra.code]:[newOpenLine()];});
+    setOpenItems(seeded);
+    setStep("openItems");
   };
 
   const doPost=async()=>{
     setPosting(true);
     await ensureOpeningBalanceAccount();
+    // A reskontro account that's being broken into per-contact open items must
+    // NOT also post its lump row — that would double it on the ledger.
+    const brokenDown=new Set(RECON_ACCOUNTS.filter(ra=>(openItems[ra.code]||[]).some(l=>parseFloat(l.amount))).map(ra=>ra.code));
     for(const r of rows){
       const debit=parseFloat(r.debit)||0;
       const credit=parseFloat(r.credit)||0;
       if(!r.accountCode||(!debit&&!credit))continue;
+      if(brokenDown.has(r.accountCode))continue;
       if(debit>0)await addTransaction({date:asOfDate,debitCode:r.accountCode,creditCode:OPENING_BALANCE_CODE,description:"Opening balance import",amount:debit});
       else if(credit>0)await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:r.accountCode,description:"Opening balance import",amount:credit});
     }
-    for(const oi of custOpenItems){
-      const amt=parseFloat(oi.amount)||0;
-      if(!oi.contactId||!amt)continue;
-      await addTransaction({date:asOfDate,debitCode:"1500",creditCode:OPENING_BALANCE_CODE,description:"Opening balance — customer open item",amount:amt,contactId:oi.contactId});
-    }
-    for(const oi of supOpenItems){
-      const amt=parseFloat(oi.amount)||0;
-      if(!oi.contactId||!amt)continue;
-      await addTransaction({date:asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:"2400",description:"Opening balance — supplier open item",amount:amt,contactId:oi.contactId});
+    for(const ra of RECON_ACCOUNTS){
+      for(const l of (openItems[ra.code]||[])){
+        const amt=Math.abs(parseFloat(l.amount)||0);
+        if(!amt)continue;
+        const desc=`Opening balance — open item${l.invoiceNo?` · ${l.invoiceNo}`:""}`;
+        if(ra.side==="debit")await addTransaction({date:l.date||asOfDate,debitCode:ra.code,creditCode:OPENING_BALANCE_CODE,description:desc,amount:amt,contactId:l.contactId||null,invoiceNo:l.invoiceNo||null,dueDate:l.dueDate||null});
+        else await addTransaction({date:l.date||asOfDate,debitCode:OPENING_BALANCE_CODE,creditCode:ra.code,description:desc,amount:amt,contactId:l.contactId||null,invoiceNo:l.invoiceNo||null,dueDate:l.dueDate||null});
+      }
     }
     setPosting(false);setPosted(true);setStep("done");
   };
@@ -442,39 +472,51 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
   }
 
   if(step==="openItems"){
+    const numCol={textAlign:"right",fontVariantNumeric:"tabular-nums"};
     return(
-      <div style={{maxWidth:900}}>
+      <div style={{maxWidth:980}}>
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 6px"}}>Break down open balances</h1>
-        <p style={{fontSize:12,color:T.muted,marginBottom:20}}>Your imported trial balance has a lump Accounts Receivable/Payable figure — split it across the actual customers/suppliers who owe or are owed money, so aged reports work correctly from day one.</p>
-        {custOpenItems.length>0&&(
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Customer open items (Accounts Receivable)</div>
-            {custOpenItems.map(oi=>(
-              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6,alignItems:"start"}}>
-                <ContactSearch contacts={customers} value={oi.contactId} onChange={v=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:v}:x))} onCreateContact={handleCreateContact}/>
-                <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setCustOpenItems(custOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
-                <button onClick={()=>setCustOpenItems(custOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+        <p style={{fontSize:12,color:T.muted,marginBottom:20}}>The trial balance carries one lump figure per reskontro account. Split each one into the actual open items — one line per unpaid invoice (invoice no, date, due date) — so aged receivables/payables and statements are right from day one. Each account's lines must add up to its trial-balance figure before you can post.</p>
+        {activeReconAccounts.map(ra=>{
+          const list=openItems[ra.code]||[];
+          const target=Math.abs(reconRowBalance(ra));
+          const allocated=list.reduce((s,l)=>s+Math.abs(parseFloat(l.amount)||0),0);
+          const unalloc=Math.round((target-allocated)*100)/100;
+          const pickList=ra.contactType==="customer"?customers:ra.contactType==="supplier"?suppliers:contacts;
+          return(
+            <div key={ra.code} style={{marginBottom:22,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
+                <div style={{fontSize:13,fontWeight:800,flex:1}}>{ra.code} · {ra.label}</div>
+                <div style={{fontSize:11,color:T.sub}}>Trial balance <strong style={{color:T.text}}>{fmt(target)}</strong></div>
+                <div style={{fontSize:11,color:T.sub}}>Allocated <strong style={{color:T.text}}>{fmt(allocated)}</strong></div>
+                <div style={{fontSize:11.5,fontWeight:800,color:Math.abs(unalloc)<0.01?T.green:T.red}}>{Math.abs(unalloc)<0.01?"✓ balanced":`${fmt(unalloc)} left`}</div>
               </div>
-            ))}
-            <button onClick={()=>setCustOpenItems([...custOpenItems,{rid:Date.now()+Math.random(),contactId:"",amount:""}])} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add customer</button>
-          </div>
-        )}
-        {supOpenItems.length>0&&(
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Supplier open items (Accounts Payable)</div>
-            {supOpenItems.map(oi=>(
-              <div key={oi.rid} style={{display:"grid",gridTemplateColumns:"2fr 1fr 40px",gap:8,marginBottom:6,alignItems:"start"}}>
-                <ContactSearch contacts={suppliers} value={oi.contactId} onChange={v=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,contactId:v}:x))} onCreateContact={handleCreateContact}/>
-                <input type="number" placeholder="Amount owed" value={oi.amount} onChange={e=>setSupOpenItems(supOpenItems.map(x=>x.rid===oi.rid?{...x,amount:e.target.value}:x))} style={{...inp}}/>
-                <button onClick={()=>setSupOpenItems(supOpenItems.filter(x=>x.rid!==oi.rid))} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+              <div style={{display:"grid",gridTemplateColumns:"1.7fr 1fr 1fr 1fr 1fr 36px",gap:8,padding:"7px 12px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,borderBottom:`1px solid ${T.border}`}}>
+                <div>{ra.contactType==="customer"?"Customer":ra.contactType==="supplier"?"Supplier":"Contact"}</div><div>Invoice no</div><div>Date</div><div>Due date</div><div style={numCol}>Amount</div><div/>
               </div>
-            ))}
-            <button onClick={()=>setSupOpenItems([...supOpenItems,{rid:Date.now()+Math.random(),contactId:"",amount:""}])} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add supplier</button>
-          </div>
-        )}
+              {list.map(l=>(
+                <div key={l.rid} style={{display:"grid",gridTemplateColumns:"1.7fr 1fr 1fr 1fr 1fr 36px",gap:8,padding:"7px 12px",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
+                  <ContactSearch contacts={pickList} value={l.contactId} onChange={v=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,contactId:v}:x))} onCreateContact={ra.contactType==="any"?undefined:handleCreateContact}/>
+                  <input placeholder="—" value={l.invoiceNo} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,invoiceNo:e.target.value}:x))} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+                  <input type="date" value={l.date} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,date:e.target.value}:x))} style={{...inp,fontSize:11.5,padding:"7px 8px"}}/>
+                  <input type="date" value={l.dueDate} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,dueDate:e.target.value}:x))} style={{...inp,fontSize:11.5,padding:"7px 8px"}}/>
+                  <input type="number" placeholder="0" value={l.amount} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,amount:e.target.value}:x))} style={{...inp,fontSize:12,padding:"7px 9px",...numCol}}/>
+                  <button onClick={()=>setGroup(ra.code,list.length>1?list.filter(x=>x.rid!==l.rid):list)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px"}}>
+                <button onClick={()=>{
+                  const rest=Math.round((target-allocated)*100)/100;
+                  setGroup(ra.code,[...list,{...newOpenLine(),amount:rest>0.009?String(rest):""}]);
+                }} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add open item</button>
+              </div>
+            </div>
+          );
+        })}
+        {!allOpenItemsAllocated&&<div style={{fontSize:11,color:T.orange,marginBottom:10}}>Every reskontro account's open items must add up to its trial-balance figure before posting.</div>}
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>setStep("balances")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",color:T.sub}}>‹ Back</button>
-          <button onClick={doPost} disabled={posting} style={{background:T.accent,color:"#fff",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:posting?"wait":"pointer",fontFamily:"inherit"}}>{posting?"Posting…":"Post opening balance"}</button>
+          <button onClick={doPost} disabled={posting||!allOpenItemsAllocated} style={{background:allOpenItemsAllocated?T.accent:T.border,color:allOpenItemsAllocated?"#fff":T.muted,border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:13,cursor:posting?"wait":allOpenItemsAllocated?"pointer":"default",fontFamily:"inherit"}}>{posting?"Posting…":"Post opening balance"}</button>
         </div>
       </div>
     );
@@ -526,15 +568,15 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,addTra
 
       <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1fr 40px",gap:8,padding:"8px 10px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
-          {["Account","Debit","Credit",""].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+          {["Account","Debit","Credit",""].map(h=><div key={h} style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:h==="Debit"||h==="Credit"?"right":"left"}}>{h}</div>)}
         </div>
         {rows.map((r,i)=>{
           const matched=accounts.find(a=>a.code===r.accountCode);
           return(
             <div key={r.rid} style={{display:"grid",gridTemplateColumns:"1.6fr 1fr 1fr 40px",gap:8,padding:"7px 10px",alignItems:"center",borderBottom:i<rows.length-1?`1px solid ${T.border}`:"none",background:i%2===0?"#fff":T.bg}}>
               <AccDrop value={r.accountCode} onChange={v=>updateRow(r.rid,{accountCode:v})} accounts={accounts} onCreateAccount={a=>onSave([...accounts,{code:a.code,name:a.name}])}/>
-              <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
-              <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} onKeyDown={e=>{if(e.key==="Enter"&&i===rows.length-1){e.preventDefault();addRow();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
+              <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"7px 9px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}/>
+              <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} onKeyDown={e=>{if(e.key==="Enter"&&i===rows.length-1){e.preventDefault();addRow();}}} style={{...inp,fontSize:12,padding:"7px 9px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}/>
               <button onClick={()=>removeRow(r.rid)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:14}}/></button>
               {r.accountCode&&!matched&&<div style={{gridColumn:"1 / -1",fontSize:11,color:T.orange,marginTop:-3}}>Account {r.accountCode} doesn't exist in your chart of accounts yet — add it first, or pick an existing one.</div>}
             </div>

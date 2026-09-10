@@ -90,7 +90,7 @@ const MVA_CODES=[
 
   // --- Import of goods (innførsel) — advanced ---
   {code:"14",name:"Fradrag inngående avgift betalt ved innførsel, høy sats",direction:"input",rate:25,settleAccount:"2713"},
-  {code:"15",name:"Fradrag inngående avgift betalt ved innførsel, middels sats",direction:"input",rate:25,settleAccount:"2714"},
+  {code:"15",name:"Fradrag inngående avgift betalt ved innførsel, middels sats",direction:"input",rate:15,settleAccount:"2714"},
   {code:"20",name:"Grunnlag, ingen inngående avgift ved innførsel",direction:"input",rate:0,settleAccount:null},
   {code:"21",name:"Grunnlag inngående avgift ved innførsel, høy sats",direction:"input",rate:0,settleAccount:null},
   {code:"22",name:"Grunnlag inngående avgift ved innførsel, middels sats",direction:"input",rate:0,settleAccount:null},
