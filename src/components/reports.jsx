@@ -4631,8 +4631,13 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:20}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:20,padding:18}}>
           <div>
+            {/* The one number this whole screen exists to answer — "how
+                much do I owe" — used to be the same size as the other
+                three metadata cells (Forfall/Leveringsstatus/
+                Betalingsstatus), so it didn't read as the headline figure
+                it actually is. */}
             <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>{info.label} · {netVat>=0?"Terminbeløp":"Til gode"}</div>
-            <div style={{fontSize:16,fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(Math.abs(netVat))}</div>
+            <div style={{fontSize:24,fontWeight:800,color:netVat>=0?T.red:T.green}}>{fmt(Math.abs(netVat))}</div>
           </div>
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,marginBottom:6}}>Forfall</div>
@@ -4683,8 +4688,16 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmt(totalExpenses)}</div>
         </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
+          {/* Used to show the bare "33 424 − 5 000" expression instead of
+              its result — reads as a sum you still have to do in your head
+              rather than a number. Now leads with the actual net figure
+              (which also correctly folds in the reverse-charge net effect,
+              so this card and "Å betale" below always agree), with the
+              breakdown kept underneath in small type for anyone who wants
+              to see how it's made up. */}
           <div style={{fontSize:10,color:T.muted,textTransform:"uppercase"}}>Mva (utg. − inng.)</div>
-          <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmt(vatOut)} − {fmt(vatIn)}</div>
+          <div style={{fontSize:17,fontWeight:800,color:T.text}}>{fmt(vatOut-vatIn+reverseChargeNetEffect)}</div>
+          <div style={{fontSize:10,color:T.muted,marginTop:2}}>{fmt(vatOut)} − {fmt(vatIn)}{Math.abs(reverseChargeNetEffect)>0.005?` ${reverseChargeNetEffect>=0?"+":"−"} ${fmt(Math.abs(reverseChargeNetEffect))} omv.`:""}</div>
         </div>
         <div style={{background:netVat>=0?T.redLight:T.greenBg,border:`1px solid ${netVat>=0?T.red:T.green}`,borderRadius:10,padding:14}}>
           <div style={{fontSize:10,color:netVat>=0?T.red:T.green,textTransform:"uppercase"}}>{netVat>=0?"Å betale":"Til gode"}</div>
@@ -5167,6 +5180,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[moreMenuOpen,setMoreMenuOpen]=useState(false);
   const moreMenuBtnRef=React.useRef(null);
   const[moreMenuPos,setMoreMenuPos]=useState(null);
+  const[attachMenuOpen,setAttachMenuOpen]=useState(false);
+  const attachMenuBtnRef=React.useRef(null);
+  const[attachMenuPos,setAttachMenuPos]=useState(null);
   const[filterMode,setFilterMode]=useState("unmatched"); // "unmatched" | "matched" — status toggle
   const[directionFilter,setDirectionFilter]=useState("all"); // "all" | "incoming" | "outgoing" — separate axis
   const[searchQuery,setSearchQuery]=useState("");
@@ -5724,20 +5740,24 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           </div>
         </div>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank reconciliation</h1>
+      {/* Approve/approved status used to sit in its own full-width banner
+          row below the title — moved into the SAME row as the title
+          instead, so approving (or seeing it's already approved) doesn't
+          cost an extra row of vertical space above the toolbar. */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:16,flexWrap:"wrap"}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0,flexShrink:0}}>Bank reconciliation</h1>
+        {isApproved?(
+          <div style={{display:"flex",alignItems:"center",gap:10,background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:10,padding:"7px 8px 7px 12px"}}>
+            <div style={{fontSize:11,color:T.green,fontWeight:700,whiteSpace:"nowrap"}}><i className="ti ti-lock" style={{fontSize:11,marginRight:6}}/>Approved for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — locked</div>
+            <button onClick={doReopen} style={{background:"none",border:`1px solid ${T.green}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:700,color:T.green,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Reopen</button>
+          </div>
+        ):canApprove?(
+          <div style={{display:"flex",alignItems:"center",gap:10,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"7px 8px 7px 12px"}}>
+            <div style={{fontSize:11,color:T.accent,fontWeight:700,whiteSpace:"nowrap"}}>Ready to approve for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})}</div>
+            <button onClick={doApprove} style={{background:T.accent,border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Approve reconciliation</button>
+          </div>
+        ):null}
       </div>
-      {isApproved?(
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.greenBg,border:`1px solid ${T.green}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-          <div style={{fontSize:11,color:T.green,fontWeight:700}}><i className="ti ti-lock" style={{fontSize:11,marginRight:6}}/>Reconciliation approved for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — this account is locked for that month.</div>
-          <button onClick={doReopen} style={{background:"none",border:`1px solid ${T.green}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:T.green,cursor:"pointer",fontFamily:"inherit"}}>Reopen</button>
-        </div>
-      ):canApprove?(
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-          <div style={{fontSize:11,color:T.accent,fontWeight:700}}>Everything's matched or posted for {new Date(month+"-01").toLocaleString("default",{month:"long",year:"numeric"})} — ready to approve.</div>
-          <button onClick={doApprove} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Approve reconciliation</button>
-        </div>
-      ):null}
       {showMatched&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowMatched(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:640,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",padding:24}}>
@@ -5804,12 +5824,17 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           input), the icon buttons on the right are all the same 36×36 box so
           the row reads clean and aligned, matching the reference layout. */}
       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{position:"relative",flex:"0 1 10%",minWidth:100}}>
+        {/* 30% wider than before (100px -> 130px min, 10% -> 13% flex-basis)
+            and the same borderRadius:8/height:36 box as every other control
+            in this row — inp's own defaults (12px radius, no fixed height)
+            used to make this one box read slightly different from its
+            neighbors. */}
+        <div style={{position:"relative",flex:"0 1 13%",minWidth:130}}>
           <i className="ti ti-search" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
-          <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%"}}/>
+          <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%",borderRadius:8,height:36,boxSizing:"border-box"}}/>
         </div>
         <div style={{width:210,flexShrink:0}}>
-          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);setMonth(earliestOpenMonth(v));clearSelection();}} accounts={bankAccounts}/>
+          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);setMonth(earliestOpenMonth(v));clearSelection();}} accounts={bankAccounts} inputStyle={{height:36,minHeight:36,boxSizing:"border-box"}}/>
         </div>
         <div style={{position:"relative",flexShrink:0}}>
           <div onClick={()=>setMonthDropdownOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"0 6px",background:"#fff",height:36,boxSizing:"border-box",cursor:"pointer"}}>
@@ -5838,7 +5863,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
           </>)}
         </div>
-        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0,height:36,boxSizing:"border-box"}}>
+        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0,height:36,boxSizing:"border-box",borderRadius:8}}>
           <option value="all">All</option>
           <option value="incoming">Incoming</option>
           <option value="outgoing">Outgoing</option>
@@ -6359,12 +6384,33 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
               <button onClick={()=>setShowAttachUpload(true)} disabled={uploadingProof} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:uploadingProof?T.muted:T.sub,cursor:uploadingProof?"wait":"pointer",fontFamily:"inherit"}}>
                 {uploadingProof?"Uploading…":currentAttachment?"Replace":"Attach file"}
               </button>
+              {/* Sync to entries and Remove used to be their own separate
+                  buttons next to Replace — both occasional actions, folded
+                  into one "⋮" menu next to the primary upload/replace
+                  button instead. */}
               {currentAttachment&&(
-                <button onClick={syncAttachmentToEntries} disabled={syncingProof} title="Link this statement to every entry already posted for this account and month — for a statement attached before an entry existed, or just to re-sync" style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:syncingProof?T.muted:T.sub,cursor:syncingProof?"wait":"pointer",fontFamily:"inherit"}}>
-                  {syncingProof?"Syncing…":"Sync to entries"}
-                </button>
+                <div style={{position:"relative"}}>
+                  <button ref={attachMenuBtnRef} onClick={()=>{
+                    if(attachMenuOpen){setAttachMenuOpen(false);return;}
+                    const r=attachMenuBtnRef.current.getBoundingClientRect();
+                    setAttachMenuPos({top:r.bottom+4,left:r.left});
+                    setAttachMenuOpen(true);
+                  }} title="More" style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,width:32,height:"100%",cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
+                  </button>
+                  {attachMenuOpen&&attachMenuPos&&(<>
+                    <div onClick={()=>setAttachMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:398}}/>
+                    <div style={{position:"fixed",top:attachMenuPos.top,left:attachMenuPos.left,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:399,minWidth:170,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+                      <div onClick={()=>{setAttachMenuOpen(false);syncAttachmentToEntries();}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:syncingProof?T.muted:T.text,cursor:syncingProof?"wait":"pointer",borderBottom:`1px solid ${T.border}`}}>
+                        <i className="ti ti-refresh" style={{fontSize:14,color:T.sub}}/>{syncingProof?"Syncing…":"Sync to entries"}
+                      </div>
+                      <div onClick={()=>{setAttachMenuOpen(false);if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer"}}>
+                        <i className="ti ti-trash" style={{fontSize:14}}/>Remove
+                      </div>
+                    </div>
+                  </>)}
+                </div>
               )}
-              {currentAttachment&&<button onClick={()=>{if(onRemoveAttach&&window.confirm("Remove this attachment?"))onRemoveAttach(attachKey);}} style={{background:T.redLight,border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>}
               {showAttachUpload&&(
                 <UploadDropModal title="Attach bank statement" accept=".pdf,application/pdf,.jpg,.jpeg,image/jpeg,.png,image/png" busy={uploadingProof}
                   onFiles={files=>{if(files[0])handleAttachStatement(files[0]);setShowAttachUpload(false);}}
