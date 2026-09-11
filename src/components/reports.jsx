@@ -5080,6 +5080,9 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[lastImport,setLastImport]=useState(null); // {ids, count, accountCode}
   const[showHistory,setShowHistory]=useState(false);
   const[showMatched,setShowMatched]=useState(false);
+  const[moreMenuOpen,setMoreMenuOpen]=useState(false);
+  const moreMenuBtnRef=React.useRef(null);
+  const[moreMenuPos,setMoreMenuPos]=useState(null);
   const[filterMode,setFilterMode]=useState("unmatched"); // "unmatched" | "matched" — status toggle
   const[directionFilter,setDirectionFilter]=useState("all"); // "all" | "incoming" | "outgoing" — separate axis
   const[searchQuery,setSearchQuery]=useState("");
@@ -5769,18 +5772,43 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             <i className="ti ti-paperclip" style={{fontSize:15}}/>
             {currentAttachment&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:T.green,border:"1.5px solid #fff"}}/>}
           </button>
-          <button onClick={()=>setShowHistory(true)} title="History" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-history" style={{fontSize:15}}/></button>
-          <button onClick={()=>{setExportScope("period");setShowExportModal(true);}} title="Send or download" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-download" style={{fontSize:15}}/></button>
-          {parseBankStatementPDF&&(<>
-            <button onClick={()=>setShowPdfUploadModal(true)} disabled={isApproved||readingPdf} title="Read a bank statement PDF and turn it into importable rows" style={{background:"#fff",color:isApproved?T.muted:T.accent,border:`1px solid ${isApproved?T.border:T.accent}`,borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(readingPdf?"wait":"pointer"),fontFamily:"inherit",opacity:readingPdf?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
-              {readingPdf?"Reading PDF…":(<><i className="ti ti-file-text-ai" style={{fontSize:13,marginRight:5}}/>Read PDF</>)}
+          {/* History, Send/download, and Read PDF used to each get their own
+              36×36 box in this row alongside Attach/Upload — three
+              occasional actions competing for the same visual weight as the
+              two things actually used every session. Folded into one "More"
+              menu; Attach and Upload stay inline since those are the
+              primary flow. */}
+          <div style={{position:"relative"}}>
+            <button ref={moreMenuBtnRef} onClick={()=>{
+              if(moreMenuOpen){setMoreMenuOpen(false);return;}
+              const r=moreMenuBtnRef.current.getBoundingClientRect();
+              setMoreMenuPos({top:r.bottom+4,right:Math.max(4,window.innerWidth-r.right)});
+              setMoreMenuOpen(true);
+            }} title="More" style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,width:36,height:36,cursor:"pointer",color:T.sub,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
             </button>
-            {showPdfUploadModal&&(
-              <UploadDropModal title="Read bank statement PDF" accept=".pdf,application/pdf" busy={readingPdf}
-                onClose={()=>setShowPdfUploadModal(false)}
-                onFiles={files=>{if(files[0])handlePdfUpload(files[0]);setShowPdfUploadModal(false);}}/>
-            )}
-          </>)}
+            {moreMenuOpen&&moreMenuPos&&(<>
+              <div onClick={()=>setMoreMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:398}}/>
+              <div style={{position:"fixed",top:moreMenuPos.top,right:moreMenuPos.right,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:399,minWidth:200,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+                {parseBankStatementPDF&&(
+                  <div onClick={()=>{if(isApproved||readingPdf)return;setMoreMenuOpen(false);setShowPdfUploadModal(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:isApproved?T.muted:T.text,cursor:isApproved?"not-allowed":"pointer",borderBottom:`1px solid ${T.border}`}}>
+                    <i className="ti ti-file-text-ai" style={{fontSize:14,color:isApproved?T.muted:T.accent}}/>{readingPdf?"Reading PDF…":"Read bank statement PDF"}
+                  </div>
+                )}
+                <div onClick={()=>{setMoreMenuOpen(false);setShowHistory(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
+                  <i className="ti ti-history" style={{fontSize:14,color:T.sub}}/>View history
+                </div>
+                <div onClick={()=>{setMoreMenuOpen(false);setExportScope("period");setShowExportModal(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>
+                  <i className="ti ti-download" style={{fontSize:14,color:T.sub}}/>Send or download file
+                </div>
+              </div>
+            </>)}
+          </div>
+          {showPdfUploadModal&&(
+            <UploadDropModal title="Read bank statement PDF" accept=".pdf,application/pdf" busy={readingPdf}
+              onClose={()=>setShowPdfUploadModal(false)}
+              onFiles={files=>{if(files[0])handlePdfUpload(files[0]);setShowPdfUploadModal(false);}}/>
+          )}
           <button onClick={()=>setShowStatementUploadModal(true)} disabled={isApproved||uploading} style={{background:isApproved?T.border:T.accent,color:isApproved?T.muted:"#fff",border:"none",borderRadius:8,padding:"0 14px",height:36,fontSize:11,fontWeight:700,cursor:isApproved?"not-allowed":(uploading?"wait":"pointer"),fontFamily:"inherit",opacity:uploading?0.6:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",flexShrink:0,boxSizing:"border-box"}}>
             {uploading?"Reading…":(<><i className="ti ti-upload" style={{fontSize:11,marginRight:5}}/>Upload</>)}
           </button>
@@ -6085,7 +6113,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   const isSuggested=topSuggestion&&topSuggestion.txn.id===t.id;
                   const selected=selectedTxnIds.has(t.id);
                   return(
-                    <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
+                    <div key={t.id} className="rr-table-row" onClick={()=>toggleTxnSel(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",minHeight:38,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved?"default":"pointer"}}>
                       <input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleTxnSel(t.id)}/>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -6176,7 +6204,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                         }
                         setPostMenu({lineId:l.id,x:e.clientX,y:e.clientY});
                       }}
-                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",minHeight:42,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",minHeight:38,boxSizing:"border-box",borderBottom:`1px solid ${T.border}`,background:isSuggested?T.orangeBg:(selected?T.accentLight:"#fff"),cursor:isApproved||isMatchedMode?"default":"pointer"}}>
                       {!isMatchedMode&&<input type="checkbox" checked={selected} disabled={isApproved} onClick={e=>e.stopPropagation()} onChange={()=>toggleLineSel(l.id)}/>}
                       {isMatchedMode&&<span style={{width:13}}/>}
                       <div style={{flex:1,minWidth:0}}>
