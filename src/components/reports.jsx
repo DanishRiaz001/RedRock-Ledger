@@ -4016,8 +4016,8 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
   })();
 
   const exportYearXlsx=()=>{
-    const aoa=[["Periode","Meldingstype","Forfallsdato","Beløp","Betalingsstatus"]];
-    rows.forEach(r=>aoa.push([r.label,"Alminnelig næring",r.due,r.netVat,r.status.paid?"Betaling registrert":"Ikke betalt"]));
+    const aoa=[["Periode","Forfallsdato","Beløp","Betalingsstatus"]];
+    rows.forEach(r=>aoa.push([r.label,r.due,r.netVat,r.status.paid?"Betaling registrert":"Ikke betalt"]));
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(aoa);
     XLSX.utils.book_append_sheet(wb,ws,"Mva-meldinger");
@@ -4026,13 +4026,22 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
 
   return(
     <div>
+      {/* Year stepper sits in front of the title, in the same row as
+          Export, instead of a plain native <select> on its own separate
+          row below — a prev/next pill matches the month-nav pattern
+          already used elsewhere (Bank reconciliation) and isn't capped to
+          just year-1/year/year+1 the way the old 3-option select was. */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:2,border:`1px solid ${T.border}`,borderRadius:8,background:"#fff"}}>
+            <button onClick={()=>setYear(y=>y-1)} title="Previous year" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub,padding:"6px 8px",fontFamily:"inherit"}}>‹</button>
+            <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:38,textAlign:"center"}}>{year}</span>
+            <button onClick={()=>setYear(y=>y+1)} title="Next year" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub,padding:"6px 8px",fontFamily:"inherit"}}>›</button>
+          </div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Mva-meldinger</h1>
+        </div>
         <button onClick={exportYearXlsx} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 11px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-download" style={{fontSize:12,marginRight:5}}/>Export {year}</button>
       </div>
-      <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...inp,width:100,marginBottom:14,fontSize:12,padding:"6px 8px"}}>
-        {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
-      </select>
       {/* Year shape at a glance — filed/paid/outstanding/next due — instead
           of only being readable by scanning every row's own status column. */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
@@ -4061,7 +4070,13 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
           column across every row (a flex layout with per-card minWidths
           only approximates this; identical column tracks guarantee it). */}
       {(()=>{
-        const gridCols="10px minmax(150px,1.5fr) 110px 130px minmax(150px,1fr) auto";
+        // Fixed px on every column, including the action button — each row
+        // (and the header) is its OWN separate grid, so an "auto" track
+        // used to size itself off THAT row's own content: ~0 in the header
+        // (an empty div) vs. ~140px in a data row (the button), throwing
+        // every other column out of alignment between the header and the
+        // rows even though they share the same column list.
+        const gridCols="10px minmax(150px,1.5fr) 110px 130px minmax(150px,1fr) 160px";
         const thBase={fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4};
         return(<div style={{display:"flex",flexDirection:"column",gap:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",boxShadow:"0 1px 3px rgba(20,60,50,0.04)"}}>
           <div style={{display:"grid",gridTemplateColumns:gridCols,columnGap:16,alignItems:"center",padding:"10px 18px",background:T.bg,borderBottom:`1px solid ${T.border}`}}>
@@ -4088,7 +4103,6 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
                 <div style={{width:8,height:8,borderRadius:"50%",background:st.dot}}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13.5,fontWeight:800,color:T.text}}>{r.label}</div>
-                  <div style={{fontSize:10.5,color:T.muted,marginTop:1}}>Alminnelig næring</div>
                 </div>
                 <div style={{fontSize:12,fontWeight:600,color:overdue?T.red:T.sub}}>{r.due}</div>
                 <div style={{fontSize:14,fontWeight:800,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmt(r.netVat)}</div>
