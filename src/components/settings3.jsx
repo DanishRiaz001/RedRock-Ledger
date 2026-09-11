@@ -626,11 +626,13 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
 
         {attachment&&showPreview&&(
           <div style={{width:340,flexShrink:0,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:560,position:"sticky",top:16}}>
-            <div style={{padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:700,color:T.sub,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachment.name}</span>
+            {/* No filename label here anymore — SignedFileViewer's own
+                toolbar already shows it right below; this bar's only real
+                job is the close button. */}
+            <div style={{padding:"6px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
               <button onClick={()=>setShowPreview(false)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",padding:2}}><i className="ti ti-x" style={{fontSize:14}}/></button>
             </div>
-            <div style={{height:"calc(100% - 33px)"}}>
+            <div style={{height:"calc(100% - 31px)"}}>
               <SignedFileViewer storagePath={attachment.storagePath} type={attachment.type} name={attachment.name} style={{width:"100%",height:"100%"}}/>
             </div>
           </div>

@@ -1445,7 +1445,6 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
             <div style={{background:"#fff",borderRadius:8,height:440,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,marginBottom:10}}>
               <SignedFileViewer storagePath={attachedFile.storagePath} type={attachedFile.type} name={attachedFile.name} style={{width:"100%",height:"100%",borderRadius:8}}/>
             </div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attachedFile.name}</div>
             <button onClick={()=>setAttachedFileId(null)} style={{width:"100%",background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px",fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Remove</button>
           </>
         ):(
@@ -5369,7 +5368,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     documents while filling this entry doesn't mean
                     closing this panel and going back to Inbox each time. */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:T.bg,borderBottom:`1px solid ${T.border}`,gap:8}}>
-                  <span style={{fontSize:11,fontWeight:700,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{attached.name}</span>
+                  {/* No filename here — SignedFileViewer's own toolbar
+                      below already shows it; this bar is just for
+                      stepping through several candidate documents. */}
+                  <span style={{fontSize:11,fontWeight:700,color:T.sub,textTransform:"uppercase",letterSpacing:0.3,flex:1,minWidth:0}}>Document</span>
                   {inboxFiles.length>1&&(()=>{
                     const idx=inboxFiles.findIndex(f=>String(f.id)===String(attached.id));
                     if(idx<0)return null;

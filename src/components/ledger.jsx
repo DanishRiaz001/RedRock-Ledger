@@ -2060,14 +2060,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         left={detailsTab}
         right={(
           <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#fff"}}>
-            {attached?(<>
-              <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{attached.name}</span>
-              </div>
+            {attached?(
+              // SignedFileViewer already renders its own toolbar with the
+              // filename (and Download, for images) — this used to repeat
+              // the filename in a second dark header right above it.
               <div style={{flex:1,minHeight:0}}>
                 <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
               </div>
-            </>):(
+            ):(
               <div
                 onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
                 onDragLeave={()=>setDropHover(false)}
