@@ -1673,7 +1673,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   };
 
   const postingsGrid=(()=>{
-    const GRID_COLS="150px 1.3fr 1.3fr 130px 60px";
+    const GRID_COLS="260px 1.2fr 1.2fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
     // Postings table (Advance Voucher) — this used to be a bare label
     // with no border and a noticeably larger font than every other entry
@@ -1717,7 +1717,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 {/* Date and description side by side — same compact layout
                     as the Advance Voucher screen's own Date/Description row,
                     instead of stacking them on separate lines here. */}
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} style={{width:88,flexShrink:0}} inputStyle={{...flatField,fontSize:12,padding:"6px 2px"}}/>
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} style={{width:118,flexShrink:0}} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
                 <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit",flex:1}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
@@ -2378,6 +2378,21 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   const isDesktopChrome=typeof window!=="undefined"&&window.innerWidth>=900;
   if(showEdit)return(
     <div style={{position:"fixed",top:isDesktopChrome?60:0,left:isDesktopChrome?220:0,right:0,bottom:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
+    {/* EditModal replaces DetailModal's own header entirely when opened
+        straight into edit mode — that header is also where the comment
+        thread lives, so jumping straight to Edit (every call site does
+        this now) meant there was no way to reach comments at all from
+        here. Floats the same icon/badge over the edit view instead of
+        rebuilding a header just to hold it. */}
+    {addEntryComment&&(
+      <button onClick={()=>setShowComments(true)} title="Comments" style={{position:"fixed",top:isDesktopChrome?76:16,right:24,zIndex:301,background:T.border,border:"none",borderRadius:10,color:T.sub,width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
+        <i className="ti ti-message-circle" style={{fontSize:15}}/>
+        {comments.length>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:9,fontWeight:800,background:T.accent,color:"#fff",borderRadius:8,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{comments.length}</span>}
+      </button>
+    )}
+    {showComments&&(
+      <CommentsModal comments={comments} loading={commentsLoading} newComment={newComment} setNewComment={setNewComment} onPost={postComment} posting={postingComment} profiles={profiles} currentUserId={currentUserId} onClose={()=>setShowComments(false)}/>
+    )}
     <EditModal
       txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
