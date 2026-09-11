@@ -656,7 +656,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               <div style={{overflowY:"auto",flex:1,minHeight:0}}>
                 {companies.length>0&&(()=>{
                   const q=clientSwitcherSearch.trim().toLowerCase();
-                  const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q));
+                  const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
                   if(!shown.length)return null;
                   const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
                   // Deep link so a company opened this way always wins over
@@ -682,10 +682,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                           if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
                           e.preventDefault();
                           setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
-                          <div style={{width:34,height:34,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
-                          <span style={{fontSize:14,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-                          {active&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
+                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
+                          <div style={{width:20,height:20,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
+                          <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                          {active&&<i className="ti ti-check" style={{fontSize:11.5,color:T.accent,flexShrink:0}}/>}
                         </a>
                       );
                     })}
@@ -700,7 +700,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     Panel; this is just "go look at what I've been granted". */}
                 {myClientAccess.length>0&&(()=>{
                   const q=clientSwitcherSearch.trim().toLowerCase();
-                  const shown=myClientAccess.filter(c=>!q||(c.companyName||c.clientEmail||"").toLowerCase().includes(q));
+                  const shown=myClientAccess.filter(c=>!q||(c.companyName||c.clientEmail||"").toLowerCase().includes(q)).sort((a,b)=>(a.companyName||a.clientEmail||"").localeCompare(b.companyName||b.clientEmail||""));
                   if(!shown.length)return null;
                   const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
                   return(<>
@@ -713,13 +713,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                           setViewingUserId(c.clientUserId);
                           if(c.companyId)setActiveCompanyId(c.companyId);
                           setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
-                          <div style={{width:34,height:34,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}}>{initials(label)}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:14,fontWeight:active?700:500,color:active?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</div>
-                            <div style={{fontSize:10.5,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel} access</div>
-                          </div>
-                          {active&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
+                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                          <div style={{width:20,height:20,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{initials(label)}</div>
+                          <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
+                          {active&&<i className="ti ti-check" style={{fontSize:11.5,color:T.accent,flexShrink:0}}/>}
                         </div>
                       );
                     })}
