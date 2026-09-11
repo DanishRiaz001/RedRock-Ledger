@@ -4362,20 +4362,28 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           </div>
         </div>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+          {(()=>{
+            const vlcShowSupplier=vlcCode.direction==="input";
+            const vlcShowCustomer=vlcCode.direction==="output";
+            const vlcKontoCount=(vlcShowSupplier?1:0)+(vlcShowCustomer?1:0);
+            return(
           <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
             <colgroup>
-              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:"24%"}}/>
-              <col style={{width:"13%"}}/><col style={{width:"13%"}}/>
+              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:vlcKontoCount===2?"24%":(vlcKontoCount===1?"30%":"37%")}}/>
+              {vlcShowSupplier&&<col style={{width:"13%"}}/>}
+              {vlcShowCustomer&&<col style={{width:"13%"}}/>}
               <col style={{width:"9%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"9%"}}/>
             </colgroup>
             <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td><td>Leverandør</td><td>Kunde</td>
+              <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
+              {vlcShowSupplier&&<td>Leverandør</td>}
+              {vlcShowCustomer&&<td>Kunde</td>}
               <td>Termin</td><td style={{textAlign:"right"}}>Mva-beløp</td><td>Valuta</td><td style={{textAlign:"right",padding:"9px 12px"}}>Beløp</td>
             </tr></thead>
             <tbody>
               {vlcGroups.map(g=>(
                 <React.Fragment key={g.key}>
-                  <tr><td colSpan={9} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  <tr><td colSpan={7+vlcKontoCount} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
                   {g.rows.map(t=>{
                     const contact=t.contactId?contacts.find(c=>c.id===t.contactId):null;
                     const n=VAT_TERMINER.find(vt=>t.date>=terminInfo(termin.year,vt.n).from&&t.date<=terminInfo(termin.year,vt.n).to);
@@ -4384,8 +4392,8 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                         <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                         <td style={{color:T.sub}}>{t.date}</td>
                         <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>
-                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>
+                        {vlcShowSupplier&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>}
+                        {vlcShowCustomer&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>}
                         <td style={{color:T.sub}}>{n?`Termin ${n.n}`:"—"}</td>
                         <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                         <td style={{color:T.muted,fontSize:10.5}}>{t.currency||"NOK"}</td>
@@ -4394,16 +4402,18 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                     );
                   })}
                   <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td colSpan={6} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
+                    <td colSpan={4+vlcKontoCount} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
                     <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
                     <td></td>
                     <td style={{textAlign:"right",padding:"6px 12px",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
                   </tr>
                 </React.Fragment>
               ))}
-              {!vlcGroups.length&&<tr><td colSpan={9} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner for denne koden i {termin.year}.</td></tr>}
+              {!vlcGroups.length&&<tr><td colSpan={7+vlcKontoCount} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner for denne koden i {termin.year}.</td></tr>}
             </tbody>
           </table>
+            );
+          })()}
         </div>
         </>)}
         {openTxn&&<DetailModal txn={openTxn} accounts={accounts} contacts={contacts} transactions={transactions} initialShowEdit onClose={()=>setOpenTxn(null)} {...detailModalProps}/>}
@@ -4448,7 +4458,13 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     // customer/supplier this VAT-coded row belongs to); for the no-VAT
     // bucket a contact rarely applies at all, so it's dropped for that
     // view only.
-    const showKontoCol=specView.direction!=="none";
+    // A Salg (sales/output) section only ever has a Kunde, never a
+    // Leverandør — and vice versa for Kjøp (input) — so showing both
+    // columns together just meant one of them was always a wall of "—".
+    // Show only whichever one this direction can actually have.
+    const showSupplierCol=specView.direction==="input";
+    const showCustomerCol=specView.direction==="output";
+    const kontoColCount=(showSupplierCol?1:0)+(showCustomerCol?1:0);
     const groups=[];
     const idxByKey={};
     sorted.forEach(t=>{
@@ -4482,19 +4498,21 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
           <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
             <colgroup>
-              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:showKontoCol?"20%":"32%"}}/>
-              {showKontoCol&&<><col style={{width:"13%"}}/><col style={{width:"13%"}}/></>}
+              <col style={{width:"8%"}}/><col style={{width:"8%"}}/><col style={{width:kontoColCount?(kontoColCount===2?"20%":"26%"):"32%"}}/>
+              {showSupplierCol&&<col style={{width:"13%"}}/>}
+              {showCustomerCol&&<col style={{width:"13%"}}/>}
               <col style={{width:"8%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"10%"}}/><col style={{width:"9%"}}/>
             </colgroup>
             <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
               <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
-              {showKontoCol&&(<><td>Leverandør</td><td>Kunde</td></>)}
+              {showSupplierCol&&<td>Leverandør</td>}
+              {showCustomerCol&&<td>Kunde</td>}
               <td>Mva-kode</td><td style={{textAlign:"right"}}>Mva-beløp</td><td>Valuta</td><td style={{textAlign:"right"}}>Beløp</td><td style={{textAlign:"right",padding:"9px 12px"}}>Saldo</td>
             </tr></thead>
             <tbody>
               {groups.map(g=>(
                 <React.Fragment key={g.key}>
-                  <tr><td colSpan={showKontoCol?10:8} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
+                  <tr><td colSpan={8+kontoColCount} style={{padding:"8px 12px",fontWeight:800,fontSize:11,color:T.text,background:T.bg}}>{g.key}</td></tr>
                   {g.rows.map(t=>{
                     const contact=t.contactId?contacts.find(c=>c.id===t.contactId):null;
                     return(
@@ -4502,10 +4520,8 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                       <td style={{padding:"7px 12px",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                       <td style={{color:T.sub}}>{t.date}</td>
                       <td style={{color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</td>
-                      {showKontoCol&&(<>
-                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>
-                        <td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>
-                      </>)}
+                      {showSupplierCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="supplier"?contact.name:"—"}</td>}
+                      {showCustomerCol&&<td style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact&&contact.type==="customer"?contact.name:"—"}</td>}
                       <td style={{color:T.sub}}>{specView.direction==="none"?specView.code:specView.vc?`${specView.vc.code} (${specView.rate}%)`:"—"}</td>
                       <td style={{textAlign:"right",color:T.accent,fontWeight:600}}>{fmt(t.vatAmount||0)}</td>
                       <td style={{color:T.muted,fontSize:10.5}}>{t.currency||"NOK"}</td>
@@ -4514,7 +4530,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                     </tr>
                   );})}
                   <tr style={{borderTop:`1px solid ${T.border}`}}>
-                    <td colSpan={showKontoCol?7:5} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
+                    <td colSpan={5+kontoColCount} style={{padding:"6px 12px",color:T.muted,fontStyle:"italic"}}>Endring i perioden</td>
                     <td style={{textAlign:"right",color:T.accent,fontWeight:700}}>{fmt(g.vatSum)}</td>
                     <td></td>
                     <td style={{textAlign:"right",color:T.text,fontWeight:700}}>{fmt(g.amountSum)}</td>
@@ -4522,10 +4538,10 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                   </tr>
                 </React.Fragment>
               ))}
-              {!groups.length&&<tr><td colSpan={showKontoCol?10:8} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
+              {!groups.length&&<tr><td colSpan={8+kontoColCount} style={{padding:"20px 12px",textAlign:"center",color:T.muted}}>Ingen transaksjoner.</td></tr>}
               {groups.length>1&&(
                 <tr style={{borderTop:`2px solid ${T.border}`}}>
-                  <td colSpan={showKontoCol?7:5} style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
+                  <td colSpan={5+kontoColCount} style={{padding:"9px 12px",fontWeight:800,color:T.text}}>Totalt</td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.accent}}>{fmt(grandVat)}</td>
                   <td></td>
                   <td style={{textAlign:"right",fontWeight:800,color:T.text}}>{fmt(grandAmount)}</td>
@@ -5245,20 +5261,40 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       return null;
     }
   };
-  // Backfills THIS attachment onto every already-posted entry for this
-  // exact account/month — for a statement that was attached before this
-  // fix existed (so posting never picked it up automatically) or just to
-  // re-sync after the fact, without needing to re-upload the same file
-  // through "Replace" to trigger it.
+  // Backfills THIS attachment onto every entry actually posted straight
+  // FROM this bank statement for this account/month — for a statement
+  // attached before this fix existed (so posting never picked it up
+  // automatically) or just to re-sync after the fact, without needing to
+  // re-upload the same file through "Replace" to trigger it.
+  // Used to loop over `ledgerEntries` — EVERY transaction touching this
+  // account that month, including manual advance-voucher/invoice postings
+  // that have nothing to do with this bank feed. Scoped to matchedTxnIds
+  // instead (declared further below, once matchedLines exists): only
+  // entries a bank_statement_lines row actually points at (posted or
+  // matched from this exact statement), which is what "synced to the bank
+  // transactions" should mean. bankPostedEntries itself is defined right
+  // after matchedTxnIds below — referencing it here is fine since this
+  // function only ever runs on click, well after render has finished.
   const syncAttachmentToEntries=async()=>{
     if(!attachFilesToTxnEntry||!currentAttachment)return;
+    if(!bankPostedEntries.length){alert("No bank-posted entries for this account and month yet — nothing to sync to.");return;}
     setSyncingProof(true);
     const proofFileId=await ensureProofFileId();
-    if(proofFileId){
-      for(const t of ledgerEntries)await attachFilesToTxnEntry(t.id,[proofFileId]);
+    if(!proofFileId){setSyncingProof(false);alert("Couldn't read this attachment — try Replace instead.");return;}
+    // Already-attached check first — attachFilesToTxnEntry itself is a
+    // no-op upsert for a pairing that already exists, but re-running it
+    // silently on an already-fully-synced statement gave no sign anything
+    // (or nothing) actually happened.
+    const attachedLists=await Promise.all(bankPostedEntries.map(t=>fetchTxnAttachments?fetchTxnAttachments(t.id):Promise.resolve([])));
+    const alreadySynced=bankPostedEntries.every((t,i)=>(attachedLists[i]||[]).some(a=>String(a.id)===String(proofFileId)));
+    if(alreadySynced){
+      setSyncingProof(false);
+      alert(`Already synced — every bank-posted entry for this period is already linked to ${currentAttachment.name}.`);
+      return;
     }
+    for(const t of bankPostedEntries)await attachFilesToTxnEntry(t.id,[proofFileId]);
     setSyncingProof(false);
-    alert(proofFileId?`Synced to ${ledgerEntries.length} entr${ledgerEntries.length===1?"y":"ies"} from this period.`:"Couldn't read this attachment — try Replace instead.");
+    alert(`Synced to ${bankPostedEntries.length} bank-posted entr${bankPostedEntries.length===1?"y":"ies"} from this period.`);
   };
   // Left column: what's actually in the ledger for this account and month.
   const ledgerEntries=useMemo(()=>transactions.filter(t=>(t.debitCode===selectedAccount||t.creditCode===selectedAccount)&&t.date.slice(0,7)===month).sort((a,b)=>a.date.localeCompare(b.date)),[transactions,selectedAccount,month]);
@@ -5290,6 +5326,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   // together, so "matched" here means either kind of settled, not just the
   // directly-linked one.
   const matchedTxnIds=useMemo(()=>new Set(matchedLines.map(l=>l.postedTxnId)),[matchedLines]);
+  const bankPostedEntries=useMemo(()=>ledgerEntries.filter(t=>matchedTxnIds.has(t.id)),[ledgerEntries,matchedTxnIds]);
   const workingLedgerEntries=ledgerEntries.filter(t=>!matchedTxnIds.has(t.id)&&!t.reconciled);
   const matchedLedgerEntries=ledgerEntries.filter(t=>matchedTxnIds.has(t.id)||t.reconciled);
   const selectedTxnsArr=workingLedgerEntries.filter(t=>selectedTxnIds.has(t.id));

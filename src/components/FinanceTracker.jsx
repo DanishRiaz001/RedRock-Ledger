@@ -42,6 +42,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   });
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
+  const[vatTerminView,setVatTerminView]=useState(null); // null = Termin list, or {year,n} = drill-down
   // This app has no client-side router — switching screens is just this
   // `tab` state, so the browser's real history never grew past one entry.
   // A user could navigate three or four screens deep and one Back press
@@ -59,7 +60,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       params.set("tab",tab);
       window.history.pushState({tab},"",`${window.location.pathname}?${params.toString()}`);
     }catch{window.history.pushState({tab},"");}
-  },[tab,ledgerAcc]);
+  },[tab,ledgerAcc,vatTerminView]);
   // Builds the real href for a sidebar/nav link to a tab, preserving any
   // other query params already on the URL (e.g. ?company=). Paired with
   // navProps below, which intercepts a plain left-click to keep using the
@@ -87,12 +88,18 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     const onPop=()=>{
       poppingRef.current=true;
       if(ledgerAcc){setLedgerAcc(null);return;}
+      // Mva-meldinger's own drill-down (termin -> spesifikasjon -> VAT code
+      // ledger) isn't part of this history trail at all — without this,
+      // Back from anywhere inside it skipped straight past the Mva-meldinger
+      // tab entirely and landed on whatever tab was open before it, instead
+      // of just returning to the Mva-meldinger termin list one step back.
+      if(vatTerminView){setVatTerminView(null);return;}
       const t=window.history.state&&window.history.state.tab;
       if(t)setTab(t);
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[ledgerAcc]);
+  },[ledgerAcc,vatTerminView]);
   const[settingsWide,setSettingsWide]=useState(false);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
   const[lastDeleted,setLastDeleted]=useState(null);
@@ -265,7 +272,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // other nav link means starting fresh. Cleared the instant you leave the
   // tab, not just when you explicitly close the entry.
   useEffect(()=>{if(tab!=="Entries")setEntriesDetailTxn(null);},[tab]);
-  const[vatTerminView,setVatTerminView]=useState(null); // null = Termin list, or {year,n} = drill-down
   const[entriesFixedBarHeight,setEntriesFixedBarHeight]=useState(90);
   const entriesFixedBarRef=React.useRef(null);
   useEffect(()=>{
@@ -494,7 +500,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
   if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={companies} createCompany={createCompany} renameCompany={renameCompany} deleteCompany={deleteCompany} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} ownUserId={user?user.id:null}/>):null;
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
-  if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions}/></div></div>);
+  if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions} profiles={profiles} currentUserId={user?user.id:null}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
@@ -595,7 +601,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           on top of the whole header — including its dropdown panels —
           silently eating every click meant for them. */}
       <div style={{height:60,flexShrink:0,background:"rgba(255,255,255,0.7)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:`1px solid ${T.borderGlass}`,display:"flex",alignItems:"center",gap:10,padding:"0 18px",position:"sticky",top:0,zIndex:600}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:220-18}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,width:196-18}}>
           <img src={LOGO_B64} style={{height:34,objectFit:"contain"}}/>
           <div>
             <div style={{fontSize:12,fontWeight:900,color:T.text,lineHeight:1.2}}>Redrock Ledger</div>
@@ -907,7 +913,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           the remaining vertical space. */}
       <div style={{display:"flex",flex:1,minHeight:0}}>
       {/* Persistent sidebar — same data/feature-gating as the mobile drawer, just always visible */}
-      <div style={{width:220,flexShrink:0,borderRight:`1px solid ${T.borderGlass}`,background:"rgba(255,255,255,0.55)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",display:"flex",flexDirection:"column",height:"100%",overflowY:"auto"}}>
+      <div style={{width:196,flexShrink:0,borderRight:`1px solid ${T.borderGlass}`,background:"rgba(255,255,255,0.55)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",display:"flex",flexDirection:"column",height:"100%",overflowY:"auto"}}>
         <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           {pinnedTabs.length>0&&(
             <>
@@ -1203,7 +1209,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               // row (header included) is guaranteed the exact same columns.
               const gridCols=headers.map(h=>h.w).join(" ");
               return(<>
-                <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:220,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
+                <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:196,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
                 <div style={{maxWidth:1000}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                   <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{sorted.length} entries</div>
@@ -1449,9 +1455,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           :<ScreenErrorBoundary name="Mva-meldinger">
             {vatTerminView
               ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} detailModalProps={{
-                  auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,tagTransaction,
+                  auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,projects,tagTransaction,
                   fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
                   onEdit:saveEdit,onDelete:deleteTxnWithUndo,onReverse:reverseTransaction,onDuplicate:duplicateTransaction,
+                  onCreateAccount:createAccountQuick,onCreateContact:createContactQuick,
                 }}/>
               :<VATTerminScreen transactions={transactions} accounts={accounts} contacts={contacts} onOpenTermin={setVatTerminView}/>}
           </ScreenErrorBoundary>
@@ -1509,7 +1516,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="AuditLog"&&(
           <div style={{maxWidth:1000}}>
-            <AuditLogScreen auditLog={auditLog} transactions={transactions}/>
+            <AuditLogScreen auditLog={auditLog} transactions={transactions} profiles={profiles} currentUserId={user?user.id:null}/>
           </div>
         )}
 

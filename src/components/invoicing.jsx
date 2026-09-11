@@ -3267,9 +3267,15 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
 // Audit trail — who changed which bilag, when, old vs new values. Read-only
 // by design: the audit_log table has no update/delete policy, so nothing in
 // the app (or anyone with database access through the app) can rewrite history.
-function AuditLogScreen({auditLog,transactions}){
+function AuditLogScreen({auditLog,transactions,profiles=[],currentUserId}){
   const[filter,setFilter]=useState("");
   const getBilagLabel=(entry)=>entry.bilag?fmtB(entry.bilag):(entry.entityType==="invoice"?`Invoice #${entry.entityId}`:`#${entry.entityId}`);
+  const whoLabel=(uid)=>{
+    if(!uid)return"—";
+    if(uid===currentUserId)return"You";
+    const p=profiles.find(x=>x.id===uid);
+    return p?(p.display_name||p.email||"Team member"):"Team member";
+  };
   const shown=auditLog.filter(a=>!filter||getBilagLabel(a).toLowerCase().includes(filter.toLowerCase())||(a.action||"").includes(filter.toLowerCase()));
 
   const renderValue=(v)=>{
@@ -3286,19 +3292,20 @@ function AuditLogScreen({auditLog,transactions}){
       <input placeholder="Search by bilag or action" value={filter} onChange={e=>setFilter(e.target.value)} style={{...inp,width:260,marginBottom:16}}/>
       <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.muted,fontSize:11}}>
-          <td style={{padding:"6px 0"}}>When</td><td>Entity</td><td>Action</td><td>Before</td><td>After</td>
+          <td style={{padding:"6px 0"}}>When</td><td>Who</td><td>Entity</td><td>Action</td><td>Before</td><td>After</td>
         </tr></thead>
         <tbody>
           {shown.slice(0,300).map(a=>(
             <tr key={a.id} style={{borderTop:`1px solid ${T.border}`}}>
               <td style={{padding:"7px 0",color:T.sub,whiteSpace:"nowrap"}}>{new Date(a.createdAt).toLocaleString()}</td>
+              <td style={{color:T.text,fontWeight:600,whiteSpace:"nowrap"}}>{whoLabel(a.changedBy)}</td>
               <td style={{color:T.accent,fontWeight:700}}>{getBilagLabel(a)}</td>
               <td style={{color:actionStyle(a.action),fontWeight:700,textTransform:"capitalize"}}>{a.action.replace("_"," ")}</td>
               <td style={{color:T.muted,maxWidth:220}}>{renderValue(a.oldValues)}</td>
               <td style={{color:T.text,maxWidth:220}}>{renderValue(a.newValues)}</td>
             </tr>
           ))}
-          {!shown.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No audit history yet — it starts recording from here forward.</td></tr>}
+          {!shown.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No audit history yet — it starts recording from here forward.</td></tr>}
         </tbody>
       </table>
     </div>

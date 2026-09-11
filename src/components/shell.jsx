@@ -95,17 +95,6 @@ function SignedFileViewer({storagePath,type,name,style}){
     a.href=url;a.download=name||"attachment";a.target="_blank";
     document.body.appendChild(a);a.click();a.remove();
   };
-  const printFile=()=>{
-    if(!url)return;
-    const iframe=document.createElement("iframe");
-    iframe.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:none;";
-    iframe.src=url;
-    document.body.appendChild(iframe);
-    iframe.onload=()=>{
-      try{iframe.contentWindow.print();}catch(e){}
-      setTimeout(()=>{if(iframe.parentNode)iframe.parentNode.removeChild(iframe);},1000);
-    };
-  };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
 
@@ -120,8 +109,11 @@ function SignedFileViewer({storagePath,type,name,style}){
         <button onClick={()=>setRotation(r=>r-90)} title="Rotate" style={toolbarBtn}><i className="ti ti-rotate-2" style={{fontSize:15}}/></button>
       </>)}
       <div style={{flex:1,fontSize:11,color:"#9CA3AF",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{name}</div>
-      <button onClick={printFile} title="Print" style={toolbarBtn}><i className="ti ti-printer" style={{fontSize:15}}/></button>
-      <button onClick={downloadFile} title="Download" style={toolbarBtn}><i className="ti ti-download" style={{fontSize:15}}/></button>
+      {/* PDFs render in the browser's own native PDF viewer (the iframe
+          below), which already has its own print/download/page controls —
+          this bar's print/download used to just duplicate those. Images
+          have no such built-in chrome, so they keep their own Download. */}
+      {isImage&&<button onClick={downloadFile} title="Download" style={toolbarBtn}><i className="ti ti-download" style={{fontSize:15}}/></button>}
     </div>
   );
 

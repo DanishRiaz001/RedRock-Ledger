@@ -1436,6 +1436,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // up in this editor, with no way to tell why.
   const valid=(form.debitCode||form.creditCode)&&form.description&&parseFloat(form.amount)>0;
   const[confirmDel,setConfirmDel]=useState(false);
+  const[confirmReverse,setConfirmReverse]=useState(false);
   const[dropHover,setDropHover]=useState(false);
   const[confirmRemoveAtt,setConfirmRemoveAtt]=useState(false);
   const[removingAtt,setRemovingAtt]=useState(false);
@@ -1712,9 +1713,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
-              <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:12,padding:"6px 2px"}}/>
-                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+              <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"center",gap:8}}>
+                {/* Date and description side by side — same compact layout
+                    as the Advance Voucher screen's own Date/Description row,
+                    instead of stacking them on separate lines here. */}
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} style={{width:88,flexShrink:0}} inputStyle={{...flatField,fontSize:12,padding:"6px 2px"}}/>
+                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit",flex:1}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
@@ -1762,13 +1766,21 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     );
   })();
 
-  const voucherDetailsBox=(
+  // An Advance Voucher entry (the common case — not a Supplier/Customer
+  // Invoice) has nothing invoice-specific to show here, so the "Voucher
+  // details" card+header used to appear as an empty-looking box with just
+  // a label and no visible content. It only earns the card treatment (and
+  // the fixed entry type it can never change — a saved bilag keeps
+  // whatever entryMode it was originally posted with) when there's
+  // actually invoice detail to hold; otherwise Whose/Project (if used)
+  // render bare, no header, right above the postings.
+  const voucherDetailsBox=isInvoiceMode?(
     // Same bordered-panel treatment as New Entry's own "Voucher details"
     // box — this used to be a bare label with no border at all, at a
     // noticeably larger font than the rest of the app's entry forms.
     <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-      <div style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:T.text,borderBottom:isInvoiceMode||(moneySources&&moneySources.length>0)?`1px solid ${T.border}`:"none",background:"#fff"}}>Voucher details</div>
-      <div style={{padding:isInvoiceMode||(moneySources&&moneySources.length>0)?"0 14px":0}}>
+      <div style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:T.text,borderBottom:`1px solid ${T.border}`,background:"#fff"}}>Voucher details</div>
+      <div style={{padding:"0 14px"}}>
       {isInvoiceMode&&(
         <div style={{padding:"14px 0 0"}}>
           <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
@@ -1834,6 +1846,29 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       )}
       </div>
     </div>
+  ):(
+    ((moneySources&&moneySources.length>0)||(projects&&projects.length>0))?(
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {moneySources&&moneySources.length>0&&(
+          <div>
+            <SL>Whose</SL>
+            <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%"}}>
+              <option value="">— Select source (optional) —</option>
+              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        )}
+        {projects&&projects.length>0&&(
+          <div>
+            <SL>Project</SL>
+            <select value={form.projectId||""} onChange={e=>setForm(f=>({...f,projectId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%"}}>
+              <option value="">— No project —</option>
+              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?`${p.number} · `:""}{p.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+    ):null
   );
 
   // One master date at the top of a multi-line voucher, applying to every
@@ -1887,7 +1922,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           /* Bilag series must stay unbroken — once a later voucher exists this
              one can only be corrected here or reversed, never deleted. */
           onReverse?(
-            <button onClick={()=>{onReverse(txn);onClose();}} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Reverse entry</button>
+            confirmReverse?(
+              <button onClick={()=>{onReverse(txn);onClose();}} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm reverse</button>
+            ):(
+              <button onClick={()=>setConfirmReverse(true)} style={{background:"none",border:"none",color:T.blue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reverse entry</button>
+            )
           ):(
             <span style={{fontSize:11,color:T.muted}}>Later vouchers exist — reverse this from the entry view, it can't be deleted.</span>
           )
@@ -1918,12 +1957,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const attachmentsTab=(
     <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:600,background:"#fff"}}>
       {attached?(<>
-        {/* A dark toolbar strip, same idea as Tripletex's own file-viewer
-            chrome, instead of a bare filename label above the preview. */}
-        <div style={{padding:"9px 14px",background:"#1E2833",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{attached.name}</span>
-          {onRemoveFile&&(
-            confirmRemoveAtt?(
+        {onRemoveFile&&(
+          <div style={{padding:"6px 14px",background:"#1E2833",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10}}>
+            {confirmRemoveAtt?(
               <button disabled={removingAtt} onClick={async()=>{
                 setRemovingAtt(true);
                 const res=await onRemoveFile(attached.id);
@@ -1933,10 +1969,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               }} style={{background:T.red,border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:removingAtt?"wait":"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>{removingAtt?"Removing…":"Confirm remove"}</button>
             ):(
               <button onClick={()=>setConfirmRemoveAtt(true)} title="Remove this document from the entry — the file itself stays in Inbox" style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>Remove</button>
-            )
-          )}
-        </div>
-        <div style={{height:"calc(100% - 38px)"}}>
+            )}
+          </div>
+        )}
+        <div style={{height:onRemoveFile?"calc(100% - 33px)":"100%"}}>
           <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
         </div>
       </>):(
@@ -2419,7 +2455,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
               ...(!isReversal&&!isReversed&&!txn.matchedWith?[
                 {icon:"✏️",label:"Edit Entry",action:()=>setShowEdit(true)},
                 {icon:"⧉",label:"Duplicate",action:()=>{if(onDuplicate)onDuplicate(txn);onClose();}},
-                {icon:"↩️",label:"Reverse Entry",action:()=>{onReverse(txn);onClose();}},
+                {icon:"↩️",label:"Reverse Entry",action:()=>{if(!window.confirm(`Reverse ${fmtB(txn.bilag)} — ${txn.description}?\n\nThis posts an offsetting entry under a new bilag; it doesn't delete or edit the original.`))return;onReverse(txn);onClose();}},
               ]:[]),
               {icon:"📜",label:"Change log",action:()=>setShowChangeLog(true)},
             ]}/>
