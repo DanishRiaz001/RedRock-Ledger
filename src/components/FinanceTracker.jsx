@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, isExpenseSK, fmt, fmtB, nextContactId } from "../lib/utils.js";
+import { isIncomeSK, isExpenseSK, fmt, fmtB, nextContactId, xlsxHeaderRows } from "../lib/utils.js";
 import { LOGO_B64 } from "../lib/logo.js";
 import { sb } from "../lib/supabaseClient.js";
 import {
@@ -565,7 +565,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return;
     }
     const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const ws=XLSX.utils.aoa_to_sheet([...xlsxHeaderRows(companyProfile,TAB_LABELS[tab]||filename),...aoa]);
     XLSX.utils.book_append_sheet(wb,ws,"Export");
     XLSX.writeFile(wb,`${filename}.xlsx`);
     setDownloadMenuOpen(false);
@@ -580,7 +580,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     const el=(targetedId&&document.getElementById(targetedId))||document.getElementById("main-content-area");
     const periodEl=el&&el.querySelector(".print-only-period");
     if(periodEl)periodEl.style.display="block";
-    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";});
+    // Same reveal-only-for-export as the period line — the company-name/
+    // org-number/report-title block each print area now carries via
+    // <ReportPdfHeader>, hidden on screen so it doesn't double up with
+    // the page's own H1.
+    const headerEl=el&&el.querySelector(".print-only-report-header");
+    if(headerEl)headerEl.style.display="block";
+    if(el&&window.html2pdf)window.html2pdf().from(el).set({margin:20,filename:`${tab}_export.pdf`,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:"portrait"}}).save().then(()=>{if(periodEl)periodEl.style.display="none";if(headerEl)headerEl.style.display="none";});
     setDownloadMenuOpen(false);
   };
   const excelAvailable=!!ledgerAcc||tab==="Reskontro"||tab==="Accounts"||!!screenExcelExport;

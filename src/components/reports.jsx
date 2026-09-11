@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -16,7 +16,13 @@ const pdfPreview=(elId,filename,opts={})=>{
   if(!el||!window.html2pdf)return;
   const periodEl=el.querySelector(".print-only-period");
   if(periodEl)periodEl.style.display="block";
-  const cleanup=()=>{if(periodEl)periodEl.style.display="none";};
+  // Same reveal-only-for-export trick as .print-only-period, generalized
+  // to the company-name/org-number/report-title block every print area
+  // now carries via <ReportPdfHeader> — hidden in the on-screen view
+  // (the page already has its own H1), shown only in the exported PDF.
+  const headerEl=el.querySelector(".print-only-report-header");
+  if(headerEl)headerEl.style.display="block";
+  const cleanup=()=>{if(periodEl)periodEl.style.display="none";if(headerEl)headerEl.style.display="none";};
   const worker=window.html2pdf().from(el).set({margin:20,filename,html2canvas:{scale:2},jsPDF:{unit:"pt",format:"a4",orientation:opts.landscape?"landscape":"portrait"}});
   worker.outputPdf("bloburl").then(url=>{
     const w=window.open(url,"_blank");
@@ -24,6 +30,21 @@ const pdfPreview=(elId,filename,opts={})=>{
     cleanup();
   }).catch(()=>{worker.save().then(cleanup);});
 };
+
+// Which company's books a downloaded PDF came from, and what the report
+// actually is — every print area gets one of these as its first child.
+// Hidden by default (pdfPreview reveals it only for the export itself),
+// so it never doubles up with the on-screen H1 the page already has.
+function ReportPdfHeader({companyProfile,title,subtitle}){
+  return(
+    <div className="print-only-report-header" style={{display:"none",marginBottom:14}}>
+      <div style={{fontSize:15,fontWeight:800,color:T.text}}>{(companyProfile&&companyProfile.companyName)||"Untitled company"}</div>
+      {companyProfile&&companyProfile.orgNumber&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>Org.nr {companyProfile.orgNumber}</div>}
+      <div style={{fontSize:13,fontWeight:700,color:T.text,marginTop:8}}>{title}</div>
+      {subtitle&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{subtitle}</div>}
+    </div>
+  );
+}
 
 // The VAT-return "grunnlag" (taxable base) for a transaction. On a split
 // entry the P&L row's `amount` is ALREADY net (the VAT is a separate 27xx
@@ -3061,7 +3082,7 @@ function TerminPeriodPicker({initialFrom,initialTo,onApply,onClose}){
   );
 }
 
-function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport,isDesktop=false}){
+function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,registerExcelExport,isDesktop=false,companyProfile}){
   const today=new Date().toISOString().slice(0,10);
   // Excel-style resizable columns — drag the handle on the right edge of any
   // header cell.
@@ -3178,13 +3199,13 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   useEffect(()=>{
     if(!registerExcelExport)return;
     registerExcelExport(()=>{
-      const aoa=[["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
+      const aoa=[...xlsxHeaderRows(companyProfile,"Trial balance",`${filterFrom} to ${filterTo}`),["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
       const wb=XLSX.utils.book_new();
       const ws=XLSX.utils.aoa_to_sheet(aoa);
       XLSX.utils.book_append_sheet(wb,ws,"Trial balance");
       XLSX.writeFile(wb,`TrialBalance_${filterFrom}_${filterTo}.xlsx`);
     });
-  },[rows,filterFrom,filterTo,registerExcelExport]);
+  },[rows,filterFrom,filterTo,registerExcelExport,companyProfile]);
 
   if(!isDesktop){
     return(
@@ -3352,6 +3373,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           already used for Bank Reconciliation and Reskontro, where this
           gap/blank-header issue never shows up. */}
       <div id="trialbalance-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="Trial balance" subtitle={`${filterFrom} to ${filterTo}`}/>
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:13,marginTop:8}}>
         <div>
           {rows.map(r=>(
@@ -7044,6 +7066,17 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],set
   },[transactions,thisYear]);
   const years=[];for(let y=thisYear;y>=firstYear;y--)years.push(y);
   const[year,setYear]=useState(initialYear||null);
+  // Was declared further down, past the `if(year==null)` early return
+  // below — meaning this hook only ever ran on the "year detail" branch,
+  // never on the "year list" (year==null) branch. React calls hooks in
+  // order and expects the SAME hooks every render; switching between the
+  // two branches changed how many hooks ran, which is exactly React
+  // error #310 ("Rendered fewer hooks than expected") — this screen
+  // crashed the instant you navigated from the year list into a year (or
+  // back), and "Try again" only remounts the same broken tree, so it
+  // never actually recovered. Hooks must never sit after a conditional
+  // return; moved above it so it always runs.
+  const[closing,setClosing]=useState(false);
 
   const pcd=companyProfile.periodCloseDate||"";
   const monthLocked=(y,m)=>pcd&&pcd>=_lastDayOfMonth(y,m);
@@ -7125,7 +7158,6 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],set
     // pre = expenses − income; profit = −pre
     return Math.round(-pre*100)/100;
   };
-  const[closing,setClosing]=useState(false);
   const closeYear=async()=>{
     if(yearClosed(year)||priorYearOpen(year)||closing)return;
     const profit=yearResult();

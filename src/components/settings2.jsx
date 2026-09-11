@@ -2056,7 +2056,17 @@ class ScreenErrorBoundary extends React.Component{
           <div style={{fontSize:36,marginBottom:10}}>⚠️</div>
           <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:6}}>{this.props.name||"This screen"} hit an error</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:16,fontFamily:"monospace",background:T.bg,borderRadius:8,padding:10,textAlign:"left",wordBreak:"break-word"}}>{String(this.state.error&&this.state.error.message||this.state.error)}</div>
-          <button onClick={()=>this.setState({error:null})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Try again</button>
+          {/* "Try again" only clears the caught error and re-renders the
+              SAME crashed screen in the SAME state — if whatever caused
+              the crash is still true (it usually is), it just crashes
+              again immediately, with no way out except closing the tab.
+              A real escape hatch: drop the ?tab= query param and do a
+              genuine page load, landing back on Dashboard regardless of
+              what's broken. */}
+          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            <button onClick={()=>this.setState({error:null})} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Try again</button>
+            <button onClick={()=>{try{const u=new URL(window.location.href);u.searchParams.delete("tab");window.location.href=u.toString();}catch{window.location.href=window.location.pathname;}}} style={{background:"none",border:`1px solid ${T.border}`,color:T.sub,borderRadius:8,padding:"9px 18px",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Go to Dashboard</button>
+          </div>
         </div>
       );
     }

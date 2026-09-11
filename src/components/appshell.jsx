@@ -506,7 +506,12 @@ function AppShell({user}){
       setNextInvoiceNo(startInvNo);
       if(cpR.data){
         const d=cpR.data;
-        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,splitVat:d.split_vat!==false,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
+        // splitVat is now always true — the VAT-codes screen's on/off
+        // toggle for this was removed (posting VAT gross isn't how
+        // Norwegian VAT-registered books should be kept), so this ignores
+        // whatever split_vat value is actually stored, including an
+        // earlier company that had it explicitly turned off.
+        setCompanyProfile({companyName:d.company_name||"",address:d.address||"",mobile:d.mobile||"",email:d.email||"",orgNumber:d.org_number||"",bankAccount:d.bank_account||"",vatPct:parseFloat(d.vat_pct)||0,fiscalYearStartMonth:d.fiscal_year_start_month||1,logoDataUrl:d.logo_data_url||"",periodCloseDate:d.period_close_date||"",phone:d.phone||"",faxNumber:d.fax_number||"",website:d.website||"",postcode:d.postcode||"",city:d.city||"",formOfBusiness:d.form_of_business||"",currency:d.currency||"PKR",language:d.language||"English",country:d.country||"PK",trackProjects:!!d.track_projects,splitVat:true,municipality:d.municipality||"",municipalityStartDate:d.municipality_start_date||""});
       } else {
         // This company has no company_profile row yet (e.g. it was just
         // created) — reset to blank instead of leaving whichever other

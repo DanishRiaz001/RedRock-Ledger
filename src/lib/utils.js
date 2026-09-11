@@ -427,4 +427,20 @@ const seededBankPostingTypes = (accounts) => {
   return DEFAULT_BANK_POSTING_TYPES.filter(t => codes.has(t.accountCode)).map((t, i) => ({ ...t, id: `pt_${i}` }));
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes };
+// Every downloaded report (PDF or Excel) used to open with just the
+// report's own title — no indication of WHICH company's books it came
+// from, which matters the moment more than one client's file ends up in
+// the same downloads folder or inbox. Returns the AOA rows an Excel
+// export prepends before its own header row; xlsxHeaderRows(cp,"Trial
+// balance","01.01.2026 - 30.06.2026") -> company name, "Org.nr NNN NNN
+// NNN", report title, report detail, then a blank spacer row.
+const xlsxHeaderRows = (companyProfile, title, subtitle) => {
+  const rows = [[(companyProfile && companyProfile.companyName) || "Untitled company"]];
+  if (companyProfile && companyProfile.orgNumber) rows.push([`Org.nr ${companyProfile.orgNumber}`]);
+  rows.push([title]);
+  if (subtitle) rows.push([subtitle]);
+  rows.push([]);
+  return rows;
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows };
