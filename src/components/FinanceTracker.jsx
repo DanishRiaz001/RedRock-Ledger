@@ -31,6 +31,15 @@ import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, Acc
 import DailyLogScreen from "./dailylog.jsx";
 
 function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus={},saveVatTerminStatus,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany}){
+  // "Add a company" used to be gated on the general isAdmin flag — but
+  // that's granted per-books (any user who owns/administers a set of
+  // books), not "may create new companies on this platform". Letting any
+  // admin self-serve new companies bypassed the whole signup+approval
+  // model (requestRedrockAccess / Admin Panel grants) this app is
+  // actually built around. Restricted to a single hardcoded platform
+  // super-admin for testing; every other user creating a new company now
+  // has to go through that request flow instead.
+  const isSuperAdmin=!!(user&&user.email==="danishriaz001@gmail.com");
   // The active tab used to live ONLY in this state, never in the URL
   // itself (pushState below was called with no url argument) — meaning no
   // internal navigation item could ever have a real, distinct href to
@@ -728,10 +737,12 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     })}
                   </>);
                 })()}
-                {isAdmin&&createCompany&&(
+                {isSuperAdmin&&createCompany?(
                   <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} onMouseEnter={e=>e.currentTarget.style.background="#EEF1F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700,background:"transparent",borderTop:`1px solid ${T.border}`}}>
                     <i className="ti ti-plus" style={{fontSize:15,marginLeft:34-15}}/>Add a company
                   </div>
+                ):isAdmin&&createCompany&&(
+                  <div style={{padding:"10px 12px",fontSize:11,color:T.muted,borderTop:`1px solid ${T.border}`,lineHeight:1.4}}>Need a new company set up? Ask your Redrock admin — new companies aren't self-serve.</div>
                 )}
               </div>
             </div>
