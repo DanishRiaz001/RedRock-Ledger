@@ -248,8 +248,15 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
 
       {/* Payment types — the "Post as" shortlist in Bank reconciliation.
           A named type (Bankgebyr, Renteinntekter, …) mapped to a real
-          account, so the common cases post in one pick. Split by direction,
-          same as the bank statement's own "Ut av konto" / "Inn på konto". */}
+          account, so the common cases post in one pick. Redesigned as two
+          side-by-side columns (out/in, matching the statement's own money-
+          out/money-in split visually instead of two stacked full-width
+          sections) with each row as its own small card — the delete "✕"
+          only appears on hover instead of sitting there permanently, so a
+          short list doesn't read as cluttered as a long one. Every edit
+          still saves immediately (unchanged — this genuinely is reliable,
+          just per-browser by design), but a real Save button gives an
+          explicit confirmation moment instead of trusting silent autosave. */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <div>
           <h2 style={{fontSize:15,fontWeight:800,color:T.text,margin:0}}>Payment types</h2>
@@ -257,27 +264,40 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
         </div>
         <button onClick={resetPT} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Reset to defaults</button>
       </div>
-      {[["out","Ut av konto (money out)"],["in","Inn på konto (money in)"]].map(([dir,label])=>(
-        <div key={dir} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:14}}>
-          <div style={{padding:"9px 16px",background:T.bg,borderBottom:`1px solid ${T.border}`,fontSize:11,fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:0.4}}>{label}</div>
-          <div style={{padding:"10px 16px"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1.1fr 1.6fr 70px 28px",gap:10,fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,padding:"0 0 6px"}}>
-              <div>Beskrivelse</div><div>Regnskapskonto</div><div style={{textAlign:"center"}}>Inaktiv</div><div/>
-            </div>
-            {postingTypes.filter(t=>t.direction===dir).map(t=>(
-              <div key={t.id} style={{display:"grid",gridTemplateColumns:"1.1fr 1.6fr 70px 28px",gap:10,alignItems:"center",padding:"5px 0",opacity:t.inactive?0.55:1}}>
-                <input value={t.name} onChange={e=>updPT(t.id,{name:e.target.value})} placeholder={dir==="out"?"e.g. Bankgebyr":"e.g. Renteinntekter"} style={{...inp,fontSize:12,padding:"7px 10px"}}/>
-                <AccDrop value={t.accountCode} onChange={v=>updPT(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={ptCreateAccount}/>
-                <div style={{textAlign:"center"}}><input type="checkbox" checked={!!t.inactive} onChange={e=>updPT(t.id,{inactive:e.target.checked})}/></div>
-                <button onClick={()=>delPT(t.id)} title="Remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1}}>✕</button>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        {[["out","Ut av konto","money out",T.red],["in","Inn på konto","money in",T.green]].map(([dir,label,sub,accent])=>(
+          <div key={dir} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:accent,flexShrink:0}}/>
+              <div>
+                <div style={{fontSize:11.5,fontWeight:800,color:T.text}}>{label}</div>
+                <div style={{fontSize:9.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>{sub}</div>
               </div>
-            ))}
-            {!postingTypes.some(t=>t.direction===dir)&&<div style={{fontSize:11.5,color:T.muted,padding:"8px 0"}}>None yet.</div>}
-            <button onClick={()=>addPT(dir)} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0 0"}}>+ Ny rad</button>
+            </div>
+            <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              {postingTypes.filter(t=>t.direction===dir).map(t=>(
+                <div key={t.id} className="rr-pt-row" style={{border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",opacity:t.inactive?0.55:1,position:"relative"}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                    <input value={t.name} onChange={e=>updPT(t.id,{name:e.target.value})} placeholder={dir==="out"?"e.g. Bankgebyr":"e.g. Renteinntekter"} style={{...inp,fontSize:12,padding:"6px 9px",flex:1}}/>
+                    <button onClick={()=>delPT(t.id)} title="Remove" className="rr-pt-remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,flexShrink:0,opacity:0,transition:"opacity .12s"}}>✕</button>
+                  </div>
+                  <AccDrop value={t.accountCode} onChange={v=>updPT(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={ptCreateAccount}/>
+                  <label style={{display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:10.5,color:T.muted,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!t.inactive} onChange={e=>updPT(t.id,{inactive:e.target.checked})}/>Inaktiv
+                  </label>
+                </div>
+              ))}
+              {!postingTypes.some(t=>t.direction===dir)&&<div style={{fontSize:11.5,color:T.muted,padding:"4px 0"}}>None yet.</div>}
+              <button onClick={()=>addPT(dir)} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:9,color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>+ Ny rad</button>
+            </div>
           </div>
-        </div>
-      ))}
-      <div style={{fontSize:10.5,color:T.muted}}>Saved automatically. Blank rows are ignored. Kept per browser, alongside the other bank-reconciliation settings.</div>
+        ))}
+      </div>
+      <style>{".rr-pt-row:hover .rr-pt-remove{opacity:1}"}</style>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:10.5,color:T.muted}}>Blank rows are ignored. Kept per browser, alongside the other bank-reconciliation settings.</div>
+        <SaveFlashButton onClick={()=>saveBankPostingTypes(postingTypes)} label="Save changes" style={{padding:"8px 16px",fontSize:12}}/>
+      </div>
     </div>
   );
 }

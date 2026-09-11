@@ -1,0 +1,15 @@
+-- ============================================================================
+-- "Clean descriptions" feature for unposted bank statement lines — lets
+-- an accountant strip bank-generated boilerplate (long reference numbers,
+-- repeated "Se Detaljer i Fakturaoversikt..." style noise, org-number
+-- suffixes) from a statement line's description before posting it,
+-- while keeping the original around to restore.
+--
+-- original_description is only ever set the first time a line's
+-- description is cleaned (never overwritten again — so restoring, then
+-- cleaning again, still restores the TRUE original bank text, not an
+-- intermediate cleaned version). Left null on every line that's never
+-- been cleaned, and on every line entered directly on the ledger, which
+-- this feature never touches at all.
+-- ============================================================================
+alter table bank_statement_lines add column if not exists original_description text;

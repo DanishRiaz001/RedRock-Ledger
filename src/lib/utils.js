@@ -443,4 +443,34 @@ const xlsxHeaderRows = (companyProfile, title, subtitle) => {
   return rows;
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows };
+// Strips bank-generated boilerplate from a statement line's description —
+// long reference/tracking numbers, KID numbers, org-number suffixes,
+// repeated generic phrases some banks/PSPs prepend to every line (Vipps,
+// Nets, Klarna-style aggregators). Deliberately conservative: only
+// patterns that are clearly noise (long digit runs, known filler
+// phrases) are removed; anything that looks like it could be a real
+// merchant/payer name is left alone. Language-agnostic by design (keys
+// off shape — digit runs, punctuation — not specific words), matching
+// every other statement parser in this app.
+const cleanBankDescription = (desc) => {
+  let s = String(desc || "");
+  // Known noisy filler phrases seen across NOK bank exports — stripped
+  // wherever they appear, not just at the start, since some banks repeat
+  // them mid-string too.
+  const fillerPhrases = [
+    /\bSe Detaljer i Fakturaoversikt\b.*?(?=\s{2,}|$)/gi,
+    /\bFor Foretak\s+\d{6,}\b/gi,
+    /\bArk\.?Ref\.?\s*\*?\d{4,}\b/gi,
+    /\bDato\s+\d{2}\.\d{2}(\.\d{2,4})?\b/gi,
+  ];
+  fillerPhrases.forEach((re) => { s = s.replace(re, " "); });
+  // Long digit runs (8+) are almost always a reference/tracking/KID
+  // number, never a real merchant name — but a shorter run (a house
+  // number, a 4-digit year already handled above) is left alone.
+  s = s.replace(/\b\d{8,}\b/g, " ");
+  // Collapse whatever whitespace/punctuation gaps that leaves behind.
+  s = s.replace(/[ \t]{2,}/g, " ").replace(/\s*[-:,.]\s*$/g, "").trim();
+  return s;
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription };

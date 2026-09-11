@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -5155,7 +5155,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[]}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[]}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -5205,6 +5205,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
   const[attachMenuOpen,setAttachMenuOpen]=useState(false);
   const attachMenuBtnRef=React.useRef(null);
   const[attachMenuPos,setAttachMenuPos]=useState(null);
+  // "Clean descriptions" preview — {rows:[{id,before,after,checked}]} | null.
+  // Never applies anything until the user reviews and confirms; only ever
+  // built from THIS account/month's unposted statement lines.
+  const[cleanPreview,setCleanPreview]=useState(null);
+  const[cleaningApply,setCleaningApply]=useState(false);
   const[filterMode,setFilterMode]=useState("unmatched"); // "unmatched" | "matched" — status toggle
   const[directionFilter,setDirectionFilter]=useState("all"); // "all" | "incoming" | "outgoing" — separate axis
   const[searchQuery,setSearchQuery]=useState("");
@@ -5609,6 +5614,24 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     await undoBankImport(lastImport.ids);
     setLastImport(null);
   };
+  // "Clean descriptions" — never applies anything on its own. Builds a
+  // before/after preview from this account/month's UNPOSTED lines only
+  // (posted lines have already left the reconciliation queue this
+  // feature is scoped to, and a ledger-entered description was written
+  // by the user on purpose) for explicit per-line review and confirm.
+  const openCleanPreview=()=>{
+    const rows=unmatchedLines.map(l=>({id:l.id,before:l.description,after:cleanBankDescription(l.description)})).filter(r=>r.after&&r.after!==r.before);
+    if(!rows.length){alert("Nothing to clean — every unposted line's description already looks clean.");return;}
+    setCleanPreview({rows:rows.map(r=>({...r,checked:true}))});
+  };
+  const applyCleanPreview=async()=>{
+    if(!cleanPreview||!cleanBankStatementLineDescriptions)return;
+    const edits=cleanPreview.rows.filter(r=>r.checked).map(r=>({id:r.id,description:r.after}));
+    setCleaningApply(true);
+    if(edits.length)await cleanBankStatementLineDescriptions(edits);
+    setCleaningApply(false);
+    setCleanPreview(null);
+  };
   // Scope resolver for the export/send modal — mirrors the "which posts"
   // choice in the Tripletex-style dialog: this period's unmatched lines,
   // every unmatched line on the account regardless of month, or just
@@ -5929,6 +5952,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 <div onClick={()=>{setMoreMenuOpen(false);setShowHistory(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
                   <i className="ti ti-history" style={{fontSize:14,color:T.sub}}/>View history
                 </div>
+                {cleanBankStatementLineDescriptions&&(
+                  <div onClick={()=>{setMoreMenuOpen(false);openCleanPreview();}} title="Strip bank-generated boilerplate from this period's unposted descriptions — always previews before applying" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
+                    <i className="ti ti-eraser" style={{fontSize:14,color:T.sub}}/>Clean descriptions…
+                  </div>
+                )}
                 <div onClick={()=>{setMoreMenuOpen(false);setExportScope("period");setShowExportModal(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>
                   <i className="ti ti-download" style={{fontSize:14,color:T.sub}}/>Send or download file
                 </div>
@@ -6012,6 +6040,37 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Clean descriptions preview — nothing is written until Apply is
+          clicked; every row can be unchecked to keep its original text.
+          Built once from unmatchedLines at open time (openCleanPreview),
+          so a proposed "after" never shifts under the user while they're
+          reviewing it even if the underlying data changes. */}
+      {cleanPreview&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>!cleaningApply&&setCleanPreview(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:T.radius.xl,maxWidth:640,width:"100%",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <div style={{padding:"20px 24px 0"}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:4}}>Clean descriptions</div>
+              <div style={{fontSize:11.5,color:T.muted,marginBottom:16,lineHeight:1.5}}>{cleanPreview.rows.length} unposted line{cleanPreview.rows.length===1?"":"s"} this period have boilerplate that can be stripped. Review each one below — uncheck any you want left as-is — then Apply. The original text is always kept and can be restored later from the statement list.</div>
+            </div>
+            <div style={{overflowY:"auto",padding:"0 24px",flex:1}}>
+              {cleanPreview.rows.map((r,i)=>(
+                <label key={r.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 0",borderTop:i>0?`1px solid ${T.border}`:"none",cursor:"pointer"}}>
+                  <input type="checkbox" checked={r.checked} onChange={e=>{const checked=e.target.checked;setCleanPreview(p=>({...p,rows:p.rows.map(x=>x.id===r.id?{...x,checked}:x)}));}} style={{marginTop:3,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0,fontSize:12}}>
+                    <div style={{color:T.muted,textDecoration:"line-through",wordBreak:"break-word"}}>{r.before}</div>
+                    <div style={{color:T.text,fontWeight:600,marginTop:2,wordBreak:"break-word"}}>{r.after||<span style={{color:T.muted,fontStyle:"italic"}}>(empty)</span>}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,padding:"16px 24px",borderTop:`1px solid ${T.border}`}}>
+              <button onClick={applyCleanPreview} disabled={cleaningApply||!cleanPreview.rows.some(r=>r.checked)} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:12,cursor:cleaningApply?"wait":"pointer",fontFamily:"inherit",opacity:cleanPreview.rows.some(r=>r.checked)?1:0.5}}>{cleaningApply?"Applying…":`Apply to ${cleanPreview.rows.filter(r=>r.checked).length} line${cleanPreview.rows.filter(r=>r.checked).length===1?"":"s"}`}</button>
+              <button onClick={()=>setCleanPreview(null)} disabled={cleaningApply} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 18px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
@@ -6342,6 +6401,16 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           {linkedTxn&&<span onClick={e=>{e.stopPropagation();setDetailTxn(linkedTxn);}} title="Open entry" style={{fontSize:10,fontWeight:800,color:T.accent,cursor:"pointer",textDecoration:"underline dotted",flexShrink:0}}>{fmtB(linkedTxn.bilag)}</span>}
                           <div style={{fontSize:11,fontWeight:600,color:isSuggested?T.orange:T.text,wordBreak:"break-word"}}>{l.description}{isSuggested&&<span style={{marginLeft:5,fontSize:9,fontWeight:800}}>≈ suggested</span>}</div>
+                          {/* Only ever offered for a line that's (a) been
+                              cleaned before (has an original to go back
+                              to) and (b) still unposted — once it leaves
+                              this open-items queue, restoring its
+                              description here would mean silently
+                              rewriting text on a posted ledger entry,
+                              which this feature must never do. */}
+                          {!isMatchedMode&&!l.posted&&l.originalDescription!=null&&restoreBankStatementLineDescription&&(
+                            <i onClick={e=>{e.stopPropagation();restoreBankStatementLineDescription(l.id);}} title={`Restore original: "${l.originalDescription}"`} className="ti ti-arrow-back-up" style={{fontSize:12,color:T.accent,cursor:"pointer",flexShrink:0}}/>
+                          )}
                         </div>
                         <div style={{fontSize:11,color:T.muted}}>{l.date}</div>
                       </div>

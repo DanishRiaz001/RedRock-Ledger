@@ -499,7 +499,7 @@ function AppShell({user}){
       setInboxFilesState((ifR.data||[]).map(r=>({id:r.id,name:r.name,type:r.type,size:r.size,date:r.date,month:r.month,year:r.year,folder:r.folder||"General",storagePath:r.storage_path,deletedAt:r.deleted_at,aiSupplier:r.ai_supplier||null,aiAmount:r.ai_amount!=null?parseFloat(r.ai_amount):null,aiInvoiceNo:r.ai_invoice_no||null,aiInvoiceDate:r.ai_invoice_date||null,aiDueDate:r.ai_due_date||null,aiDescription:r.ai_description||null,aiDocType:r.ai_doc_type||null,aiAnalyzed:!!r.ai_analyzed})));
       setAttachedTxnIds(new Set((taR.data||[]).map(r=>r.txn_id)));
       setAttachedFileIds(new Set((taR.data||[]).map(r=>r.file_id)));
-      setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id})));
+      setBankStatementLines((bslR.data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id,originalDescription:r.original_description||null})));
       setInvoices((invR.data||[]).map(r=>({id:r.id,invoiceNo:r.invoice_no,customerId:r.customer_id,date:r.date,dueDate:r.due_date,periodFrom:r.period_from,periodTo:r.period_to,saleAccount:r.sale_account,lines:r.lines||[],vatPct:parseFloat(r.vat_pct)||0,subtotal:parseFloat(r.subtotal),vatAmount:parseFloat(r.vat_amount),total:parseFloat(r.total),status:r.status,txnId:r.txn_id})));
       const startInvNo=(invR.data||[]).reduce((m,r)=>Math.max(m,r.invoice_no),0)+1;
       invoiceNoRef.current=startInvNo;
@@ -1224,6 +1224,48 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(!canEdit)return;
     await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",viewingUserId);
     setBankStatementLines(p=>p.filter(l=>l.id!==id));
+  };
+  // "Clean descriptions" — strips bank-generated boilerplate from one or
+  // more UNPOSTED statement lines' descriptions. The caller (the preview
+  // modal in Bank reconciliation) has already shown the before/after and
+  // gotten the user's explicit go-ahead per line; this just applies it.
+  // Only ever touches bank_statement_lines — never a posted transaction's
+  // description, which the user may have already written/edited by hand
+  // on the ledger side and this feature must never overwrite.
+  // original_description is set ONLY the first time a line is cleaned
+  // (never re-overwritten on a later clean), so the true original bank
+  // text is always what Restore brings back, never an already-cleaned
+  // intermediate version.
+  const cleanBankStatementLineDescriptions=async(edits)=>{ // [{id,description}]
+    if(!canEdit||!edits.length)return;
+    const targets=edits.filter(e=>{
+      const line=bankStatementLines.find(l=>l.id===e.id);
+      return line&&!line.posted&&line.description!==e.description;
+    });
+    if(!targets.length)return;
+    setBankStatementLines(p=>p.map(l=>{
+      const e=targets.find(x=>x.id===l.id);
+      if(!e)return l;
+      return{...l,description:e.description,originalDescription:l.originalDescription==null?l.description:l.originalDescription};
+    }));
+    await Promise.all(targets.map(e=>{
+      const line=bankStatementLines.find(l=>l.id===e.id);
+      const patch={description:e.description};
+      if(line&&line.originalDescription==null)patch.original_description=line.description;
+      return sb.from("bank_statement_lines").update(patch).eq("id",e.id);
+    }));
+  };
+  // Restores a cleaned line's original bank description — only while it's
+  // still sitting unposted (once posted, it's left the open-items queue
+  // this feature is scoped to; the posted transaction's own description
+  // is a completely separate thing this never touches).
+  const restoreBankStatementLineDescription=async(id)=>{
+    if(!canEdit)return;
+    const line=bankStatementLines.find(l=>l.id===id);
+    if(!line||line.posted||line.originalDescription==null)return;
+    const original=line.originalDescription;
+    setBankStatementLines(p=>p.map(l=>l.id===id?{...l,description:original,originalDescription:null}:l));
+    await sb.from("bank_statement_lines").update({description:original,original_description:null}).eq("id",id);
   };
   // Match links an EXISTING ledger transaction to an uploaded statement line —
   // used when the entry was already keyed in by hand before the statement
@@ -2441,7 +2483,7 @@ If you genuinely cannot read useful information from this file, return every fie
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,
-    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
+    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus,saveVatTerminStatus,toggleVatControlled,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
