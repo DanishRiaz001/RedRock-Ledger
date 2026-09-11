@@ -3968,33 +3968,14 @@ const terminInfo=(year,n)=>{
   const label=`Termin ${n} (${new Date(year,t.months[0],1).toLocaleString("default",{month:"long"})}–${new Date(year,t.months[1],1).toLocaleString("default",{month:"long"})})`;
   return{n,year,from,to,due,label};
 };
-// Local status tracking — there's no real filing/payment integration yet
-// (that needs Altinn API access, its own project), so "filed"/"paid"/
-// "reconciled" are tracked per browser for now, same pattern as the other
-// lightweight settings elsewhere in the app.
-const VAT_STATUS_KEY="rr_vat_termin_status";
-const getVatStatuses=()=>{try{return JSON.parse(localStorage.getItem(VAT_STATUS_KEY)||"{}");}catch{return{};}};
+// Filed/paid/reconciled status — used to be a flat localStorage key,
+// shared across every company and invisible to anyone but the browser
+// that set it. Now a real per-user/company row (vatTerminStatus/
+// onSaveVatStatus, threaded down from appshell.jsx — see
+// sql/add_vat_termin_status.sql).
 
-const setVatStatus=(year,n,updates)=>{
-  const all=getVatStatuses();
-  const key=`${year}-${n}`;
-  all[key]={...(all[key]||{}),...updates};
-  try{localStorage.setItem(VAT_STATUS_KEY,JSON.stringify(all));}catch{}
-};
-const VAT_CONTROLLED_KEY="rr_vat_controlled";
-const getControlledIds=(year,n)=>{try{return new Set(JSON.parse(localStorage.getItem(VAT_CONTROLLED_KEY)||"{}")[`${year}-${n}`]||[]);}catch{return new Set();}};
-const toggleControlled=(year,n,txnId)=>{
-  let all;try{all=JSON.parse(localStorage.getItem(VAT_CONTROLLED_KEY)||"{}");}catch{all={};}
-  const key=`${year}-${n}`;
-  const set=new Set(all[key]||[]);
-  if(set.has(txnId))set.delete(txnId);else set.add(txnId);
-  all[key]=[...set];
-  try{localStorage.setItem(VAT_CONTROLLED_KEY,JSON.stringify(all));}catch{}
-};
-
-function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
+function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminStatus={},onSaveVatStatus}){
   const[year,setYear]=useState(()=>new Date().getFullYear());
-  const[,forceTick]=useState(0);
   const today=new Date().toISOString().slice(0,10);
 
   const rows=useMemo(()=>VAT_TERMINER.map(t=>{
@@ -4008,9 +3989,9 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
     const vatIn=purchases.reduce((s,tx)=>s+(tx.vatAmount||0),0);
     const netVat=vatOut-vatIn;
     const bilagCount=periodTxns.filter(tx=>tx.vatAmount!=null&&tx.vatAmount!==0).length;
-    const status=(getVatStatuses()[`${year}-${t.n}`])||{};
+    const status=vatTerminStatus[`${year}-${t.n}`]||{};
     return{...info,totalSales,totalExpenses,vatOut,vatIn,netVat,bilagCount,status};
-  }),[transactions,year]);
+  }),[transactions,year,vatTerminStatus]);
 
 
   const statusLabel=(r)=>{
@@ -4021,7 +4002,7 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
     return{text:"Ikke sendt",color:T.muted,dot:T.border};
   };
 
-  const markReconciled=(r)=>{setVatStatus(year,r.n,{reconciled:true});forceTick(x=>x+1);};
+  const markReconciled=(r)=>{onSaveVatStatus&&onSaveVatStatus(year,r.n,{reconciled:true});};
 
   // A year-level stat strip — how many terminer are filed, what's actually
   // been paid, what's still outstanding, and the next due date — instead
@@ -4132,21 +4113,19 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin}){
 // exact same DetailModal used everywhere else in the app (same edit form,
 // same comment thread), so "controlled"/notes just reuses the comment
 // system that already exists rather than inventing a parallel one.
-function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps}){
+function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps,vatTerminStatus={},onSaveVatStatus}){
   const info=terminInfo(termin.year,termin.n);
   const[openTxn,setOpenTxn]=useState(null);
-  const[,forceTick]=useState(0);
-  const status=(getVatStatuses()[`${termin.year}-${termin.n}`])||{};
-  const markFiled=()=>{setVatStatus(termin.year,termin.n,{filed:true,filedDate:new Date().toISOString().slice(0,10)});forceTick(x=>x+1);};
-  const markPaid=()=>{setVatStatus(termin.year,termin.n,{paid:true,paidDate:new Date().toISOString().slice(0,10)});forceTick(x=>x+1);};
+  const status=vatTerminStatus[`${termin.year}-${termin.n}`]||{};
+  const markFiled=()=>{onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{filed:true,filedDate:new Date().toISOString().slice(0,10)});};
+  const markPaid=()=>{onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{paid:true,paidDate:new Date().toISOString().slice(0,10)});};
   // Undoes filed/paid — for a melding sent by mistake, or before the real
   // numbers were final. Doesn't touch "reconciled" (Avstem, a separate
   // step from the terminer list) since reversing a filing has no bearing
   // on whether the underlying ledger entries were reconciled.
   const reverseFiling=()=>{
     if(!window.confirm(`Reverser mva-meldingen for ${info.label}? Dette fjerner sendt-/betalt-status.`))return;
-    setVatStatus(termin.year,termin.n,{filed:false,filedDate:null,paid:false,paidDate:null});
-    forceTick(x=>x+1);
+    onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{filed:false,filedDate:null,paid:false,paidDate:null});
   };
 
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=info.from&&t.date<=info.to),[transactions,info.from,info.to]);
@@ -6899,7 +6878,7 @@ const _download=(name,text,type)=>{
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 };
 
-function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],setAccounts,contacts=[],transactions=[],projects=[],addTransaction,userEmail,onNavigate,initialYear}){
+function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],setAccounts,contacts=[],transactions=[],projects=[],addTransaction,userEmail,onNavigate,initialYear,vatTerminStatus={}}){
   const thisYear=new Date().getFullYear();
   const firstYear=useMemo(()=>{
     const ys=transactions.map(t=>parseInt((t.date||"").slice(0,4))).filter(Boolean);
@@ -6964,8 +6943,7 @@ function AnnualAccountsScreen({companyProfile,saveCompanyProfile,accounts=[],set
   // ── year detail ──
   const MONTHS=["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"];
   const bankAccounts=accounts.filter(a=>{const n=parseInt(a.code);return n>=1900&&n<2000&&!a.inactive;});
-  const vs=getVatStatuses();
-  const terminStatus=(n)=>{const s=vs[`${year}-${n}`]||{};return s.paid?{t:`${n}. termin · Betalt`,c:"g"}:s.filed?{t:`${n}. termin · Sendt`,c:"o"}:{t:`${n}. termin · Ikke sendt`,c:"r"};};
+  const terminStatus=(n)=>{const s=vatTerminStatus[`${year}-${n}`]||{};return s.paid?{t:`${n}. termin · Betalt`,c:"g"}:s.filed?{t:`${n}. termin · Sendt`,c:"o"}:{t:`${n}. termin · Ikke sendt`,c:"r"};};
   const pill={g:{background:T.greenBg,color:T.green},o:{background:T.orangeBg,color:T.orange},r:{background:T.redLight,color:T.red}};
   const lockThrough=(m)=>{
     const d=_lastDayOfMonth(year,m);

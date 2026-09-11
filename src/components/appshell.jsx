@@ -251,6 +251,7 @@ function AppShell({user}){
   // `transactions`) so it can be resumed later instead of lost or forced
   // through as a real entry. See sql/add_voucher_drafts.sql.
   const[voucherDrafts,setVoucherDrafts]=useState([]);
+  const[vatTerminStatus,setVatTerminStatus]=useState({}); // {"2026-3":{id,filed,filedDate,paid,paidDate,reconciled,controlledIds:Set}}
   const[nextQuoteNo,setNextQuoteNo]=useState(1);
   const quoteNoRef=React.useRef(1);
   const[nextInvoiceNo,setNextInvoiceNo]=useState(1);
@@ -398,7 +399,8 @@ function AppShell({user}){
       scoped(sb.from("reconciliation_status").select("*").eq("user_id",viewingUserId)),
       scoped(sb.from("reconciliation_files").select("*").eq("user_id",viewingUserId)),
       scoped(sb.from("voucher_drafts").select("*").eq("user_id",viewingUserId)).order("updated_at",{ascending:false}),
-    ]),timeoutPromise]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR,vdR])=>{
+      scoped(sb.from("vat_termin_status").select("*").eq("user_id",viewingUserId)),
+    ]),timeoutPromise]).then(([aR,cR,tR,sR,bR,ifR,taR,bslR,invR,cpR,recR,empR,qR,auR,posR,prR,msR,projR,rsR,rfR,vdR,vtsR])=>{
       const accs=aR.data||[];
       if(accs.length){
         // Existing user — merge: keep their accounts, add any missing defaults
@@ -518,6 +520,18 @@ function AppShell({user}){
       // a missing-table error the same as "no drafts" rather than crashing
       // the whole data load.
       setVoucherDrafts((vdR&&vdR.data||[]).map(d=>({id:d.id,entryMode:d.entry_mode||"receipt",form:d.form||{},label:d.label||"",createdAt:d.created_at,updatedAt:d.updated_at})));
+      // vat_termin_status table may not exist yet (migration not run) —
+      // same missing-table-is-just-empty treatment as voucher_drafts above.
+      // filed/paid/reconciled used to live in localStorage, keyed by NOTHING
+      // but year-termin — meaning a granted client's browser never saw
+      // marks made from the owner's, AND every company you have access to
+      // showed the exact same status flags (they weren't even scoped per
+      // company). A real table scoped by user_id/company_id fixes both.
+      const vtsMap={};
+      (vtsR&&vtsR.data||[]).forEach(r=>{
+        vtsMap[`${r.year}-${r.termin_n}`]={id:r.id,filed:!!r.filed,filedDate:r.filed_date,paid:!!r.paid,paidDate:r.paid_date,reconciled:!!r.reconciled,controlledIds:new Set(r.controlled_ids||[])};
+      });
+      setVatTerminStatus(vtsMap);
       setAuditLog((auR.data||[]).map(a=>({id:a.id,changedBy:a.changed_by,entityType:a.entity_type,entityId:a.entity_id,bilag:a.bilag,action:a.action,oldValues:a.old_values,newValues:a.new_values,createdAt:a.created_at})));
       setPosProducts((posR.data||[]).map(p=>({id:p.id,name:p.name,price:parseFloat(p.price),saleAccount:p.sale_account,active:p.active})));
       setPayrollRuns((prR.data||[]).map(r=>({id:r.id,period:r.period,runDate:r.run_date,payAccount:r.pay_account,totalGross:parseFloat(r.total_gross),totalDeductions:parseFloat(r.total_deductions),totalNet:parseFloat(r.total_net),lines:(r.payroll_lines||[]).map(l=>({id:l.id,employeeId:l.employee_id,employeeName:l.employee_name,grossPay:parseFloat(l.gross_pay),deductions:parseFloat(l.deductions),netPay:parseFloat(l.net_pay)}))})));
@@ -1591,6 +1605,31 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setVoucherDrafts(p=>p.filter(d=>d.id!==id));
   };
 
+  // Mva-melding filed/paid/reconciled status — was a flat localStorage key
+  // (rr_vat_termin_status), so a granted employee never saw marks the owner
+  // made (or vice versa), AND every company you have access to showed the
+  // exact same flags since the key wasn't even scoped by company. Real
+  // row per (user, company, year, termin) now, same upsert pattern as
+  // every other per-user/company table.
+  const saveVatTerminStatus=async(year,n,updates)=>{
+    const key=`${year}-${n}`;
+    const prev=vatTerminStatus[key]||{filed:false,filedDate:null,paid:false,paidDate:null,reconciled:false,controlledIds:new Set()};
+    const next={...prev,...updates};
+    setVatTerminStatus(p=>({...p,[key]:next}));
+    if(!canEdit)return;
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),year,termin_n:n,filed:next.filed,filed_date:next.filedDate,paid:next.paid,paid_date:next.paidDate,reconciled:next.reconciled,controlled_ids:[...next.controlledIds]};
+    const{data,error}=await sb.from("vat_termin_status").upsert([row],{onConflict:cid?"user_id,company_id,year,termin_n":"user_id,year,termin_n"}).select().single();
+    if(error){console.error("VAT termin status save failed:",error);return;}
+    if(data)setVatTerminStatus(p=>({...p,[key]:{...next,id:data.id}}));
+  };
+  const toggleVatControlled=(year,n,txnId)=>{
+    const key=`${year}-${n}`;
+    const prev=vatTerminStatus[key]||{filed:false,filedDate:null,paid:false,paidDate:null,reconciled:false,controlledIds:new Set()};
+    const ids=new Set(prev.controlledIds);
+    if(ids.has(txnId))ids.delete(txnId);else ids.add(txnId);
+    saveVatTerminStatus(year,n,{controlledIds:ids});
+  };
+
   const saveEdit=async(u)=>{
     const original=transactions.find(t=>t.id===u.id);
     // Used to update local state optimistically BEFORE the DB write (and
@@ -2398,7 +2437,7 @@ If you genuinely cannot read useful information from this file, return every fie
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,
     bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,
-    invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
+    invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus,saveVatTerminStatus,toggleVatControlled,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
   };
