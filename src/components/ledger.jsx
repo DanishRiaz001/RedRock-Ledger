@@ -1416,7 +1416,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,projects=[],attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1427,7 +1427,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // it now tracks LIVE state, not just how many rows the bilag started
   // with, so adding a line to a bilag that opened single-line flips this
   // into group mode on the spot instead of requiring a re-open.)
-  const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||""});
+  const[form,setForm]=useState({...txn,amount:String(txn.amount),contactId:txn.contactId||"",moneySourceId:txn.moneySourceId||"",projectId:txn.projectId||""});
   // At least one side, not both required — a line saved through New
   // Entry's flexible multi-line balancing (or a bulk bank post) can
   // legitimately have only a debit or only a credit account, its other
@@ -1823,6 +1823,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           </select>
         </div>
       )}
+      {projects&&projects.length>0&&(
+        <div style={{padding:"14px 0"}}>
+          <SL>Project</SL>
+          <select value={form.projectId||""} onChange={e=>setForm(f=>({...f,projectId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}>
+            <option value="">— No project —</option>
+            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?`${p.number} · `:""}{p.name}</option>)}
+          </select>
+        </div>
+      )}
       </div>
     </div>
   );
@@ -2200,7 +2209,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,tagTransaction,initialShowComments=false,initialShowEdit=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,projects=[],tagTransaction,initialShowComments=false,initialShowEdit=false}){
   // Clicking a bilag from a list is meant to go straight into editing —
   // left the lines, right the document preview, no "view details" popup
   // step in between. Callers that still want the read-only view-first
@@ -2334,7 +2343,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   if(showEdit)return(
     <div style={{position:"fixed",top:isDesktopChrome?60:0,left:isDesktopChrome?220:0,right:0,bottom:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
     <EditModal
-      txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} tagTransaction={tagTransaction}
+      txn={txn} accounts={accounts} contacts={contacts} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
       attachments={attList} availableInboxFiles={availableInboxFiles} attUploading={attUploading}
       onUploadFile={uploadInboxFile?handleAttach:undefined}
       onAttachExisting={attachFilesToTxnEntry?attachExistingFile:undefined}
