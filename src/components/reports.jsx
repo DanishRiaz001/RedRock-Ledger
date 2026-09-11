@@ -3986,7 +3986,17 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
     const totalSales=sales.reduce((s,tx)=>s+tx.amount,0);
     const totalExpenses=purchases.reduce((s,tx)=>s+tx.amount,0);
     const vatOut=sales.reduce((s,tx)=>s+(tx.vatAmount||0),0);
-    const vatIn=purchases.reduce((s,tx)=>s+(tx.vatAmount||0),0);
+    // Reverse-charge purchases (81-92) were being summed here as a plain
+    // deduction like any domestic input VAT — wrong: a deductible
+    // reverse-charge code self-assesses AND claims the deduction in the
+    // same melding (net effect zero), a non-deductible one has no
+    // offsetting claim at all (net effect: adds to what's owed). See the
+    // matching fix + longer explanation in VATTerminDetailScreen below.
+    const vatIn=purchases.reduce((s,tx)=>{
+      const vc=findVatCode(tx.vatCode,"input");
+      if(vc&&vc.reverseCharge)return s+(vc.settleAccount?0:-(tx.vatAmount||0));
+      return s+(tx.vatAmount||0);
+    },0);
     const netVat=vatOut-vatIn;
     const bilagCount=periodTxns.filter(tx=>tx.vatAmount!=null&&tx.vatAmount!==0).length;
     const status=vatTerminStatus[`${year}-${t.n}`]||{};
@@ -4142,10 +4152,38 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{filed:false,filedDate:null,paid:false,paidDate:null});
   };
 
+  // Reverse-charge codes (81-92: import of services, climate quotas/gold —
+  // see reverseChargeLegs in vatsplit.js) are self-assessed VAT on a
+  // purchase from abroad, NOT a domestic purchase — Skatteetaten's own
+  // RF-0002 form reports them in separate boxes (12/13 for the omvendt
+  // avgiftsplikt base+VAT), never merged into the ordinary "Kjøp
+  // innenlands" 25%/15%/12% buckets. They used to fall straight into
+  // purchaseTxns/purchasesByRate below purely because they carry a
+  // non-null vatAmount like any domestic line — mathematically the total
+  // netVat still came out right (the row's own vatAmount is correct), but
+  // the melding showed it under the wrong heading, which matters the
+  // moment someone transcribes this screen into the real Altinn form.
+  const REVERSE_CHARGE_CODE_SET=useMemo(()=>new Set(MVA_CODES.filter(c=>c.reverseCharge).map(c=>c.code)),[]);
   const periodTxns=useMemo(()=>transactions.filter(t=>t.date>=info.from&&t.date<=info.to),[transactions,info.from,info.to]);
+  const reverseChargeTxns=periodTxns.filter(t=>isExpenseSK(t.debitCode)&&REVERSE_CHARGE_CODE_SET.has(t.vatCode));
   const salesTxns=periodTxns.filter(t=>isIncomeSK(t.creditCode)&&t.vatAmount!=null&&t.vatAmount!==0);
-  const purchaseTxns=periodTxns.filter(t=>isExpenseSK(t.debitCode)&&t.vatAmount!=null&&t.vatAmount!==0);
-  const vatIds=new Set([...salesTxns,...purchaseTxns].map(t=>t.id));
+  const purchaseTxns=periodTxns.filter(t=>isExpenseSK(t.debitCode)&&t.vatAmount!=null&&t.vatAmount!==0&&!REVERSE_CHARGE_CODE_SET.has(t.vatCode));
+  const vatIds=new Set([...salesTxns,...purchaseTxns,...reverseChargeTxns].map(t=>t.id));
+  const reverseChargeTotal=reverseChargeTxns.reduce((s,t)=>s+vatBase(t),0);
+  const reverseChargeVat=reverseChargeTxns.reduce((s,t)=>s+(t.vatAmount||0),0);
+  // The OLD code swept these into purchaseTxns and subtracted the full
+  // vatAmount from netVat, as if every reverse-charge line were a plain
+  // deductible input credit — wrong on two counts. A deductible code
+  // (settleAccount set — matches reverseChargeLegs.js's own `deductible`
+  // test) self-assesses AND claims the deduction in the same melding, so
+  // its correct net effect on the amount owed is ZERO, not "−vatAmount".
+  // A non-deductible code ("uten fradrag") has no offsetting claim at
+  // all, so it should ADD to the amount owed (it's a real cost), not
+  // reduce it. Both were being treated as a straight subtraction before.
+  const reverseChargeNetEffect=reverseChargeTxns.reduce((s,t)=>{
+    const vc=findVatCode(t.vatCode,"input");
+    return s+((vc&&vc.settleAccount)?0:(t.vatAmount||0));
+  },0);
   // "Ingen avgiftsbehandling" is a P&L concept — a balance-sheet-only
   // posting (a bank transfer, a loan repayment, moving money between
   // 1900/1920/2xxx accounts) was never a VAT decision to begin with, so it
@@ -4227,7 +4265,11 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   const totalExpenses=periodTxns.filter(t=>isExpenseSK(t.debitCode)).reduce((s,t)=>s+t.amount,0);
   const vatOut=salesTxns.reduce((s,t)=>s+(t.vatAmount||0),0);
   const vatIn=purchaseTxns.reduce((s,t)=>s+(t.vatAmount||0),0);
-  const netVat=vatOut-vatIn;
+  // + reverseChargeNetEffect: zero for deductible reverse-charge codes
+  // (self-assessed and claimed in the same melding), the full vatAmount
+  // for non-deductible ones (a real added cost — see its own comment
+  // above, by periodTxns).
+  const netVat=vatOut-vatIn+reverseChargeNetEffect;
 
   const getName=code=>{const a=accounts.find(x=>x.code===code);return a?`${a.code} ${a.name}`:code;};
 
@@ -4276,10 +4318,15 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
     aoa.push(["Kjøp","","","",""],["Kjøp innenlands","","","",""]);
     purchasesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"input");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,-g.net,-g.vat]);});
     if(foreignPurchaseTxns.length){aoa.push(["Kjøp fra utlandet","","","",""]);aoa.push([foreignPurchaseTxns[0].vatCode,"Kjøp av varer/tjenester fra utlandet",0,-foreignPurchaseTotal,0]);}
+    if(reverseChargeTxns.length){
+      aoa.push(["Kjøp med omvendt avgiftsplikt","","","",""]);
+      aoa.push([reverseChargeTxns[0].vatCode,"Kjøp av tjenester/varer fra utlandet, klimakvoter eller gull",reverseChargeTxns[0].vatPct||0,-reverseChargeTotal,reverseChargeVat]);
+      if(Math.abs(reverseChargeNetEffect-reverseChargeVat)>0.005)aoa.push(["","hvorav fradragsberettiget (motregnes, netto effekt "+fmt(reverseChargeNetEffect)+")","","",-(reverseChargeVat-reverseChargeNetEffect)]);
+    }
     if(noVatPurchaseByCode.length){aoa.push(["Kjøp uten avgiftsbehandling","","","",""]);noVatPurchaseByCode.forEach(g=>{const vc=findVatCode(g.code,"input");aoa.push([g.code,vc?vc.name:"Ingen avgiftsbehandling",0,g.net,0]);});}
     aoa.push([],[netVat>=0?"Skyldig terminbeløp":"Terminbeløp til gode","","","",Math.abs(netVat)]);
     aoa.push([],["Spesifikasjon","","","",""],["Bilag","Dato","Beskrivelse","Konto","Beløp","Mva"]);
-    [...salesTxns,...purchaseTxns,...exportTxns,...foreignPurchaseTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+    [...salesTxns,...purchaseTxns,...exportTxns,...foreignPurchaseTxns,...reverseChargeTxns].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
       aoa.push([fmtB(t.bilag),t.date,t.description,getName(t.debitCode)+" / "+getName(t.creditCode),t.amount,t.vatAmount||0]);
     });
     const wb=XLSX.utils.book_new();
@@ -4756,6 +4803,29 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
                 <td onClick={()=>setSpecView({key:"foreignPurchase",direction:"input",rate:0,code:foreignPurchaseTxns[0].vatCode,vc:null,rows:foreignPurchaseTxns,otherField:"creditCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-foreignPurchaseTotal)}</td>
                 <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>0</td>
               </tr>
+            </>)}
+            {/* Omvendt avgiftsplikt — reverse-charge purchases (import of
+                services, climate quotas/gold: codes 81-92). Used to be
+                invisible as its own line — swept into "Kjøp innenlands"
+                above like an ordinary domestic purchase — even though
+                Skatteetaten's own RF-0002 reports this in separate boxes.
+                Grunnlag is shown negative (money paid out), same sign
+                convention as Kjøp innenlands above; the Mva column is the
+                self-assessed amount, with a note when some or all of it
+                nets to zero because it's also claimed as a deduction in
+                this same melding. */}
+            {reverseChargeTxns.length>0&&(<>
+              <tr><td colSpan="5" style={{padding:"10px 14px 4px",fontWeight:700,fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>Kjøp med omvendt avgiftsplikt</td></tr>
+              <tr style={{borderTop:`1px solid ${T.border}`}}>
+                <td style={{padding:"8px 14px",color:T.accent,fontWeight:700}}>{reverseChargeTxns[0].vatCode}</td>
+                <td style={{color:T.text}}>Kjøp av tjenester/varer fra utlandet, klimakvoter eller gull</td>
+                <td style={{textAlign:"right",color:T.sub}}>{fmt(reverseChargeTxns[0].vatPct||0)} %</td>
+                <td onClick={()=>setSpecView({key:"reverseCharge",direction:"input",rate:reverseChargeTxns[0].vatPct||0,code:reverseChargeTxns[0].vatCode,vc:null,rows:reverseChargeTxns,otherField:"creditCode"})} title="Åpne spesifikasjon" style={{textAlign:"right",color:T.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmt(-reverseChargeTotal)}</td>
+                <td style={{textAlign:"right",padding:"8px 14px",color:T.sub,fontWeight:700}}>{fmt(reverseChargeVat)}</td>
+              </tr>
+              {Math.abs(reverseChargeNetEffect-reverseChargeVat)>0.005&&(
+                <tr><td colSpan="5" style={{padding:"2px 14px 8px",fontSize:10,color:T.muted,fontStyle:"italic"}}>{fmt(reverseChargeVat-reverseChargeNetEffect)} av dette er fradragsberettiget og motregnes i samme melding — netto effekt på terminbeløpet: {fmt(reverseChargeNetEffect)}.</td></tr>
+              )}
             </>)}
             {/* Same idea, purchase side — a no-VAT purchase (code 0, an
                 exempt cost, etc.) grouped inside Kjøp instead of the old
