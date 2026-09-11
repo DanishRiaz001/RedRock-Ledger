@@ -685,8 +685,42 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     })}
                   </>);
                 })()}
+                {/* Clients you've been GRANTED access to (Admin Panel → Users
+                    → Company access) — this list went missing when "Client
+                    access" / "Invite new client" were pulled out of this
+                    dropdown; without it there was no way left on desktop to
+                    actually switch INTO a granted client's books (the mobile
+                    switcher still had it). Managing grants stays in Admin
+                    Panel; this is just "go look at what I've been granted". */}
+                {myClientAccess.length>0&&(()=>{
+                  const q=clientSwitcherSearch.trim().toLowerCase();
+                  const shown=myClientAccess.filter(c=>!q||(c.companyName||c.clientEmail||"").toLowerCase().includes(q));
+                  if(!shown.length)return null;
+                  const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+                  return(<>
+                    <div style={{padding:"9px 12px 4px",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,borderTop:companies.length?`1px solid ${T.border}`:"none",marginTop:companies.length?4:0}}>Clients you can access</div>
+                    {shown.map(c=>{
+                      const active=viewingUserId===c.clientUserId&&(!c.companyId||c.companyId===activeCompanyId);
+                      const label=c.companyName||c.clientEmail;
+                      return(
+                        <div key={c.id} onClick={()=>{
+                          setViewingUserId(c.clientUserId);
+                          if(c.companyId)setActiveCompanyId(c.companyId);
+                          setClientSwitcherOpen(false);setClientSwitcherSearch("");
+                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
+                          <div style={{width:34,height:34,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}}>{initials(label)}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:active?700:500,color:active?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</div>
+                            <div style={{fontSize:10.5,color:T.muted,textTransform:"capitalize"}}>{c.accessLevel} access</div>
+                          </div>
+                          {active&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
+                        </div>
+                      );
+                    })}
+                  </>);
+                })()}
                 {isAdmin&&createCompany&&(
-                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} onMouseEnter={e=>e.currentTarget.style.background="#EEF1F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700,background:"transparent"}}>
+                  <div onClick={()=>{setClientSwitcherOpen(false);setNewClientName("");setShowAddClient(true);}} onMouseEnter={e=>e.currentTarget.style.background="#EEF1F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"} style={{display:"flex",alignItems:"center",gap:8,padding:"11px 12px",cursor:"pointer",color:T.accent,fontSize:13,fontWeight:700,background:"transparent",borderTop:`1px solid ${T.border}`}}>
                     <i className="ti ti-plus" style={{fontSize:15,marginLeft:34-15}}/>Add a company
                   </div>
                 )}
