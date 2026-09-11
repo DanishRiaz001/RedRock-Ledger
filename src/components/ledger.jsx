@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate, INCOME_SK, EXPENSE_SK, nextContactId } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate,computeVat, INCOME_SK, EXPENSE_SK, nextContactId } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
@@ -1546,7 +1546,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       const l=groupLinesState[li];
       const amountNum=parseFloat(l.amount);
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
-      const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
+      const vatAmount=vc?computeVat(amountNum,vc):null;
       const res=await onSave({...l,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
       if(res&&res.error){
         setSavingGroup(false);
@@ -1657,7 +1657,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // takes priority when both sides somehow carry a code, same
     // convention Register voucher's general lines use.
     const vc=debitIsExpense&&debitVatCode?findVatCode(debitVatCode,"input"):creditIsIncome&&creditVatCode?findVatCode(creditVatCode,"output"):null;
-    const vatAmount=vc&&vc.rate?Math.round((amountNum-(amountNum/(1+vc.rate/100)))*100)/100:(vc?0:null);
+    const vatAmount=vc?computeVat(amountNum,vc):null;
     setSavingSingle(true);
     // onSave used to fire without being awaited at all, with onClose()
     // called right on the next line regardless — the save request was
@@ -1690,7 +1690,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         if(l.debitCode)totalDebit+=amt;
         if(l.creditCode)totalCredit+=amt;
         const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
-        if(vc&&vc.rate&&amt)totalVat+=Math.round((amt-(amt/(1+vc.rate/100)))*100)/100;
+        if(vc&&vc.rate&&amt)totalVat+=computeVat(amt,vc);
       });
       return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100,totalVat:Math.round(totalVat*100)/100};
     })();

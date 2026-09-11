@@ -147,6 +147,17 @@ const MVA_CODES=[
 // picked, instead of asking the person to know the code number by heart.
 const SALES_ACCOUNT_VAT_RATE={"3000":25,"3001":15,"3002":12,"3011":11.11,"3100":0,"3200":0};
 const vatCodeForRate=(rate,direction)=>MVA_CODES.find(c=>c.direction===direction&&c.rate===rate)||null;
+// The VAT on one line, given its code. For a normal code the line amount is
+// VAT-INCLUSIVE, so the tax is extracted back out of it. For a reverse-charge
+// code (import / foreign services / klimakvoter — MVA_CODES[].reverseCharge)
+// there's no VAT charged by the counterparty at all: the line amount IS the
+// net base, and the VAT is self-assessed ON TOP of it, not extracted from it.
+const computeVat=(amount,vc)=>{
+  if(!vc||!vc.rate)return 0;
+  const amt=Math.abs(Number(amount))||0;
+  if(vc.reverseCharge)return Math.round(amt*vc.rate/100*100)/100;
+  return Math.round((amt-(amt/(1+vc.rate/100)))*100)/100;
+};
 // Sales (output) vs purchase (input) each get their OWN single-digit MVA
 // code list — a sale posts against one outgoing code (e.g. "3"), never the
 // paired kjøp/salg codes a purchase voucher uses. This mirrors the real
@@ -416,4 +427,4 @@ const seededBankPostingTypes = (accounts) => {
   return DEFAULT_BANK_POSTING_TYPES.filter(t => codes.has(t.accountCode)).map((t, i) => ({ ...t, id: `pt_${i}` }));
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes };
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes };

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -2623,7 +2623,7 @@ function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose})
         const amt=parseFloat(r.amount)||0;
         u.vatCode=vc?vc.code:null;
         u.vatPct=vc?vc.rate:null;
-        u.vatAmount=vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:(vc?0:null);
+        u.vatAmount=vc?computeVat(amt,vc):null;
       }
       if(changeContact)u.contactId=contactId||null;
       onSave(u);

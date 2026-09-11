@@ -643,11 +643,11 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 box, bigger avatar circles and company name text. "Client
                 access" and "Invite new client" were removed from this
                 dropdown entirely (still reachable from Admin Panel → Users). */}
-            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:320,maxHeight:460,display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
-              <div style={{padding:12,borderBottom:`1px solid ${T.border}`}}>
+            <div style={{position:"absolute",left:0,top:36,background:"#fff",border:`1px solid ${T.border}`,borderRadius:T.radius.md,zIndex:500,minWidth:320,maxHeight:"70vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 24px rgba(20,40,40,0.12)",overflow:"hidden"}}>
+              <div style={{padding:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
                 <input autoFocus placeholder="Search companies" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:14,padding:"10px 14px"}}/>
               </div>
-              <div style={{overflowY:"auto"}}>
+              <div style={{overflowY:"auto",flex:1,minHeight:0}}>
                 {companies.length>0&&(()=>{
                   const q=clientSwitcherSearch.trim().toLowerCase();
                   const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q));

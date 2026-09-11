@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T } from "../lib/theme.js";
 import { sb, setCurrentUserId, getCurrentUserId, setCurrentBooksOwnerId, getCurrentBooksOwnerId, setCurrentCompanyId, getCurrentCompanyId, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
 import {
-  isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,
+  isIncomeSK, isExpenseSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat,
   vatCodeOptions, findVatCode, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE,
   getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr,
   bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText,
 } from "../lib/utils.js";
 import { logBug, ADMIN_KEY, USER_FEATS_KEY } from "./ledger.jsx";
 import { nextContactId } from "../lib/utils.js";
-import { vatSplit } from "../lib/vatsplit.js";
+import { vatSplit, reverseChargeLegs } from "../lib/vatsplit.js";
 import { uploadFileToStorage, deleteFileFromStorage, getSignedUrl } from "../lib/storage.js";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { Spinner, LoginScreen, PendingAccessScreen } from "./shell.jsx";
@@ -33,7 +33,22 @@ function AppShell({user}){
   // Which books are currently being viewed — defaults to your own. Switching
   // to a client's requires a real client_access grant (enforced server-side
   // by RLS too, this is just what drives which data gets fetched).
-  const[viewingUserId,setViewingUserId]=useState(user.id);
+  const[viewingUserId,setViewingUserIdState]=useState(()=>{
+    // Persisted the same way as activeCompanyId (below) — otherwise every
+    // refresh silently dropped a granted employee back into their OWN
+    // login/company instead of the client they were just viewing.
+    try{
+      if(new URLSearchParams(window.location.search).get("company"))return user.id;
+      return localStorage.getItem("rr_viewing_user")||user.id;
+    }catch(e){return user.id;}
+  });
+  const setViewingUserId=id=>{
+    setViewingUserIdState(id);
+    try{
+      if(id&&id!==user.id)localStorage.setItem("rr_viewing_user",id);
+      else localStorage.removeItem("rr_viewing_user");
+    }catch(e){/* storage blocked — switch still works for this session */}
+  };
   const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel,companyId}]
   // getCurrentUserId() deliberately stays the REAL authenticated user (not
   // viewingUserId) — it's also used to build Supabase Storage paths
@@ -758,6 +773,19 @@ function AppShell({user}){
     if(error){logBug("DB_ERROR","Failed to insert VAT leg",error.message,"insertVatLeg");return;}
     if(data)setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date,debitCode:vatLeg.debitCode,creditCode:vatLeg.creditCode,description:vatLeg.description,amount:vatLeg.amount,vatSplit:true}]);
   };
+  // Reverse-charge (import / foreign services / klimakvoter): the base posts
+  // completely normally; this adds the extra self-assessed 27xx leg.
+  const planReverseCharge=(f)=>{
+    if(!companyProfile.splitVat)return null;
+    return reverseChargeLegs({debitCode:f.debitCode,amount:parseFloat(f.amount),vatCode:f.vatCode,description:f.description},accounts);
+  };
+  const insertReverseChargeLeg=async(rc,bilagNum,date)=>{
+    if(!rc||!rc.leg)return;
+    const l=rc.leg;
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date,debit_code:l.debitCode,credit_code:l.creditCode,description:l.description,amount:l.amount,vat_split:true}]).select().single();
+    if(error){logBug("DB_ERROR","Failed to insert reverse-charge VAT leg",error.message,"insertReverseChargeLeg");return;}
+    if(data)setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date,debitCode:l.debitCode,creditCode:l.creditCode,description:l.description,amount:l.amount,vatSplit:true}]);
+  };
 
   // Foreign currency → { amount (NOK, booked), currency, currencyAmount }.
   // `form.amount` is the amount as typed (in the entry's currency); when that
@@ -791,7 +819,9 @@ function AppShell({user}){
     else{nb=bilagRef.current;bilagRef.current=nb+1;setNextBilag(bilagRef.current);}
     const fx=resolveFx(form);
     const svs=planVatSplit({...form,amount:fx.amount});
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:svs.mainAmount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,vat_split:svs.vatSplit,currency:fx.currency,currency_amount:fx.currencyAmount,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
+    const rc=svs.vatSplit?null:planReverseCharge({...form,amount:fx.amount}); // one or the other, never both
+    const mainVatSplit=svs.vatSplit||!!rc;
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:form.debitCode,credit_code:form.creditCode,description:form.description,amount:svs.mainAmount,contact_id:form.contactId||null,invoice_no:form.invoiceNo||null,due_date:form.dueDate||null,vat_code:form.vatCode!=null?form.vatCode:null,vat_pct:form.vatPct!=null?form.vatPct:null,vat_amount:form.vatAmount!=null?form.vatAmount:null,vat_split:mainVatSplit,currency:fx.currency,currency_amount:fx.currencyAmount,money_source_id:form.moneySourceId||null,project_id:form.projectId||null,entry_mode:form.entryMode||null}]).select().single();
     if(error){
       logBug("DB_ERROR","Failed to insert transaction",error.message,"addTransaction");
       return{error:error.message};
@@ -816,8 +846,9 @@ function AppShell({user}){
         else{setAttachedTxnIds(p=>new Set([...p,data.id]));setAttachedFileIds(p=>new Set([...p,form.attachmentId]));}
       }
       if(form.groupRef)appendGroupLine(form.groupRef,{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,debitCode:form.debitCode,creditCode:form.creditCode});
-      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,vatSplit:svs.vatSplit,currency:fx.currency,currencyAmount:fx.currencyAmount,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
+      setTransactionsState(p=>[...p,{id:data.id,bilag:nb,date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount,contactId:form.contactId||null,invoiceNo:form.invoiceNo||null,dueDate:form.dueDate||null,vatCode:form.vatCode!=null?form.vatCode:null,vatPct:form.vatPct!=null?form.vatPct:null,vatAmount:form.vatAmount!=null?form.vatAmount:null,vatSplit:mainVatSplit,currency:fx.currency,currencyAmount:fx.currencyAmount,moneySourceId:form.moneySourceId||null,projectId:form.projectId||null,entryMode:form.entryMode||null}]);
       await insertVatLeg(svs.vatLeg,nb,form.date);
+      await insertReverseChargeLeg(rc,nb,form.date);
       logAudit("transaction",data.id,nb,"create",null,{date:form.date,debitCode:form.debitCode,creditCode:form.creditCode,description:form.description,amount:svs.mainAmount});
       return{id:data.id,bilag:nb,description:form.description,amount:svs.mainAmount,attachmentError};
     }
@@ -1120,13 +1151,17 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const postedAccount=accounts.find(a=>a.code===offsetCode);
     const amount=Math.abs(line.amount);
     const vatCode=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatCode:null;
-    const vatPct=postedAccount&&postedAccount.defaultVatCode?postedAccount.defaultVatPct:null;
-    const vatAmount=vatPct?Math.round((amount-(amount/(1+vatPct/100)))*100)/100:null;
+    const vc=vatCode?MVA_CODES.find(c=>String(c.code)===String(vatCode)):null;
+    const vatPct=vc?vc.rate:null;
+    const vatAmount=vc?computeVat(amount,vc):null;
     const svs=planVatSplit({debitCode,creditCode,amount,vatCode,vatAmount,description:line.description});
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:svs.mainAmount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,vat_split:svs.vatSplit,contact_id:contactId||null}]).select().single();
+    const rc=svs.vatSplit?null:planReverseCharge({debitCode,amount,vatCode,description:line.description});
+    const mainVatSplit=svs.vatSplit||!!rc;
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:svs.mainAmount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,vat_split:mainVatSplit,contact_id:contactId||null}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount:svs.mainAmount,vatCode,vatPct,vatAmount,vatSplit:svs.vatSplit,contactId:contactId||null}]);
+    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount:svs.mainAmount,vatCode,vatPct,vatAmount,vatSplit:mainVatSplit,contactId:contactId||null}]);
     await insertVatLeg(svs.vatLeg,bilagNum,line.date);
+    await insertReverseChargeLeg(rc,bilagNum,line.date);
     if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount:svs.mainAmount,debitCode,creditCode});
     const{error:updErr}=await sb.from("bank_statement_lines").update({posted:true,posted_txn_id:data.id}).eq("id",line.id);
     if(updErr)console.error("Bank line post-flag error:",updErr);

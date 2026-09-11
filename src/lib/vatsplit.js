@@ -58,3 +58,33 @@ export function vatSplit({ debitCode, creditCode, amount, vatCode, vatAmount, de
     : { debitCode, creditCode: settle, amount: vat, description: (description || "") + tag };
   return { net, vatLeg, settleAccount: settle, direction: vc.direction };
 }
+
+// ============================================================================
+// Reverse charge (omvendt avgiftsplikt) — import of goods, foreign services,
+// climate quotas/gold. Unlike a normal purchase, the supplier charges NO VAT:
+// `amount` is the NET base as entered. The buyer self-assesses the VAT on top
+// and posts it as a wash (fully deductible) or a real cost (not deductible):
+//
+//   deductible   (code 81/83/86/88/91): Dr <input 27xx>  / Cr <output 27xx>  vat
+//   non-deductible (82/84/87/89/92):    Dr <expense>     / Cr <output 27xx>  vat
+//
+// The base itself posts completely normally (Dr expense / Cr supplier, no
+// VAT split — vatSplit() already returns null for these codes since they
+// lack `autoSplit`). This only adds the extra 27xx leg(s).
+// ============================================================================
+export function reverseChargeLegs({ debitCode, amount, vatCode, description }, accounts) {
+  if (!(Number(amount) > 0)) return null;
+  const vc = MVA_CODES.find(c => String(c.code) === String(vatCode));
+  if (!vc || !vc.reverseCharge) return null;
+  const out = vc.reverseChargeAccount;
+  if (!out) return null;
+  const chart = Array.isArray(accounts) ? accounts : [];
+  if (chart.length && !chart.some(a => a.code === out)) return null;
+  const vat = Math.round(Math.abs(Number(amount)) * (vc.rate || 0) / 100 * 100) / 100;
+  if (vat < 0.005) return null;
+  const deductible = vc.settleAccount && (!chart.length || chart.some(a => a.code === vc.settleAccount));
+  const leg = deductible
+    ? { debitCode: vc.settleAccount, creditCode: out, amount: vat, description: (description || "") + " — omvendt avgiftsplikt" }
+    : { debitCode, creditCode: out, amount: vat, description: (description || "") + " — omvendt avgiftsplikt (ikke fradragsberettiget)" };
+  return { leg, vat, deductible };
+}

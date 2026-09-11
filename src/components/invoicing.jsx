@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
@@ -3862,7 +3862,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // is VAT-inclusive, pull the tax portion out of it via whichever
       // side's VAT code is actually set.
       const vc=findVatCode(l&&l.debitVatCode,"input")||findVatCode(l&&l.creditVatCode,"output");
-      if(vc&&vc.rate&&amt)totalVat+=Math.round((amt-(amt/(1+vc.rate/100)))*100)/100;
+      if(vc&&vc.rate&&amt)totalVat+=computeVat(amt,vc);
     });
     return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100,totalVat:Math.round(totalVat*100)/100};
   })();
@@ -4090,7 +4090,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // dropdown was never turned into an actual vatAmount, so it never
       // showed up in Mva-meldinger/VAT report no matter what was selected.
       const lineVc=l.vatCode?findVatCode(l.vatCode,invVatDirection):null;
-      const lineVatAmount=lineVc&&lineVc.rate?Math.round((absAmt-(absAmt/(1+lineVc.rate/100)))*100)/100:null;
+      const lineVatAmount=lineVc?computeVat(absAmt,lineVc):null;
       // Every line of one invoice used to get its own separate bilag despite
       // being one logical voucher — every line here now shares whichever
       // bilag the first line was actually assigned.
@@ -5215,7 +5215,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   const amt=Math.abs(parseFloat(a)||0);
                   if(!amt)return s;
                   const vc=findVatCode(invLineVatCodes[i],invVatDirection);
-                  return s+(vc&&vc.rate?Math.round((amt-(amt/(1+vc.rate/100)))*100)/100:0);
+                  return s+(vc?computeVat(amt,vc):0);
                 },0);
                 // "Difference" = invoice total (what was billed) minus what the
                 // cost lines actually add up to — the number that matters when
