@@ -1565,12 +1565,26 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     setMasterDate(v);
     setGroupLinesState(p=>p.map(l=>l._dateTouched?l:{...l,date:v}));
   };
+  // Same master-field pattern as New Entry's own Advance Voucher screen —
+  // typing here only fills in lines that don't already have their own
+  // description (previewed live via each line's placeholder), never
+  // overwrites one that does. Unlike masterDate above, this never writes
+  // directly into groupLinesState — the fallback is applied at validation/
+  // save time instead, so a blank line's OWN field stays visibly blank
+  // (showing the master as a grey hint) rather than getting a value typed
+  // into it that isn't really its own.
+  const[masterDescription,setMasterDescription]=useState("");
+  // Collapsed by default — Whose/Project are used far less often than the
+  // core Date/Description/Postings fields, and taking up a third of the
+  // screen for them every time this modal opens (even when neither is
+  // ever set) pushed the actual postings table below the fold.
+  const[showMoreOptions,setShowMoreOptions]=useState(false);
   // At least one side per line (see the single-line `valid` above for
   // why), plus a real balance check across the whole group — editing
   // amounts/accounts here can break a voucher that balanced exactly at
   // save time, and unlike New Entry's own flexible balancing there was
   // previously no check or warning if it did.
-  const groupValid=groupLinesState.every(l=>(l.debitCode||l.creditCode)&&l.description&&parseFloat(l.amount)>0);
+  const groupValid=groupLinesState.every(l=>(l.debitCode||l.creditCode)&&(l.description||masterDescription)&&parseFloat(l.amount)>0);
   const groupTotals=(()=>{
     let totalDebit=0,totalCredit=0;
     groupLinesState.forEach(l=>{
@@ -1597,7 +1611,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       const amountNum=parseFloat(l.amount);
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
       const vatAmount=vc?computeVat(amountNum,vc):null;
-      const res=await onSave({...l,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+      const res=await onSave({...l,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
       if(res&&res.error){
         setSavingGroup(false);
         alert(`Saved ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to save:\n\n${res.error}\n\nThis voucher is left partially saved — please check it before continuing.`);
@@ -1768,7 +1782,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                     (and as the Debit/Credit columns here: account on top,
                     VAT underneath), not side by side on one row. */}
                 <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
-                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
@@ -1894,32 +1908,58 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     </div>
   ):(
     ((moneySources&&moneySources.length>0)||(projects&&projects.length>0))?(
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {moneySources&&moneySources.length>0&&(
-          <div>
-            <SL>Whose</SL>
-            <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
-          </div>
-        )}
-        {projects&&projects.length>0&&(
-          <div>
-            <SL>Project</SL>
-            <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
+      <div>
+        {/* Collapsed by default — Whose/Project are used far less often
+            than Date/Description/Postings, so hiding them behind a small
+            toggle keeps the postings table from being pushed below the
+            fold every time this opens, even when neither is ever set. */}
+        <div onClick={()=>setShowMoreOptions(s=>!s)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none",marginBottom:showMoreOptions?10:0}}>
+          <i className="ti ti-adjustments-horizontal" style={{fontSize:13,color:T.muted}}/>
+          <span style={{fontSize:11,fontWeight:700,color:T.sub}}>Whose / Project</span>
+          <i className={`ti ti-chevron-${showMoreOptions?"up":"down"}`} style={{fontSize:12,color:T.muted}}/>
+        </div>
+        {showMoreOptions&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {moneySources&&moneySources.length>0&&(
+              <div>
+                <SL>Whose</SL>
+                <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
+              </div>
+            )}
+            {projects&&projects.length>0&&(
+              <div>
+                <SL>Project</SL>
+                <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
+              </div>
+            )}
           </div>
         )}
       </div>
     ):null
   );
 
-  // One master date at the top of a multi-line voucher, applying to every
-  // line that hasn't had its own date edited directly (see applyMasterDate
-  // above). Single-line entries just have the one date already in Voucher
-  // details/the grid — no separate master needed.
+  // Date and Description, one row, for the whole multi-line voucher — same
+  // compact box as New Entry's own Advance Voucher screen (170px date
+  // column + description filling the rest), replacing the old "Date for
+  // all lines" bar that had no equivalent master Description field at all.
+  // Date still updates every line except one whose own date was edited
+  // directly (applyMasterDate, unchanged); Description only fills lines
+  // that don't already have their own (see groupValid/saveGroup above) —
+  // never overwrites one that does. Single-line entries just have the one
+  // date/description already in Voucher details/the grid — no separate
+  // master needed.
   const masterDateRow=isGroup?(
-    <div style={{display:"flex",alignItems:"center",gap:10,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 14px"}}>
-      <span style={{fontSize:11,fontWeight:700,color:T.sub,whiteSpace:"nowrap"}}>Date for all lines</span>
-      <FlexDateInput value={masterDate} onChange={applyMasterDate} style={{width:150}} inputStyle={{fontSize:12}}/>
-      <span style={{fontSize:10,color:T.muted}}>Changing a line's own date below keeps that line on its own date from then on.</span>
+    <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+      <div style={{padding:14,background:"#fff",display:"grid",gridTemplateColumns:"170px 1fr",gap:20}}>
+        <div>
+          <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Date for all lines</div>
+          <FlexDateInput value={masterDate} onChange={applyMasterDate} style={{width:"100%"}} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:13,padding:"6px 2px",width:"100%",boxSizing:"border-box"}}/>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>Description</div>
+          <input placeholder="Fills in any line left blank below" value={masterDescription} onChange={e=>setMasterDescription(e.target.value)} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.text,padding:"6px 2px",width:"100%",fontSize:12,fontWeight:600,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+      </div>
     </div>
   ):null;
 
