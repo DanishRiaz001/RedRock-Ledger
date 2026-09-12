@@ -1450,7 +1450,8 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
 // Register voucher queue — the real batch flow: step through every selected
 // file with Previous/Next, "Remove from queue" (skips without deleting), and
 // per-item Create. Each file keeps its own draft as you navigate away and back.
-function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone,renameInboxFileEntry,setAccounts,projects=[],trackProjects=false,saveProjects}){
+function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTransaction,onDone,renameInboxFileEntry,setAccounts,projects=[],trackProjects=false,saveProjects,companyProfile}){
+  const defaultCurrency=(companyProfile&&companyProfile.currency)||"PKR";
   const[queue,setQueue]=useState(fileIds);
   const[idx,setIdx]=useState(0);
   const[formsByFile,setFormsByFile]=useState({});
@@ -1792,7 +1793,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               </div>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-                <ThemedSelect value={form.currency||"PKR"} onChange={v=>setForm({currency:v})} triggerStyle={{...inp,width:140}} options={CURRENCIES.map(c=>({value:c,label:c}))}/>
+                <ThemedSelect value={form.currency||defaultCurrency} onChange={v=>setForm({currency:v})} triggerStyle={{...inp,width:140}} options={CURRENCIES.map(c=>({value:c,label:c}))}/>
               </div>
 
               <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`,position:"relative"}}>
@@ -3493,7 +3494,12 @@ function VoucherDraftsScreen({drafts=[],deleteVoucherDraft,onResume}){
   );
 }
 
-function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,splitVat=true,saveProjects,initialEntryMode="receipt",onOpenEntry,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft}){
+function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSave,addEntryComment,feat={},sinkingFunds=[],saveSinkingFunds,inboxFiles=[],uploadInboxFile,transactions=[],moneySources=[],tagTransaction,isDesktop=false,projects=[],trackProjects=false,splitVat=true,saveProjects,initialEntryMode="receipt",onOpenEntry,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,companyProfile}){
+  // Every currency picker in this form falls back to the company's own
+  // configured default (Settings → Company Information) instead of a
+  // hardcoded NOK, so entries start in whatever currency this company
+  // actually books in.
+  const defaultCurrency=(companyProfile&&companyProfile.currency)||"NOK";
   // Quick-create straight from any Debit/Credit AccDrop — "+ New account"
   // and "+ New customer/supplier" both need somewhere to actually create
   // the thing, not just a UI to type it into. Shared across every line's
@@ -3649,7 +3655,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // (nothing extra shown); pick another currency and a second row
   // appears for the NOK-equivalent amount, same idea as the VAT/
   // Description second row elsewhere in this table.
-  const[invCurrency,setInvCurrency]=useState("NOK");
+  const[invCurrency,setInvCurrency]=useState(defaultCurrency);
   const[invAmountNok,setInvAmountNok]=useState("");
   const[invAccountCode,setInvAccountCode]=useState("");
   const[invVatCode,setInvVatCode]=useState("");
@@ -3698,7 +3704,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   // record when a supplier invoice was really paid, separately from the
   // invoice's own date, without needing a date on every cost line.
   const[invPaymentDate,setInvPaymentDate]=useState("");
-  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvHeaderTotal("");setInvLinesManual(false);setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency("NOK");setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvPeriodizationMonths("");setInvPeriodizationStart("");setInvGearOpen(false);};
+  const resetInvoiceForm=()=>{setInvContactId("");setInvoiceNo("");setInvDueDate("");setInvAmount("");setInvHeaderTotal("");setInvLinesManual(false);setInvAccountCode("");setInvVatCode("");setInvDescription("");setInvExtraLines([]);setInvAttachmentIds([]);setInvRegisterPayment("");setInvPaymentAmount("");setInvPaymentDate("");setInvCurrency(defaultCurrency);setInvAmountNok("");setInvProjectId("");setInvShowProject(false);setInvShowPeriodization(false);setInvPeriodizationAccount("");setInvPeriodizationMonths("");setInvPeriodizationStart("");setInvGearOpen(false);};
   // The pending-suggestion/entry-mode hand-off keys are read (never deleted)
   // by several useState initializers above, all during the same first
   // render — so the actual cleanup happens exactly once, here, after mount.
@@ -4015,7 +4021,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       // (VAT, ledger amount) is in NOK; the original foreign amount rides
       // along as currencyAmount.
       const rawAmt=parseFloat(l.amount);
-      const lineCur=(l.currency||"NOK").toUpperCase();
+      const lineCur=(l.currency||defaultCurrency).toUpperCase();
       const lineNok=parseFloat(l.amountNok);
       const useNok=lineCur!=="NOK"&&lineNok>0;
       const amt=useNok?(rawAmt<0?-lineNok:lineNok):rawAmt;
@@ -4221,7 +4227,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div onClick={()=>setShowCommentPopover(false)} style={{position:"fixed",inset:0,zIndex:198}}/>
                   <div style={{position:"fixed",top:commentPopoverPos.top,right:commentPopoverPos.right,zIndex:199,background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:12,width:280}}>
                     <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>Comment (optional)</div>
-                    <textarea autoFocus value={commentDraft} onChange={e=>setCommentDraft(e.target.value)} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+                    <textarea autoFocus value={commentDraft} onChange={e=>setCommentDraft(e.target.value)} placeholder="Extra context for this entry" rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit",fontSize:10}}/>
                     <div style={{display:"flex",gap:8,marginTop:8}}>
                       <button onClick={()=>{setForm(p=>({...p,notes:commentDraft}));setShowCommentPopover(false);}} style={{flex:1,background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{form.notes?"Save":"Add"}</button>
                       <button onClick={()=>setShowCommentPopover(false)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
@@ -4520,7 +4526,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                       the browser's own unstyled OS options list the way a
                       bare native <select> styled to look like plain text
                       still did. */}
-                  <ThemedSelect value={li===0?(form.currency||"NOK"):(line.currency||"NOK")} onChange={v=>{
+                  <ThemedSelect value={li===0?(form.currency||defaultCurrency):(line.currency||defaultCurrency)} onChange={v=>{
                     if(li===0){setForm(p=>({...p,currency:v}));return;}
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],currency:v};
@@ -5026,7 +5032,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                             <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                               if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1){setInvLinesManual(true);setInvExtraLines(p=>[...p,newLine()]);}
                             }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:0,width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
-                            <ThemedSelect value={r.currency||"NOK"} onChange={v=>update({currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                            <ThemedSelect value={r.currency||defaultCurrency} onChange={v=>update({currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
                           </div>
                           {(r.currency||"NOK")!=="NOK"&&(
                             <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>

@@ -714,7 +714,11 @@ function ThemedSelect({value,onChange,options,placeholder="— Select —",disab
   },[options]);
   const openMenu=()=>{
     if(disabled)return;
-    if(triggerRef.current){const r=triggerRef.current.getBoundingClientRect();setDropPos({top:r.bottom+4,left:r.left,width:r.width});}
+    // A deliberately tiny trigger (the plain-text currency micro-selects,
+    // hideChevron+textStyle) would otherwise force the POPUP to that same
+    // sliver width, wrapping every option down to its first letter — the
+    // popup needs to stay readable even when the trigger itself is small.
+    if(triggerRef.current){const r=triggerRef.current.getBoundingClientRect();setDropPos({top:r.bottom+4,left:r.left,width:Math.max(r.width,140)});}
     setOpen(true);
   };
   const pick=v=>{onChange(v);setOpen(false);};

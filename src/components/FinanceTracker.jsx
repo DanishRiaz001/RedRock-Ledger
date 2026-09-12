@@ -1206,7 +1206,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {registrationQueue?(
-          <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} renameInboxFileEntry={renameInboxFileEntry} onDone={()=>setRegistrationQueue(null)} setAccounts={setAccounts}/>
+          <RegisterVoucherQueueScreen fileIds={registrationQueue} inboxFiles={inboxFiles} accounts={accounts} contacts={contacts} addTransaction={addTransactionNotified} renameInboxFileEntry={renameInboxFileEntry} onDone={()=>setRegistrationQueue(null)} setAccounts={setAccounts} companyProfile={companyProfile}/>
         ):ledgerAcc?(
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
         ):(<>
@@ -1362,7 +1362,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           // TRUE window edge and caps the form side itself (1100px), so
           // an outer cap here just left a dead gray gap between the two
           // whenever the window was wider than the cap.
-          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft}/>
+          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
         )}
 
         {tab==="VoucherDrafts"&&(
@@ -1772,7 +1772,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         )}
 
         {tab==="Transactions"&&(
-          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}}/>
+          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={false} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} companyProfile={companyProfile}/>
         )}
 
         {tab==="Accounts"&&(
