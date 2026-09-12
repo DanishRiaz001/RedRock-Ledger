@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -254,10 +254,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
           <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}}/>
           <div>
             <div style={{fontSize:10,color:T.muted,marginBottom:3}}>Type</div>
-            <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{...inp,width:170}}>
-              <option value="">(All)</option>
-              {Object.entries(SERIES).map(([k,s])=><option key={k} value={k}>{s.name}</option>)}
-            </select>
+            <ThemedSelect value={typeFilter} onChange={setTypeFilter} placeholder="(All)" allowClear clearLabel="(All)" triggerStyle={{...inp,width:170}} options={Object.entries(SERIES).map(([k,s])=>({value:k,label:s.name}))}/>
           </div>
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.text,cursor:"pointer"}}>
             <input type="checkbox" checked={allowEditing} onChange={e=>setAllowEditing(e.target.checked)}/> Allow editing
@@ -701,9 +698,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
             {sk==="1900"&&(
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-                <select value={val("currency",account.currency||"PKR")} onChange={set("currency")} style={inp}>
-                  <option value="PKR">PKR</option><option value="NOK">NOK</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="AED">AED</option>
-                </select>
+                <ThemedSelect value={val("currency",account.currency||"PKR")} onChange={v=>setEditForm(f=>({...f,currency:v}))} triggerStyle={inp} options={["PKR","NOK","USD","EUR","GBP","AED"].map(c=>({value:c,label:c}))}/>
               </div>
             )}
             <div style={{gridColumn:"1/-1",display:"flex",gap:20,paddingTop:4,flexWrap:"wrap"}}>
@@ -829,9 +824,7 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Primary Currency</div>
           <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Used for all amounts and reports throughout the app.</div>
-          <select value={primaryCurrency} onChange={e=>{const c=e.target.value;saveProfile({currencies:[c,...(profileData.currencies||["PKR"]).filter(x=>x!==c)]});}} style={{...inp,fontSize:13,fontWeight:700}}>
-            {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.symbol} {c.code} — {c.name}</option>)}
-          </select>
+          <ThemedSelect value={primaryCurrency} onChange={c=>saveProfile({currencies:[c,...(profileData.currencies||["PKR"]).filter(x=>x!==c)]})} triggerStyle={{...inp,fontSize:13,fontWeight:700}} options={CURRENCIES.map(c=>({value:c.code,label:`${c.symbol} ${c.code} — ${c.name}`}))}/>
         </div>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Additional Currencies</div>
@@ -1509,9 +1502,7 @@ function PeriodSelector({from,to,onChange}){
               {/* Year nav */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 4px 12px"}}>
                 <button onClick={()=>setViewYear(y=>y-1)} disabled={!years.includes(viewYear-1)} style={{background:"none",border:"none",cursor:years.includes(viewYear-1)?"pointer":"default",opacity:years.includes(viewYear-1)?1:0.3,fontSize:16,color:T.sub}}>‹</button>
-                <select value={viewYear} onChange={e=>setViewYear(parseInt(e.target.value))} style={{fontSize:14,fontWeight:700,color:T.text,background:"none",border:"none",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
-                  {years.map(y=><option key={y} value={y}>{y}</option>)}
-                </select>
+                <ThemedSelect value={viewYear} onChange={v=>setViewYear(parseInt(v))} triggerStyle={{fontSize:14,fontWeight:700,color:T.text,background:"none",border:"none"}} options={years.map(y=>({value:y,label:String(y)}))}/>
                 <button onClick={()=>setViewYear(y=>y+1)} disabled={!years.includes(viewYear+1)} style={{background:"none",border:"none",cursor:years.includes(viewYear+1)?"pointer":"default",opacity:years.includes(viewYear+1)?1:0.3,fontSize:16,color:T.sub}}>›</button>
               </div>
 
@@ -1954,16 +1945,11 @@ function OnboardingWizard({companyProfile,saveCompanyProfile,accounts,onFinish,o
           </div>
           <div>
             <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Country</div>
-            <select value={country} onChange={e=>onCountryChange(e.target.value)} style={{...inp}}>
-              <option value="PK">Pakistan</option>
-              <option value="NO">Norway</option>
-            </select>
+            <ThemedSelect value={country} onChange={onCountryChange} triggerStyle={{...inp}} options={[{value:"PK",label:"Pakistan"},{value:"NO",label:"Norway"}]}/>
           </div>
           <div>
             <div style={{fontSize:11,color:"#64748B",marginBottom:4,fontWeight:600}}>Currency</div>
-            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inp}}>
-              <option>PKR</option><option>NOK</option><option>USD</option><option>EUR</option><option>GBP</option>
-            </select>
+            <ThemedSelect value={currency} onChange={setCurrency} triggerStyle={{...inp}} options={["PKR","NOK","USD","EUR","GBP"].map(c=>({value:c,label:c}))}/>
           </div>
         </div>
       ),
@@ -3563,10 +3549,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
             <button onClick={()=>setMonthlyView(m=>!m)} title="Show each month of the year side by side, instead of one total" style={{background:monthlyView?T.accent:"none",color:monthlyView?"#fff":T.sub,border:`1px solid ${monthlyView?T.accent:T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
           )}
           {projects.length>0&&(
-            <select value={projectFilter} onChange={e=>setProjectFilter(e.target.value)} style={{border:`1px solid ${projectFilter?T.accent:T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:600,color:projectFilter?T.accent:T.sub,background:projectFilter?T.accentLight:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
-              <option value="">All projects</option>
-              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
-            </select>
+            <ThemedSelect value={projectFilter} onChange={setProjectFilter} placeholder="All projects" allowClear clearLabel="All projects" triggerStyle={{border:`1px solid ${projectFilter?T.accent:T.border}`,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:600,color:projectFilter?T.accent:T.sub,background:projectFilter?T.accentLight:"#fff"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?p.number+" — ":""}${p.name}`}))}/>
           )}
         </div>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderRadius:"10px 10px 0 0"}}>
@@ -5908,11 +5891,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
           </>)}
         </div>
-        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{...inp,width:130,background:"#fff",flexShrink:0,height:36,boxSizing:"border-box",borderRadius:8}}>
-          <option value="all">All</option>
-          <option value="incoming">Incoming</option>
-          <option value="outgoing">Outgoing</option>
-        </select>
+        <ThemedSelect value={directionFilter} onChange={setDirectionFilter} triggerStyle={{...inp,width:130,background:"#fff",flexShrink:0,height:36,boxSizing:"border-box",borderRadius:8}} options={[{value:"all",label:"All"},{value:"incoming",label:"Incoming"},{value:"outgoing",label:"Outgoing"}]}/>
         <div style={{display:"flex",border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",flexShrink:0,height:36}}>
           {[["unmatched","Unmatched"],["matched","Matched"]].map(([id,label])=>(
             <button key={id} onClick={()=>setFilterMode(id)} style={{background:filterMode===id?T.accent:"#fff",color:filterMode===id?"#fff":T.sub,border:"none",padding:"0 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",height:"100%"}}>{label}</button>
@@ -6212,22 +6191,17 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   "Manage payment types" jumps to Bank → Settings where the
                   list is edited; the advanced section below still reaches
                   any account or contact. */}
-              <select value={activeType?activeType.id:""} onChange={e=>{
-                const t=postingTypes.find(x=>x.id===e.target.value);
-                if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);}
-                else{setBulkOffsetCode("");setBulkPostingTypeId("");}
-              }} style={{...inp,fontSize:12.5,cursor:"pointer"}}>
-                <option value="">— Select a payment type —</option>
-                {[leadDir,leadDir==="out"?"in":"out"].map(dir=>{
-                  const ts=typesFor(dir);
-                  if(!ts.length)return null;
-                  return(
-                    <optgroup key={dir} label={dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"}>
-                      {ts.map(t=><option key={t.id} value={t.id}>{t.name} — {acctName(t.accountCode)}</option>)}
-                    </optgroup>
-                  );
-                })}
-              </select>
+              <ThemedSelect
+                value={activeType?activeType.id:""}
+                onChange={id=>{
+                  const t=postingTypes.find(x=>x.id===id);
+                  if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);}
+                  else{setBulkOffsetCode("");setBulkPostingTypeId("");}
+                }}
+                placeholder="— Select a payment type —"
+                triggerStyle={{...inp,fontSize:12.5,cursor:"pointer"}}
+                options={[leadDir,leadDir==="out"?"in":"out"].flatMap(dir=>typesFor(dir).map(t=>({value:t.id,label:`${t.name} — ${acctName(t.accountCode)}`,group:dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"})))}
+              />
 
               <div style={{marginTop:10}}>
                 <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
@@ -6760,10 +6734,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
             <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
           </div>
-          <select value={contactFilter} onChange={e=>setContactFilter(e.target.value)} style={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}}>
-            <option value="">All {type==="customer"?"customers":"suppliers"}</option>
-            {relevantContacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <ThemedSelect value={contactFilter} onChange={setContactFilter} placeholder={`All ${type==="customer"?"customers":"suppliers"}`} allowClear clearLabel={`All ${type==="customer"?"customers":"suppliers"}`} triggerStyle={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}} options={relevantContacts.map(c=>({value:c.id,label:c.name}))}/>
           <div style={{position:"relative",flex:1,minWidth:100}}>
             <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
             <input placeholder="Invoice number, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
@@ -7049,9 +7020,7 @@ function ReconciliationScreen({accounts,transactions,reconciliationStatus=[],sav
                         <div style={{fontSize:12,textAlign:"right",color:T.sub}}>{fmt(r.ib)}</div>
                         <div style={{fontSize:12,textAlign:"right",color:r.change===0?T.muted:(r.change>0?T.green:T.red)}}>{r.change===0?"—":sign(r.change)}</div>
                         <div style={{fontSize:12,textAlign:"right",fontWeight:700,color:T.text}}>{fmt(r.ub)}</div>
-                        <select value={r.status} onChange={e=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{status:e.target.value})} style={{...inp,padding:"6px 8px",fontSize:11,color:st.color,fontWeight:700,borderColor:st.color+"55"}}>
-                          {RECON_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
+                        <ThemedSelect value={r.status} onChange={v=>saveReconciliationStatus&&saveReconciliationStatus(r.code,period,{status:v})} triggerStyle={{...inp,padding:"6px 8px",fontSize:11,color:st.color,fontWeight:700,borderColor:st.color+"55"}} options={RECON_STATUSES.map(s=>({value:s.id,label:s.label}))}/>
                         <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
                           <button onClick={()=>setUploadModalFor(r.code)} disabled={uploadingFor===r.code} title="Upload for this period" style={{background:"none",border:"none",padding:0,cursor:uploadingFor===r.code?"wait":"pointer",color:T.sub,fontFamily:"inherit"}}>
                             <i className="ti ti-paperclip" style={{fontSize:15}}/>

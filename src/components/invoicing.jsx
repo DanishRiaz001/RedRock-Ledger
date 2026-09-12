@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -1000,17 +1000,11 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
             <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Every transaction on the duplicate gets reassigned to the one you keep, then the duplicate is removed. This can't be undone.</p>
             <div style={{marginBottom:12}}>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Duplicate (will be removed)</div>
-              <select value={mergeRemoveId} onChange={e=>setMergeRemoveId(e.target.value)} style={{...inp}}>
-                <option value="">— Select —</option>
-                {contacts.filter(c=>c.id!==mergeKeepId).map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
-              </select>
+              <ThemedSelect value={mergeRemoveId} onChange={setMergeRemoveId} triggerStyle={{...inp}} options={contacts.filter(c=>c.id!==mergeKeepId).map(c=>({value:c.id,label:`${c.name} (${c.type})`}))}/>
             </div>
             <div style={{marginBottom:16}}>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Merge into (will be kept)</div>
-              <select value={mergeKeepId} onChange={e=>setMergeKeepId(e.target.value)} style={{...inp}}>
-                <option value="">— Select —</option>
-                {contacts.filter(c=>c.id!==mergeRemoveId).map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
-              </select>
+              <ThemedSelect value={mergeKeepId} onChange={setMergeKeepId} triggerStyle={{...inp}} options={contacts.filter(c=>c.id!==mergeRemoveId).map(c=>({value:c.id,label:`${c.name} (${c.type})`}))}/>
             </div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={async()=>{
@@ -1182,22 +1176,12 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Form of business organization</div>
-            <select value={form.formOfBusiness||""} onChange={set("formOfBusiness")} style={inp}>
-              <option value="">—</option>
-              <option>Sole proprietorship</option>
-              <option>Partnership</option>
-              <option>Private limited company</option>
-              <option>Public limited company</option>
-              <option>Non-profit / NGO</option>
-            </select>
+            <ThemedSelect value={form.formOfBusiness||""} onChange={v=>setForm(p=>({...p,formOfBusiness:v}))} placeholder="—" allowClear clearLabel="—" triggerStyle={inp} options={["Sole proprietorship","Partnership","Private limited company","Public limited company","Non-profit / NGO"].map(o=>({value:o,label:o}))}/>
           </div>
 
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Country</div>
-            <select value={form.country||"PK"} onChange={e=>{const country=e.target.value;setForm(p=>({...p,country,currency:country==="NO"?"NOK":"PKR"}));}} style={inp}>
-              <option value="PK">Pakistan</option>
-              <option value="NO">Norway</option>
-            </select>
+            <ThemedSelect value={form.country||"PK"} onChange={country=>setForm(p=>({...p,country,currency:country==="NO"?"NOK":"PKR"}))} triggerStyle={inp} options={[{value:"PK",label:"Pakistan"},{value:"NO",label:"Norway"}]}/>
             <div style={{fontSize:10,color:T.muted,marginTop:4}}>{form.country==="NO"?"VAT/MVA features are enabled.":"VAT features are hidden — Pakistani tax filing isn't built yet."}</div>
           </div>
           {form.country==="NO"&&(<>
@@ -1220,22 +1204,16 @@ function CompanyInfoScreen({companyProfile,saveCompanyProfile,requestRedrockAcce
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-            <select value={form.currency||"PKR"} onChange={set("currency")} style={inp}>
-              <option>PKR</option><option>NOK</option><option>USD</option><option>EUR</option><option>GBP</option>
-            </select>
+            <ThemedSelect value={form.currency||"PKR"} onChange={v=>setForm(p=>({...p,currency:v}))} triggerStyle={inp} options={["PKR","NOK","USD","EUR","GBP"].map(c=>({value:c,label:c}))}/>
           </div>
 
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Fiscal year starts</div>
-            <select value={form.fiscalYearStartMonth||1} onChange={e=>setForm(p=>({...p,fiscalYearStartMonth:parseInt(e.target.value)}))} style={inp}>
-              {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m,i)=><option key={i} value={i+1}>{m}</option>)}
-            </select>
+            <ThemedSelect value={form.fiscalYearStartMonth||1} onChange={v=>setForm(p=>({...p,fiscalYearStartMonth:parseInt(v)}))} triggerStyle={inp} options={["January","February","March","April","May","June","July","August","September","October","November","December"].map((m,i)=>({value:i+1,label:m}))}/>
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Language</div>
-            <select value={form.language||"English"} onChange={set("language")} style={inp}>
-              <option>English</option><option>Norwegian</option><option>Urdu</option>
-            </select>
+            <ThemedSelect value={form.language||"English"} onChange={v=>setForm(p=>({...p,language:v}))} triggerStyle={inp} options={["English","Norwegian","Urdu"].map(l=>({value:l,label:l}))}/>
           </div>
         </div>
 
@@ -1354,10 +1332,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
             <>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
-                <select value={supplierId} onChange={e=>setSupplierId(e.target.value)} style={{...inp}}>
-                  {!suppliers.length&&<option value="">No suppliers yet</option>}
-                  {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <ThemedSelect value={supplierId} onChange={setSupplierId} placeholder="No suppliers yet" triggerStyle={{...inp}} options={suppliers.map(s=>({value:s.id,label:s.name}))}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
@@ -1392,9 +1367,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                     </div>
                     <div>
                       <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>VAT %</div>
-                      <select value={vatPct} onChange={e=>setVatPct(e.target.value)} style={{...inp}}>
-                        {vatCodeOptions("input").map(c=><option key={c.code} value={c.rate}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                      </select>
+                      <ThemedSelect value={vatPct} onChange={setVatPct} triggerStyle={{...inp}} options={vatCodeOptions("input").map(c=>({value:c.rate,label:`${c.code}: (${c.rate}%) ${c.name}`}))}/>
                     </div>
                   </div>
                   {vatRate>0&&(
@@ -1425,15 +1398,11 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Debit account</div>
-                  <select value={debitCode} onChange={e=>setDebitCode(e.target.value)} style={{...inp}}>
-                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  </select>
+                  <ThemedSelect value={debitCode} onChange={setDebitCode} triggerStyle={{...inp}} options={accounts.map(a=>({value:a.code,label:`${a.code} ${a.name}`}))}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Credit account</div>
-                  <select value={creditCode} onChange={e=>setCreditCode(e.target.value)} style={{...inp}}>
-                    {accounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  </select>
+                  <ThemedSelect value={creditCode} onChange={setCreditCode} triggerStyle={{...inp}} options={accounts.map(a=>({value:a.code,label:`${a.code} ${a.name}`}))}/>
                 </div>
                 <div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Amount</div>
@@ -1738,11 +1707,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
           <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:16,flexWrap:"wrap"}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Select type of voucher</div>
-              <select value={form.voucherType} onChange={e=>setForm({voucherType:e.target.value})} style={{...inp,width:300}}>
-                <option value="supplier">Expense invoice (supplier)</option>
-                <option value="income">Income (sale to customer)</option>
-                <option value="receipt">Simple entry</option>
-              </select>
+              <ThemedSelect value={form.voucherType} onChange={v=>setForm({voucherType:v})} triggerStyle={{...inp,width:300}} options={[{value:"supplier",label:"Expense invoice (supplier)"},{value:"income",label:"Income (sale to customer)"},{value:"receipt",label:"Simple entry"}]}/>
             </div>
             <button onClick={autoFillFromDocument} disabled={autoFilling} title="Read the date and amount off this document" style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:autoFilling?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{autoFilling?"Reading…":"✨ Auto-fill from document"}</button>
           </div>
@@ -1752,10 +1717,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
                 <div>
                   <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Supplier</div>
-                  <select value={form.supplierId} onChange={e=>setForm({supplierId:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12}}>
-                    {!suppliers.length&&<option value="">No suppliers yet</option>}
-                    {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <ThemedSelect value={form.supplierId} onChange={v=>setForm({supplierId:v})} placeholder="No suppliers yet" triggerStyle={{...inp,padding:"8px 10px",fontSize:12}} options={suppliers.map(s=>({value:s.id,label:s.name}))}/>
                 </div>
                 <div>
                   <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
@@ -1787,9 +1749,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                   return(
                     <div>
                       <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>VAT %{costLocked&&<span title="Locked on this account" style={{marginLeft:4,color:T.muted}}><i className="ti ti-lock" style={{fontSize:9}}/></span>}</div>
-                      <select value={form.vatPct} disabled={costLocked} onChange={e=>setForm({vatPct:e.target.value})} style={{...inp,padding:"8px 10px",fontSize:12,opacity:costLocked?0.6:1}}>
-                        {vatCodeOptions("input").map(c=><option key={c.code} value={c.rate}>{c.code}: ({c.rate}%) {c.name}</option>)}
-                      </select>
+                      <ThemedSelect value={form.vatPct} disabled={costLocked} onChange={v=>setForm({vatPct:v})} triggerStyle={{...inp,padding:"8px 10px",fontSize:12,opacity:costLocked?0.6:1}} options={vatCodeOptions("input").map(c=>({value:c.rate,label:`${c.code}: (${c.rate}%) ${c.name}`}))}/>
                     </div>
                   );
                 })()}
@@ -1813,10 +1773,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-                <select value={form.customerId} onChange={e=>setForm({customerId:e.target.value})} style={{...inp}}>
-                  {!customers.length&&<option value="">No customers yet</option>}
-                  {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <ThemedSelect value={form.customerId} onChange={v=>setForm({customerId:v})} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
               </div>
               {/* Date, due date and invoice number share one row */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
@@ -1835,9 +1792,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               </div>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-                <select value={form.currency||"PKR"} onChange={e=>setForm({currency:e.target.value})} style={{...inp,width:140}}>
-                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
+                <ThemedSelect value={form.currency||"PKR"} onChange={v=>setForm({currency:v})} triggerStyle={{...inp,width:140}} options={CURRENCIES.map(c=>({value:c,label:c}))}/>
               </div>
 
               <div style={{background:T.bg,borderRadius:10,padding:12,border:`1px solid ${T.border}`,position:"relative"}}>
@@ -2009,8 +1964,8 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                     )}
                     <input type="number" placeholder="0" value={l.amount} onChange={e=>updateGeneralLine(l.lid,{amount:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"&&i===generalLines.length-1){e.preventDefault();addGeneralLine();}}} style={{...inp,fontSize:12,padding:"7px 9px"}}/>
                     {trackProjects&&(
-                      <select value={l.projectId||""} onChange={e=>{
-                        if(e.target.value==="__new__"){
+                      <ThemedSelect value={l.projectId||""} onChange={v=>{
+                        if(v==="__new__"){
                           const name=prompt("New project or department name:");
                           if(name&&name.trim()&&saveProjects){
                             const nums=projects.map(p=>parseInt(p.number)||0);
@@ -2021,12 +1976,8 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
                           }
                           return;
                         }
-                        updateGeneralLine(l.lid,{projectId:e.target.value});
-                      }} style={{...inp,fontSize:11,padding:"7px 8px"}}>
-                        <option value="">— None —</option>
-                        {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
-                        {saveProjects&&<option value="__new__">+ New…</option>}
-                      </select>
+                        updateGeneralLine(l.lid,{projectId:v});
+                      }} placeholder="— None —" allowClear clearLabel="— None —" triggerStyle={{...inp,fontSize:11,padding:"7px 8px"}} options={[...projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?p.number+" — ":""}${p.name}`})),...(saveProjects?[{value:"__new__",label:"+ New…"}]:[])]}/>
                     )}
                     <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                       <button onClick={()=>copyGeneralLine(l.lid)} title="Copy this line" style={{background:"none",border:"none",color:T.sub,cursor:"pointer",padding:4}}><i className="ti ti-copy" style={{fontSize:14}}/></button>
@@ -2241,10 +2192,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
           <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Customer</div>
-              <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
-                {!customers.length&&<option value="">No customers yet</option>}
-                {customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?" ✉":""}</option>)}
-              </select>
+              <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp,padding:"9px 12px",fontSize:13}} options={customers.map(c=>({value:c.id,label:`${c.name}${c.email?" ✉":""}`}))}/>
             </div>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
@@ -2266,10 +2214,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
                 <div style={{fontSize:10,color:T.sub,fontWeight:600}}>Product</div>
                 {onManageProducts&&<button onClick={onManageProducts} style={{background:"none",border:"none",color:T.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>Add / edit</button>}
               </div>
-              <select value={productId} onChange={e=>setProductId(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
-                <option value="">No product — set price manually</option>
-                {productsForAccount.map(p=><option key={p.id} value={p.id}>{p.name} — {fmt(p.price)}</option>)}
-              </select>
+              <ThemedSelect value={productId} onChange={setProductId} placeholder="No product — set price manually" allowClear clearLabel="No product — set price manually" triggerStyle={{...inp,padding:"9px 12px",fontSize:13}} options={productsForAccount.map(p=>({value:p.id,label:`${p.name} — ${fmt(p.price)}`}))}/>
             </div>
           </div>
           {saleAccount&&!productsForAccount.length&&<div style={{fontSize:11,color:T.muted,marginTop:-4}}>No products set up for this account yet.</div>}
@@ -2305,10 +2250,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
             </div>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Discount type</div>
-              <select value={discountType} onChange={e=>setDiscountType(e.target.value)} style={{...inp,padding:"9px 12px",fontSize:13}}>
-                <option value="pct">Percent (%)</option>
-                <option value="fixed">Fixed amount</option>
-              </select>
+              <ThemedSelect value={discountType} onChange={setDiscountType} triggerStyle={{...inp,padding:"9px 12px",fontSize:13}} options={[{value:"pct",label:"Percent (%)"},{value:"fixed",label:"Fixed amount"}]}/>
             </div>
           </div>
           {discountAmount>0&&(
@@ -2467,10 +2409,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Received into</div>
-                <select value={payBank} onChange={e=>setPayBank(e.target.value)} style={{...inp}}>
-                  {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  {!bankAccounts.length&&<option value="">No bank accounts</option>}
-                </select>
+                <ThemedSelect value={payBank} onChange={setPayBank} placeholder="No bank accounts" triggerStyle={{...inp}} options={bankAccounts.map(a=>({value:a.code,label:`${a.code} ${a.name}`}))}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
@@ -2580,11 +2519,7 @@ function InvoiceOverviewScreen({invoices,contacts,accounts,companyProfile,update
                     :inv.status==="partial"?(
                       <span title={`${fmt(paidSoFar)} of ${fmt(inv.total)} paid`} style={{fontSize:11,color:T.orange,fontWeight:700,background:T.orangeBg,padding:"3px 8px",borderRadius:6}}>Partial</span>
                     ):(
-                    <select value={inv.status} onChange={e=>updateInvoiceStatus(inv.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}}>
-                      <option value="draft">Draft</option>
-                      <option value="sent">Sent</option>
-                      <option value="paid">Paid</option>
-                    </select>
+                    <ThemedSelect value={inv.status} onChange={v=>updateInvoiceStatus(inv.id,v)} triggerStyle={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",background:inv.status==="paid"?T.greenBg:inv.status==="sent"?T.accentLight:"#fff",color:inv.status==="paid"?T.green:T.sub}} options={[{value:"draft",label:"Draft"},{value:"sent",label:"Sent"},{value:"paid",label:"Paid"}]}/>
                   )}
                 </td>
                 <td style={{textAlign:"right",whiteSpace:"nowrap",padding:"11px 14px"}}>
@@ -2655,10 +2590,7 @@ function RecurringInvoicesScreen({recurringInvoices,contacts,accounts,createRecu
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-              <select value={form.customerId} onChange={e=>setForm(p=>({...p,customerId:e.target.value}))} style={{...inp}}>
-                {!customers.length&&<option value="">No customers yet</option>}
-                {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <ThemedSelect value={form.customerId} onChange={v=>setForm(p=>({...p,customerId:v}))} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx)</div>
@@ -3175,10 +3107,7 @@ function QuoteFormScreen({accounts,contacts,companyProfile,nextQuoteNo,createQuo
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <div>
           <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-          <select value={customerId} onChange={e=>setCustomerId(e.target.value)} style={{...inp}}>
-            {!customers.length&&<option value="">No customers yet</option>}
-            {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
         </div>
         <div>
           <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx)</div>
@@ -3254,12 +3183,7 @@ function QuoteOverviewScreen({quotes,contacts,createQuote,updateQuoteStatus,dele
               <td style={{textAlign:"right",fontWeight:700,color:T.text}}>{fmt(q.total)}</td>
               <td>
                 {q.status==="converted"?<span style={{fontSize:11,color:T.green,fontWeight:700}}>✓ Converted</span>:(
-                  <select value={q.status} onChange={e=>updateQuoteStatus(q.id,e.target.value)} style={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",fontFamily:"inherit"}}>
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="accepted">Accepted</option>
-                    <option value="declined">Declined</option>
-                  </select>
+                  <ThemedSelect value={q.status} onChange={v=>updateQuoteStatus(q.id,v)} triggerStyle={{fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px"}} options={[{value:"draft",label:"Draft"},{value:"sent",label:"Sent"},{value:"accepted",label:"Accepted"},{value:"declined",label:"Declined"}]}/>
                 )}
               </td>
               <td style={{textAlign:"right",whiteSpace:"nowrap",padding:"11px 14px"}}>
@@ -4404,8 +4328,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
             since there's no header row to attach an icon to. */}
         {!isDesktop&&<input placeholder="Comment (optional) — extra context for this entry" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{...inpSm}}/>}
         {trackProjects&&(
-          <select value={form.projectId||""} onChange={e=>{
-            if(e.target.value==="__new__"){
+          <ThemedSelect value={form.projectId||""} onChange={v=>{
+            if(v==="__new__"){
               const name=prompt("New project or department name:");
               if(name&&name.trim()&&saveProjects){
                 const nums=projects.map(p=>parseInt(p.number)||0);
@@ -4416,12 +4340,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
               }
               return;
             }
-            setForm(p=>({...p,projectId:e.target.value}));
-          }} style={{...inpSm}}>
-            <option value="">— No project —</option>
-            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
-            {saveProjects&&<option value="__new__">+ New project / department…</option>}
-          </select>
+            setForm(p=>({...p,projectId:v}));
+          }} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...inpSm}} options={[...projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?p.number+" — ":""}${p.name}`})),...(saveProjects?[{value:"__new__",label:"+ New project / department…"}]:[])]}/>
         )}
 
         {/* Desktop: one line = one horizontal row (date, description, debit,
@@ -4767,10 +4687,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         {isDesktop&&moneySources&&moneySources.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:190,marginBottom:4}}>
             {moneySources&&moneySources.length>0&&(
-              <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"7px 2px",color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
-                <option value="">— Whose (optional) —</option>
-                {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+              <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(p=>({...p,moneySourceId:v||""}))} placeholder="— Whose (optional) —" allowClear clearLabel="— Whose (optional) —" triggerStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"7px 2px",color:T.text}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
             )}
           </div>
         )}
@@ -4873,10 +4790,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         {moneySources&&moneySources.length>0&&(
           <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
             <div style={{fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>👥 Whose</div>
-            <select value={form.moneySourceId||""} onChange={e=>setForm(p=>({...p,moneySourceId:e.target.value||""}))} style={{...selSm,width:"100%"}}>
-              <option value="">— Select source (optional) —</option>
-              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+            <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(p=>({...p,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,width:"100%"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
           </div>
         )}
         </>}
@@ -5127,8 +5041,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         {invShowProject&&(
                           <div>
                             <div style={fieldLbl}>Project</div>
-                            <select value={r.projectId||""} onChange={e=>{
-                              if(e.target.value==="__new__"){
+                            <ThemedSelect value={r.projectId||""} onChange={v=>{
+                              if(v==="__new__"){
                                 const name=prompt("New project or department name:");
                                 if(name&&name.trim()&&saveProjects){
                                   const nums=projects.map(p=>parseInt(p.number)||0);
@@ -5139,12 +5053,8 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                                 }
                                 return;
                               }
-                              update({projectId:e.target.value});
-                            }} style={{...lineField,fontSize:12}}>
-                              <option value="">— None —</option>
-                              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?p.number+" — ":""}{p.name}</option>)}
-                              {saveProjects&&<option value="__new__">+ New…</option>}
-                            </select>
+                              update({projectId:v});
+                            }} placeholder="— None —" allowClear clearLabel="— None —" triggerStyle={{...lineField,fontSize:12}} options={[...projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?p.number+" — ":""}${p.name}`})),...(saveProjects?[{value:"__new__",label:"+ New…"}]:[])]}/>
                           </div>
                         )}
                       </div>
@@ -5297,9 +5207,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   <div style={{display:"flex",gap:6}}>
                     <div style={{flex:5}}>
                       <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Payment account</div>
-                      <select value={invRegisterPayment} onChange={e=>setInvRegisterPayment(e.target.value)} style={{...lineField,fontSize:10.5,padding:"4px 2px"}}>
-                        {bankAccounts.map(a=><option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                      </select>
+                      <ThemedSelect value={invRegisterPayment} onChange={setInvRegisterPayment} triggerStyle={{...lineField,fontSize:10.5,padding:"4px 2px"}} options={bankAccounts.map(a=>({value:a.code,label:`${a.code} ${a.name}`}))}/>
                     </div>
                     <div style={{flex:2}}>
                       <div style={{fontSize:8,color:T.muted,fontWeight:700,marginBottom:2,textTransform:"uppercase"}}>Amount</div>

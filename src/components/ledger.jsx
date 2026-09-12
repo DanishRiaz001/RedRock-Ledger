@@ -690,6 +690,63 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
   );
 }
 
+// A themed drop-in replacement for a plain <select> — same
+// value/onChange contract, but a real custom popup instead of the
+// browser's own OS-rendered options list. A native <select>'s CLOSED box
+// can be restyled with plain CSS (border, radius, background, chevron —
+// every other themed input in this app already does that), but the OPEN
+// list cannot be — it always renders in the OS's own native style
+// (that's what made the "Post as" payment-type dropdown look like a
+// jarring plain browser control despite everything else on the page
+// being themed). This is the fix: build the whole thing ourselves, same
+// pattern as VatDrop/AccDrop. options: [{value,label,group?}].
+function ThemedSelect({value,onChange,options,placeholder="— Select —",disabled=false,triggerStyle,allowClear=false,clearLabel}){
+  const[open,setOpen]=useState(false);
+  const triggerRef=React.useRef(null);
+  const[dropPos,setDropPos]=useState(null);
+  const sel=options.find(o=>String(o.value)===String(value));
+  const groups=useMemo(()=>{
+    const seen=new Map();
+    options.forEach(o=>{
+      const g=o.group||"";
+      if(!seen.has(g))seen.set(g,[]);
+      seen.get(g).push(o);
+    });
+    return[...seen.entries()];
+  },[options]);
+  const openMenu=()=>{
+    if(disabled)return;
+    if(triggerRef.current){const r=triggerRef.current.getBoundingClientRect();setDropPos({top:r.bottom+4,left:r.left,width:r.width});}
+    setOpen(true);
+  };
+  const pick=v=>{onChange(v);setOpen(false);};
+  return(
+    <div style={{position:"relative"}}>
+      <div ref={triggerRef} onClick={openMenu} tabIndex={disabled?-1:0} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&!disabled){e.preventDefault();openMenu();}}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:disabled?"default":"pointer",opacity:disabled?0.6:1,userSelect:"none",...triggerStyle}}>
+        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:sel?T.text:T.muted}}>{sel?sel.label:placeholder}</span>
+        {!disabled&&<i className={`ti ti-chevron-${open?"up":"down"}`} style={{fontSize:11,color:T.muted,flexShrink:0,marginLeft:6}}/>}
+      </div>
+      {open&&!disabled&&dropPos&&(<>
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
+        <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280,overflowY:"auto"}}>
+          {allowClear&&(
+            <div onClick={()=>pick("")} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:!value?T.accentLight:"#fff",color:T.muted,fontStyle:"italic",borderBottom:`1px solid ${T.border}`}}>{clearLabel||`— ${placeholder} —`}</div>
+          )}
+          {groups.map(([g,opts])=>(
+            <React.Fragment key={g}>
+              {g&&<div style={{padding:"7px 12px 4px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,background:T.bg}}>{g}</div>}
+              {opts.map(o=>(
+                <div key={o.value} onClick={()=>pick(o.value)} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:String(o.value)===String(value)?T.accentLight:"#fff",fontWeight:String(o.value)===String(value)?700:400,color:T.text,borderBottom:`1px solid ${T.border}`}}>{o.label}</div>
+              ))}
+            </React.Fragment>
+          ))}
+          {!options.length&&<div style={{padding:"14px 12px",fontSize:11.5,color:T.muted,textAlign:"center"}}>Nothing to pick from.</div>}
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 // Flexible date input — type raw digits (120626 or 12062026, both parsed as
 // DD/MM) or click the calendar icon for a native picker. Always stores/reads
 // standard YYYY-MM-DD underneath so nothing else in the app needs to change.
@@ -4009,4 +4066,4 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 // ─── Account Plan & Settings ──────────────────────────────────────────────────
 
 
-export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop, FileDrop, NewAccountModal };
+export { SaveFlashButton, SL, Card, Pill, BilagText, BilagPill, BackHeader, AccDrop, AccDropFlat, Menu3, ContactSearch, EditModal, MatchDetailModal, ChangeLogModal, CommentsModal, DetailModal, TxnCard, MatchedGroups, LedgerScreen, MoneySourcesPanel, BankModule, ReskontroScreen, isFeatureOn, getAdminFeatures, getUserFeatures, setUserFeature, isDateClosed, getPeriodClose, isBankReconApproved, setBankReconApproved, getBankReconApprovals, hasBudgetMoved, markBudgetMoved, getBudgetMoves, sign, fmtBal, selSm, getBugs, saveBugsRaw, logBug, getGroupLinesMap, appendGroupLine, getGroupForTxn, ADMIN_KEY, USER_FEATS_KEY, signRs, FlexDateInput, CalcAmountInput, evalArithmetic, NewContactModal, VatDrop, FileDrop, NewAccountModal, ThemedSelect };
