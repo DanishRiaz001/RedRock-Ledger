@@ -91,7 +91,13 @@ function AppShell({user}){
   // database that doesn't have the company_id column yet. Every query below
   // uses this instead of activeCompanyId directly, so referencing a column
   // that may not exist yet never blocks the app from loading.
-  const cid=(activeCompanyId&&activeCompanyId!=="__no_company_scoping__")?activeCompanyId:null;
+  // "__admin_home__" is a deliberate navigation target (the switcher's
+  // "Home" entry — admin/cross-company views only, no real company
+  // selected), not an error-fallback sentinel like "__no_company_scoping__"
+  // above. Both collapse to cid=null so every company-scoped query below
+  // simply has nothing to filter by while at Home.
+  const isAtHome=activeCompanyId==="__admin_home__";
+  const cid=(activeCompanyId&&activeCompanyId!=="__no_company_scoping__"&&!isAtHome)?activeCompanyId:null;
   const scoped=q=>cid?q.eq("company_id",cid):q;
   // Matched on the actual active COMPANY now, not just who owns it — a
   // grant names one specific company_id, so viewing a different company
@@ -174,10 +180,18 @@ function AppShell({user}){
     });
   },[viewingUserId,myClientAccess]);
 
+  // Always owned by the real logged-in admin (user.id), never viewingUserId —
+  // only the super-admin can call this (FinanceTracker.jsx's isSuperAdmin
+  // gate), and "Add a new client" is reachable from the switcher even while
+  // switched INTO a granted client's books, where viewingUserId is that
+  // client's id, not the admin's own. Without this, a firm added while
+  // switched into someone else's view would silently be created under
+  // THEIR account instead of the admin's.
   const createCompany=async(name)=>{
-    const{data,error}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:name||"New Company"}).select().single();
+    const{data,error}=await sb.from("companies").insert({owner_user_id:user.id,name:name||"New Company"}).select().single();
     if(error){alert("Couldn't create company: "+error.message);return null;}
-    setCompanies(p=>[...p,data]);
+    if(viewingUserId!==user.id)setViewingUserId(user.id);
+    setCompanies(p=>viewingUserId===user.id?[...p,data]:[data]);
     setActiveCompanyId(data.id);
     return data;
   };
@@ -367,7 +381,7 @@ function AppShell({user}){
   },[profile&&profile.is_admin,loadRetryCount]);
 
   useEffect(()=>{
-    if(!activeCompanyId)return; // don't fetch until we know which company's data to load
+    if(!activeCompanyId||isAtHome)return; // don't fetch until we know which company's data to load — and never while at the admin Home view, which has no company selected on purpose
     const isBackground=backgroundRefetchRef.current;
     if(!isBackground)setLoading(true);
     setLoadError(null);
@@ -2467,7 +2481,7 @@ If you genuinely cannot read useful information from this file, return every fie
   const appProps={
     isAdmin,canEdit,profiles,
     viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
-    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,
+    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,isAtHome,
     accounts,setAccounts,addAccount,updateAccount,
     contacts,setContacts,
     transactions,addTransaction,

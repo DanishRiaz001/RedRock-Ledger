@@ -1,7 +1,15 @@
 import { MVA_CODES } from "./utils.js";
 
-// SAF-T Financial (Norwegian, v1.3) export — kept in its own module (no React
+// SAF-T Financial (Norwegian, v1.4) export — kept in its own module (no React
 // imports) so scripts/validate-saft.mjs can import and XSD-validate it.
+//
+// v1.4 becomes mandatory 2027-01-01 (v1.3 accepted until 2026-12-31); per
+// Skatteetaten's "About_SAF-T_Financial_schema_v.1.40.txt" the changes from
+// v1.3 are fully backward-compatible (widened numeric types, new optional
+// elements, an unrelated Owners/fixed-assets section this export never
+// used) — nothing here changes the actual shape of what we emit, only the
+// version label. See [[2026-09-10-security-vat-saft-status.md]] for the
+// full v1.3-vs-Tripletex structural diff this was originally built against.
 
 const xmlEsc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 const balAtDate=(transactions,code,onOrBefore)=>transactions.reduce((s,t)=>{
@@ -14,11 +22,13 @@ const balAtDate=(transactions,code,onOrBefore)=>transactions.reduce((s,t)=>{
 // strictly before the export period starts.
 const dayBefore=iso=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);};
 
-// Norwegian SAF-T Financial v1.3 export. Conforms to the actual
-// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd (Skatteetaten) — element names,
+// Norwegian SAF-T Financial v1.4 export. Conforms to the actual
+// Norwegian_SAF-T_Financial_Schema_v_1.40.xsd (Skatteetaten) — element names,
 // order, text-length limits and required elements all follow the XSD, and the
-// output is validated with `xmllint --schema` (npm run validate-saft) against
-// a real Tripletex export of the same shape.
+// output is validated with `xmllint --schema` (npm run validate-saft). The
+// element shape was originally built and diffed against a real Tripletex
+// v1.3 export (see the security-vat-saft-status note); v1.4's changes are
+// additive/backward-compatible so that diff still holds.
 //
 // Known best-effort areas (XSD-valid, but an accountant should still review):
 //  - GroupingCode uses the account's mapped Skatteetaten SAF-T standard
@@ -229,9 +239,9 @@ ${linesXml.join("\n")}
 
   const orgClean=orgNumber;
   return`<?xml version="1.0" encoding="UTF-8"?>
-<AuditFile xmlns="${NS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="${NS} Norwegian_SAF-T_Financial_Schema_v_1.30.xsd">
+<AuditFile xmlns="${NS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="${NS} Norwegian_SAF-T_Financial_Schema_v_1.40.xsd">
   <Header>
-    <AuditFileVersion>1.30</AuditFileVersion>
+    <AuditFileVersion>1.40</AuditFileVersion>
     <AuditFileCountry>NO</AuditFileCountry>
     <AuditFileDateCreated>${now.toISOString().slice(0,10)}</AuditFileDateCreated>
     <SoftwareCompanyName>RedRock Ledger</SoftwareCompanyName>
@@ -262,7 +272,7 @@ ${linesXml.join("\n")}
       <SelectionStartDate>${dateFrom}</SelectionStartDate>
       <SelectionEndDate>${dateTo}</SelectionEndDate>
     </SelectionCriteria>
-    <HeaderComment>SAF-T Financial 1.3 export from RedRock Ledger.</HeaderComment>
+    <HeaderComment>SAF-T Financial 1.4 export from RedRock Ledger.</HeaderComment>
     <TaxAccountingBasis>A</TaxAccountingBasis>
     ${userEmail?`<UserID>${t256(userEmail)}</UserID>`:""}
   </Header>

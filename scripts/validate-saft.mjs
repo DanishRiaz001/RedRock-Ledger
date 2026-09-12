@@ -1,5 +1,5 @@
 // Generates a SAF-T Financial XML from a synthetic dataset and validates it
-// against Skatteetaten's official Norwegian_SAF-T_Financial_Schema_v_1.30.xsd.
+// against Skatteetaten's official Norwegian_SAF-T_Financial_Schema_v_1.40.xsd.
 //
 //   node scripts/validate-saft.mjs
 //
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { buildSAFTXml } from "../src/lib/saft.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const xsd = join(here, "saft", "Norwegian_SAF-T_Financial_Schema_v_1.30.xsd");
+const xsd = join(here, "saft", "Norwegian_SAF-T_Financial_Schema_v_1.40.xsd");
 
 // Dataset deliberately exercises: every account class, a customer + supplier
 // (one with an org number, one without), credit-side balances, output & input
@@ -48,7 +48,7 @@ const out = join(dir, "out.xml");
 writeFileSync(out, xml);
 try {
   execFileSync("xmllint", ["--noout", "--schema", xsd, out], { stdio:["ignore","pipe","pipe"] });
-  console.log("✓ SAF-T output validates against Norwegian_SAF-T_Financial_Schema_v_1.30.xsd");
+  console.log("✓ SAF-T output validates against Norwegian_SAF-T_Financial_Schema_v_1.40.xsd");
 } catch (e) {
   console.error("✗ SAF-T validation FAILED:\n" + (e.stderr?.toString() || e.message));
   process.exit(1);

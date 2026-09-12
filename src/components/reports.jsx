@@ -739,8 +739,9 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
 
 // SAF-T Financial export (Norway) — built directly against the official
 // Skatteetaten schema (github.com/Skatteetaten/saf-t,
-// Norwegian_SAF-T_Financial_Schema_v_1.30.xsd), not approximated. This is
-// an on-demand obligation, not a periodic filing: mandatory for any
+// Norwegian_SAF-T_Financial_Schema_v_1.40.xsd — mandatory from 2027-01-01,
+// voluntary before that, fully backward-compatible with v1.3), not
+// approximated. This is an on-demand obligation, not a periodic filing: mandatory for any
 // Norwegian business on digital bookkeeping with turnover over NOK 5M or
 // more than 600 vouchers/year, and the file only needs to exist when
 // Skatteetaten actually asks for it (typically during an audit).
@@ -1056,7 +1057,7 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
         </div>
         <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:"16px",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🇳🇴 SAF-T Financial Export</div>
-          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>The standard audit file Skatteetaten can request on demand (mandatory once turnover passes NOK 5 million or 600+ vouchers/year) — the chart of accounts with opening/closing balances, customers, suppliers, VAT codes, and every posting for the period below, in the official v1.30 XML format. Nothing is sent anywhere; it's a file for you to hand over if asked.</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12,lineHeight:1.6}}>The standard audit file Skatteetaten can request on demand (mandatory once turnover passes NOK 5 million or 600+ vouchers/year) — the chart of accounts with opening/closing balances, customers, suppliers, VAT codes, and every posting for the period below, in the official v1.40 XML format. Nothing is sent anywhere; it's a file for you to hand over if asked.</div>
           <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
             <div>
               <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>From</div>

@@ -30,7 +30,7 @@ import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
 import DailyLogScreen from "./dailylog.jsx";
 
-function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus={},saveVatTerminStatus,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany}){
+function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus={},saveVatTerminStatus,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,isAtHome=false}){
   // "Add a company" used to be gated on the general isAdmin flag — but
   // that's granted per-books (any user who owns/administers a set of
   // books), not "may create new companies on this platform". Letting any
@@ -507,7 +507,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>);
   }
 
-  if(tab==="AdminPanel"&&!isDesktop)return isAdmin?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={companies} createCompany={createCompany} renameCompany={renameCompany} deleteCompany={deleteCompany} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} ownUserId={user?user.id:null}/>):null;
+  if(tab==="AdminPanel"&&!isDesktop)return(isAdmin&&isAtHome)?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={companies} createCompany={createCompany} renameCompany={renameCompany} deleteCompany={deleteCompany} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} ownUserId={user?user.id:null}/>):(<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-home" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Only available from Home</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Admin Panel is a platform-wide screen — switch to Home first.</div><button onClick={()=>{setViewingUserId(user.id);setActiveCompanyId("__admin_home__");}} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Go to Home</button></div>);
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions} profiles={profiles} currentUserId={user?user.id:null}/></div></div>);
   if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
@@ -648,14 +648,16 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             // the owner's own email, which is what a grant scoped to one
             // company used to show regardless of which company that was.
             const activeGrant=myClientAccess.find(c=>c.clientUserId===viewingUserId&&(!c.companyId||c.companyId===activeCompanyId));
-            const pillLabel=viewingUserId===user.id
+            const pillLabel=isAtHome
+              ?"🏠 Home"
+              :viewingUserId===user.id
               ?((activeCompany&&companyProfile&&companyProfile.companyName)||(activeCompany?activeCompany.name:"Redrock Ledger"))
               :((activeGrant&&(activeGrant.companyName||activeGrant.clientEmail))||"Client");
             return(
-              <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${viewingUserId!==user.id?T.accent:T.border}`}}>
-                <i className="ti ti-building-store" style={{fontSize:12,color:viewingUserId!==user.id?T.accent:T.sub}}/>
-                <span style={{fontSize:11,fontWeight:600,color:viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{pillLabel}</span>
-                <span style={{fontSize:8,color:viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
+              <div onClick={()=>setClientSwitcherOpen(o=>!o)} title="Switch which books you're viewing" style={{display:"flex",alignItems:"center",gap:6,background:isAtHome?T.accentLight:viewingUserId!==user.id?T.accentLight:T.bg,borderRadius:20,padding:"4px 12px",cursor:"pointer",flexShrink:0,border:`1px solid ${isAtHome||viewingUserId!==user.id?T.accent:T.border}`}}>
+                <i className={isAtHome?"ti ti-home":"ti ti-building-store"} style={{fontSize:12,color:isAtHome||viewingUserId!==user.id?T.accent:T.sub}}/>
+                <span style={{fontSize:11,fontWeight:600,color:isAtHome||viewingUserId!==user.id?T.accent:T.text,whiteSpace:"nowrap",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{pillLabel}</span>
+                <span style={{fontSize:8,color:isAtHome||viewingUserId!==user.id?T.accent:T.sub}}>▾</span>
               </div>
             );
           })()}
@@ -669,6 +671,17 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 <input autoFocus placeholder="Search companies" value={clientSwitcherSearch} onChange={e=>setClientSwitcherSearch(e.target.value)} style={{...inp,width:"100%",fontSize:14,padding:"10px 14px"}}/>
               </div>
               <div style={{overflowY:"auto",flex:1,minHeight:0}}>
+                {isAdmin&&(()=>{
+                  const q=clientSwitcherSearch.trim().toLowerCase();
+                  if(q&&!"home".includes(q))return null;
+                  return(
+                    <div onClick={()=>{setViewingUserId(user.id);setActiveCompanyId("__admin_home__");setTab("AdminPanel");setClientSwitcherOpen(false);setClientSwitcherSearch("");}} onMouseEnter={e=>{if(!isAtHome)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!isAtHome)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:isAtHome?T.accentLight:"#fff",marginBottom:2}}>
+                      <div style={{width:20,height:20,borderRadius:"50%",background:isAtHome?T.accent:T.bg,color:isAtHome?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}><i className="ti ti-home"/></div>
+                      <span style={{fontSize:11.5,fontWeight:isAtHome?700:500,color:isAtHome?T.accent:T.text,flex:1}}>Home</span>
+                      {isAtHome&&<i className="ti ti-check" style={{fontSize:11.5,color:T.accent,flexShrink:0}}/>}
+                    </div>
+                  );
+                })()}
                 {companies.length>0&&(()=>{
                   const q=clientSwitcherSearch.trim().toLowerCase();
                   const shown=companies.filter(c=>!q||c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
@@ -948,6 +961,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <div style={{width:24,height:24,borderRadius:8,background:tab==="Dashboard"?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-home" style={{fontSize:13,color:tab==="Dashboard"?"#fff":T.sub}}/></div>
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </a>
+          {!isAtHome&&(<>
           {feat.bank&&(()=>{
             const bankItems=[
               {tab:"BankWhose",label:"Whose"},
@@ -1140,9 +1154,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               </div>
             );
           })}
+          </>)}
 
           <div style={{padding:"12px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-          {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||isAdmin)).map(item=>{
+          {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||(isAdmin&&(i.id!=="AdminPanel"||isAtHome)))).map(item=>{
             const active=tab===item.id;
             const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
             const tiIcon={Settings:"ti-settings",Profile:"ti-user",AdminPanel:"ti-shield-lock",BugLog:"ti-bug"}[item.id]||"ti-circle";
@@ -1183,7 +1198,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           <LedgerDrilldownScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} filterFrom={filterFrom} filterTo={filterTo} onEditTxn={saveEdit} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} onClose={()=>setLedgerAcc(null)} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}/>
         ):(<>
 
-        {tab==="Dashboard"&&<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog} profile={profile} companyProfile={companyProfile}/>}
+        {tab==="Dashboard"&&(isAtHome?(
+          <div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}>
+            <i className="ti ti-home" style={{fontSize:32,color:T.muted,marginBottom:12}}/>
+            <div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>You're at Home</div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:16}}>No company is selected — this is the platform-wide admin view, not tied to any one firm's books. Pick a company from the switcher to work in it, or head to Admin Panel.</div>
+            <button onClick={()=>setTab("AdminPanel")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Go to Admin Panel</button>
+          </div>
+        ):<DesktopDashboard transactions={transactions} accounts={accounts} contacts={contacts} budgets={budgets} onNavigate={setTab} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} recentTabs={recentTabs} tabLabels={TAB_LABELS} auditLog={auditLog} profile={profile} companyProfile={companyProfile}/>)}
 
         {tab==="Entries"&&(
           <div style={{maxWidth:1000}}>
@@ -1538,7 +1560,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="CompanyInfo"&&<CompanyInfoScreen companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} requestRedrockAccess={requestRedrockAccess} isViewingOwnBooks={viewingUserId===user.id}/>}
 
-        {tab==="AdminPanel"&&(isAdmin?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={companies} createCompany={createCompany} renameCompany={renameCompany} deleteCompany={deleteCompany} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} isDesktop={true} ownUserId={user?user.id:null}/>:null)}
+        {tab==="AdminPanel"&&((isAdmin&&isAtHome)?<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={companies} createCompany={createCompany} renameCompany={renameCompany} deleteCompany={deleteCompany} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} isDesktop={true} ownUserId={user?user.id:null}/>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-home" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Only available from Home</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Admin Panel is a platform-wide screen, not tied to any one company's books — switch to Home first.</div><button onClick={()=>{setViewingUserId(user.id);setActiveCompanyId("__admin_home__");}} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Go to Home</button></div>)}
 
         {(tab==="Employees"||tab==="EmployeeNew")&&(
           <div style={{maxWidth:900}}>
@@ -1653,6 +1675,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 </div>
               );
             })}
+            {!isAtHome&&(<>
             <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Tools</div>
             {SIDEBAR.filter(i=>i.group==="tools").map(item=>{
               const active=tab===item.id;
@@ -1666,9 +1689,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                 </div>
               );
             })}
+            </>)}
             {/* System group */}
             <div style={{padding:"14px 16px 4px",marginTop:6,borderTop:`1px solid ${T.border}`,fontSize:9,color:T.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>System</div>
-            {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||isAdmin)).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
+            {SIDEBAR.filter(i=>i.group==="system"&&((i.id!=="AdminPanel"&&i.id!=="BugLog"&&i.id!=="AuditLog")||(isAdmin&&(i.id!=="AdminPanel"||isAtHome)))).map(item=>{const active=tab===item.id;const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;return(
               <div key={item.id} onClick={()=>{setTab(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px 8px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                 <span style={{fontSize:15,width:20,textAlign:"center"}}>{item.icon}</span>
                 <span style={{fontSize:12.5,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
