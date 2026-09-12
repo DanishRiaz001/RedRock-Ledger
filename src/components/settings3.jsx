@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { T, inp } from "../lib/theme.js";
 import { getAnthropicKey, setAnthropicKey, fmt } from "../lib/utils.js";
-import { AccDrop, FlexDateInput, ContactSearch } from "./ledger.jsx";
+import { AccDrop, FlexDateInput, ContactSearch, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 
 function CustomerImportScreen({contacts,setContacts}){
@@ -531,19 +531,14 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
                     <AccDrop value={r.accountCode} onChange={v=>updateRow(r.rid,{accountCode:v})} accounts={accounts} onCreateAccount={a=>onSave([...accounts,{code:a.code,name:a.name}])}/>
                     <input type="number" placeholder="0" value={r.debit} onChange={e=>updateRow(r.rid,{debit:e.target.value,credit:e.target.value?"":r.credit})} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
                     <input type="number" placeholder="0" value={r.credit} onChange={e=>updateRow(r.rid,{credit:e.target.value,debit:e.target.value?"":r.debit})} onKeyDown={e=>{if(e.key==="Enter"&&i===rows.length-1){e.preventDefault();addRow();}}} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
-                    <select value={r.currency||"NOK"} onChange={e=>updateRow(r.rid,{currency:e.target.value,...(e.target.value==="NOK"?{amountNok:""}:{})})} style={{...inp,fontSize:11,padding:"6px 4px"}}>
-                      {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <ThemedSelect value={r.currency||"NOK"} onChange={v=>updateRow(r.rid,{currency:v,...(v==="NOK"?{amountNok:""}:{})})} triggerStyle={{...inp,fontSize:11,padding:"6px 4px"}} options={CURRENCIES.map(c=>({value:c,label:c}))}/>
                     {anyForeign&&(
                       r.currency&&r.currency!=="NOK"
                         ? <input type="number" placeholder="NOK" value={r.amountNok} onChange={e=>updateRow(r.rid,{amountNok:e.target.value})} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
                         : <span style={{fontSize:10.5,color:T.muted,textAlign:"right"}}>{fmt((parseFloat(r.debit)||0)||(parseFloat(r.credit)||0))}</span>
                     )}
                     {projects.length>0?(
-                      <select value={r.projectId||""} onChange={e=>updateRow(r.rid,{projectId:e.target.value})} style={{...inp,fontSize:11.5,padding:"6px 8px"}}>
-                        <option value="">(ikke valgt)</option>
-                        {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{projName(p.id)}</option>)}
-                      </select>
+                      <ThemedSelect value={r.projectId||""} onChange={v=>updateRow(r.rid,{projectId:v})} placeholder="(ikke valgt)" allowClear clearLabel="(ikke valgt)" triggerStyle={{...inp,fontSize:11.5,padding:"6px 8px"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:projName(p.id)}))}/>
                     ):<span style={{fontSize:10.5,color:T.muted}}>—</span>}
                     <button onClick={()=>removeRow(r.rid)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:13}}/></button>
                   </div>

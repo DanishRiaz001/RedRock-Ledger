@@ -4509,18 +4509,20 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     }} style={{...lineField,fontSize:12,fontWeight:700,width:"100%",textAlign:"right"}}/>
                   )}
                   {/* Reads as plain text (no drawn chevron) but is a real
-                      <select> — same "clickable but no arrow" treatment as
-                      every other currency picker in the app — so a line
-                      can be posted in a foreign currency without a boxy
-                      dropdown cluttering the amount column. */}
-                  <select value={li===0?(form.currency||"NOK"):(line.currency||"NOK")} onChange={e=>{
-                    if(li===0){setForm(p=>({...p,currency:e.target.value}));return;}
+                      dropdown (ThemedSelect, hideChevron) — same
+                      "clickable but no arrow" treatment as every other
+                      currency picker in the app — so a line can be posted
+                      in a foreign currency without a boxy dropdown
+                      cluttering the amount column, and without opening
+                      the browser's own unstyled OS options list the way a
+                      bare native <select> styled to look like plain text
+                      still did. */}
+                  <ThemedSelect value={li===0?(form.currency||"NOK"):(line.currency||"NOK")} onChange={v=>{
+                    if(li===0){setForm(p=>({...p,currency:v}));return;}
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
-                    lines[li]={...lines[li],currency:e.target.value};
+                    lines[li]={...lines[li],currency:v};
                     setForm(p=>({...p,lines}));
-                  }} style={{background:"transparent",border:"none",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:10,color:T.muted,fontWeight:700,flexShrink:0,padding:0,cursor:"pointer",fontFamily:"inherit"}}>
-                    {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
+                  }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate
@@ -4910,11 +4912,11 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     <div style={{fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Currency</div>
                     {/* Just the currency code, no drawn dropdown arrow —
                         same "clickable but no chevron" treatment as every
-                        other currency picker in this form; still a real
-                        <select>, so clicking it opens the picker. */}
-                    <select value={invCurrency} onChange={e=>setInvCurrency(e.target.value)} style={{...lineField,appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:12,cursor:"pointer"}}>
-                      {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
-                    </select>
+                        other currency picker in this form (ThemedSelect,
+                        hideChevron), so clicking it opens a real themed
+                        popup instead of the browser's own unstyled OS
+                        options list. */}
+                    <ThemedSelect value={invCurrency} onChange={setInvCurrency} hideChevron triggerStyle={{...lineField,fontSize:12}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
                   </div>
                 </div>
               </div>
@@ -5022,9 +5024,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                             <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
                               if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1){setInvLinesManual(true);setInvExtraLines(p=>[...p,newLine()]);}
                             }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:0,width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
-                            <select value={r.currency||"NOK"} onChange={e=>update({currency:e.target.value})} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",fontSize:9,fontWeight:700,color:T.muted,padding:0,flexShrink:0,width:32,cursor:"pointer",textAlign:"right",fontFamily:"inherit"}}>
-                              {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
-                            </select>
+                            <ThemedSelect value={r.currency||"NOK"} onChange={v=>update({currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
                           </div>
                           {(r.currency||"NOK")!=="NOK"&&(
                             <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>

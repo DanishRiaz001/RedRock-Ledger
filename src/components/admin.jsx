@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { T, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { callClaudeAPI, nextContactId } from "../lib/utils.js";
 import { sb, getUserFeaturesCache, setUserFeaturesCache, setAdminFeaturesCache } from "../lib/supabaseClient.js";
-import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop, FlexDateInput } from "./ledger.jsx";
+import { SL, Card, BackHeader, getAdminFeatures, ADMIN_KEY, USER_FEATS_KEY, AccDrop, FlexDateInput, ThemedSelect } from "./ledger.jsx";
 import { ADMIN_FEATURES, PACKAGE_TIERS, USER_PACKAGE_KEY, getUserPackages } from "./settings2.jsx";
 import { Dashboard } from "./reports.jsx";
 
@@ -258,16 +258,12 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
               )}
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",gap:8}}>
-                  <select value={grantCompanyId} onChange={e=>setGrantCompanyId(e.target.value)} style={{...inp,fontSize:12,flex:1}}>
-                    <option value="">— Select a company —</option>
-                    {companies.filter(c=>!clientGrants.some(g=>g.companyId===c.id)).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <select value={grantLevel} onChange={e=>setGrantLevel(e.target.value)} style={{...inp,fontSize:12,width:120}}>
-                    <option value="full">Full</option>
-                    <option value="entries">Entries</option>
-                    <option value="reports">Reports</option>
-                    <option value="readonly">Read-only</option>
-                  </select>
+                  <div style={{flex:1}}>
+                    <ThemedSelect value={grantCompanyId} onChange={setGrantCompanyId} placeholder="— Select a company —" allowClear clearLabel="— Select a company —" triggerStyle={{...inp,fontSize:12}} options={companies.filter(c=>!clientGrants.some(g=>g.companyId===c.id)).map(c=>({value:c.id,label:c.name}))}/>
+                  </div>
+                  <div style={{width:120}}>
+                    <ThemedSelect value={grantLevel} onChange={setGrantLevel} triggerStyle={{...inp,fontSize:12}} options={[{value:"full",label:"Full"},{value:"entries",label:"Entries"},{value:"reports",label:"Reports"},{value:"readonly",label:"Read-only"}]}/>
+                  </div>
                   <button onClick={addGrant} disabled={!grantCompanyId||grantBusy} style={{background:grantCompanyId?T.accent:T.border,color:grantCompanyId?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 16px",fontWeight:700,fontSize:12,cursor:grantCompanyId?"pointer":"default",fontFamily:"inherit",flexShrink:0}}>{grantBusy?"…":"Grant"}</button>
                 </div>
               </div>
@@ -966,10 +962,7 @@ Return ONLY valid JSON, no markdown:
                   if(isEditing){
                     return(
                       <div key={li} style={{padding:"8px 10px",borderBottom:li<e.lines.length-1?`1px solid ${T.border}`:"none",display:"grid",gridTemplateColumns:"44px 1fr 90px",gap:6,alignItems:"center"}}>
-                        <select value={line.type} onChange={ev=>updateLine(uid,li,"type",ev.target.value)} style={{...inp,padding:"4px 6px",fontSize:11}}>
-                          <option value="Dr">Dr</option>
-                          <option value="Cr">Cr</option>
-                        </select>
+                        <ThemedSelect value={line.type} onChange={v=>updateLine(uid,li,"type",v)} triggerStyle={{...inp,padding:"4px 6px",fontSize:11}} options={[{value:"Dr",label:"Dr"},{value:"Cr",label:"Cr"}]}/>
                         <div>
                           <AccDrop value={line.account_code} onChange={code=>{const acc=accounts.find(a=>a.code===code);updateLine(uid,li,"account_code",code);if(acc)updateLine(uid,li,"account_name",acc.name);}} accounts={accounts}/>
                           <input value={line.party||""} placeholder="Party name" onChange={ev=>updateLine(uid,li,"party",ev.target.value)} style={{...inp,padding:"4px 6px",fontSize:11,marginTop:4}}/>

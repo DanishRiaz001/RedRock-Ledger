@@ -698,7 +698,7 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
 // jarring plain browser control despite everything else on the page
 // being themed). This is the fix: build the whole thing ourselves, same
 // pattern as VatDrop/AccDrop. options: [{value,label,group?}].
-function ThemedSelect({value,onChange,options,placeholder="— Select —",disabled=false,triggerStyle,allowClear=false,clearLabel}){
+function ThemedSelect({value,onChange,options,placeholder="— Select —",disabled=false,triggerStyle,allowClear=false,clearLabel,hideChevron=false,textStyle}){
   const[open,setOpen]=useState(false);
   const triggerRef=React.useRef(null);
   const[dropPos,setDropPos]=useState(null);
@@ -721,8 +721,8 @@ function ThemedSelect({value,onChange,options,placeholder="— Select —",disab
   return(
     <div style={{position:"relative"}}>
       <div ref={triggerRef} onClick={openMenu} tabIndex={disabled?-1:0} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&!disabled){e.preventDefault();openMenu();}}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:disabled?"default":"pointer",opacity:disabled?0.6:1,userSelect:"none",...triggerStyle}}>
-        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:sel?T.text:T.muted}}>{sel?sel.label:placeholder}</span>
-        {!disabled&&<i className={`ti ti-chevron-${open?"up":"down"}`} style={{fontSize:11,color:T.muted,flexShrink:0,marginLeft:6}}/>}
+        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:sel?T.text:T.muted,...textStyle}}>{sel?sel.label:placeholder}</span>
+        {!disabled&&!hideChevron&&<i className={`ti ti-chevron-${open?"up":"down"}`} style={{fontSize:11,color:T.muted,flexShrink:0,marginLeft:6}}/>}
       </div>
       {open&&!disabled&&dropPos&&(<>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
@@ -1775,11 +1775,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               </div>
               <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                 <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
-                {/* Plain text, no drawn chevron — a real <select> though,
-                    same as every other currency picker in the app. */}
-                <select value={l.currency||"NOK"} onChange={e=>updateRow(li,{currency:e.target.value})} style={{background:"transparent",border:"none",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",fontSize:10,color:T.muted,fontWeight:700,flexShrink:0,padding:0,cursor:"pointer",fontFamily:"inherit"}}>
-                  {["NOK","USD","EUR","GBP","SEK","DKK"].map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
+                {/* Plain text, no drawn chevron — a real dropdown though
+                    (ThemedSelect, hideChevron), same as every other
+                    currency picker in the app. Used to be a bare native
+                    <select> styled to look like plain text, which still
+                    opened the browser's own unstyled OS options list the
+                    moment you clicked it. */}
+                <ThemedSelect value={l.currency||"NOK"} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey, openHtmlInNewTab } from "../lib/utils.js";
 import { sb } from "../lib/supabaseClient.js";
-import { Card, BackHeader, Menu3, AccDropFlat, SaveFlashButton, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug } from "./ledger.jsx";
+import { Card, BackHeader, Menu3, AccDropFlat, SaveFlashButton, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { AccLedgerTable } from "./invoicing.jsx";
 
@@ -1024,9 +1024,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
                 </div>
                 {surplusAction==="sinking_fund"&&(
                   sinkingFunds.length
-                    ?<select value={surplusFundId} onChange={e=>setSurplusFundId(e.target.value)} style={{...inp,fontSize:13}}>
-                        {sinkingFunds.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-                      </select>
+                    ?<ThemedSelect value={surplusFundId} onChange={setSurplusFundId} triggerStyle={{...inp,fontSize:13}} options={sinkingFunds.map(f=>({value:f.id,label:f.name}))}/>
                     :<div style={{fontSize:11,color:"#a32d2d"}}>No sinking funds yet — create one first in the Sinking Funds screen.</div>
                 )}
               </div>
@@ -1076,9 +1074,7 @@ function BudgetScreen({accounts,transactions,budgets,saveBudget,saveBudgetSurplu
             <div style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>Budget Overview</div>
             {/* Year + All Year + settings */}
             <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}>
-              <select value={bSelYear} onChange={e=>{setBSelYear(parseInt(e.target.value));setBSelMonth(now.getMonth());}} style={{fontSize:9,fontWeight:700,color:"#fff",background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
-                {years.map(y=><option key={y} value={y} style={{background:"#1A1A2E"}}>{y}</option>)}
-              </select>
+              <ThemedSelect value={bSelYear} onChange={v=>{setBSelYear(parseInt(v));setBSelMonth(now.getMonth());}} triggerStyle={{fontSize:9,fontWeight:700,color:"#fff",background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,padding:"3px 6px"}} options={years.map(y=>({value:y,label:String(y)}))}/>
               <button onClick={()=>setBSelMonth(-1)} style={{fontSize:9,fontWeight:700,color:bSelMonth===-1?"#fff":"rgba(255,255,255,0.5)",background:bSelMonth===-1?"rgba(255,255,255,0.2)":"transparent",border:"none",borderRadius:6,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit"}}>All</button>
               <button onClick={()=>setSettingsMenuOpen(p=>!p)} title="Budget settings" style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:settingsMenuOpen?"rgba(255,255,255,0.24)":"rgba(255,255,255,0.12)",border:"none",borderRadius:6,color:"#fff",cursor:"pointer"}}>
                 <i className="ti ti-settings" style={{fontSize:13}}/>
