@@ -1465,7 +1465,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,projects=[],attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,projects=[],attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact,commentCount=0,onOpenComments}){
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1762,12 +1762,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
             return(<React.Fragment key={l.id}>
-              <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"center",gap:8}}>
-                {/* Date and description side by side — same compact layout
-                    as the Advance Voucher screen's own Date/Description row,
-                    instead of stacking them on separate lines here. */}
-                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} style={{width:118,flexShrink:0}} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
-                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit",flex:1}}/>
+              <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
+                {/* Date on top, description below — same two-row rhythm as
+                    the Advance Voucher screen's own Date/Description column
+                    (and as the Debit/Credit columns here: account on top,
+                    VAT underneath), not side by side on one row. */}
+                <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
+                <input placeholder="Description" value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
@@ -2069,7 +2070,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const header=(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
       <div><div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:1}}>EDITING</div><div style={{fontSize:24,fontWeight:800,color:T.text}}>{fmtB(txn.bilag)}</div></div>
-      <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {/* Same icon/treatment as the Advance Voucher screen's own comment
+            button (chat icon, turns accent-colored with a dot once a
+            comment exists) — this used to float as an unlabeled grey
+            circle fixed to the corner of the whole viewport, disconnected
+            from the entry it belonged to and easy to miss entirely. */}
+        {onOpenComments&&(
+          <button onClick={onOpenComments} title={commentCount?"Comments":"Add a comment"} style={{background:"none",border:"none",outline:"none",cursor:"pointer",color:commentCount?T.accent:T.muted,padding:0,display:"flex",alignItems:"center",position:"relative",fontFamily:"inherit"}}>
+            <i className="ti ti-message-circle" style={{fontSize:18}}/>
+            {commentCount>0&&<div style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:T.accent,border:"1.5px solid #fff"}}/>}
+          </button>
+        )}
+        <button onClick={onClose} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,color:T.sub,fontSize:14,fontWeight:600,cursor:"pointer",padding:"9px 16px",fontFamily:"inherit"}}>‹ Back</button>
+      </div>
     </div>
   );
   // On a wide-enough screen the attachment preview is a permanent side
@@ -2417,18 +2431,6 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   const isDesktopChrome=typeof window!=="undefined"&&window.innerWidth>=900;
   if(showEdit)return(
     <div style={{position:"fixed",top:isDesktopChrome?60:0,left:isDesktopChrome?220:0,right:0,bottom:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
-    {/* EditModal replaces DetailModal's own header entirely when opened
-        straight into edit mode — that header is also where the comment
-        thread lives, so jumping straight to Edit (every call site does
-        this now) meant there was no way to reach comments at all from
-        here. Floats the same icon/badge over the edit view instead of
-        rebuilding a header just to hold it. */}
-    {addEntryComment&&(
-      <button onClick={()=>setShowComments(true)} title="Comments" style={{position:"fixed",top:isDesktopChrome?76:16,right:24,zIndex:301,background:T.border,border:"none",borderRadius:10,color:T.sub,width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
-        <i className="ti ti-message-circle" style={{fontSize:15}}/>
-        {comments.length>0&&<span style={{position:"absolute",top:-4,right:-4,fontSize:9,fontWeight:800,background:T.accent,color:"#fff",borderRadius:8,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{comments.length}</span>}
-      </button>
-    )}
     {showComments&&(
       <CommentsModal comments={comments} loading={commentsLoading} newComment={newComment} setNewComment={setNewComment} onPost={postComment} posting={postingComment} profiles={profiles} currentUserId={currentUserId} onClose={()=>setShowComments(false)}/>
     )}
@@ -2470,6 +2472,8 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       // step — since editing no longer shows as a popup, closing it should
       // never re-materialize one behind it.
       onClose={onClose}
+      commentCount={comments.length}
+      onOpenComments={addEntryComment?()=>setShowComments(true):undefined}
     />
     </div>
   );
