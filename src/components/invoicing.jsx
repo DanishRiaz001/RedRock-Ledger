@@ -3838,7 +3838,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       const linesArr=form.lines&&form.lines.length?form.lines:[{debitCode:form.debitCode,creditCode:form.creditCode}];
       const normLines=linesArr.map((l,li)=>({
         date:li===0?form.date:(l.date||form.date),
-        description:li===0?form.description:(l.description||form.description),
+        description:l.description||form.description,
         debitCode:li===0?form.debitCode:l.debitCode,
         creditCode:li===0?form.creditCode:l.creditCode,
         debitVatCode:l.debitVatCode,
@@ -4436,13 +4436,16 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     lines[li]={...lines[li],date:v};
                     setForm(p=>({...p,lines}));
                   }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
-                  {/* li>0's placeholder shows the master (top box)
-                      Description as a hint — leaving this line's own field
+                  {/* Every line's placeholder shows the master (top box)
+                      Description as a hint — leaving a line's own field
                       blank falls back to that master description when
                       saved (see save()'s normLines mapping); typing here
-                      overrides it for just this line. */}
-                  <input placeholder={li===0?"Description":(form.description||"Description")} value={li===0?form.description:(line.description||"")} onChange={e=>{
-                    if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                      overrides it for just this line, and never writes
+                      back up into the master field (line 0 used to be
+                      special-cased to mirror the master directly — that
+                      meant editing either one silently overwrote the
+                      other, which is exactly the coupling this removes). */}
+                  <input placeholder={form.description||"Description"} value={line.description||""} onChange={e=>{
                     const lines=[...(form.lines||[])];
                     lines[li]={...lines[li],description:e.target.value};
                     setForm(p=>({...p,lines}));
@@ -4608,8 +4611,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     setForm(p=>({...p,lines}));
                   }} inputStyle={{fontSize:12,padding:"7px 8px"}}/>
                 </div>
-                <input placeholder="Description" value={li===0?form.description:(line.description||"")} onChange={e=>{
-                  if(li===0){setForm(p=>({...p,description:e.target.value}));return;}
+                <input placeholder={form.description||"Description"} value={line.description||""} onChange={e=>{
                   const lines=[...(form.lines||[])];
                   lines[li]={...lines[li],description:e.target.value};
                   setForm(p=>({...p,lines}));
