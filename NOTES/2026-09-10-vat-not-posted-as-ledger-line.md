@@ -1,5 +1,22 @@
 # VAT is never posted as its own ledger line — expense/income shown gross (2026-09-10)
 
+**RESOLVED (2026-09-12):** `companyProfile.splitVat` is now hardcoded `true`
+for every company (the on/off toggle was removed from VAT codes settings —
+see [[README]] 2026-09-12 backlog entry), and `src/lib/vatsplit.js`'s
+`vatSplit()`/`reverseChargeLegs()` are wired into every posting path
+(`addTransaction`, bank-statement posting, invoice creation) via
+`planVatSplit()` in appshell.jsx. Every new posting with an `autoSplit` VAT
+code now writes the net amount to the P&L account and the VAT to the correct
+27xx settlement account — Problem 2 below no longer applies going forward.
+Problem 1 (preview-vs-save line-filter mismatch) is also already fixed —
+invoicing.jsx's totals bar (~line 5141) now builds `invLineAmounts` from the
+same `postableExtra=invExtraLines.filter(l=>l.accountCode&&parseFloat(l.amount))`
+filter `saveInvoice` uses, so the preview and what actually posts always
+match.
+**What's still true:** transactions posted BEFORE splitVat became mandatory
+are still gross (flagged `vat_split=false`) — that's exactly what
+`sql/backfill_vat_split.sql`'s dry-run/apply is for, still not run.
+
 ## What Danish saw
 Supplier invoice, one cost line: 4000 incl. 25% VAT (code 1), account 4000
 "Innkjøp av råvarer". The running totals bar showed **Debit 4 200 / Credit (AP)
