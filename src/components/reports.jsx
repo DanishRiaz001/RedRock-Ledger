@@ -755,7 +755,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
 // shape for one would not. A few genuinely informed defaults are called
 // out inline below (GroupingCategory, address split, per-line timestamps).
 
-function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange}){
+function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange,activeCompanyId,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -804,6 +804,32 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
   // fewer hooks than expected" whenever you opened Account Plan, Currency,
   // Period Close, or Backup from the Settings menu.)
   const[checklistDismissed,setChecklistDismissed]=useState(()=>{try{return localStorage.getItem("rr_checklist_dismissed")==="1";}catch{return false;}});
+
+  // User Access (Settings → User Access) — also must be before any early
+  // return, same reason as periodClose/checklistDismissed above.
+  const[uaGrants,setUaGrants]=useState([]);
+  const[uaInvites,setUaInvites]=useState([]);
+  const[uaEmail,setUaEmail]=useState("");
+  const[uaName,setUaName]=useState("");
+  const[uaLevel,setUaLevel]=useState("full");
+  const[uaBusy,setUaBusy]=useState(false);
+  const[uaMsg,setUaMsg]=useState(null);
+  const loadUserAccess=async()=>{
+    if(!activeCompanyId)return;
+    if(fetchCompanyAccessGrants)setUaGrants(await fetchCompanyAccessGrants(activeCompanyId));
+    if(fetchAccessInvitesFor)setUaInvites(await fetchAccessInvitesFor(activeCompanyId));
+  };
+  useEffect(()=>{if(screen==="useraccess")loadUserAccess();},[screen]);
+  const submitInvite=async()=>{
+    if(!uaEmail.trim()||!inviteUserToCompany||uaBusy)return;
+    setUaBusy(true);setUaMsg(null);
+    const r=await inviteUserToCompany(uaEmail.trim(),uaName.trim(),activeCompanyId,uaLevel);
+    setUaBusy(false);
+    if(r.error){setUaMsg({type:"error",text:r.error});return;}
+    setUaMsg({type:"success",text:r.accepted?"Access granted — they'll see this company in their switcher right away.":(r.emailWarning||"Invite sent — they'll get an email to sign up, and access activates automatically the moment they do.")});
+    setUaEmail("");setUaName("");
+    loadUserAccess();
+  };
 
   const nextId=type=>nextContactId(contacts,type);
   const addContact=()=>{
@@ -1025,6 +1051,66 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
             <div style={{fontSize:11,color:T.muted,marginTop:4,lineHeight:1.5}}>Any entry with a date on or before <strong>{periodClose}</strong> will be blocked. You will see an error when trying to add or edit such entries.</div>
           </div>
         )}
+      </div>
+    </div>
+  );
+
+  if(screen==="useraccess")return(
+    <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
+      {isDesktop?(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>User access</h1>
+          <button onClick={()=>setScreen(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>‹ Back to settings</button>
+        </div>
+      ):<BackHeader title="User Access" sub="SETTINGS" onBack={()=>setScreen(null)}/>}
+      <div style={isDesktop?{}:{padding:16}}>
+        <div style={{background:T.card,borderRadius:14,border:`1px solid ${T.border}`,padding:16,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Invite someone by email</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.5}}>Give an accountant or team member access to <strong>{companyProfile.companyName||"this company"}</strong>. If they already have a RedRock account, access is granted right away. If not, they'll get an email invite to sign up — access activates automatically the moment they do, no separate subscription needed on their end.</div>
+          <div style={{display:"grid",gridTemplateColumns:isDesktop?"1.3fr 1fr 130px auto":"1fr",gap:8,marginBottom:uaMsg?12:0}}>
+            <input placeholder="Email address" type="email" value={uaEmail} onChange={e=>setUaEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitInvite();}} style={inp}/>
+            <input placeholder="Name (optional)" value={uaName} onChange={e=>setUaName(e.target.value)} style={inp}/>
+            <ThemedSelect value={uaLevel} onChange={setUaLevel} triggerStyle={inp} options={[{value:"full",label:"Full"},{value:"entries",label:"Entries"},{value:"reports",label:"Reports"},{value:"readonly",label:"Read-only"}]}/>
+            <button onClick={submitInvite} disabled={!uaEmail.trim()||uaBusy} style={{background:uaEmail.trim()?T.accent:T.border,color:uaEmail.trim()?"#fff":T.muted,border:"none",borderRadius:8,padding:"0 18px",fontWeight:700,fontSize:12,cursor:uaEmail.trim()?"pointer":"default",fontFamily:"inherit"}}>{uaBusy?"…":"Invite"}</button>
+          </div>
+          {uaMsg&&(
+            <div style={{background:uaMsg.type==="error"?T.redLight:T.accentLight,color:uaMsg.type==="error"?T.red:T.accentHover,borderRadius:8,padding:"9px 12px",fontSize:11.5,lineHeight:1.5}}>{uaMsg.text}</div>
+          )}
+        </div>
+
+        {uaInvites.filter(i=>i.status==="pending").length>0&&(
+          <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:16}}>
+            <div style={{padding:"11px 16px",borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.text}}>Pending invites</div>
+            {uaInvites.filter(i=>i.status==="pending").map(i=>(
+              <div key={i.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:`1px solid ${T.border}`}}>
+                <i className="ti ti-mail" style={{fontSize:14,color:T.muted}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{i.name||i.email}</div>
+                  {i.name&&<div style={{fontSize:11,color:T.muted}}>{i.email}</div>}
+                </div>
+                <span style={{fontSize:10,color:T.orange,background:"#FEF3C7",borderRadius:6,padding:"3px 8px",fontWeight:700,textTransform:"capitalize"}}>{i.accessLevel} · pending</span>
+                <button onClick={async()=>{if(revokeAccessInvite){await revokeAccessInvite(i.id);loadUserAccess();}}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14}} title="Cancel invite"><i className="ti ti-x"/></button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+          <div style={{padding:"11px 16px",borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.text}}>Who has access</div>
+          {uaGrants.length===0?(
+            <div style={{padding:"20px 16px",fontSize:12,color:T.muted,textAlign:"center"}}>Only you have access to this company right now.</div>
+          ):uaGrants.map(g=>(
+            <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{width:26,height:26,borderRadius:"50%",background:T.accentLight,color:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{(g.name||g.email||"?").trim()[0].toUpperCase()}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:600,color:T.text}}>{g.name||g.email}</div>
+                {g.name&&<div style={{fontSize:11,color:T.muted}}>{g.email}</div>}
+              </div>
+              <span style={{fontSize:10,color:T.sub,background:T.bg,borderRadius:6,padding:"3px 8px",fontWeight:700,textTransform:"capitalize"}}>{g.accessLevel}</span>
+              <button onClick={async()=>{if(revokeCompanyAccessGrant&&window.confirm(`Remove ${g.name||g.email}'s access to this company?`)){await revokeCompanyAccessGrant(g.id);loadUserAccess();}}} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Remove</button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1299,6 +1385,7 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
         const settingsItems=[
           {icon:"🏢",tiIcon:"ti-building",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue,section:"Company"},
           {icon:"📋",tiIcon:"ti-list-details",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent,section:"Company"},
+          {icon:"🔑",tiIcon:"ti-key",label:"User Access",sub:"Invite an accountant or team member",action:()=>setScreen("useraccess"),bg:"#DBEAFE",color:"#2563EB",section:"Company"},
           {icon:"👥",tiIcon:"ti-users",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red,section:"Company"},
           {icon:"🏷️",tiIcon:"ti-tag",label:"Project Tracking",sub:companyProfile.trackProjects?"On":"Off — tag entries by project/department",action:()=>onNavigate&&onNavigate("ProjectTracking"),bg:"#F3E8FF",color:"#9333EA",section:"Company"},
           {icon:"📥",tiIcon:"ti-file-import",label:"Opening Balance",sub:"Import a trial balance from another system",action:()=>onNavigate&&onNavigate("OpeningBalance"),bg:"#E0F2FE",color:"#0284C7",section:"Accounting"},

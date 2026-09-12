@@ -315,6 +315,7 @@ function AppShell({user}){
   useEffect(()=>{
     sb.from("profiles").select("*").eq("id",user.id).single().then(({data})=>{
       setProfile(data||null); // no row yet (e.g. not provisioned) => treated as pending/no-access below
+      resolveMyPendingInvites();
       if(data){
         // Seed the feature-flag cache from this profile's real database
         // column, then handle one-time migration: if the database has
@@ -2403,6 +2404,83 @@ If you genuinely cannot read useful information from this file, return every fie
     await sb.from("client_access").delete().eq("id",grantId);
   };
 
+  // Access invites — lets whoever has 'full' access to a company (its
+  // owner, or a previously-granted full-access user) invite anyone else by
+  // email, straight from that company's own Settings, without needing the
+  // platform admin. Two paths depending on whether the email already has a
+  // RedRock account (see sql/add_access_invites.sql for the RLS this relies
+  // on): already registered -> the grant is created immediately, so it
+  // shows up in their switcher right away; not registered -> a pending
+  // invite is stored and Supabase's own built-in magic-link email invites
+  // them to sign up (no custom mailer needed) — resolveMyPendingInvites
+  // below picks it up the moment their profile first loads.
+  const inviteUserToCompany=async(email,name,companyId,accessLevel)=>{
+    const cleanEmail=(email||"").trim().toLowerCase();
+    if(!cleanEmail||!companyId)return{error:"Email and company are required."};
+    if(cleanEmail===(user.email||"").toLowerCase())return{error:"That's your own email — you already have full access."};
+    const{data:existingId,error:lookupErr}=await sb.rpc("rr_lookup_user_id_by_email",{p_email:cleanEmail});
+    if(lookupErr)return{error:lookupErr.message};
+    const accepted=!!existingId;
+    const{error:inviteErr}=await sb.from("access_invites").upsert({
+      email:cleanEmail,name:name||null,company_id:companyId,client_user_id:viewingUserId,
+      access_level:accessLevel,invited_by:user.id,status:accepted?"accepted":"pending",
+      accepted_at:accepted?new Date().toISOString():null,
+    },{onConflict:"company_id,email"});
+    if(inviteErr)return{error:inviteErr.message};
+    if(accepted){
+      const{error:grantErr}=await sb.from("client_access").upsert({employee_user_id:existingId,client_user_id:viewingUserId,access_level:accessLevel,company_id:companyId,granted_by:user.id},{onConflict:"employee_user_id,client_user_id,company_id"});
+      if(grantErr)return{error:grantErr.message};
+      return{ok:true,accepted:true};
+    }
+    // Not registered yet — send them the invite-to-sign-up email. This is
+    // Supabase Auth's own magic-link mailer (no API key of ours involved);
+    // it both invites AND signs them in the moment they click it.
+    const{error:otpErr}=await sb.auth.signInWithOtp({email:cleanEmail,options:{emailRedirectTo:window.location.origin}});
+    if(otpErr)return{ok:true,accepted:false,emailWarning:"Invite saved, but the sign-up email couldn't be sent: "+otpErr.message};
+    return{ok:true,accepted:false};
+  };
+  // Unlike revokeClientAccess above (Admin Panel's admin-only path), this is
+  // for the "User access" card in Settings — anyone with 'full' access to
+  // the company can remove a grant they gave, enforced server-side by the
+  // client_access_owner_manage RLS policy (sql/add_access_invites.sql), not
+  // by an isAdmin check here.
+  const revokeCompanyAccessGrant=async(grantId)=>{
+    await sb.from("client_access").delete().eq("id",grantId);
+  };
+  // Everyone who currently has a grant on this ONE company — for the "User
+  // access" card in Settings, which manages access per company rather than
+  // per employee (that's fetchClientAccessFor, used by Admin Panel instead).
+  const fetchCompanyAccessGrants=async(companyId)=>{
+    if(!companyId)return[];
+    const{data,error}=await sb.from("client_access").select("*").eq("company_id",companyId);
+    if(error||!data)return[];
+    const employeeIds=data.map(r=>r.employee_user_id);
+    const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",employeeIds);
+    const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
+    return data.map(r=>({id:r.id,employeeUserId:r.employee_user_id,email:profMap[r.employee_user_id]?profMap[r.employee_user_id].email:"",name:profMap[r.employee_user_id]?profMap[r.employee_user_id].display_name:"",accessLevel:r.access_level}));
+  };
+  const fetchAccessInvitesFor=async(companyId)=>{
+    if(!companyId)return[];
+    const{data,error}=await sb.from("access_invites").select("*").eq("company_id",companyId).order("created_at",{ascending:false});
+    if(error)return[];
+    return data.map(r=>({id:r.id,email:r.email,name:r.name,accessLevel:r.access_level,status:r.status,createdAt:r.created_at}));
+  };
+  const revokeAccessInvite=async(inviteId)=>{
+    await sb.from("access_invites").delete().eq("id",inviteId);
+  };
+  // Runs once this user's own profile is known — picks up any invite that
+  // named their email before they ever signed up, and turns it into a real
+  // grant. Harmless no-op for everyone else (the common case: no rows).
+  const resolveMyPendingInvites=async()=>{
+    if(!user||!user.email)return;
+    const{data,error}=await sb.from("access_invites").select("*").eq("status","pending").ilike("email",user.email);
+    if(error||!data||!data.length)return;
+    for(const inv of data){
+      const{error:grantErr}=await sb.from("client_access").insert({employee_user_id:user.id,client_user_id:inv.client_user_id,access_level:inv.access_level,company_id:inv.company_id,granted_by:inv.invited_by});
+      if(!grantErr)await sb.from("access_invites").update({status:"accepted",accepted_at:new Date().toISOString()}).eq("id",inv.id);
+    }
+  };
+
   // Client self-service access requests — any user can ask Redrock for
   // access without needing an admin to initiate it from scratch.
   const requestRedrockAccess=async(note)=>{
@@ -2481,6 +2559,7 @@ If you genuinely cannot read useful information from this file, return every fie
   const appProps={
     isAdmin,canEdit,profiles,
     viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
+    inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,
     companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,isAtHome,
     accounts,setAccounts,addAccount,updateAccount,
     contacts,setContacts,
