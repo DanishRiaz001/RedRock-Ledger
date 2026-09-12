@@ -536,9 +536,7 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
             </div>
             <div>
               <div style={{fontSize:10.5,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inp,padding:"8px 8px",fontSize:12.5}}>
-                {["NOK","USD","EUR","GBP"].map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+              <ThemedSelect value={currency} onChange={setCurrency} triggerStyle={{...inp,padding:"8px 8px",fontSize:12.5}} options={["NOK","USD","EUR","GBP"].map(c=>({value:c,label:c}))}/>
             </div>
           </div>
 
@@ -1403,10 +1401,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Currency</div>
-              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={inp}>
-                <option value="">— Not set —</option>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+              <ThemedSelect value={currency} onChange={setCurrency} placeholder="— Not set —" allowClear clearLabel="— Not set —" triggerStyle={inp} options={CURRENCIES.map(c=>({value:c,label:c}))}/>
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Category (optional)</div>
@@ -1443,14 +1438,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Payment terms</div>
-              <select value={paymentTermsDays} onChange={e=>setPaymentTermsDays(e.target.value)} style={inp}>
-                <option value="0">Due immediately</option>
-                <option value="7">Net 7</option>
-                <option value="15">Net 15</option>
-                <option value="30">Net 30</option>
-                <option value="45">Net 45</option>
-                <option value="60">Net 60</option>
-              </select>
+              <ThemedSelect value={paymentTermsDays} onChange={setPaymentTermsDays} triggerStyle={inp} options={[{value:"0",label:"Due immediately"},{value:"7",label:"Net 7"},{value:"15",label:"Net 15"},{value:"30",label:"Net 30"},{value:"45",label:"Net 45"},{value:"60",label:"Net 60"}]}/>
             </div>
           </div>
 
@@ -1886,19 +1874,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       {moneySources&&moneySources.length>0&&(
         <div style={{padding:"14px 0"}}>
           <SL>Whose</SL>
-          <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}>
-            <option value="">— Select source (optional) —</option>
-            {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
         </div>
       )}
       {projects&&projects.length>0&&(
         <div style={{padding:"14px 0"}}>
           <SL>Project</SL>
-          <select value={form.projectId||""} onChange={e=>setForm(f=>({...f,projectId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}>
-            <option value="">— No project —</option>
-            {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?`${p.number} · `:""}{p.name}</option>)}
-          </select>
+          <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
         </div>
       )}
       </div>
@@ -1909,19 +1891,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         {moneySources&&moneySources.length>0&&(
           <div>
             <SL>Whose</SL>
-            <select value={form.moneySourceId||""} onChange={e=>setForm(f=>({...f,moneySourceId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%"}}>
-              <option value="">— Select source (optional) —</option>
-              {moneySources.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+            <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
           </div>
         )}
         {projects&&projects.length>0&&(
           <div>
             <SL>Project</SL>
-            <select value={form.projectId||""} onChange={e=>setForm(f=>({...f,projectId:e.target.value||""}))} style={{...selSm,fontSize:12,width:"100%"}}>
-              <option value="">— No project —</option>
-              {projects.filter(p=>!p.inactive).map(p=><option key={p.id} value={p.id}>{p.number?`${p.number} · `:""}{p.name}</option>)}
-            </select>
+            <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
           </div>
         )}
       </div>
@@ -2048,18 +2024,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
             </label>
           )}
           {onAttachExisting&&availableInboxFiles.length>0&&(
-            <select value="" disabled={attUploading} onChange={e=>{
-              // <select> options always come back as strings — match that
-              // against the (possibly numeric) real id rather than
-              // passing the string straight through, which would silently
-              // fail the same way form.attachmentId's string/number
-              // mismatch did in New Entry (see comment there).
-              const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
-              if(picked)onAttachExisting(picked.id);
-            }} style={{...selSm,width:"100%",maxWidth:320,marginTop:2}}>
-              <option value="">— or pick an existing Inbox file —</option>
-              {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-            </select>
+            <div style={{width:"100%",maxWidth:320,marginTop:2,opacity:attUploading?0.6:1,pointerEvents:attUploading?"none":"auto"}}>
+              <FileDrop files={availableInboxFiles} onPick={id=>{
+                // FileDrop's onPick, like the native <select> this
+                // replaces, always comes back as a string — match that
+                // against the (possibly numeric) real id rather than
+                // passing the string straight through, which would
+                // silently fail the same way form.attachmentId's
+                // string/number mismatch did in New Entry (see comment
+                // there).
+                const picked=availableInboxFiles.find(f=>String(f.id)===String(id));
+                if(picked)onAttachExisting(picked.id);
+              }} placeholder="— or pick an existing Inbox file —"/>
+            </div>
           )}
         </div>
       )}
@@ -2140,13 +2117,12 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                   </label>
                 )}
                 {onAttachExisting&&availableInboxFiles.length>0&&(
-                  <select value="" disabled={attUploading} onChange={e=>{
-                    const picked=availableInboxFiles.find(f=>String(f.id)===e.target.value);
-                    if(picked)onAttachExisting(picked.id);
-                  }} style={{...selSm,width:"100%",maxWidth:320,marginTop:2}}>
-                    <option value="">— or pick an existing Inbox file —</option>
-                    {availableInboxFiles.map(f=>(<option key={f.id} value={f.id}>{f.name}</option>))}
-                  </select>
+                  <div style={{width:"100%",maxWidth:320,marginTop:2,opacity:attUploading?0.6:1,pointerEvents:attUploading?"none":"auto"}}>
+                    <FileDrop files={availableInboxFiles} onPick={id=>{
+                      const picked=availableInboxFiles.find(f=>String(f.id)===String(id));
+                      if(picked)onAttachExisting(picked.id);
+                    }} placeholder="— or pick an existing Inbox file —"/>
+                  </div>
                 )}
               </div>
             )}
@@ -2992,9 +2968,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
         ):(<>
         {/* Quick period buttons */}
         <div style={{display:"flex",gap:4,marginBottom:showSearch?8:0,overflowX:"auto",scrollbarWidth:"none",alignItems:"center"}}>
-          <select value={from.slice(0,4)} onChange={e=>{const y=e.target.value;setFrom(`${y}-01-01`);setTo(`${y}-12-31`);}} style={{fontSize:11,fontWeight:700,color:T.text,background:"#f3f4f6",border:"none",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",outline:"none",flexShrink:0}}>
-            {[2023,2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}
-          </select>
+          <ThemedSelect value={from.slice(0,4)} onChange={y=>{setFrom(`${y}-01-01`);setTo(`${y}-12-31`);}} triggerStyle={{fontSize:11,fontWeight:700,color:T.text,background:"#f3f4f6",border:"none",borderRadius:7,padding:"4px 8px",flexShrink:0}} options={[2023,2024,2025,2026,2027,2028].map(y=>({value:String(y),label:String(y)}))}/>
           <div style={{display:"flex",gap:3,flex:1,overflowX:"auto",scrollbarWidth:"none"}}>
             {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m,i)=>{
               const mm=String(i+1).padStart(2,"0");
@@ -3252,9 +3226,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
           {/* Left: pick a bank, see its balance + who has what in it */}
           <div style={{border:`1px solid ${T.border}`,borderRadius:10,padding:13}}>
-            <select value={activeBank?activeBank.code:""} onChange={e=>setSelectedBank(e.target.value)} style={{...inp,fontSize:12,padding:"7px 9px",marginBottom:10,fontWeight:700}}>
-              {bankAccounts.map(b=><option key={b.code} value={b.code}>{b.code} {b.name}</option>)}
-            </select>
+            <ThemedSelect value={activeBank?activeBank.code:""} onChange={setSelectedBank} triggerStyle={{...inp,fontSize:12,padding:"7px 9px",marginBottom:10,fontWeight:700}} options={bankAccounts.map(b=>({value:b.code,label:`${b.code} ${b.name}`}))}/>
             {activeBank&&(<>
               <div onClick={()=>onOpenLedger&&onOpenLedger(activeBank,yearStart,today)} style={{cursor:onOpenLedger?"pointer":"default",background:T.waterTealSubtle,borderRadius:9,padding:"11px 13px",marginBottom:10,position:"relative"}}>
                 <div style={{fontSize:10,color:T.sub,marginBottom:3}}>Booked balance</div>
@@ -3313,11 +3285,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
             </div>
 
             <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:6,marginBottom:10}}>
-              <select value={tagFilter} onChange={e=>setTagFilter(e.target.value)} style={{...inp,fontSize:11,padding:"5px 8px",width:"auto"}}>
-                <option value="all">All transactions</option>
-                <option value="untagged">Untagged only</option>
-                {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name} only</option>)}
-              </select>
+              <ThemedSelect value={tagFilter} onChange={setTagFilter} triggerStyle={{...inp,fontSize:11,padding:"5px 8px",width:"auto"}} options={[{value:"all",label:"All transactions"},{value:"untagged",label:"Untagged only"},...activeSourcesList.map(m=>({value:m.id,label:`${m.name} only`}))]}/>
               <button onClick={()=>setPeriodMode("all")} style={{background:periodMode==="all"?T.accent:"none",color:periodMode==="all"?"#fff":T.sub,border:`1px solid ${periodMode==="all"?T.accent:T.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All time</button>
               {periodMode==="all"?(
                 <button onClick={()=>setPeriodMode("month")} style={{background:"none",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>By month</button>
@@ -3348,10 +3316,7 @@ function MoneySourcesPanel({moneySources=[],saveMoneySources,transactions,accoun
                         <td style={{color:T.text,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                         <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.red,whiteSpace:"nowrap"}}>{isIn?"+":"−"}{fmt(t.amount)}</td>
                         <td style={{padding:"5px 8px"}}>
-                          <select value={tagFor(t,activeBankData.code)||""} onChange={e=>tagTransaction(t.id,e.target.value||null,legFor(t,activeBankData.code))} style={{...inp,padding:"4px 7px",fontSize:11}}>
-                            <option value="">— untagged —</option>
-                            {activeSourcesList.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                          </select>
+                          <ThemedSelect value={tagFor(t,activeBankData.code)||""} onChange={v=>tagTransaction(t.id,v||null,legFor(t,activeBankData.code))} placeholder="— untagged —" allowClear clearLabel="— untagged —" triggerStyle={{...inp,padding:"4px 7px",fontSize:11}} options={activeSourcesList.map(m=>({value:m.id,label:m.name}))}/>
                         </td>
                       </tr>
                     );
