@@ -51,7 +51,7 @@ function ReportPdfHeader({companyProfile,title,subtitle}){
 // row), so don't subtract it again; on a normal gross row, base = amount − VAT.
 const vatBase=t=>t.vatSplit?t.amount:(t.amount-(t.vatAmount||0));
 
-function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts}){
+function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts,companyProfile}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
@@ -323,7 +323,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
             <div style={{fontSize:13,fontWeight:800,color:T.text}}>Chart of accounts</div>
             <div style={{display:"flex",gap:16}}>
               <span onClick={()=>{
-                const aoa=[["Code","Name","Type","Balance group","Description","SAF-T (v1.3)","Default VAT","Currency","Show at posting","Matchable","Inactive"],...list.map(a=>[a.code,a.name,parseInt(getSK(a.code))<3000?"Balance sheet":"Income statement",(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.saftCode13||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.currency||"PKR",a.showAtPosting!==false?"yes":"no",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
+                const aoa=[...xlsxHeaderRows(companyProfile,"Chart of accounts"),["Code","Name","Type","Balance group","Description","SAF-T (v1.3)","Default VAT","Currency","Show at posting","Matchable","Inactive"],...list.map(a=>[a.code,a.name,parseInt(getSK(a.code))<3000?"Balance sheet":"Income statement",(SERIES[getSK(a.code)]||{}).name||"",a.notes||"",a.saftCode13||"",a.defaultVatPct!=null?a.defaultVatPct:"",a.currency||"PKR",a.showAtPosting!==false?"yes":"no",a.matchable?"yes":"no",a.inactive?"yes":"no"])];
                 const wb=XLSX.utils.book_new();
                 const ws=XLSX.utils.aoa_to_sheet(aoa);
                 XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
@@ -490,7 +490,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>setShowResetDefaults(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>
             <button onClick={()=>{
-              const aoa=[["Code","Name","Matchable"],...list.map(a=>[a.code,a.name,a.matchable?"yes":"no"])];
+              const aoa=[...xlsxHeaderRows(companyProfile,"Chart of accounts"),["Code","Name","Matchable"],...list.map(a=>[a.code,a.name,a.matchable?"yes":"no"])];
               const wb=XLSX.utils.book_new();
               const ws=XLSX.utils.aoa_to_sheet(aoa);
               XLSX.utils.book_append_sheet(wb,ws,"Chart of accounts");
@@ -1155,7 +1155,7 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate} companyProfile={companyProfile}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
@@ -3388,7 +3388,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
 
 // Income statement (Resultat) — grouped by account series, with a
 // same-length previous-period comparison column and drill-down to ledger.
-function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,projects=[]}){
+function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,projects=[],companyProfile}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[monthlyView,setMonthlyView]=useState(false); // whole year, broken into 12 month columns instead of one lump total
@@ -3561,6 +3561,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
       </div>
 
       <div id="resultat-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="Income statement" subtitle={periodLabel}/>
       {/* This line only shows up in the PDF/print export (hidden on screen
           since the sticky bar above already shows it) — so the period is
           never lost once the report is viewed or filed on its own. */}
@@ -3597,7 +3598,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
 
 // Balance sheet — Assets vs Equity+Liabilities at a chosen date, grouped by
 // series, with drill-down and a visible balancing check.
-function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}){
+function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false,companyProfile}){
   const[asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
   const[compareOn,setCompareOn]=useState(false);
   const[compareDate,setCompareDate]=useState(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10);});
@@ -3738,6 +3739,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
       </div>
       <div style={{height:8}}/>
       <div id="balancesheet-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="Balance sheet" subtitle={`As of ${asOf}`}/>
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>As of {asOf}{compareOn?` (compared to ${compareDate})`:""}</div>
       {monthlyView&&monthlySnapshot?(
         <>
@@ -3792,7 +3794,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false}
 // VAT report — calculated from VAT captured on sales invoices. Honest scope
 // note shown in the UI: supplier vouchers/receipts don't capture purchase VAT
 // separately yet, so this is sales (output) VAT only, not a full net position.
-function VATReportScreen({invoices,contacts,transactions}){
+function VATReportScreen({invoices,contacts,transactions,companyProfile}){
   const[showInfo,setShowInfo]=useState(false);
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
@@ -3850,6 +3852,7 @@ function VATReportScreen({invoices,contacts,transactions}){
         </div>
       </div>
       <div id="vatreport-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="VAT report" subtitle={periodLabel}/>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -3979,7 +3982,7 @@ const terminInfo=(year,n)=>{
 // onSaveVatStatus, threaded down from appshell.jsx — see
 // sql/add_vat_termin_status.sql).
 
-function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminStatus={},onSaveVatStatus}){
+function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminStatus={},onSaveVatStatus,companyProfile}){
   const[year,setYear]=useState(()=>new Date().getFullYear());
   const today=new Date().toISOString().slice(0,10);
 
@@ -4031,7 +4034,7 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
   })();
 
   const exportYearXlsx=()=>{
-    const aoa=[["Periode","Forfallsdato","Beløp","Betalingsstatus"]];
+    const aoa=[...xlsxHeaderRows(companyProfile,"Mva-meldinger",String(year)),["Periode","Forfallsdato","Beløp","Betalingsstatus"]];
     rows.forEach(r=>aoa.push([r.label,r.due,r.netVat,r.status.paid?"Betaling registrert":"Ikke betalt"]));
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(aoa);
@@ -4142,7 +4145,7 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
 // exact same DetailModal used everywhere else in the app (same edit form,
 // same comment thread), so "controlled"/notes just reuses the comment
 // system that already exists rather than inventing a parallel one.
-function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps,vatTerminStatus={},onSaveVatStatus}){
+function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps,vatTerminStatus={},onSaveVatStatus,companyProfile}){
   const info=terminInfo(termin.year,termin.n);
   const[openTxn,setOpenTxn]=useState(null);
   const status=vatTerminStatus[`${termin.year}-${termin.n}`]||{};
@@ -4313,7 +4316,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   // downloadable as PDF (for records/handing to an accountant) or Excel
   // (for further work), same pattern General ledger's export uses.
   const exportXlsx=()=>{
-    const aoa=[["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg","","","",""],["Salg innenlands","","","",""]];
+    const aoa=[...xlsxHeaderRows(companyProfile,"Mva-melding",info.label),["Mva-melding",info.label],["Forfall",info.due],[],["Mva-kode","Beskrivelse","Sats","Grunnlag","Mva"],["Salg","","","",""],["Salg innenlands","","","",""]];
     salesByRate.forEach(g=>{const vc=vatCodeForRate(g.rate,"output");aoa.push([vc?vc.code:"",vc?vc.name:`${g.rate}% mva-sats`,g.rate,g.net,g.vat]);});
     // Section header only pushed alongside its own row now — matching the
     // on-screen table, which no longer shows "Salg/Kjøp til/fra utlandet"
@@ -4683,6 +4686,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
       </div>
 
       <div id="vatTermin-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="Mva-melding" subtitle={info.label}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:14}}>
           <div style={{fontSize:10,color:T.muted,textTransform:"uppercase"}}>Total salg</div>
@@ -4886,7 +4890,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
   );
 }
 
-function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=[]}){
+function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=[],companyProfile}){
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const[fullYear,setFullYear]=useState(false);
   const[search,setSearch]=useState("");
@@ -4920,7 +4924,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
 
 
   const exportXlsx=()=>{
-    const aoa=[["Account","Date","Bilag","Description","Movement","Balance"]];
+    const aoa=[...xlsxHeaderRows(companyProfile,"General ledger",`${from} to ${to}`),["Account","Date","Bilag","Description","Movement","Balance"]];
     accountLedgers.forEach(({account,opening,rows,closing})=>{
       aoa.push([`${account.code} ${account.name}`,"","","Opening balance","",opening]);
       rows.forEach(r=>aoa.push(["",r.date,r.bilag,r.description,r.mv,r.running]));
@@ -4945,6 +4949,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
         </div>
       </div>
       <div id="generalledger-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title="General ledger" subtitle={`${from} to ${to}`}/>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px"}}>
           <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -5138,7 +5143,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[]}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[],companyProfile}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -5629,7 +5634,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     if(!rows.length){alert("No open posts to export.");return;}
     const accName=getName(selectedAccount);
     if(exportFormat==="xlsx"){
-      const aoa=[["Date","Description","Amount (NOK)"],...rows.map(l=>[l.date,l.description||"",l.amount])];
+      const aoa=[...xlsxHeaderRows(companyProfile,"Open posts",accName),["Date","Description","Amount (NOK)"],...rows.map(l=>[l.date,l.description||"",l.amount])];
       const wb=XLSX.utils.book_new();
       const ws=XLSX.utils.aoa_to_sheet(aoa);
       XLSX.utils.book_append_sheet(wb,ws,"Open posts");
@@ -5638,6 +5643,8 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
       const container=document.createElement("div");
       container.style.cssText="padding:24px;font-family:system-ui,sans-serif;color:#111827;max-width:700px;";
       container.innerHTML=`
+        <div style="font-size:15px;font-weight:800;margin-bottom:1px;">${(companyProfile&&companyProfile.companyName)||"Untitled company"}</div>
+        ${companyProfile&&companyProfile.orgNumber?`<div style="font-size:11px;color:#6B7280;margin-bottom:10px;">Org.nr ${companyProfile.orgNumber}</div>`:""}
         <div style="font-size:18px;font-weight:800;margin-bottom:4px;">Open posts — ${accName}</div>
         <div style="font-size:12px;color:#6B7280;margin-bottom:16px;">${new Date().toISOString().slice(0,10)}</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -6550,7 +6557,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,projects=[],tagTransaction}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,projects=[],tagTransaction,companyProfile}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
@@ -6681,7 +6688,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   useEffect(()=>{
     if(!registerExcelExport)return;
     registerExcelExport(()=>{
-      const aoa=[["Contact","Bilag","Invoice no.","Date","Due date","Description","Amount"]];
+      const aoa=[...xlsxHeaderRows(companyProfile,type==="customer"?"Customer ledger":"Supplier ledger",`${entriesView} — ${viewMonth}`),["Contact","Bilag","Invoice no.","Date","Due date","Description","Amount"]];
       groups.forEach(({contact,txns})=>{
         txns.forEach(t=>aoa.push([contact.name,fmtB(t.bilag),t.invoiceNo||"",t.date,t.dueDate||"",t.description,mv(t)]));
         aoa.push([`Total for ${contact.name}`,"","","","","",groups.find(g=>g.contact.id===contact.id).total]);
@@ -6775,6 +6782,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       </div>
 
       <div id="reskontro-print-area">
+      <ReportPdfHeader companyProfile={companyProfile} title={type==="customer"?"Customer ledger":"Supplier ledger"} subtitle={periodLabel}/>
       <div className="print-only-period" style={{display:"none",fontSize:13,fontWeight:700,color:T.text,marginBottom:12}}>
         {type==="customer"?"Customer":"Supplier"} ledger — {periodLabel}{contactFilter?` — ${(relevantContacts.find(c=>c.id===contactFilter)||{}).name||""}`:""} — {entriesView==="all"?"all items":entriesView==="closed"?"closed items":"open items"}
       </div>

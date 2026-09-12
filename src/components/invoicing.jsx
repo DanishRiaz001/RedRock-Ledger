@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 
@@ -780,7 +780,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   const cancelContactModal=()=>{setEditingId(null);setShowNew(false);};
 
   const exportContacts=()=>{
-    const aoa=[["Type","Name","Email","Phone","Address","Account no.","Payment terms (days)","Credit limit"],
+    const aoa=[...xlsxHeaderRows(companyProfile,"Contacts"),["Type","Name","Email","Phone","Address","Account no.","Payment terms (days)","Credit limit"],
       ...contacts.map(c=>[c.type,c.name,c.email||"",c.phone||"",c.address||"",c.accountNo||"",c.paymentTermsDays!=null?c.paymentTermsDays:30,c.creditLimit!=null?c.creditLimit:""])];
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(aoa);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey, openHtmlInNewTab } from "../lib/utils.js";
+import { isIncomeSK, isExpenseSK, accountsForSK, fmt, fmtRs, fmtB, getAnthropicKey, openHtmlInNewTab, xlsxHeaderRows } from "../lib/utils.js";
 import { sb } from "../lib/supabaseClient.js";
 import { Card, BackHeader, Menu3, AccDropFlat, SaveFlashButton, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
@@ -45,7 +45,7 @@ function BalanceListsScreen({contacts,transactions,employees=[]}){
   );
 }
 
-function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[],isDesktop=false}){
+function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChangePeriod,sinkingFunds=[],budgets=[],isDesktop=false,companyProfile}){
   const[rTab,setRTab]=useState("resultat");
   const[rFrom,setRFrom]=useState(filterFrom);
   const[rTo,setRTo]=useState(filterTo);
@@ -123,7 +123,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   const exportResultatXLSX=()=>{
     if(typeof XLSX==="undefined")return;
     const wb=XLSX.utils.book_new();
-    const rows=[["Account","Name","Amount (PKR)"],
+    const rows=[...xlsxHeaderRows(companyProfile,"Income statement",`${rFrom} to ${rTo}`),["Account","Name","Amount (PKR)"],
       ...Object.entries(income).map(([c,a])=>[c,getName(c),a]),
       ["","Total Income",totalInc],
       ...Object.entries(expenses).map(([c,a])=>[c,getName(c),-a]),
@@ -138,7 +138,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   const exportBalanseXLSX=()=>{
     if(typeof XLSX==="undefined")return;
     const wb=XLSX.utils.book_new();
-    const rows=[["Code","Account","Balance (PKR)"]];
+    const rows=[...xlsxHeaderRows(companyProfile,"Balance sheet",`As of ${rTo}`),["Code","Account","Balance (PKR)"]];
     accounts.forEach(a=>{
       const bal=transactions.reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
       rows.push([a.code,a.name,bal]);
@@ -149,7 +149,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   };
 
   const exportResultat=()=>{
-    const rows=[["Code","Account","Amount (PKR)"],
+    const rows=[...xlsxHeaderRows(companyProfile,"Income statement",`${rFrom} to ${rTo}`),["Code","Account","Amount (PKR)"],
       ["","=== INCOME ===",""],
       ...Object.entries(income).map(([c,a])=>[c,getName(c),a]),
       ["","TOTAL INCOME",totalInc],
@@ -164,7 +164,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
   };
 
   const exportBalanse=()=>{
-    const rows=[["Code","Account","Balance (PKR)"]];
+    const rows=[...xlsxHeaderRows(companyProfile,"Balance sheet",`As of ${rTo}`),["Code","Account","Balance (PKR)"]];
     let grandTotal=0;
     Object.entries(SERIES).forEach(([key,s])=>{
       const grp=accounts.filter(a=>getSK(a.code)===key);
@@ -186,7 +186,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
 
   const exportAccLedger=()=>{
     if(!selAcc)return;
-    const rows=[["Date","Bilag","Description","Amount (PKR)"]];
+    const rows=[...xlsxHeaderRows(companyProfile,getName(selAcc),`${rFrom} to ${rTo}`),["Date","Bilag","Description","Amount (PKR)"]];
     let total=0;
     const accTxns=transactions.filter(t=>t.date>=rFrom&&t.date<=rTo&&(t.debitCode===selAcc||t.creditCode===selAcc)).sort((a,b)=>a.date.localeCompare(b.date));
     accTxns.forEach(t=>{

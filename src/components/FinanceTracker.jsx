@@ -1407,7 +1407,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             Given its own dedicated tab now. */}
         {tab==="AccountPlan"&&(
           <ScreenErrorBoundary name="AccountPlan">
-            <AccountPlanScreen accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} transactions={transactions} onBack={()=>setTab("Dashboard")} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={setTab} mergeAccounts={mergeAccounts}/>
+            <AccountPlanScreen accounts={accounts} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} transactions={transactions} onBack={()=>setTab("Dashboard")} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={setTab} mergeAccounts={mergeAccounts} companyProfile={companyProfile}/>
           </ScreenErrorBoundary>
         )}
 
@@ -1427,7 +1427,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Reskontro"&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} companyProfile={companyProfile}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -1439,7 +1439,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} cleanBankStatementLineDescriptions={cleanBankStatementLineDescriptions} restoreBankStatementLineDescription={restoreBankStatementLineDescription} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds} attachedFileIds={attachedFileIds}/>
+            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} deleteBankStatementLine={deleteBankStatementLine} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} cleanBankStatementLineDescriptions={cleanBankStatementLineDescriptions} restoreBankStatementLineDescription={restoreBankStatementLineDescription} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds} attachedFileIds={attachedFileIds} companyProfile={companyProfile}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -1453,14 +1453,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="GeneralLedger"&&(
           <div style={{maxWidth:1000}}>
             <ScreenErrorBoundary name="General Ledger">
-              <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} attachedTxnIds={attachedTxnIds}/>
+              <GeneralLedgerScreen accounts={accounts} transactions={transactions} onOpenLedger={setLedgerAcc} attachedTxnIds={attachedTxnIds} companyProfile={companyProfile}/>
             </ScreenErrorBoundary>
           </div>
         )}
 
         {tab==="VATReport"&&(
           <div style={{maxWidth:1000}}>
-            {feat.vat?<ScreenErrorBoundary name="VAT Report"><VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions}/></ScreenErrorBoundary>:<DisabledScreen title="VAT report" onBack={()=>setTab("Dashboard")}/>}
+            {feat.vat?<ScreenErrorBoundary name="VAT Report"><VATReportScreen invoices={invoices} contacts={contacts} transactions={transactions} companyProfile={companyProfile}/></ScreenErrorBoundary>:<DisabledScreen title="VAT report" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
 
@@ -1468,13 +1468,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           !feat.vat?<DisabledScreen title="Mva-meldinger" onBack={()=>setTab("Dashboard")}/>
           :<ScreenErrorBoundary name="Mva-meldinger">
             {vatTerminView
-              ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus} detailModalProps={{
+              ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus} companyProfile={companyProfile} detailModalProps={{
                   auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,projects,tagTransaction,
                   fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
                   onEdit:saveEdit,onDelete:deleteTxnWithUndo,onReverse:reverseTransaction,onDuplicate:duplicateTransaction,
                   onCreateAccount:createAccountQuick,onCreateContact:createContactQuick,
                 }}/>
-              :<VATTerminScreen transactions={transactions} accounts={accounts} contacts={contacts} onOpenTermin={setVatTerminView} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus}/>}
+              :<VATTerminScreen transactions={transactions} accounts={accounts} contacts={contacts} onOpenTermin={setVatTerminView} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus} companyProfile={companyProfile}/>}
           </ScreenErrorBoundary>
         )}
 
@@ -1489,7 +1489,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="Resultat"&&(
           <div style={{maxWidth:1000}}>
             <ScreenErrorBoundary name="Income Statement">
-              <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop} projects={projects}/>
+              <ResultatScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop} projects={projects} companyProfile={companyProfile}/>
             </ScreenErrorBoundary>
           </div>
         )}
@@ -1497,7 +1497,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="BalanceSheet"&&(
           <div style={{maxWidth:1000}}>
             <ScreenErrorBoundary name="Balance Sheet">
-              <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop}/>
+              <BalanceSheetScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} isDesktop={isDesktop} companyProfile={companyProfile}/>
             </ScreenErrorBoundary>
           </div>
         )}
@@ -1590,7 +1590,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Reports"&&(
           <div style={{maxWidth:1000}}>
-            {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} isDesktop={true}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
+            {feat.reports?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} isDesktop={true} companyProfile={companyProfile}/>:<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>}
           </div>
         )}
 
@@ -1771,7 +1771,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Reports"&&(
           feat.reports
-            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}}/>
+            ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} companyProfile={companyProfile}/>
             :<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>
         )}
 

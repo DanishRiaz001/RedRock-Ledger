@@ -6,6 +6,14 @@ Covers the three "make an entry" flows in `NewEntryForm` (invoicing.jsx):
 - **Customer Invoice** = `entryMode === "customer"` (the quick sale form, NOT the
   full `InvoiceFormScreen` with PDF/sending)
 
+**Update (2026-09-11):** cross-cutting items #1 (currency), #2 (periodization —
+for the Supplier/Customer Invoice `invPeriodizationAccount` field specifically),
+and #3 (saveEdit dropping fields + EditModal project/money-source editing) are
+now DONE — see commits `4e2189f`, `003c8fc`, `597d1b9`, `a6feea1`. Everything
+below marked "specific" (per-entry-type gaps like approval workflow, duplicate-
+invoice-number guard, Advance Voucher periodization/project tracking, Customer
+Invoice PDF output) is still as described — not verified fixed in this sweep.
+
 ---
 
 ## Cross-cutting — affects all three
