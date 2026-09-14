@@ -770,7 +770,13 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   const[showNew,setShowNew]=useState(false);
   useEffect(()=>{if(autoOpenNew)setShowNew(true);},[autoOpenNew]);
 
-  const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())));
+  // Natural sort (numeric:true) so mixed numbering schemes on the same
+  // list — the plain sequential "10000"-style customer numbers alongside
+  // any manually-entered "C001"-style ones — each sort in their own
+  // sensible numeric order instead of the arbitrary fetch/insertion order
+  // this list had no sort on at all before.
+  const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase())))
+    .sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true,sensitivity:"base"}));
   const code=type==="customer"?"1500":"2400";
   const getBalance=cid=>transactions.filter(t=>t.contactId===cid).reduce((s,t)=>t.debitCode===code?s+t.amount:t.creditCode===code?s-t.amount:s,0);
 
@@ -1026,7 +1032,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <button onClick={()=>setType("customer")} style={{background:type==="customer"?T.accent:"none",color:type==="customer"?"#fff":T.sub,border:`1px solid ${type==="customer"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Customers</button>
         <button onClick={()=>setType("supplier")} style={{background:type==="supplier"?T.accent:"none",color:type==="supplier"?"#fff":T.sub,border:`1px solid ${type==="supplier"?T.accent:T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Suppliers</button>
         <div style={{flex:1}}/>
-        <input placeholder="Search name or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}}/>
+        <input placeholder="Search name, number, or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:240}}/>
       </div>
 
       {(showNew||editingId)&&(
@@ -1073,7 +1079,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         </div>
         {list.map(c=>(
           <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1.6fr 28px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
-            <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content"}}>{c.id}</div>
+            <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content",fontVariantNumeric:"tabular-nums"}}>{c.id}</div>
             {/* Opens this contact's own settings/details — it used to jump
                 straight to their ledger, which meant there was no way to
                 just look at or fix a supplier's details without going
