@@ -3,6 +3,7 @@ import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js"
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
+import { fetchHistoricalRate } from "../lib/fx.js";
 
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { BankAccountDetailsModal, ConicChart } from "./reports.jsx";
@@ -2136,6 +2137,21 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   const[discountValue,setDiscountValue]=useState("");
   const[saving,setSaving]=useState(false);
 
+  // Invoicing in a currency other than the company's own base currency
+  // (e.g. an NOK sale on a PKR-based company's books) — the ledger always
+  // posts the base-currency equivalent, looked up automatically for the
+  // INVOICE'S OWN date (never today's rate, which would misstate a
+  // backdated invoice) via Norges Bank's published rates, falling back to
+  // fxratesapi.com when Norges Bank doesn't track one of the two
+  // currencies. Editable in case no automatic rate was found, or the
+  // accountant has a specific rate to use instead.
+  const baseCurrency=(companyProfile.currency||"NOK").toUpperCase();
+  const[currency,setCurrency]=useState(baseCurrency);
+  const[baseTotal,setBaseTotal]=useState("");
+  const[baseTotalTouched,setBaseTotalTouched]=useState(false);
+  const[fxLookup,setFxLookup]=useState(null); // {loading}|{rate,source}|{notFound:true}
+  const needsFx=currency!==baseCurrency;
+
   const contact=customers.find(c=>c.id===customerId);
   // Auto-suggest the due date from this customer's payment terms — still
   // freely editable afterward, this just saves re-typing the common case.
@@ -2163,10 +2179,31 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
   const subtotal=rawSubtotal-discountAmount;
   const vatAmount=subtotal*(parseFloat(vatPct)||0)/100;
   const total=subtotal+vatAmount;
+  // Re-looks up the rate whenever the currency, invoice date, or total
+  // changes — but only fills baseTotal automatically until the accountant
+  // edits it by hand, same "auto-fill until touched" convention as the
+  // description field just above.
+  useEffect(()=>{
+    if(!needsFx){setBaseTotal("");setBaseTotalTouched(false);setFxLookup(null);return;}
+    if(!(total>0)){return;}
+    let cancelled=false;
+    setFxLookup({loading:true});
+    fetchHistoricalRate(currency,baseCurrency,date).then(res=>{
+      if(cancelled)return;
+      if(res){
+        setFxLookup({rate:res.rate,source:res.source});
+        if(!baseTotalTouched)setBaseTotal(String(Math.round(total*res.rate*100)/100));
+      } else {
+        setFxLookup({notFound:true});
+      }
+    });
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[needsFx,currency,date,total]);
   const autoDesc=contact?`${contact.name} — ${qty} month${qty>1?"s":""} (${monthRangeLabel(periodFrom,periodTo)})`:"";
   const effectiveDesc=descTouched?description:autoDesc;
 
-  const valid=customerId&&saleAccount&&price>0&&periodFrom&&periodTo&&periodTo>=periodFrom;
+  const valid=customerId&&saleAccount&&price>0&&periodFrom&&periodTo&&periodTo>=periodFrom&&(!needsFx||parseFloat(baseTotal)>0);
 
   const handleCreate=async()=>{
     if(!valid||saving)return;
@@ -2183,6 +2220,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
       description:effectiveDesc,vatPct:parseFloat(vatPct)||0,
       lines:[{description:effectiveDesc,qty,unitPrice:price,discountType:discountAmount>0?discountType:null,discountValue:discountAmount>0?parseFloat(discountValue)||0:0,discountAmount}],
       subtotal,vatAmount,total,
+      ...(needsFx?{currency,baseTotal:parseFloat(baseTotal)||0}:{}),
     };
     const inv=await createInvoice(form);
     setSaving(false);
@@ -2216,6 +2254,27 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
             </div>
           </div>
           {contact&&(contact.email?<div style={{fontSize:11,color:T.green,marginTop:-8}}>✉ {contact.email} — can be emailed after posting</div>:<div style={{fontSize:11,color:T.muted,marginTop:-8}}>No email on file — add one in Customers to enable emailing this invoice</div>)}
+          {/* Currency — only earns the base-currency-equivalent field and
+              rate lookup when it actually differs from the company's own
+              books currency; a same-currency invoice (the common case)
+              stays exactly as simple as before. */}
+          <div style={{display:"grid",gridTemplateColumns:needsFx?"1fr 1.4fr":"1fr 1fr 1fr",gap:20}}>
+            <div>
+              <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Currency</div>
+              <ThemedSelect value={currency} onChange={v=>{setCurrency(v);setBaseTotalTouched(false);}} hideChevron triggerStyle={flatField} options={["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter((c,i,a)=>a.indexOf(c)===i).map(c=>({value:c,label:c}))}/>
+            </div>
+            {needsFx&&(
+              <div>
+                <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Amount in {baseCurrency} (posted to the ledger)</div>
+                <CalcAmountInput value={baseTotal} onChange={v=>{setBaseTotal(v);setBaseTotalTouched(true);}} style={{...flatField,fontWeight:700}}/>
+                <div style={{fontSize:10,marginTop:3,color:fxLookup&&fxLookup.notFound?T.red:T.muted}}>
+                  {fxLookup&&fxLookup.loading&&"Looking up the rate for this date…"}
+                  {fxLookup&&fxLookup.rate!=null&&`Auto (${fxLookup.source}) — 1 ${currency} = ${fxLookup.rate.toFixed(4)} ${baseCurrency} on ${date}${baseTotalTouched?" — edited by hand":""}`}
+                  {fxLookup&&fxLookup.notFound&&`No automatic rate found for ${currency}→${baseCurrency} on ${date} — enter it manually.`}
+                </div>
+              </div>
+            )}
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Sale account (3xxx series)</div>
@@ -2270,7 +2329,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
               <span>Discount applied: −{fmt(discountAmount)}</span><span>Subtotal after discount: {fmt(subtotal)}</span>
             </div>
           )}
-          <button onClick={handleCreate} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit",marginTop:6}}>{saving?"Creating…":`Create invoice · ${fmt(total)}`}</button>
+          <button onClick={handleCreate} disabled={!valid||saving} style={{background:valid?T.accent:T.border,color:valid?"#fff":T.muted,border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:13,cursor:valid?"pointer":"default",fontFamily:"inherit",marginTop:6}}>{saving?"Creating…":`Create invoice · ${fmt(total)}${needsFx?` ${currency}`:""}`}</button>
         </div>
       </div>
 

@@ -971,17 +971,26 @@ function AppShell({user}){
     if(data)setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date,debitCode:l.debitCode,creditCode:l.creditCode,description:l.description,amount:l.amount,vatSplit:true}]);
   };
 
-  // Foreign currency → { amount (NOK, booked), currency, currencyAmount }.
-  // `form.amount` is the amount as typed (in the entry's currency); when that
-  // currency isn't NOK and a NOK equivalent (`form.amountNok`) was given, the
-  // NOK figure becomes the booked `amount` and the foreign figure is kept
-  // alongside for the entry view + SAF-T. Otherwise it's a plain NOK entry.
+  // Foreign currency → { amount (booked in the company's own base/functional
+  // currency), currency, currencyAmount }. `form.amount` is the amount as
+  // typed (in the entry's currency); when that currency isn't the company's
+  // base currency and a base-currency equivalent (`form.amountNok` — the
+  // field is named for the common NOK case but holds the equivalent in
+  // whatever companyProfile.currency actually is) was given, that figure
+  // becomes the booked `amount` and the foreign figure is kept alongside for
+  // the entry view + SAF-T. Otherwise it's a plain base-currency entry.
+  // This used to hardcode "NOK" as the base regardless of the company's own
+  // configured currency — correct for a Norwegian client, but it meant a
+  // PKR-based company's OWN currency was treated as "foreign" the moment
+  // its code differed from "NOK" while a genuinely foreign NOK/USD amount
+  // was silently booked as-is with no conversion at all.
+  const baseCurrency=(companyProfile.currency||"NOK").toUpperCase();
   const resolveFx=(form)=>{
-    const cur=(form.currency||"NOK").toUpperCase();
-    // Already resolved by the caller (amount is NOK, currencyAmount is foreign).
-    if(cur!=="NOK"&&form.currencyAmount!=null)return{amount:form.amount,currency:cur,currencyAmount:parseFloat(form.currencyAmount)||null};
-    const nok=parseFloat(form.amountNok);
-    if(cur!=="NOK"&&nok>0)return{amount:Math.round(nok*100)/100,currency:cur,currencyAmount:parseFloat(form.amount)||null};
+    const cur=(form.currency||baseCurrency).toUpperCase();
+    // Already resolved by the caller (amount is base currency, currencyAmount is foreign).
+    if(cur!==baseCurrency&&form.currencyAmount!=null)return{amount:form.amount,currency:cur,currencyAmount:parseFloat(form.currencyAmount)||null};
+    const baseAmt=parseFloat(form.amountNok);
+    if(cur!==baseCurrency&&baseAmt>0)return{amount:Math.round(baseAmt*100)/100,currency:cur,currencyAmount:parseFloat(form.amount)||null};
     return{amount:form.amount,currency:null,currencyAmount:null};
   };
 
@@ -1483,22 +1492,37 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const monthLabel=form.periodFrom===form.periodTo?form.periodFrom:`${form.periodFrom} to ${form.periodTo}`;
     const desc=form.description||`Invoice ${invNo} — ${contact?contact.name:"customer"} (${monthLabel})`;
 
+    // Invoiced in a currency other than the company's own base currency
+    // (form.baseTotal is the base-currency equivalent — auto-looked-up from
+    // the invoice date's historical rate, or typed by hand when no
+    // automatic rate was found; see InvoiceFormScreen). The LEDGER always
+    // posts in the base currency — same convention every other entry point
+    // (addTransaction, via resolveFx) already follows — with the original
+    // invoiced figure kept alongside via currency/currency_amount, never
+    // silently posted at face value in the wrong currency.
+    const fx=resolveFx({amount:form.total,currency:form.currency,amountNok:form.baseTotal});
+    const fxRate=fx.currency&&form.total?fx.amount/form.total:1;
+    const baseTotal=fx.amount;
+    const baseSubtotal=fx.currency?Math.round(form.subtotal*fxRate*100)/100:form.subtotal;
+    const baseVatAmount=fx.currency?Math.round(form.vatAmount*fxRate*100)/100:form.vatAmount;
+    const fxCols=fx.currency?{currency:fx.currency,currency_amount:form.total}:{};
+
     // VAT split (only when splitVat is on): the full invoice's ledger row
     // otherwise stays exactly as before — one gross Dr 1500 / Cr sale row with
     // no VAT metadata (VATTermin reads invoice VAT from the invoices table).
     const saleAcct=accounts.find(a=>a.code===form.saleAccount);
     const invVatCode=(saleAcct&&saleAcct.defaultVatCode)||((vatCodeForRate(form.vatPct,"output")||{}).code)||null;
-    const svs=companyProfile.splitVat?planVatSplit({debitCode:"1500",creditCode:form.saleAccount,amount:form.total,vatCode:invVatCode,vatAmount:form.vatAmount,description:desc}):{mainAmount:form.total,vatSplit:false,vatLeg:null};
-    const vatCols=svs.vatSplit?{vat_code:invVatCode,vat_pct:form.vatPct||null,vat_amount:form.vatAmount||null,vat_split:true}:{};
-    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:svs.mainAmount,...vatCols,contact_id:form.customerId}]).select().single();
+    const svs=companyProfile.splitVat?planVatSplit({debitCode:"1500",creditCode:form.saleAccount,amount:baseTotal,vatCode:invVatCode,vatAmount:baseVatAmount,description:desc}):{mainAmount:baseTotal,vatSplit:false,vatLeg:null};
+    const vatCols=svs.vatSplit?{vat_code:invVatCode,vat_pct:form.vatPct||null,vat_amount:baseVatAmount||null,vat_split:true}:{};
+    const{data:txnData,error:txnErr}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:nb,date:form.date,debit_code:"1500",credit_code:form.saleAccount,description:desc,amount:svs.mainAmount,...vatCols,...fxCols,contact_id:form.customerId}]).select().single();
     if(txnErr){alert("Couldn't post invoice to ledger: "+txnErr.message);return null;}
-    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:svs.mainAmount,...(svs.vatSplit?{vatCode:invVatCode,vatPct:form.vatPct||null,vatAmount:form.vatAmount||null,vatSplit:true}:{}),contactId:form.customerId}]);
+    setTransactionsState(p=>[...p,{id:txnData.id,bilag:nb,date:form.date,debitCode:"1500",creditCode:form.saleAccount,description:desc,amount:svs.mainAmount,...(svs.vatSplit?{vatCode:invVatCode,vatPct:form.vatPct||null,vatAmount:baseVatAmount||null,vatSplit:true}:{}),...fxCols,contactId:form.customerId}]);
     await insertVatLeg(svs.vatLeg,nb,form.date);
 
-    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:form.subtotal,vat_amount:form.vatAmount,total:form.total,status:"sent",txn_id:txnData.id};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),invoice_no:invNo,customer_id:form.customerId,date:form.date,due_date:form.dueDate||null,period_from:form.periodFrom,period_to:form.periodTo,sale_account:form.saleAccount,lines:form.lines,vat_pct:form.vatPct,subtotal:baseSubtotal,vat_amount:baseVatAmount,total:baseTotal,...fxCols,status:"sent",txn_id:txnData.id};
     const{data:invData,error:invErr}=await sb.from("invoices").insert([row]).select().single();
     if(invErr){alert("Invoice posted to ledger but couldn't be saved as an invoice record: "+invErr.message);return null;}
-    const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:form.subtotal,vatAmount:form.vatAmount,total:form.total,status:"sent",txnId:txnData.id};
+    const newInv={id:invData.id,invoiceNo:invNo,customerId:form.customerId,date:form.date,dueDate:form.dueDate,periodFrom:form.periodFrom,periodTo:form.periodTo,saleAccount:form.saleAccount,lines:form.lines,vatPct:form.vatPct,subtotal:baseSubtotal,vatAmount:baseVatAmount,total:baseTotal,...(fx.currency?{currency:fx.currency,currencyAmount:form.total}:{}),status:"sent",txnId:txnData.id};
     setInvoices(p=>[newInv,...p]);
     return newInv;
   };
