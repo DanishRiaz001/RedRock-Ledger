@@ -51,7 +51,7 @@ function ReportPdfHeader({companyProfile,title,subtitle}){
 // row), so don't subtract it again; on a normal gross row, base = amount − VAT.
 const vatBase=t=>t.vatSplit?t.amount:(t.amount-(t.vatAmount||0));
 
-function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts,companyProfile}){
+function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transactions,onBack,isDesktop=false,budgets=[],saveBudget,onNavigate,mergeAccounts,companyProfile,isSuperAdmin=false}){
   const[list,setList]=useState(accounts.map(a=>({...a})));
   const[editingIdx,setEditingIdx]=useState(null);
   const[editForm,setEditForm]=useState({code:"",name:"",matchable:false,notes:"",defaultVatPct:"",customCategory:"",depreciationCode:""});
@@ -368,7 +368,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
                   but nothing here ever opened it — the only trigger button
                   lived in the other (non-desktop) render branch, which the
                   real desktop web app never reaches. */}
-              <span onClick={()=>setShowResetDefaults(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>Reset to NS defaults</span>
+              {isSuperAdmin&&<span onClick={()=>setShowResetDefaults(true)} style={{fontSize:12,color:T.accent,fontWeight:600,cursor:"pointer"}}>Reset to NS defaults</span>}
             </div>
           </div>
           <table style={{width:"100%",fontSize:10.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
@@ -488,7 +488,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Account plan</h1>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setShowResetDefaults(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>
+            {isSuperAdmin&&<button onClick={()=>setShowResetDefaults(true)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>}
             <button onClick={()=>{
               const aoa=[...xlsxHeaderRows(companyProfile,"Chart of accounts"),["Code","Name","Matchable"],...list.map(a=>[a.code,a.name,a.matchable?"yes":"no"])];
               const wb=XLSX.utils.book_new();
@@ -540,7 +540,7 @@ function AccountPlanScreen({accounts,onSave,onAddAccount,onUpdateAccount,transac
             Export/Import in that header row) — mobile had no way to reach
             it at all, not even a smaller version, so a renamed standard
             account couldn't be fixed from the phone. */}
-        {!isDesktop&&(
+        {!isDesktop&&isSuperAdmin&&(
           <button onClick={()=>setShowResetDefaults(true)} style={{...btnGhost,marginBottom:14,width:"100%"}}><i className="ti ti-restore" style={{fontSize:13,marginRight:5}}/>Reset to NS defaults</button>
         )}
         {orphanCodes.length>0&&(
@@ -755,7 +755,7 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
 // shape for one would not. A few genuinely informed defaults are called
 // out inline below (GroupingCategory, address split, per-line timestamps).
 
-function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange,activeCompanyId,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant}){
+function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange,activeCompanyId,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,isSuperAdmin=false}){
   const[screen,setScreen]=useState(null);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
@@ -1242,7 +1242,7 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate} companyProfile={companyProfile}/>);
+  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate} companyProfile={companyProfile} isSuperAdmin={isSuperAdmin}/>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
@@ -2774,7 +2774,7 @@ function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose})
   );
 }
 
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,projects=[],tagTransaction,fetchEntryComments,addEntryComment}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,projects=[],tagTransaction,fetchEntryComments,addEntryComment,addTransaction}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[filterFrom,setFilterFrom]=useState(initFrom);
@@ -2944,7 +2944,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
         <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts||[]} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts||[]} transactions={transactions} addTransaction={addTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
           onEdit={u=>onEditTxn(u)}
           onReverse={tx=>{onReverseTxn(tx);setDetailTxn(null);}} onClose={()=>setDetailTxn(null)}/>
       )}
@@ -6645,7 +6645,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 // aren't real fields we track (only bilag + date), so this shows what we
 // actually have — Bilag, Date, Description, Amount — rather than fabricate
 // columns with no underlying data.
-function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,projects=[],tagTransaction,companyProfile}){
+function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,projects=[],tagTransaction,companyProfile,addTransaction}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
@@ -6959,7 +6959,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <MatchDetailModal groupId={matchDetailGroupId} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} onUnmatch={unmatchTxns} onClose={()=>setMatchDetailGroupId(null)}/>
       )}
       {detailTxn&&(
-        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
+        <DetailModal txn={detailTxn} initialShowEdit accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={onRemoveAttachment} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} projects={projects} tagTransaction={tagTransaction}
           // Must return the inner promise — see the matching comment on
           // BankReconciliationScreen's DetailModal above; a bare
           // `x&&x(u);` wrapper here resolves before the actual database

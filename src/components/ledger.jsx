@@ -1745,7 +1745,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   };
 
   const postingsGrid=(()=>{
-    const GRID_COLS="260px 1.2fr 1.2fr 130px 60px";
+    const GRID_COLS="180px 1.5fr 1.5fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
     // Postings table (Advance Voucher) — this used to be a bare label
     // with no border and a noticeably larger font than every other entry
@@ -2877,7 +2877,7 @@ const markBudgetMoved=(fromY,fromM,toY,toM,value=true)=>{
   try{localStorage.setItem(BUDGET_MOVED_KEY,JSON.stringify(all));}catch{}
 };
 
-function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
+function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,onDeleteTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,filterFrom,filterTo,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction,fetchEntryComments,addEntryComment,addTransaction}){
   const today=new Date().toISOString().split("T")[0];
   const[from,setFrom]=useState(filterFrom||"2026-01-01");
   const[to,setTo]=useState(filterTo||today);
@@ -2986,7 +2986,7 @@ function LedgerScreen({account,accounts,contacts,transactions,onBack,onEditTxn,o
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:90}}>
-      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
+      {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransaction}
         fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
         auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
         // Must return the promise and not auto-close per call — see the
@@ -3548,7 +3548,7 @@ function BankModule({accounts,transactions,onOpenLedger,filterFrom,filterTo,atta
 
 // ─── Reskontro Screen ─────────────────────────────────────────────────────────
 
-function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction,fetchEntryComments,addEntryComment}){
+function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxns,editTxn,deleteTxn,accounts,onBack,initialView=null,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles=[],auditLog,profiles,currentUserId,moneySources,tagTransaction,fetchEntryComments,addEntryComment,addTransaction}){
   const[view,setView]=useState(initialView); // null | "customer" | "supplier"
   const[mode,setMode]=useState("open"); // open | period | contact
   const[asOfDate,setAsOfDate]=useState(""); // optional date for open items
@@ -3678,7 +3678,7 @@ function ReskontroScreen({contacts,setContacts,transactions,matchTxns,unmatchTxn
 
     return(
       <div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}>
-        {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions}
+        {detailTxn&&<DetailModal txn={detailTxn} accounts={accounts} contacts={contacts} transactions={transactions} addTransaction={addTransaction}
           fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment}
           auditLog={auditLog} profiles={profiles} currentUserId={currentUserId} moneySources={moneySources} tagTransaction={tagTransaction}
           // Must return the promise and not auto-close per call — see the
