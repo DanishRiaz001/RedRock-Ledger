@@ -164,6 +164,24 @@ function AppShell({user}){
           return;
         }
       }
+      // Lazy archival — no cron job exists to flip a company over the
+      // instant its 7-day countdown elapses, so this checks on every load
+      // instead: anything still marked pending_deletion whose scheduled
+      // time has passed gets archived right here. Fire-and-forget (this
+      // view doesn't need to wait on it) — the row is never deleted, only
+      // hidden from the normal switcher/list below.
+      const now=new Date().toISOString();
+      const justElapsed=list.filter(c=>c.deletion_status==="pending_deletion"&&c.scheduled_deletion_at&&c.scheduled_deletion_at<=now);
+      if(justElapsed.length){
+        sb.from("companies").update({deletion_status:"archived"}).in("id",justElapsed.map(c=>c.id)).then(()=>{});
+        const archivedIds=new Set(justElapsed.map(c=>c.id));
+        list=list.map(c=>archivedIds.has(c.id)?{...c,deletion_status:"archived"}:c);
+      }
+      // Archived companies never show in the normal switcher/company list
+      // — they're still fully queryable in the database (see Admin Panel's
+      // "Archived" view) for exactly the "authorities can ask for it later"
+      // reason this whole lifecycle exists, just not part of day-to-day use.
+      list=list.filter(c=>c.deletion_status!=="archived");
       setCompanies(list);
       const stillValid=activeCompanyId&&list.some(c=>c.id===activeCompanyId);
       if(!stillValid&&list.length)setActiveCompanyId(list[0].id);
@@ -179,6 +197,23 @@ function AppShell({user}){
       setCompaniesLoading(false);
     });
   },[viewingUserId,myClientAccess]);
+
+  // Landing on a ?confirmDeleteCompany=<id>&token=<token> link (shown/
+  // copied from the deletion-request screen, standing in for a real
+  // emailed link until that's built) starts the 7-day countdown. Runs
+  // once on load, then strips the params so refreshing never re-fires it.
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const companyId=params.get("confirmDeleteCompany");
+    const token=params.get("token");
+    if(!companyId||!token)return;
+    confirmCompanyDeletion(companyId,token).then(r=>{
+      alert(r.error?`Couldn't confirm deletion: ${r.error}`:"Deletion confirmed — this company will be archived in 7 days. You can still cancel it from Admin Panel before then.");
+    });
+    params.delete("confirmDeleteCompany");params.delete("token");
+    const rest=params.toString();
+    window.history.replaceState({},"",window.location.pathname+(rest?`?${rest}`:""));
+  },[]);
 
   // Always owned by the real logged-in admin (user.id), never viewingUserId —
   // only the super-admin can call this (FinanceTracker.jsx's isSuperAdmin
@@ -205,16 +240,49 @@ function AppShell({user}){
   // sql/add_multi_company.sql). Refuses to delete the last remaining
   // company so nobody accidentally locks themselves out of the app with
   // nothing left to switch to.
-  const deleteCompany=async(id)=>{
-    if(companies.length<=1)return{error:"Can't delete your only company."};
-    const{error}=await sb.from("companies").delete().eq("id",id);
+  // Deletion is a 7-day, cancellable REQUEST — never an immediate delete.
+  // The row itself is never dropped (Bokføringsloven requires keeping
+  // accounting records for years); "deleted" just means archived and
+  // hidden, recoverable by an admin, never destroyed. See
+  // sql/add_company_deletion_lifecycle.sql for the columns/RLS this needs.
+  //
+  // Real step: request -> a confirm link (ideally emailed to the company's
+  // real owner) -> clicking it starts the 7-day countdown -> cancellable
+  // any time before it elapses -> archived once it does. Actual email
+  // delivery (Resend-backed Edge Function) isn't wired up yet, so the
+  // confirm link is shown/copyable directly instead of being sent — the
+  // same two-step safety, just missing the "arrives in someone else's
+  // inbox" part until that's built.
+  const requestCompanyDeletion=async(id)=>{
+    if(companies.filter(c=>c.deletion_status!=="archived").length<=1)return{error:"Can't delete your only company."};
+    const token=crypto.randomUUID();
+    const{error}=await sb.from("companies").update({deletion_status:"pending_confirmation",deletion_requested_at:new Date().toISOString(),deletion_requested_by:user.id,deletion_confirm_token:token,deletion_confirmed_at:null,scheduled_deletion_at:null}).eq("id",id);
     if(error)return{error:error.message};
-    setCompanies(p=>p.filter(c=>c.id!==id));
-    if(activeCompanyId===id){
-      const next=companies.find(c=>c.id!==id);
-      if(next)setActiveCompanyId(next.id);
-    }
-    return{success:true};
+    const confirmUrl=`${window.location.origin}${window.location.pathname}?confirmDeleteCompany=${id}&token=${token}`;
+    setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_confirmation"}:c));
+    return{ok:true,confirmUrl};
+  };
+  const confirmCompanyDeletion=async(id,token)=>{
+    const scheduled=new Date(Date.now()+7*24*60*60*1000).toISOString();
+    const{data,error}=await sb.from("companies").update({deletion_status:"pending_deletion",deletion_confirmed_at:new Date().toISOString(),scheduled_deletion_at:scheduled}).eq("id",id).eq("deletion_confirm_token",token).eq("deletion_status","pending_confirmation").select().single();
+    if(error||!data)return{error:(error&&error.message)||"This confirmation link is invalid or has already been used."};
+    setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_deletion",scheduled_deletion_at:scheduled}:c));
+    return{ok:true,scheduledDeletionAt:scheduled};
+  };
+  const cancelCompanyDeletion=async(id)=>{
+    const{error}=await sb.from("companies").update({deletion_status:"active",deletion_requested_at:null,deletion_requested_by:null,deletion_confirm_token:null,deletion_confirmed_at:null,scheduled_deletion_at:null}).eq("id",id);
+    if(error)return{error:error.message};
+    setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"active",scheduled_deletion_at:null}:c));
+    return{ok:true};
+  };
+  // Archived companies — never shown in the normal switcher/list, but
+  // still fully queryable here so the reason this whole lifecycle exists
+  // ("authorities can ask for it later") actually holds: an admin can
+  // still find and look up a company's real data after it's archived.
+  const fetchArchivedCompanies=async()=>{
+    if(!isAdmin)return[];
+    const{data,error}=await sb.from("companies").select("*").eq("owner_user_id",user.id).eq("deletion_status","archived").order("created_at");
+    return error?[]:(data||[]);
   };
   // Used by Admin Panel's grant-access UI — an admin picking which of a
   // client's companies to grant an employee access to needs that client's
@@ -2560,7 +2628,8 @@ If you genuinely cannot read useful information from this file, return every fie
     isAdmin,canEdit,profiles,
     viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
     inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,
-    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,deleteCompany,isAtHome,
+    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,isAtHome,
+    requestCompanyDeletion,confirmCompanyDeletion,cancelCompanyDeletion,fetchArchivedCompanies,
     accounts,setAccounts,addAccount,updateAccount,
     contacts,setContacts,
     transactions,addTransaction,

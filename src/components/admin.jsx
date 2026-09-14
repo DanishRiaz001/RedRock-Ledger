@@ -30,7 +30,7 @@ function AccessRequestsPanel({accessRequests,requestsLoading,onApprove,onDismiss
   );
 }
 
-function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,companies=[],createCompany,renameCompany,deleteCompany,activeCompanyId,setActiveCompanyId,isDesktop=false,ownUserId}){
+function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,companies=[],createCompany,renameCompany,requestCompanyDeletion,confirmCompanyDeletion,cancelCompanyDeletion,fetchArchivedCompanies,activeCompanyId,setActiveCompanyId,isDesktop=false,ownUserId}){
   const[newCompanyName,setNewCompanyName]=useState("");
   const[creatingCompany,setCreatingCompany]=useState(false);
   const[companyError,setCompanyError]=useState("");
@@ -42,11 +42,27 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
     if(created)setNewCompanyName("");
     else setCompanyError("Something went wrong creating the company — check the alert that popped up for the real error.");
   };
-  const doDeleteCompany=async(c)=>{
-    if(!deleteCompany)return;
-    if(!window.confirm(`Permanently delete "${c.name}" and everything in it (accounts, transactions, contacts — all of it)? This can't be undone.`))return;
-    const result=await deleteCompany(c.id);
-    if(result&&result.error)alert("Couldn't delete: "+result.error);
+  // Deletion is a request, never immediate — see sql/
+  // add_company_deletion_lifecycle.sql. Real email delivery isn't wired up
+  // yet, so the confirm link is shown here directly (copyable) instead of
+  // being sent; whoever should actually approve it (ideally the company's
+  // real owner) uses that link, which starts a 7-day, cancellable
+  // countdown before the company is archived — never truly deleted.
+  const[pendingConfirmUrl,setPendingConfirmUrl]=useState(null);
+  const[archivedCompanies,setArchivedCompanies]=useState([]);
+  const[showArchived,setShowArchived]=useState(false);
+  const loadArchived=()=>{if(fetchArchivedCompanies)fetchArchivedCompanies().then(setArchivedCompanies);};
+  const doRequestDeleteCompany=async(c)=>{
+    if(!requestCompanyDeletion)return;
+    if(!window.confirm(`Start deletion for "${c.name}"? This does not delete anything yet — it needs to be confirmed, then waits 7 days (cancellable) before the company is archived. Its data is never actually erased.`))return;
+    const result=await requestCompanyDeletion(c.id);
+    if(result.error){alert("Couldn't start deletion: "+result.error);return;}
+    setPendingConfirmUrl({name:c.name,url:result.confirmUrl});
+  };
+  const doCancelDeleteCompany=async(c)=>{
+    if(!cancelCompanyDeletion)return;
+    const result=await cancelCompanyDeletion(c.id);
+    if(result.error)alert("Couldn't cancel: "+result.error);
   };
   const[tab,setTab]=useState("global");
   const[selUser,setSelUser]=useState(null);
@@ -387,20 +403,66 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
             </div>
             {companyError&&<div style={{fontSize:11,color:T.red,marginBottom:20}}>{companyError}</div>}
             <div style={{display:"flex",flexDirection:"column",gap:2}}>
-              {companies.map(c=>(
+              {companies.map(c=>{
+                const pending=c.deletion_status&&c.deletion_status!=="active";
+                const daysLeft=c.scheduled_deletion_at?Math.max(0,Math.ceil((new Date(c.scheduled_deletion_at)-new Date())/86400000)):null;
+                return(
                 <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 4px",borderTop:`1px solid ${T.border}`}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
                     {c.id===activeCompanyId&&<i className="ti ti-check" style={{fontSize:14,color:T.accent,flexShrink:0}}/>}
                     <span style={{fontSize:13,fontWeight:c.id===activeCompanyId?700:500,color:c.id===activeCompanyId?T.accent:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                     <span style={{fontSize:10,color:T.muted,flexShrink:0}}>{c.created_at?c.created_at.slice(0,10):""}</span>
+                    {pending&&(
+                      <span style={{fontSize:10,color:T.orange,background:"#FEF3C7",borderRadius:6,padding:"3px 8px",fontWeight:700,flexShrink:0}}>
+                        {c.deletion_status==="pending_confirmation"?"Awaiting confirmation":`Deleting in ${daysLeft} day${daysLeft===1?"":"s"}`}
+                      </span>
+                    )}
                   </div>
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
                     {c.id!==activeCompanyId&&setActiveCompanyId&&<button onClick={()=>setActiveCompanyId(c.id)} style={{...btnSm,background:"none",border:`1px solid ${T.border}`,color:T.sub}}>Switch to</button>}
-                    {companies.length>1&&<button onClick={()=>doDeleteCompany(c)} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>}
+                    {pending?(
+                      <button onClick={()=>doCancelDeleteCompany(c)} style={{background:T.accentLight,color:T.accent,border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel deletion</button>
+                    ):(companies.length>1&&<button onClick={()=>doRequestDeleteCompany(c)} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>)}
                   </div>
                 </div>
-              ))}
+              );})}
               {!companies.length&&<div style={{textAlign:"center",padding:"20px 0",color:T.muted,fontSize:12}}>No companies yet.</div>}
+            </div>
+
+            {/* Archived companies never show above — they're never truly
+                deleted (Bokføringsloven requires keeping records for
+                years), just hidden from day-to-day use. This is the "an
+                authority can ask for it later" lookup path. */}
+            <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+              <div onClick={()=>{setShowArchived(s=>!s);if(!showArchived)loadArchived();}} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}}>
+                <i className={`ti ti-chevron-${showArchived?"up":"down"}`} style={{fontSize:12,color:T.muted}}/>
+                <span style={{fontSize:12,fontWeight:700,color:T.sub}}>Archived companies</span>
+              </div>
+              {showArchived&&(
+                <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:2}}>
+                  {archivedCompanies.map(c=>(
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 4px",borderTop:`1px solid ${T.border}`}}>
+                      <span style={{fontSize:12.5,color:T.sub,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                      <span style={{fontSize:10,color:T.muted}}>Archived {c.scheduled_deletion_at?c.scheduled_deletion_at.slice(0,10):""}</span>
+                    </div>
+                  ))}
+                  {!archivedCompanies.length&&<div style={{fontSize:11.5,color:T.muted,padding:"6px 4px"}}>None.</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {pendingConfirmUrl&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setPendingConfirmUrl(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:480,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:8}}>Confirm deletion of "{pendingConfirmUrl.name}"</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:14,lineHeight:1.5}}>Nothing happens yet — this link needs to be opened (ideally by the company's real owner) to start the 7-day countdown. Automatic email delivery isn't wired up yet, so copy and send this link yourself for now.</div>
+              <div style={{display:"flex",gap:8}}>
+                <input readOnly value={pendingConfirmUrl.url} onFocus={e=>e.target.select()} style={{...inp,flex:1,fontSize:11,fontFamily:"monospace"}}/>
+                <button onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(pendingConfirmUrl.url);}} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Copy</button>
+              </div>
+              <button onClick={()=>setPendingConfirmUrl(null)} style={{marginTop:16,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>Close</button>
             </div>
           </div>
         )}
