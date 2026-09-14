@@ -172,7 +172,8 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     if(qTrim==="1500")return contacts.filter(c=>c.type==="customer");
     if(qTrim==="2400")return contacts.filter(c=>c.type==="supplier");
     if(!qTrim)return[];
-    return contacts.filter(c=>c.name.toLowerCase().includes(qTrim.toLowerCase()));
+    const ql=qTrim.toLowerCase();
+    return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql));
   },[contacts,qTrim,onContactPick]);
   const pickContact=c=>{
     onChange(c.type==="customer"?"1500":"2400");
@@ -299,7 +300,11 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               {filtered.length===0&&contactMatches.length===0&&<div style={{padding:"12px 12px",fontSize:11,color:T.muted,textAlign:"center"}}>No accounts found</div>}
               {contactMatches.map((c,i)=>(
                 <div key={"c"+c.id} onMouseDown={e=>{e.preventDefault();pickContact(c);}} onMouseEnter={()=>setActiveIdx(i)} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:6,padding:"7px 10px",cursor:"pointer",background:i===activeIdx?T.bg:"#fff",borderBottom:`0.5px solid ${T.border}`,alignItems:"center"}}>
-                  <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.type==="customer"?"1500":"2400"}</span>
+                  {/* This contact's OWN number (e.g. "10005"), not just the
+                      generic 1500/2400 control account every customer/
+                      supplier posts through — that's what actually tells
+                      you which specific contact this row is. */}
+                  <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.id}</span>
                   <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                     <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                     <span style={{fontSize:8,fontWeight:800,color:c.type==="customer"?T.blue:T.red,textTransform:"uppercase",flexShrink:0}}>{c.type==="customer"?"Customer":"Supplier"}</span>
@@ -975,7 +980,8 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
     if(qTrim==="1500")return contacts.filter(c=>c.type==="customer");
     if(qTrim==="2400")return contacts.filter(c=>c.type==="supplier");
     if(!qTrim)return[];
-    return contacts.filter(c=>c.name.toLowerCase().includes(qTrim.toLowerCase()));
+    const ql=qTrim.toLowerCase();
+    return contacts.filter(c=>c.name.toLowerCase().includes(ql)||c.id.toLowerCase().includes(ql));
   },[contacts,qTrim,onContactPick]);
   const pickContact=c=>{
     onChange(c.type==="customer"?"1500":"2400");
@@ -994,7 +1000,10 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
   const openDrop=()=>{
     if(open){setOpen(false);return;}
     const r=triggerRef.current.getBoundingClientRect();
-    setPos({top:r.bottom+3,left:r.left,width:r.width});
+    // 30% wider than the trigger itself — the trigger column can stay
+    // whatever width the grid gives it, but the popup listing full
+    // account/contact names needs more room than that to stay readable.
+    setPos({top:r.bottom+3,left:r.left,width:r.width*1.3});
     setQ("");setOpen(true);
   };
   const startCreate=()=>{setShowAccountModal(true);setOpen(false);};
@@ -1033,33 +1042,36 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
               popup had before it was raised to 350. */}
           <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:290}}>
             <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
-              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:9,padding:"5px 8px",margin:0}}/>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:10,padding:"5px 8px",margin:0}}/>
             </div>
             <div style={{overflowY:"auto",maxHeight:175}}>
               {/* Pinned so an already-picked account can be deliberately
                   cleared from the dropdown, same as AccDrop. */}
               {!qTrim&&(
-                <div onClick={()=>{onChange("");setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:!value?"#EBF4FF":"#fff",fontWeight:!value?700:400,color:T.muted,fontStyle:"italic",borderBottom:`0.5px solid ${T.border}`}}>No account</div>
+                <div onClick={()=>{onChange("");setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:10,cursor:"pointer",background:!value?"#EBF4FF":"#fff",fontWeight:!value?700:400,color:T.muted,fontStyle:"italic",borderBottom:`0.5px solid ${T.border}`}}>No account</div>
               )}
               {contactMatches.map(c=>(
-                <div key={"c"+c.id} onClick={()=>pickContact(c)} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:"#fff",color:c.type==="customer"?T.blue:T.red,borderBottom:`0.5px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
-                  <span style={{fontWeight:700,minWidth:32,flexShrink:0}}>{c.type==="customer"?"1500":"2400"}</span>
+                <div key={"c"+c.id} onClick={()=>pickContact(c)} style={{padding:"8px 10px",fontSize:10,cursor:"pointer",background:"#fff",color:c.type==="customer"?T.blue:T.red,borderBottom:`0.5px solid ${T.border}`,display:"flex",gap:6,alignItems:"center"}}>
+                  {/* This contact's OWN number, not the generic 1500/2400
+                      control account — that's what actually says which
+                      specific customer/supplier this row posts to. */}
+                  <span style={{fontWeight:700,minWidth:40,flexShrink:0}}>{c.id}</span>
                   <span style={{color:T.text}}>{c.name}</span>
-                  <span style={{marginLeft:"auto",fontSize:8,fontWeight:700,textTransform:"uppercase"}}>{c.type==="customer"?"Customer":"Supplier"}</span>
+                  <span style={{marginLeft:"auto",fontWeight:700,textTransform:"uppercase"}}>{c.type==="customer"?"Customer":"Supplier"}</span>
                 </div>
               ))}
               {filtered.map((a,i)=>(
-                <div key={a.code} onClick={()=>{onChange(a.code);setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:9,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
-                  <span style={{fontWeight:700,minWidth:32,flexShrink:0,color:T.muted}}>{a.code}</span>
+                <div key={a.code} onClick={()=>{onChange(a.code);setOpen(false);setQ("");}} style={{padding:"8px 10px",fontSize:10,cursor:"pointer",background:a.code===value?"#EBF4FF":"#fff",fontWeight:a.code===value?700:400,color:T.text,borderBottom:i<filtered.length-1?`0.5px solid ${T.border}`:"none",display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontWeight:700,minWidth:40,flexShrink:0,color:T.muted}}>{a.code}</span>
                   <span>{a.name}</span>
                 </div>
               ))}
             </div>
             {onCreateAccount&&(
-              <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
+              <div onMouseDown={e=>{e.preventDefault();startCreate();}} style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.accent,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New account{q?` "${q}"`:""}</div>
             )}
             {onContactPick&&onCreateContact&&(
-              <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
+              <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
             )}
           </div>
         </>
@@ -1736,7 +1748,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   };
 
   const postingsGrid=(()=>{
-    const GRID_COLS="180px 1.5fr 1.5fr 130px 60px";
+    const GRID_COLS="260px 1.2fr 1.2fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
     // Postings table (Advance Voucher) — this used to be a bare label
     // with no border and a noticeably larger font than every other entry
