@@ -77,6 +77,15 @@ function AppShell({user}){
   // row, leaving two identical, indistinguishable entries in the switcher.
   // Once true, this page load never attempts the auto-create again.
   const autoCreatedCompanyRef=React.useRef(false);
+  // Gate the auto-create-a-company fallback on knowing whether THIS
+  // signup was via an access invite first — an accountant who signed up
+  // only because a company invited them has zero companies of their own
+  // and should land straight in the INVITING company's books, never get a
+  // random personal "My Company" + the onboarding wizard for it. See
+  // resolveMyPendingInvites below, which sets hasResolvedInvite and flips
+  // inviteCheckDone once it knows either way.
+  const[inviteCheckDone,setInviteCheckDone]=useState(false);
+  const[hasResolvedInvite,setHasResolvedInvite]=useState(false);
   const[activeCompanyId,setActiveCompanyIdState]=useState(()=>{
     // A ?company=<id> link (from the switcher's "Open in new tab") always
     // wins over whatever this browser last had active — that's the whole
@@ -149,6 +158,15 @@ function AppShell({user}){
       // viewing someone else's login — a granted employee filtering down
       // to zero companies (a stale/mismatched grant, say) must never
       // silently create a brand-new company under the CLIENT's ownership.
+      // It also must not run before knowing whether THIS signup was via an
+      // access invite (resolveMyPendingInvites) — an accountant who signed
+      // up only because a company invited them owns zero companies on
+      // purpose and should land in THAT company's books, never get a
+      // random personal "My Company" (and the onboarding wizard for it).
+      // Only gates the EMPTY-list decision below — a user who already has
+      // real companies (list.length>0) is shown them immediately either way.
+      if(!list.length&&viewingUserId===user.id&&!inviteCheckDone){setCompaniesLoading(false);return;}
+      if(!list.length&&viewingUserId===user.id&&hasResolvedInvite){setCompanies([]);setCompaniesLoading(false);return;}
       if(!list.length&&viewingUserId===user.id&&!autoCreatedCompanyRef.current){
         // First time this person has ever loaded the app under the new
         // multi-company model — give them a company automatically rather
@@ -191,6 +209,23 @@ function AppShell({user}){
       // "Archived" view) for exactly the "authorities can ask for it later"
       // reason this whole lifecycle exists, just not part of day-to-day use.
       list=list.filter(c=>c.deletion_status!=="archived");
+      // Every company's REAL configured name (Company Information's own
+      // "Company name" field) — saveCompanyProfile keeps companies.name in
+      // sync with this going forward, but that only touches whichever
+      // company happens to be active at save time, so any OTHER company's
+      // row (and every company that existed before that sync fix shipped)
+      // still shows its original placeholder ("My Company") in the
+      // switcher's list forever unless read from here directly. Fetched
+      // for every company on this list at once, not just the active one —
+      // this is exactly why two never-renamed test companies both read
+      // "My Company" in the dropdown even after one of them was set up as
+      // a real client's books.
+      if(list.length){
+        const{data:profiles}=await sb.from("company_profile").select("company_id,company_name").in("company_id",list.map(c=>c.id));
+        const nameByCompany={};
+        (profiles||[]).forEach(p=>{if(p.company_name)nameByCompany[p.company_id]=p.company_name;});
+        list=list.map(c=>nameByCompany[c.id]?{...c,name:nameByCompany[c.id]}:c);
+      }
       setCompanies(list);
       const stillValid=activeCompanyId&&list.some(c=>c.id===activeCompanyId);
       if(!stillValid&&list.length)setActiveCompanyId(list[0].id);
@@ -205,7 +240,7 @@ function AppShell({user}){
       setActiveCompanyId("__no_company_scoping__");
       setCompaniesLoading(false);
     });
-  },[viewingUserId,myClientAccess]);
+  },[viewingUserId,myClientAccess,inviteCheckDone,hasResolvedInvite]);
 
   // Landing on a ?confirmDeleteCompany=<id>&token=<token> link (shown/
   // copied from the deletion-request screen, standing in for a real
@@ -2575,13 +2610,28 @@ If you genuinely cannot read useful information from this file, return every fie
   // named their email before they ever signed up, and turns it into a real
   // grant. Harmless no-op for everyone else (the common case: no rows).
   const resolveMyPendingInvites=async()=>{
-    if(!user||!user.email)return;
+    if(!user||!user.email){setInviteCheckDone(true);return;}
     const{data,error}=await sb.from("access_invites").select("*").eq("status","pending").ilike("email",user.email);
-    if(error||!data||!data.length)return;
+    if(error||!data||!data.length){setInviteCheckDone(true);return;}
+    let firstGranted=null;
     for(const inv of data){
       const{error:grantErr}=await sb.from("client_access").insert({employee_user_id:user.id,client_user_id:inv.client_user_id,access_level:inv.access_level,company_id:inv.company_id,granted_by:inv.invited_by});
-      if(!grantErr)await sb.from("access_invites").update({status:"accepted",accepted_at:new Date().toISOString()}).eq("id",inv.id);
+      if(!grantErr){
+        await sb.from("access_invites").update({status:"accepted",accepted_at:new Date().toISOString()}).eq("id",inv.id);
+        if(!firstGranted)firstGranted=inv;
+      }
     }
+    if(firstGranted){
+      // Land them straight in the company they were actually invited to —
+      // never their own (nonexistent) books. Also blocks the companies-
+      // fetch effect's auto-create-a-default-company fallback below, which
+      // would otherwise fire the instant it sees this account owns zero
+      // companies and hand them an irrelevant "My Company" + onboarding.
+      setHasResolvedInvite(true);
+      setViewingUserId(firstGranted.client_user_id);
+      setActiveCompanyId(firstGranted.company_id);
+    }
+    setInviteCheckDone(true);
   };
 
   // Client self-service access requests — any user can ask Redrock for
