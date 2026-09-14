@@ -69,6 +69,39 @@ function AppShell({user}){
   // activeCompanyId picks WHICH of that person's companies. Persisted so a
   // page refresh doesn't silently drop you back to a different company.
   const[companies,setCompanies]=useState([]);
+  // Your own companies, ALWAYS — completely independent of viewingUserId.
+  // The switcher's "Your companies" list used to read from `companies`
+  // below, which is scoped to viewingUserId — so the instant you switched
+  // into (or got auto-switched into, via an access-invite acceptance) a
+  // granted client's books, your OWN companies vanished from that list
+  // entirely, replaced by whatever the CURRENTLY VIEWED person owns. Your
+  // own companies never actually disappear; the list showing them was
+  // just answering a different question than "what do I own" the whole
+  // time. This is that real answer, fetched once per login and never
+  // affected by which books you're currently looking at.
+  const[myOwnCompanies,setMyOwnCompanies]=useState([]);
+  useEffect(()=>{
+    sb.from("companies").select("*").eq("owner_user_id",user.id).order("created_at").then(async({data,error})=>{
+      // Filtered in JS, not the query itself — deletion_status may not
+      // exist yet on a database that hasn't run sql/
+      // add_company_deletion_lifecycle.sql, and a query filtering on a
+      // column that doesn't exist would just fail outright.
+      if(error)return;
+      let list=(data||[]).filter(c=>c.deletion_status!=="archived");
+      if(list.length){
+        // Same real-name preference as the viewingUserId-scoped companies
+        // fetch below — without this, a company renamed in Company
+        // Information before that sync fix shipped (or any company that
+        // isn't the currently active one) shows its stale placeholder
+        // ("My Company") here regardless.
+        const{data:profiles}=await sb.from("company_profile").select("company_id,company_name").in("company_id",list.map(c=>c.id));
+        const nameByCompany={};
+        (profiles||[]).forEach(p=>{if(p.company_name)nameByCompany[p.company_id]=p.company_name;});
+        list=list.map(c=>nameByCompany[c.id]?{...c,name:nameByCompany[c.id]}:c);
+      }
+      setMyOwnCompanies(list);
+    });
+  },[user.id]);
   // Guards the auto-create-a-company fallback below against a real race:
   // the companies-fetch effect re-runs whenever myClientAccess changes,
   // which (its own async fetch resolving shortly after mount) can happen a
@@ -271,11 +304,13 @@ function AppShell({user}){
     if(error){alert("Couldn't create company: "+error.message);return null;}
     if(viewingUserId!==user.id)setViewingUserId(user.id);
     setCompanies(p=>viewingUserId===user.id?[...p,data]:[data]);
+    setMyOwnCompanies(p=>[...p,data]); // always your own — see createCompany's own note above
     setActiveCompanyId(data.id);
     return data;
   };
   const renameCompany=async(id,name)=>{
     setCompanies(p=>p.map(c=>c.id===id?{...c,name}:c));
+    setMyOwnCompanies(p=>p.map(c=>c.id===id?{...c,name}:c));
     const{error}=await sb.from("companies").update({name}).eq("id",id);
     if(error){alert("Couldn't rename — check your connection and try again.");}
   };
@@ -298,12 +333,13 @@ function AppShell({user}){
   // same two-step safety, just missing the "arrives in someone else's
   // inbox" part until that's built.
   const requestCompanyDeletion=async(id)=>{
-    if(companies.filter(c=>c.deletion_status!=="archived").length<=1)return{error:"Can't delete your only company."};
+    if(myOwnCompanies.length<=1)return{error:"Can't delete your only company."};
     const token=crypto.randomUUID();
     const{error}=await sb.from("companies").update({deletion_status:"pending_confirmation",deletion_requested_at:new Date().toISOString(),deletion_requested_by:user.id,deletion_confirm_token:token,deletion_confirmed_at:null,scheduled_deletion_at:null}).eq("id",id);
     if(error)return{error:error.message};
     const confirmUrl=`${window.location.origin}${window.location.pathname}?confirmDeleteCompany=${id}&token=${token}`;
     setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_confirmation"}:c));
+    setMyOwnCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_confirmation"}:c));
     return{ok:true,confirmUrl};
   };
   const confirmCompanyDeletion=async(id,token)=>{
@@ -311,12 +347,14 @@ function AppShell({user}){
     const{data,error}=await sb.from("companies").update({deletion_status:"pending_deletion",deletion_confirmed_at:new Date().toISOString(),scheduled_deletion_at:scheduled}).eq("id",id).eq("deletion_confirm_token",token).eq("deletion_status","pending_confirmation").select().single();
     if(error||!data)return{error:(error&&error.message)||"This confirmation link is invalid or has already been used."};
     setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_deletion",scheduled_deletion_at:scheduled}:c));
+    setMyOwnCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"pending_deletion",scheduled_deletion_at:scheduled}:c));
     return{ok:true,scheduledDeletionAt:scheduled};
   };
   const cancelCompanyDeletion=async(id)=>{
     const{error}=await sb.from("companies").update({deletion_status:"active",deletion_requested_at:null,deletion_requested_by:null,deletion_confirm_token:null,deletion_confirmed_at:null,scheduled_deletion_at:null}).eq("id",id);
     if(error)return{error:error.message};
     setCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"active",scheduled_deletion_at:null}:c));
+    setMyOwnCompanies(p=>p.map(c=>c.id===id?{...c,deletion_status:"active",scheduled_deletion_at:null}:c));
     return{ok:true};
   };
   // Archived companies — never shown in the normal switcher/list, but
@@ -1567,7 +1605,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(cid&&profile.companyName&&profile.companyName.trim()){
       const newName=profile.companyName.trim();
       const{error:renameErr}=await sb.from("companies").update({name:newName}).eq("id",cid);
-      if(!renameErr)setCompanies(p=>p.map(c=>c.id===cid?{...c,name:newName}:c));
+      if(!renameErr){setCompanies(p=>p.map(c=>c.id===cid?{...c,name:newName}:c));setMyOwnCompanies(p=>p.map(c=>c.id===cid?{...c,name:newName}:c));}
     }
     return{error:null};
   };
@@ -2724,7 +2762,7 @@ If you genuinely cannot read useful information from this file, return every fie
     isAdmin,canEdit,profiles,
     viewingUserId,setViewingUserId,myClientAccess,currentAccessLevel,profile,user,
     inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,
-    companies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,isAtHome,
+    companies,myOwnCompanies,activeCompanyId,setActiveCompanyId,createCompany,renameCompany,isAtHome,
     requestCompanyDeletion,confirmCompanyDeletion,cancelCompanyDeletion,fetchArchivedCompanies,
     accounts,setAccounts,addAccount,updateAccount,
     contacts,setContacts,
