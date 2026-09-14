@@ -69,6 +69,14 @@ function AppShell({user}){
   // activeCompanyId picks WHICH of that person's companies. Persisted so a
   // page refresh doesn't silently drop you back to a different company.
   const[companies,setCompanies]=useState([]);
+  // Guards the auto-create-a-company fallback below against a real race:
+  // the companies-fetch effect re-runs whenever myClientAccess changes,
+  // which (its own async fetch resolving shortly after mount) can happen a
+  // second time before the FIRST run's insert has actually landed — both
+  // runs see zero existing companies and each inserts its own "My Company"
+  // row, leaving two identical, indistinguishable entries in the switcher.
+  // Once true, this page load never attempts the auto-create again.
+  const autoCreatedCompanyRef=React.useRef(false);
   const[activeCompanyId,setActiveCompanyIdState]=useState(()=>{
     // A ?company=<id> link (from the switcher's "Open in new tab") always
     // wins over whatever this browser last had active — that's the whole
@@ -141,12 +149,13 @@ function AppShell({user}){
       // viewing someone else's login — a granted employee filtering down
       // to zero companies (a stale/mismatched grant, say) must never
       // silently create a brand-new company under the CLIENT's ownership.
-      if(!list.length&&viewingUserId===user.id){
+      if(!list.length&&viewingUserId===user.id&&!autoCreatedCompanyRef.current){
         // First time this person has ever loaded the app under the new
         // multi-company model — give them a company automatically rather
         // than showing an empty "no companies" screen on login. Their
         // existing data was already backfilled onto a matching row by the
         // SQL migration, so this only fires for genuinely brand-new users.
+        autoCreatedCompanyRef.current=true;
         const{data:created,error:createErr}=await sb.from("companies").insert({owner_user_id:viewingUserId,name:"My Company"}).select().single();
         if(created)list=[created];
         else if(createErr){
@@ -1509,8 +1518,23 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(error){
       alert("Company information didn't save:\n\n"+error.message+"\n\nYour changes are shown here but will revert on reload until this is fixed.");
       logBug&&logBug("DB_ERROR","Failed to save company_profile",error.message,"saveCompanyProfile");
+      return{error};
     }
-    return{error};
+    // Keep the switcher's own display name (companies.name — a plain
+    // label set once at creation, e.g. "My Company") in sync with whatever
+    // is actually typed into Company Information. Without this, renaming a
+    // company here never touched that separate field, so the switcher's
+    // dropdown list (which reads companies.name directly, unlike the pill
+    // above it, which already prefers this real name) kept showing the
+    // stale placeholder forever — including two DIFFERENT companies both
+    // still reading "My Company" if neither had ever been through the
+    // separate "rename company" action.
+    if(cid&&profile.companyName&&profile.companyName.trim()){
+      const newName=profile.companyName.trim();
+      const{error:renameErr}=await sb.from("companies").update({name:newName}).eq("id",cid);
+      if(!renameErr)setCompanies(p=>p.map(c=>c.id===cid?{...c,name:newName}:c));
+    }
+    return{error:null};
   };
 
   // Recurring invoice templates. No server-side scheduler exists in this
