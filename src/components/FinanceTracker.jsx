@@ -363,7 +363,15 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // Customer/Supplier ledger) can offer the exact same capability —
   // editing a bilag couldn't reach an account/contact that didn't
   // already exist, unlike creating a brand-new entry.
-  const createAccountQuick=acc=>setAccounts([...accounts,acc]);
+  // Was setAccounts([...accounts,acc]) — local React state only, never
+  // written to the database at all. Every account created via a "+ New
+  // account" inline flow during voucher entry (AccDrop/AccDropFlat) looked
+  // like it worked (the voucher posted fine, referencing the new code) but
+  // silently vanished from the chart of accounts the moment data next
+  // refetched, leaving that transaction's account permanently orphaned —
+  // exactly what "1202 (Not in chart of accounts)" on the Trial Balance
+  // means. addAccount does the same local update AND the real DB write.
+  const createAccountQuick=acc=>addAccount(acc);
   const createContactQuick=(name,type,extra={})=>createContactInline(contacts,setContacts,{name,type,...extra});
   const attachBankStatement=(key,att)=>{
     const idx=key.lastIndexOf("_");

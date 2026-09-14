@@ -305,10 +305,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                       supplier posts through — that's what actually tells
                       you which specific contact this row is. */}
                   <span style={{fontSize:11,fontWeight:700,color:T.muted}}>{c.id}</span>
-                  <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                    <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-                    <span style={{fontSize:8,fontWeight:800,color:c.type==="customer"?T.blue:T.red,textTransform:"uppercase",flexShrink:0}}>{c.type==="customer"?"Customer":"Supplier"}</span>
-                  </span>
+                  <span style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                   <span/>
                 </div>
               ))}
@@ -1057,7 +1054,6 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
                       specific customer/supplier this row posts to. */}
                   <span style={{fontWeight:700,minWidth:40,flexShrink:0}}>{c.id}</span>
                   <span style={{color:T.text}}>{c.name}</span>
-                  <span style={{marginLeft:"auto",fontWeight:700,textTransform:"uppercase"}}>{c.type==="customer"?"Customer":"Supplier"}</span>
                 </div>
               ))}
               {filtered.map((a,i)=>(
@@ -1477,7 +1473,8 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
 
 // ─── Edit modal (flat account list, contact linkage) ─────────────────────────
 
-function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,projects=[],attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact,commentCount=0,onOpenComments}){
+function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,moneySources,tagTransaction,projects=[],attachments=[],availableInboxFiles=[],onAttachExisting,onUploadFile,onRemoveFile,attUploading=false,groupLines=[],bilag,isLastBilag=true,onAddLine,onCreateAccount,onCreateContact,commentCount=0,onOpenComments,companyProfile}){
+  const defaultCurrency=(companyProfile&&companyProfile.currency)||"NOK";
   // A bilag saved with more than one line (New Entry's flexible multi-line
   // balancing, a bulk bank post, a multi-line invoice, …) used to only ever
   // show/edit whichever ONE row you happened to click — opening "the" bilag
@@ -1812,7 +1809,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                     <select> styled to look like plain text, which still
                     opened the browser's own unstyled OS options list the
                     moment you clicked it. */}
-                <ThemedSelect value={l.currency||"NOK"} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(
@@ -2350,7 +2347,7 @@ function CommentsModal({comments,loading,newComment,setNewComment,onPost,posting
   );
 }
 
-function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,projects=[],tagTransaction,initialShowComments=false,initialShowEdit=false}){
+function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,onEdit,onDelete,onReverse,onDuplicate,onClose,onUnmatch,matchPartners,auditLog=[],profiles=[],currentUserId,moneySources,projects=[],tagTransaction,initialShowComments=false,initialShowEdit=false,companyProfile}){
   // Clicking a bilag from a list is meant to go straight into editing —
   // left the lines, right the document preview, no "view details" popup
   // step in between. Callers that still want the read-only view-first
@@ -2526,6 +2523,7 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
       onClose={onClose}
       commentCount={comments.length}
       onOpenComments={addEntryComment?()=>setShowComments(true):undefined}
+      companyProfile={companyProfile}
     />
     </div>
   );
