@@ -1736,7 +1736,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   };
 
   const postingsGrid=(()=>{
-    const GRID_COLS="260px 1.2fr 1.2fr 130px 60px";
+    const GRID_COLS="180px 1.5fr 1.5fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
     // Postings table (Advance Voucher) — this used to be a bare label
     // with no border and a noticeably larger font than every other entry
@@ -1786,11 +1786,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
-                <div style={{marginTop:4}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
+                <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
-                <div style={{marginTop:4}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5}}/></div>
+                <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
               </div>
               <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                 <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>

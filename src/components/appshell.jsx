@@ -630,7 +630,7 @@ function AppShell({user}){
       });
       setVatTerminStatus(vtsMap);
       setAuditLog((auR.data||[]).map(a=>({id:a.id,changedBy:a.changed_by,entityType:a.entity_type,entityId:a.entity_id,bilag:a.bilag,action:a.action,oldValues:a.old_values,newValues:a.new_values,createdAt:a.created_at})));
-      setPosProducts((posR.data||[]).map(p=>({id:p.id,name:p.name,price:parseFloat(p.price),saleAccount:p.sale_account,active:p.active})));
+      setPosProducts((posR.data||[]).map(p=>({id:p.id,name:p.name,price:parseFloat(p.price),saleAccount:p.sale_account,vatCode:p.vat_code||"",active:p.active})));
       setPayrollRuns((prR.data||[]).map(r=>({id:r.id,period:r.period,runDate:r.run_date,payAccount:r.pay_account,totalGross:parseFloat(r.total_gross),totalDeductions:parseFloat(r.total_deductions),totalNet:parseFloat(r.total_net),lines:(r.payroll_lines||[]).map(l=>({id:l.id,employeeId:l.employee_id,employeeName:l.employee_name,grossPay:parseFloat(l.gross_pay),deductions:parseFloat(l.deductions),netPay:parseFloat(l.net_pay)}))})));
       const startQuoteNo=(qR.data||[]).reduce((m,q)=>Math.max(m,q.quote_no),0)+1;
       quoteNoRef.current=startQuoteNo;
@@ -1619,10 +1619,10 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // payment, post to the ledger — one real transaction per sale account used.
   const createPosProduct=async(form)=>{
     if(!canEdit)return;
-    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:form.name,price:form.price,sale_account:form.saleAccount};
+    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),name:form.name,price:form.price,sale_account:form.saleAccount,vat_code:form.vatCode||null};
     const{data,error}=await sb.from("pos_products").insert([row]).select().single();
     if(error){alert("Couldn't save product: "+error.message);return;}
-    setPosProducts(p=>[...p,{id:data.id,name:form.name,price:form.price,saleAccount:form.saleAccount,active:true}].sort((a,b)=>a.name.localeCompare(b.name)));
+    setPosProducts(p=>[...p,{id:data.id,name:form.name,price:form.price,saleAccount:form.saleAccount,vatCode:form.vatCode||"",active:true}].sort((a,b)=>a.name.localeCompare(b.name)));
   };
   const updatePosProduct=async(id,updates)=>{
     setPosProducts(p=>p.map(x=>x.id===id?{...x,...updates}:x));
@@ -1631,6 +1631,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if("name"in updates)dbUpdates.name=updates.name;
     if("price"in updates)dbUpdates.price=updates.price;
     if("saleAccount"in updates)dbUpdates.sale_account=updates.saleAccount;
+    if("vatCode"in updates)dbUpdates.vat_code=updates.vatCode||null;
     if("active"in updates)dbUpdates.active=updates.active;
     await sb.from("pos_products").update(dbUpdates).eq("id",id);
   };
@@ -1643,21 +1644,31 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(!canEdit||!cart.length)return;
     if(blockIfLocked(new Date().toISOString().slice(0,10)))return;
     const today=new Date().toISOString().slice(0,10);
-    // Group by sale account so a mixed-category cart posts correctly against
-    // each income account, not just one.
-    const bySaleAccount={};
+    // Group by sale account AND VAT code — a mixed-category cart posts
+    // correctly against each income account, and a mix of VAT rates within
+    // the same account still splits out separately rather than being
+    // averaged or dropped. addTransaction applies the actual VAT split
+    // (net + 27xx line) itself once vatCode/vatPct/vatAmount are passed
+    // through — this used to post every sale gross with no VAT split at
+    // all, since no product carried a VAT code to pass through.
+    const groups={};
     cart.forEach(item=>{
       const lineTotal=item.price*item.qty;
-      bySaleAccount[item.saleAccount]=(bySaleAccount[item.saleAccount]||0)+lineTotal;
+      const key=`${item.saleAccount}|${item.vatCode||""}`;
+      if(!groups[key])groups[key]={saleAccount:item.saleAccount,vatCode:item.vatCode||"",amount:0};
+      groups[key].amount+=lineTotal;
     });
     const itemSummary=cart.map(i=>`${i.qty}x ${i.name}`).join(", ");
     const isRefund=mode==="refund";
-    for(const[saleAccount,amount]of Object.entries(bySaleAccount)){
+    for(const{saleAccount,vatCode,amount}of Object.values(groups)){
+      const vc=vatCode?MVA_CODES.find(c=>String(c.code)===String(vatCode)):null;
+      const vatPct=vc?vc.rate:null;
+      const vatAmount=vc?computeVat(amount,vc):null;
       // A refund is the sale reversed — Dr the sale account (reducing income),
       // Cr the payment account (cash/bank going back out).
       await addTransaction(isRefund
-        ?{date:today,debitCode:saleAccount,creditCode:paymentAccount,description:`POS refund — ${itemSummary}`,amount}
-        :{date:today,debitCode:paymentAccount,creditCode:saleAccount,description:`POS sale — ${itemSummary}`,amount});
+        ?{date:today,debitCode:saleAccount,creditCode:paymentAccount,description:`POS refund — ${itemSummary}`,amount,vatCode:vatCode||null,vatPct,vatAmount}
+        :{date:today,debitCode:paymentAccount,creditCode:saleAccount,description:`POS sale — ${itemSummary}`,amount,vatCode:vatCode||null,vatPct,vatAmount});
     }
   };
 

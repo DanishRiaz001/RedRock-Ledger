@@ -2744,7 +2744,7 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
   const addToCart=(p)=>setCart(prev=>{
     const existing=prev.find(i=>i.id===p.id);
     if(existing)return prev.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i);
-    return[...prev,{id:p.id,name:p.name,price:p.price,saleAccount:p.saleAccount,qty:1}];
+    return[...prev,{id:p.id,name:p.name,price:p.price,saleAccount:p.saleAccount,vatCode:p.vatCode||"",qty:1}];
   });
   const changeQty=(id,delta)=>setCart(prev=>prev.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty+delta)}:i).filter(i=>i.qty>0));
   const removeFromCart=(id)=>setCart(prev=>prev.filter(i=>i.id!==id));
@@ -2825,22 +2825,23 @@ function POSScreen({posProducts,accounts,transactions=[],completeSale,onManagePr
 function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProduct,deletePosProduct,onBack}){
   const saleAccounts=accounts.filter(a=>a.code.startsWith("3"));
   const[showNew,setShowNew]=useState(false);
-  const[form,setForm]=useState({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:""});
+  const[form,setForm]=useState({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:"",vatCode:""});
   const[editingId,setEditingId]=useState(null);
-  const[editForm,setEditForm]=useState({name:"",price:"",saleAccount:""});
+  const[editForm,setEditForm]=useState({name:"",price:"",saleAccount:"",vatCode:""});
 
   const save=()=>{
     if(!form.name.trim()||!parseFloat(form.price)||!form.saleAccount)return;
-    createPosProduct({name:form.name,price:parseFloat(form.price),saleAccount:form.saleAccount});
-    setForm({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:""});
+    createPosProduct({name:form.name,price:parseFloat(form.price),saleAccount:form.saleAccount,vatCode:form.vatCode});
+    setForm({name:"",price:"",saleAccount:saleAccounts[0]?saleAccounts[0].code:"",vatCode:""});
     setShowNew(false);
   };
-  const startEdit=p=>{setEditingId(p.id);setEditForm({name:p.name,price:String(p.price),saleAccount:p.saleAccount});};
+  const startEdit=p=>{setEditingId(p.id);setEditForm({name:p.name,price:String(p.price),saleAccount:p.saleAccount,vatCode:p.vatCode||""});};
   const saveEdit=()=>{
     if(!editForm.name.trim()||!parseFloat(editForm.price)||!editForm.saleAccount)return;
-    updatePosProduct(editingId,{name:editForm.name,price:parseFloat(editForm.price),saleAccount:editForm.saleAccount});
+    updatePosProduct(editingId,{name:editForm.name,price:parseFloat(editForm.price),saleAccount:editForm.saleAccount,vatCode:editForm.vatCode});
     setEditingId(null);
   };
+  const vatLabel=code=>{if(!code)return"No VAT";const vc=MVA_CODES.find(c=>String(c.code)===String(code));return vc?`${vc.code}: ${vc.rate}%`:code;};
 
   return(
     <div>
@@ -2853,18 +2854,19 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
       </div>
       {showNew&&(
         <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:20}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:10}}>
             <input placeholder="Product name" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={inp}/>
             <input type="number" placeholder="Price" value={form.price} onChange={e=>setForm(p=>({...p,price:e.target.value}))} style={inp}/>
             <AccDrop value={form.saleAccount} onChange={v=>setForm(p=>({...p,saleAccount:v}))} accounts={saleAccounts}/>
+            <VatDrop value={form.vatCode} onChange={code=>setForm(p=>({...p,vatCode:code}))} options={vatCodeOptions("output")}/>
           </div>
           <button onClick={save} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
         </div>
       )}
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-      <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
         <thead><tr style={{color:T.sub,background:T.bg}}>
-          <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{textAlign:"right",fontWeight:700}}>Price</td><td style={{fontWeight:700}}>Sale account</td><td style={{fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
+          <td style={{padding:"11px 14px",fontWeight:700}}>Name</td><td style={{padding:"11px 14px",textAlign:"right",fontWeight:700}}>Price</td><td style={{padding:"11px 14px",fontWeight:700}}>Sale account</td><td style={{padding:"11px 14px",fontWeight:700}}>VAT</td><td style={{padding:"11px 14px",fontWeight:700}}>Active</td><td style={{padding:"11px 14px"}}></td>
         </tr></thead>
         <tbody>
           {posProducts.map(p=>{
@@ -2875,7 +2877,10 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
                 <td style={{padding:"7px 8px"}}>
                   <AccDrop value={editForm.saleAccount} onChange={v=>setEditForm(f=>({...f,saleAccount:v}))} accounts={saleAccounts}/>
                 </td>
-                <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
+                <td style={{padding:"7px 8px"}}>
+                  <VatDrop value={editForm.vatCode} onChange={code=>setEditForm(f=>({...f,vatCode:code}))} options={vatCodeOptions("output")}/>
+                </td>
+                <td style={{padding:"7px 14px"}}><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
                 <td style={{textAlign:"right",padding:"7px 14px",whiteSpace:"nowrap"}}>
                   <button onClick={saveEdit} style={{background:T.accent,color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginRight:4}}>Save</button>
                   <button onClick={()=>setEditingId(null)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
@@ -2885,9 +2890,10 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
             return(
               <tr key={p.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`,opacity:p.active?1:0.5}}>
                 <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{p.name}</td>
-                <td style={{textAlign:"right",fontWeight:600,color:T.text}}>{fmt(p.price)}</td>
-                <td style={{color:T.text}}>{p.saleAccount}</td>
-                <td><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
+                <td style={{padding:"11px 14px",textAlign:"right",fontWeight:600,color:T.text}}>{fmt(p.price)}</td>
+                <td style={{padding:"11px 14px",color:T.text}}>{p.saleAccount}</td>
+                <td style={{padding:"11px 14px",color:T.sub}}>{vatLabel(p.vatCode)}</td>
+                <td style={{padding:"11px 14px"}}><input type="checkbox" checked={p.active} onChange={()=>updatePosProduct(p.id,{active:!p.active})}/></td>
                 <td style={{textAlign:"right",padding:"11px 14px",whiteSpace:"nowrap"}}>
                   <button onClick={()=>startEdit(p)} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:700,marginRight:8,fontFamily:"inherit"}}>Edit</button>
                   <button onClick={()=>window.confirm(`Delete ${p.name}?`)&&deletePosProduct(p.id)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:13}}>✕</button>
@@ -2895,7 +2901,7 @@ function POSProductsScreen({posProducts,accounts,createPosProduct,updatePosProdu
               </tr>
             );
           })}
-          {!posProducts.length&&<tr><td colSpan="5" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No products yet.</td></tr>}
+          {!posProducts.length&&<tr><td colSpan="6" style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No products yet.</td></tr>}
         </tbody>
       </table>
       </div>

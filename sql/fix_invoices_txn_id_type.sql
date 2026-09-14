@@ -1,0 +1,20 @@
+-- ============================================================================
+-- CRITICAL — fixes "Invoice posted to ledger but couldn't be saved as an
+-- invoice record: invalid input syntax for type bigint: '<uuid>'", which
+-- currently breaks EVERY invoice creation (New invoice, Supplier/Customer
+-- Invoice, recurring invoices — anything that writes createInvoice's
+-- `invoices` row).
+--
+-- Root cause: transactions.id is uuid (confirmed already-correct elsewhere
+-- in this schema — see sql/fix_txn_attachments_file_id_type.sql, which
+-- notes txn_attachments.txn_id is uuid and was never wrong). invoices.txn_id
+-- was evidently created as bigint by mistake — the same class of type-
+-- mismatch bug as that earlier fix, just a different column. Every
+-- createInvoice call posts the ledger transaction successfully (its own
+-- insert has no such mismatch) and only fails on the SEPARATE invoices-table
+-- insert immediately after, when it tries to store that transaction's real
+-- uuid id into a bigint column.
+--
+-- Run this once in the Supabase SQL editor.
+-- ============================================================================
+alter table invoices alter column txn_id type uuid using txn_id::text::uuid;
