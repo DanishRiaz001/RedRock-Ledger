@@ -1744,6 +1744,25 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     onClose();
   };
 
+  // A supplier/customer invoice bilag's MAIN line only ever has one side a
+  // user should actually be picking — the sale/expense account; the other
+  // side is always the fixed 1500 (Accounts Receivable) or 2400 (Accounts
+  // Payable) contact account New Entry's own invoice screen posts it
+  // against and never exposes as a pickable dropdown there either. Showing
+  // BOTH sides as open, unfiltered account dropdowns here (the generic
+  // Advance Voucher grid every entry used to fall back to) let you repoint
+  // 1500/2400 at some unrelated account by mistake and offered the full
+  // chart on the sale/expense side too, instead of just the 3xxx (sales) or
+  // 4-7xxx (expense) accounts that actually make sense — matching New
+  // Entry's own filteredAccounts. A VAT-split leg or periodization leg on
+  // the same bilag doesn't fit this 1500/2400-vs-other-side shape, so it's
+  // untouched and keeps the full, freely-editable grid.
+  const invArApCode=entryModeVal==="customer_invoice"?"1500":entryModeVal==="supplier_invoice"?"2400":null;
+  const invOtherSideAccounts=entryModeVal==="customer_invoice"
+    ?accounts.filter(a=>a.code.startsWith("3"))
+    :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
+  const invArApSideFor=l=>!invArApCode?null:l.debitCode===invArApCode?"debit":l.creditCode===invArApCode?"credit":null;
+
   const postingsGrid=(()=>{
     const GRID_COLS="180px 1.5fr 1.5fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
@@ -1784,6 +1803,18 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
             const creditAcc=accounts.find(a=>a.code===l.creditCode);
             const debitLocked=!!(debitAcc&&debitAcc.vatLocked&&debitAcc.defaultVatCode);
             const creditLocked=!!(creditAcc&&creditAcc.vatLocked&&creditAcc.defaultVatCode);
+            const arApSide=invArApSideFor(l);
+            // A fixed 1500/2400 side reads as a plain label, same visual
+            // weight as a disabled field — never a dropdown you could
+            // accidentally repoint at an unrelated account. No VAT picker
+            // underneath either; VAT never applies to the AR/AP account
+            // itself, only to the sale/expense side.
+            const arApBadge=(code,acc)=>(
+              <div style={{...flatField,padding:"6px 2px",fontSize:12,color:T.sub,fontWeight:600,display:"flex",alignItems:"center",gap:6,minHeight:30}}>
+                <span style={{fontSize:10,color:T.muted,fontWeight:700}}>{code}</span>
+                {acc?acc.name:(code==="1500"?"Accounts Receivable":"Accounts Payable")}
+              </div>
+            );
             return(<React.Fragment key={l.id}>
               <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
                 {/* Date on top, description below — same two-row rhythm as
@@ -1794,12 +1825,20 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
               <div style={{...rowCell,minWidth:0}}>
-                <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
-                <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
+                {arApSide==="debit"?arApBadge(l.debitCode,debitAcc):(
+                  <>
+                    <AccDropFlat value={l.debitCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{debitCode:v,debitVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.debitVatCode});}} accounts={arApSide?invOtherSideAccounts:accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0&&!arApSide?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
+                    <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.debitVatCode||""} onChange={code=>updateRow(li,{debitVatCode:code})} options={vatCodeOptions("input")} disabled={debitLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
+                  </>
+                )}
               </div>
               <div style={{...rowCell,minWidth:0}}>
-                <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
-                <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
+                {arApSide==="credit"?arApBadge(l.creditCode,creditAcc):(
+                  <>
+                    <AccDropFlat value={l.creditCode} onChange={v=>{const a=accounts.find(x=>x.code===v);updateRow(li,{creditCode:v,creditVatCode:a&&a.defaultVatCode?a.defaultVatCode:l.creditVatCode});}} accounts={arApSide?invOtherSideAccounts:accounts} contacts={contacts} contactId={l.contactId} onContactPick={li===0&&!arApSide?id=>{isGroup?updateGroupLine(li,{contactId:id}):setForm(f=>({...f,contactId:id}));}:undefined} onCreateAccount={onCreateAccount} onCreateContact={onCreateContact} triggerStyle={flatField}/>
+                    <div style={{marginTop:4,width:"100%"}}><VatDrop value={l.creditVatCode||""} onChange={code=>updateRow(li,{creditVatCode:code})} options={vatCodeOptions("output")} disabled={creditLocked} inputStyle={{...flatField,fontSize:10.5,width:"100%",boxSizing:"border-box"}}/></div>
+                  </>
+                )}
               </div>
               <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
                 <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
