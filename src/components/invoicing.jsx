@@ -1332,7 +1332,7 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
             <>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier</div>
-                <ThemedSelect value={supplierId} onChange={setSupplierId} placeholder="No suppliers yet" triggerStyle={{...inp}} options={suppliers.map(s=>({value:s.id,label:s.name}))}/>
+                <ThemedSelect value={supplierId} onChange={setSupplierId} placeholder="No suppliers yet" triggerStyle={{...inp}} options={suppliers.map(s=>({value:s.id,label:`${s.id} — ${s.name}`}))}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
@@ -1718,7 +1718,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
                 <div>
                   <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Supplier</div>
-                  <ThemedSelect value={form.supplierId} onChange={v=>setForm({supplierId:v})} placeholder="No suppliers yet" triggerStyle={{...inp,padding:"8px 10px",fontSize:12}} options={suppliers.map(s=>({value:s.id,label:s.name}))}/>
+                  <ThemedSelect value={form.supplierId} onChange={v=>setForm({supplierId:v})} placeholder="No suppliers yet" triggerStyle={{...inp,padding:"8px 10px",fontSize:12}} options={suppliers.map(s=>({value:s.id,label:`${s.id} — ${s.name}`}))}/>
                 </div>
                 <div>
                   <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
@@ -1774,7 +1774,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div>
                 <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-                <ThemedSelect value={form.customerId} onChange={v=>setForm({customerId:v})} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
+                <ThemedSelect value={form.customerId} onChange={v=>setForm({customerId:v})} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:`${c.id} — ${c.name}`}))}/>
               </div>
               {/* Date, due date and invoice number share one row */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
@@ -2193,7 +2193,7 @@ function InvoiceFormScreen({accounts,contacts,companyProfile,nextInvoiceNo,creat
           <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:8}}>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Customer</div>
-              <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp,padding:"9px 12px",fontSize:13}} options={customers.map(c=>({value:c.id,label:`${c.name}${c.email?" ✉":""}`}))}/>
+              <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp,padding:"9px 12px",fontSize:13}} options={customers.map(c=>({value:c.id,label:`${c.id} — ${c.name}${c.email?" ✉":""}`}))}/>
             </div>
             <div>
               <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Invoice date</div>
@@ -2591,7 +2591,7 @@ function RecurringInvoicesScreen({recurringInvoices,contacts,accounts,createRecu
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-              <ThemedSelect value={form.customerId} onChange={v=>setForm(p=>({...p,customerId:v}))} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
+              <ThemedSelect value={form.customerId} onChange={v=>setForm(p=>({...p,customerId:v}))} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:`${c.id} — ${c.name}`}))}/>
             </div>
             <div>
               <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx)</div>
@@ -3108,7 +3108,7 @@ function QuoteFormScreen({accounts,contacts,companyProfile,nextQuoteNo,createQuo
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <div>
           <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Customer</div>
-          <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:c.name}))}/>
+          <ThemedSelect value={customerId} onChange={setCustomerId} placeholder="No customers yet" triggerStyle={{...inp}} options={customers.map(c=>({value:c.id,label:`${c.id} — ${c.name}`}))}/>
         </div>
         <div>
           <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Sale account (3xxx)</div>

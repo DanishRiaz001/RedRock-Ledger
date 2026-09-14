@@ -6829,7 +6829,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
             <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
           </div>
-          <ThemedSelect value={contactFilter} onChange={setContactFilter} placeholder={`All ${type==="customer"?"customers":"suppliers"}`} allowClear clearLabel={`All ${type==="customer"?"customers":"suppliers"}`} triggerStyle={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}} options={relevantContacts.map(c=>({value:c.id,label:c.name}))}/>
+          <ThemedSelect value={contactFilter} onChange={setContactFilter} placeholder={`All ${type==="customer"?"customers":"suppliers"}`} allowClear clearLabel={`All ${type==="customer"?"customers":"suppliers"}`} triggerStyle={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}} options={relevantContacts.map(c=>({value:c.id,label:`${c.id} — ${c.name}`}))}/>
           <div style={{position:"relative",flex:1,minWidth:100}}>
             <i className="ti ti-search" style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}/>
             <input placeholder="Invoice number, description…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:24,padding:"5px 8px 5px 24px",fontSize:11}}/>
