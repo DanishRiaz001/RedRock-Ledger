@@ -4764,8 +4764,16 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
           );
         })()}
 
-        {/* Smart contact selector — only when 1500 or 2400 */}
-        {needContact&&(
+        {/* Smart contact selector — only when 1500 or 2400, and only while
+            no contact is linked yet. Once one IS linked (whether through
+            this box or by typing a contact's name straight into the
+            account dropdown above, which resolves to 1500/2400 and shows
+            that contact's name in place of the generic account name) this
+            box would just repeat what the account dropdown already shows,
+            so it disappears — reappears automatically if the link is ever
+            cleared. To change who's linked, edit the account dropdown
+            itself (or "+ New customer/supplier" from there). */}
+        {needContact&&!form.contactId&&(
           <div>
             <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>
               {isDesktop

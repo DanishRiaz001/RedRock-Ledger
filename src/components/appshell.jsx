@@ -2621,7 +2621,18 @@ If you genuinely cannot read useful information from this file, return every fie
         if(!firstGranted)firstGranted=inv;
       }
     }
-    if(firstGranted){
+    // A real bug this caused: someone who already owns companies of their
+    // own (tested by typing their own email into another company's
+    // "accountant access" box, say) got SILENTLY SWITCHED into viewing that
+    // other company's books the next time they loaded the app — their own
+    // companies didn't disappear, they were just no longer what was being
+    // looked at, with no obvious way back short of finding the new "Home"
+    // switcher entry. The auto-switch below must only ever fire for an
+    // account that owns NOTHING of its own yet (the genuinely-new-invited-
+    // accountant case) — checked fresh here rather than trusted from
+    // anywhere else, since this is the one place that decides it.
+    const ownsNothing=firstGranted&&(await sb.from("companies").select("id",{count:"exact",head:true}).eq("owner_user_id",user.id)).count===0;
+    if(firstGranted&&ownsNothing){
       // Land them straight in the company they were actually invited to —
       // never their own (nonexistent) books. Also blocks the companies-
       // fetch effect's auto-create-a-default-company fallback below, which
