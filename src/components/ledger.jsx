@@ -1763,7 +1763,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
   const invArApSideFor=l=>!invArApCode?null:l.debitCode===invArApCode?"debit":l.creditCode===invArApCode?"credit":null;
 
-  const postingsGrid=(()=>{
+  // The plain Debit/Credit/Amount grid — every non-invoice entry (Advance
+  // Voucher) uses this as-is via `postingsGrid` below, unchanged. A
+  // supplier/customer invoice's VAT-split or periodization legs (rows with
+  // no single fixed AR/AP side — see invoiceLinesGrid) also fall back to
+  // rendering here, passed explicitly as `rows` rather than reading
+  // `gridRows` directly, so it can render just that subset.
+  const genericPostingsGrid=(rows,headerLabel)=>(()=>{
     const GRID_COLS="180px 1.5fr 1.5fr 130px 60px";
     // Same bordered-panel + compact-font treatment as New Entry's own
     // Postings table (Advance Voucher) — this used to be a bare label
@@ -1777,7 +1783,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // running totals themselves.
     const gridTotals=(()=>{
       let totalDebit=0,totalCredit=0,totalVat=0;
-      gridRows.forEach(l=>{
+      rows.forEach(l=>{
         const amt=parseFloat(l.amount)||0;
         if(l.debitCode)totalDebit+=amt;
         if(l.creditCode)totalCredit+=amt;
@@ -1789,15 +1795,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     const gridBalanced=Math.abs(gridTotals.totalDebit-gridTotals.totalCredit)<0.01;
     return(
       <div style={{border:`1px solid ${T.border}`,borderRadius:10}}>
-        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings"}</div>
+        <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{headerLabel||(isInvoiceMode?(entryModeVal==="customer_invoice"?"Sales lines":"Costs"):"Postings")}</div>
         <div style={{display:"grid",gridTemplateColumns:GRID_COLS,minWidth:0}}>
           <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Date / Description</div>
           <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Debit (+)</div>
           <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3}}>Credit (−)</div>
           <div style={{...cellBase,background:"#fff",fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,textAlign:"right"}}>Amount</div>
           <div style={{...cellBase,background:"#fff"}}/>
-          {gridRows.map((l,li)=>{
-            const isLast=li===gridRows.length-1;
+          {rows.map((l)=>{
+            const li=gridRows.indexOf(l);
+            const isLast=l===rows[rows.length-1];
             const rowCell=isLast?{...cellBase,borderBottom:"none"}:cellBase;
             const debitAcc=accounts.find(a=>a.code===l.debitCode);
             const creditAcc=accounts.find(a=>a.code===l.creditCode);
@@ -1880,6 +1887,100 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     );
   })();
 
+  // A supplier/customer invoice's main line only ever has ONE side worth
+  // picking (the fixed 1500/2400 badge above already locks the other), yet
+  // the generic grid above still gave it a full Debit-column-width cell for
+  // that badge PLUS a Credit-column-width cell for the real dropdown+VAT —
+  // on a modal this width, that squeezed the actually-editable side (and
+  // its VAT dropdown) down to the point of unreadable truncation and visual
+  // overlap. New Entry's own invoice screen never faces this because it
+  // only ever lays out ONE account field per line, full-width, with
+  // Amount/VAT beside it — never two side-by-side account columns. This
+  // mirrors that: one full-width Account+Amount row, one Description+VAT
+  // row, no per-line Date (now the single Date field above, shared by every
+  // line, same as New Entry). A VAT-split or periodization leg on the same
+  // bilag doesn't fit this shape (no single fixed AR/AP side) and keeps
+  // rendering via the original generic grid, in a small section below.
+  const invoiceLinesGrid=(()=>{
+    const lineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px",width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"inherit",color:T.text};
+    const fieldLbl={fontSize:9,color:T.muted,fontWeight:700,marginBottom:3,textTransform:"uppercase"};
+    const mainRows=gridRows.map((l,li)=>({l,li,arApSide:invArApSideFor(l)})).filter(r=>r.arApSide);
+    const otherRows=gridRows.map((l,li)=>({l,li,arApSide:invArApSideFor(l)})).filter(r=>!r.arApSide);
+    const totals=(()=>{
+      let totalDebit=0,totalCredit=0,totalVat=0;
+      gridRows.forEach(l=>{
+        const amt=parseFloat(l.amount)||0;
+        if(l.debitCode)totalDebit+=amt;
+        if(l.creditCode)totalCredit+=amt;
+        const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
+        if(vc&&vc.rate&&amt)totalVat+=computeVat(amt,vc);
+      });
+      return{totalDebit:Math.round(totalDebit*100)/100,totalCredit:Math.round(totalCredit*100)/100,totalVat:Math.round(totalVat*100)/100};
+    })();
+    const balanced=Math.abs(totals.totalDebit-totals.totalCredit)<0.01;
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"9px 14px",borderBottom:`1px solid ${T.border}`,background:"#fff",fontSize:12,fontWeight:700,color:T.sub}}>{entryModeVal==="customer_invoice"?"Sales lines":"Costs"}</div>
+          <div style={{padding:"10px 14px 14px"}}>
+            {mainRows.map(({l,li,arApSide},idx)=>{
+              const otherCode=arApSide==="debit"?l.creditCode:l.debitCode;
+              const otherVatCode=arApSide==="debit"?l.creditVatCode:l.debitVatCode;
+              const otherAcc=accounts.find(a=>a.code===otherCode);
+              const otherLocked=!!(otherAcc&&otherAcc.vatLocked&&otherAcc.defaultVatCode);
+              const vatDirection=entryModeVal==="customer_invoice"?"output":"input";
+              const setOther=patch=>{
+                if(arApSide==="debit")updateRow(li,{creditCode:"code"in patch?patch.code:l.creditCode,creditVatCode:"vatCode"in patch?patch.vatCode:l.creditVatCode});
+                else updateRow(li,{debitCode:"code"in patch?patch.code:l.debitCode,debitVatCode:"vatCode"in patch?patch.vatCode:l.debitVatCode});
+              };
+              return(
+                <div key={l.id} style={{position:"relative",padding:idx===0?"0 0 14px":"14px 0",borderTop:idx===0?"none":`1px solid ${T.border}`,marginTop:idx===0?0:14}}>
+                  <div style={{display:"grid",gridTemplateColumns:isWide?"1fr 230px":"1fr",gap:isWide?"8px 16px":8}}>
+                    <div>
+                      <div style={fieldLbl}>{entryModeVal==="customer_invoice"?"Sales Account":"Expense Account"}</div>
+                      <AccDrop value={otherCode||""} onChange={code=>{const a=accounts.find(x=>x.code===code);setOther({code,vatCode:a&&a.defaultVatCode?a.defaultVatCode:otherVatCode});}} accounts={invOtherSideAccounts} onCreateAccount={onCreateAccount} inputStyle={lineField}/>
+                    </div>
+                    <div>
+                      <div style={fieldLbl}>Amount</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                        <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...lineField,fontWeight:700,textAlign:"right"}}/>
+                        <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:isWide?"1fr 230px":"1fr",gap:isWide?"8px 16px":8,marginTop:8}}>
+                    <div>
+                      <div style={fieldLbl}>Description</div>
+                      <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={lineField}/>
+                    </div>
+                    <div>
+                      <div style={fieldLbl}>VAT</div>
+                      <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={lineField}/>
+                    </div>
+                  </div>
+                  {isGroup&&mainRows.length>1&&(confirmDelLine===l.id?(
+                    <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{position:"absolute",top:0,right:0,background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
+                  ):(
+                    <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{position:"absolute",top:0,right:0,background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{padding:"10px 14px",borderTop:`1px solid ${T.border}`,background:balanced?T.bg:T.redLight,display:"flex",gap:20,justifyContent:"flex-end"}}>
+            <div><div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div><div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(totals.totalDebit)}</div></div>
+            <div><div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Credit</div><div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(totals.totalCredit)}</div></div>
+            <div><div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>VAT</div><div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(totals.totalVat)}</div></div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Difference</div><div style={{fontSize:12,fontWeight:700,color:balanced?T.green:T.red}}>{fmt(Math.abs(totals.totalDebit-totals.totalCredit))}</div></div>
+          </div>
+        </div>
+        {otherRows.length>0&&genericPostingsGrid(otherRows.map(r=>r.l),"Other lines on this bilag (VAT/periodization)")}
+      </div>
+    );
+  })();
+
+  const postingsGrid=isInvoiceMode?invoiceLinesGrid:genericPostingsGrid(gridRows);
+
   // An Advance Voucher entry (the common case — not a Supplier/Customer
   // Invoice) has nothing invoice-specific to show here, so the "Voucher
   // details" card+header used to appear as an empty-looking box with just
@@ -1923,7 +2024,18 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           "Due date" fields here for that kind of entry was just noise
           that didn't belong to it. */}
       {isInvoiceMode&&(
-        <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+          <div>
+            <SL>Date</SL>
+            {/* One date for the whole invoice, same as New Entry's own
+                invoice screen — invoice-mode lines no longer carry their
+                own per-line date field (see the Sales lines/Costs card
+                below), so this is now the only place it's edited. */}
+            <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].date)||""):(form.date||"")} onChange={v=>{
+              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,date:v})));
+              else setForm(f=>({...f,date:v}));
+            }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
+          </div>
           <div>
             <SL>Invoice number</SL>
             <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
@@ -1995,8 +2107,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // that don't already have their own (see groupValid/saveGroup above) —
   // never overwrites one that does. Single-line entries just have the one
   // date/description already in Voucher details/the grid — no separate
-  // master needed.
-  const masterDateRow=isGroup?(
+  // master needed. Invoice-mode entries have their own single Date field
+  // in Voucher details above (every line always shares one invoice date,
+  // no per-line override needed) and each Sales/Costs line already carries
+  // its own explicit Description — this bar would just duplicate both.
+  const masterDateRow=isGroup&&!isInvoiceMode?(
     <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
       <div style={{padding:14,background:"#fff",display:"grid",gridTemplateColumns:"170px 1fr",gap:20}}>
         <div>
