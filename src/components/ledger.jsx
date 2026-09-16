@@ -1989,82 +1989,84 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // whatever entryMode it was originally posted with) when there's
   // actually invoice detail to hold; otherwise Whose/Project (if used)
   // render bare, no header, right above the postings.
+  // Matches New Entry's own Supplier/Customer invoice screen's "Customer
+  // information"/"Supplier information" card exactly — same header wording,
+  // same two-rows-of-three field layout (Customer/Date/Due date, then
+  // Invoice No/Total amount/Currency) — instead of a generic "Voucher
+  // details" header plus a separate colored badge chip and a differently-
+  // shaped Date/Invoice number/Due date row, which read as a DIFFERENT
+  // screen from the one that created this same invoice.
+  const invLineField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px",fontSize:12,width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"inherit",color:T.text};
+  const invMainLi=(()=>{for(let i=0;i<gridRows.length;i++)if(invArApSideFor(gridRows[i]))return i;return 0;})();
+  const invContactCode=entryModeVal==="customer_invoice"?"customer":"supplier";
+  const setInvContact=id=>{isGroup?updateGroupLine(invMainLi,{contactId:id}):setForm(f=>({...f,contactId:id}));};
+  const invTotalAmount=gridRows.reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
+  const invCurrency=(gridRows[0]&&gridRows[0].currency)||defaultCurrency;
+  const setInvCurrency=v=>{isGroup?setGroupLinesState(p=>p.map(l=>({...l,currency:v}))):setForm(f=>({...f,currency:v}));};
   const voucherDetailsBox=isInvoiceMode?(
-    // Same bordered-panel treatment as New Entry's own "Voucher details"
-    // box — this used to be a bare label with no border at all, at a
-    // noticeably larger font than the rest of the app's entry forms.
     <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-      <div style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:T.text,borderBottom:`1px solid ${T.border}`,background:"#fff"}}>Voucher details</div>
-      <div style={{padding:"0 14px"}}>
-      {isInvoiceMode&&(
-        <div style={{padding:"14px 0 0"}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:T.accentLight,color:T.accent,borderRadius:8,padding:"5px 12px",fontSize:11.5,fontWeight:700}}>
-            <i className={entryModeVal==="customer_invoice"?"ti ti-file-invoice":"ti ti-receipt-2"} style={{fontSize:13}}/>
-            {entryModeVal==="customer_invoice"?"Customer invoice":"Supplier invoice"}
-          </div>
-          {linkedContact&&(
-            <div style={{marginTop:12}}>
-              <SL>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</SL>
-              <div style={{...inp,background:T.bg,color:T.sub}}>{linkedContact.name}</div>
+      <div style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:T.text,borderBottom:`1px solid ${T.border}`,background:"#fff"}}>{entryModeVal==="customer_invoice"?"Customer information":"Supplier information"}</div>
+      <div style={{padding:isWide?"12px 14px":14,display:"grid",gridTemplateColumns:isWide?"1.3fr 1fr 1fr":"1fr 1fr",gap:8}}>
+        <div>
+          <div style={{fontSize:9,fontWeight:800,color:entryModeVal==="customer_invoice"?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</div>
+          <ContactSearch contacts={contacts.filter(c=>c.type===invContactCode)} value={linkedContactId||""} onChange={setInvContact} onCreateContact={onCreateContact}/>
+        </div>
+        <div>
+          <SL>Date</SL>
+          {/* One date for the whole invoice, same as New Entry's own
+              invoice screen — invoice-mode lines no longer carry their own
+              per-line date field (see the Sales lines/Costs card below), so
+              this is now the only place it's edited. */}
+          <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].date)||""):(form.date||"")} onChange={v=>{
+            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,date:v})));
+            else setForm(f=>({...f,date:v}));
+          }} inputStyle={invLineField}/>
+        </div>
+        <div>
+          <SL>Due date</SL>
+          <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
+            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
+            else setForm(f=>({...f,dueDate:v}));
+          }} inputStyle={invLineField}/>
+        </div>
+        <div>
+          <SL>Invoice No</SL>
+          <input placeholder="e.g. INV-1042" value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
+            if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
+            else setForm(f=>({...f,invoiceNo:e.target.value}));
+          }} style={invLineField}/>
+        </div>
+        <div>
+          <SL>Total amount (incl. VAT)</SL>
+          {/* Read-only here — a live sum of the Sales lines/Costs card
+              below, which is where the actual editing happens; New Entry's
+              own version can edit this straight into a single line because
+              a fresh voucher only ever HAS one line at that point, but this
+              screen is editing a bilag that may already be several lines,
+              so pushing an edit back down into "line 1" would be ambiguous. */}
+          <div style={{...invLineField,fontWeight:700}}>{fmt(invTotalAmount)}</div>
+        </div>
+        <div>
+          <SL>Currency</SL>
+          <ThemedSelect value={invCurrency} onChange={setInvCurrency} hideChevron triggerStyle={invLineField} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+        </div>
+      </div>
+      {((moneySources&&moneySources.length>0)||(projects&&projects.length>0))&&(
+        <div style={{padding:"0 14px 14px"}}>
+          {moneySources&&moneySources.length>0&&(
+            <div style={{marginTop:14}}>
+              <SL>Whose</SL>
+              <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
+            </div>
+          )}
+          {projects&&projects.length>0&&(
+            <div style={{marginTop:14}}>
+              <SL>Project</SL>
+              <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
             </div>
           )}
         </div>
       )}
-      {/* No separate "Linked customer/supplier" field here anymore —
-          typing a contact's name straight into a Debit/Credit account
-          box (first line only, same as New Entry) already routes to
-          1500/2400 and links them; a second field asking for the same
-          thing again was redundant. Voucher number field removed too —
-          it just repeated the big "EDITING B040" heading right above
-          this whole page, in a duller box, for no extra information. */}
-      {/* Invoice number / due date — a Supplier/Customer Invoice property
-          only. An Advance Voucher (or any other non-invoice entry) never
-          has these to begin with — New Entry's own Advance Voucher screen
-          never shows them either — so showing empty "Invoice number"/
-          "Due date" fields here for that kind of entry was just noise
-          that didn't belong to it. */}
-      {isInvoiceMode&&(
-        <div style={{padding:"14px 0",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-          <div>
-            <SL>Date</SL>
-            {/* One date for the whole invoice, same as New Entry's own
-                invoice screen — invoice-mode lines no longer carry their
-                own per-line date field (see the Sales lines/Costs card
-                below), so this is now the only place it's edited. */}
-            <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].date)||""):(form.date||"")} onChange={v=>{
-              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,date:v})));
-              else setForm(f=>({...f,date:v}));
-            }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
-          </div>
-          <div>
-            <SL>Invoice number</SL>
-            <input value={isGroup?((groupLinesState[0]&&groupLinesState[0].invoiceNo)||""):(form.invoiceNo||"")} onChange={e=>{
-              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,invoiceNo:e.target.value})));
-              else setForm(f=>({...f,invoiceNo:e.target.value}));
-            }} placeholder="Optional" style={{...inp,fontSize:12,background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}}/>
-          </div>
-          <div>
-            <SL>Due date</SL>
-            <FlexDateInput value={isGroup?((groupLinesState[0]&&groupLinesState[0].dueDate)||""):(form.dueDate||"")} onChange={v=>{
-              if(isGroup)setGroupLinesState(p=>p.map(l=>({...l,dueDate:v})));
-              else setForm(f=>({...f,dueDate:v}));
-            }} inputStyle={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,fontSize:12,padding:"6px 2px"}}/>
-          </div>
-        </div>
-      )}
-      {moneySources&&moneySources.length>0&&(
-        <div style={{padding:"14px 0"}}>
-          <SL>Whose</SL>
-          <ThemedSelect value={form.moneySourceId||""} onChange={v=>setForm(f=>({...f,moneySourceId:v||""}))} placeholder="— Select source (optional) —" allowClear clearLabel="— Select source (optional) —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={moneySources.map(m=>({value:m.id,label:m.name}))}/>
-        </div>
-      )}
-      {projects&&projects.length>0&&(
-        <div style={{padding:"14px 0"}}>
-          <SL>Project</SL>
-          <ThemedSelect value={form.projectId||""} onChange={v=>setForm(f=>({...f,projectId:v||""}))} placeholder="— No project —" allowClear clearLabel="— No project —" triggerStyle={{...selSm,fontSize:12,width:"100%",background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px"}} options={projects.filter(p=>!p.inactive).map(p=>({value:p.id,label:`${p.number?`${p.number} · `:""}${p.name}`}))}/>
-        </div>
-      )}
-      </div>
     </div>
   ):(
     ((moneySources&&moneySources.length>0)||(projects&&projects.length>0))?(
