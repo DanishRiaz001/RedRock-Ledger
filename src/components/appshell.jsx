@@ -1922,7 +1922,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if("projectId"in u)extra.project_id=u.projectId||null;
     if("moneySourceId"in u)extra.money_source_id=u.moneySourceId||null;
     if("moneySourceIdCredit"in u)extra.money_source_id_credit=u.moneySourceIdCredit||null;
-    if("currency"in u)extra.currency=(u.currency&&u.currency!=="NOK")?u.currency:null;
+    if("currency"in u)extra.currency=(u.currency&&u.currency.toUpperCase()!==baseCurrency)?u.currency:null;
     if("currencyAmount"in u)extra.currency_amount=u.currencyAmount!=null&&u.currencyAmount!==""?u.currencyAmount:null;
     const{error}=await sb.from("transactions").update({date:u.date,debit_code:u.debitCode,credit_code:u.creditCode,description:u.description,amount:u.amount,contact_id:u.contactId||null,invoice_no:u.invoiceNo||null,due_date:u.dueDate||null,vat_code:u.vatCode!=null?u.vatCode:null,vat_pct:u.vatPct!=null?u.vatPct:null,vat_amount:u.vatAmount!=null?u.vatAmount:null,...extra}).eq("id",u.id);
     if(error){

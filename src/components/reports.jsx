@@ -6923,7 +6923,19 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                         <td style={{width:84,color:T.text}}>{t.date}</td>
                         <td style={{width:84,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
                         <td style={{color:T.text}}>{t.description}</td>
-                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>{sign(mv(t))}</td>
+                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>
+                          {sign(mv(t))}
+                          {/* A line posted in a currency other than the
+                              company's own base currency shows both figures
+                              — the base amount actually on the ledger (above)
+                              and the original invoiced/entered amount in its
+                              own currency — so it's clear at a glance which
+                              currency the AR/AP balance is actually tracked
+                              in versus what the customer/supplier was billed. */}
+                          {t.currency&&t.currencyAmount!=null&&(
+                            <div style={{fontSize:10,fontWeight:500,color:T.muted,marginTop:2}}>{fmt(t.currencyAmount)} {t.currency}</div>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}

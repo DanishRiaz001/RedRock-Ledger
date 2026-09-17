@@ -4103,7 +4103,12 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       const rawAmt=parseFloat(l.amount);
       const lineCur=(l.currency||defaultCurrency).toUpperCase();
       const lineNok=parseFloat(l.amountNok);
-      const useNok=lineCur!=="NOK"&&lineNok>0;
+      // Was lineCur!=="NOK" — hardcoded to NOK as if it were always the
+      // base currency, so a PKR-based company's own NOK conversion (typed
+      // or auto-looked-up above) was silently discarded here and the raw
+      // foreign figure got posted straight to the ledger with no
+      // conversion at all, even though the UI showed one.
+      const useNok=lineCur!==defaultCurrency&&lineNok>0;
       const amt=useNok?(rawAmt<0?-lineNok:lineNok):rawAmt;
       const isReverse=amt<0; // negative amount = kreditnote/kreditnota, reverses the normal debit/credit
       const absAmt=Math.abs(amt);
@@ -5012,7 +5017,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                         hideChevron), so clicking it opens a real themed
                         popup instead of the browser's own unstyled OS
                         options list. */}
-                    <ThemedSelect value={invCurrency} onChange={setInvCurrency} hideChevron triggerStyle={{...lineField,fontSize:12}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                    <ThemedSelect value={invCurrency} onChange={v=>{
+                      setInvCurrency(v);
+                      setInvAmountNok("");
+                      if(v!==defaultCurrency&&form.date&&parseFloat(invAmount)>0){
+                        fetchHistoricalRate(v,defaultCurrency,form.date).then(res=>{
+                          if(res)setInvAmountNok(String(Math.round((parseFloat(invAmount)||0)*res.rate*100)/100));
+                        });
+                      }
+                    }} hideChevron triggerStyle={{...lineField,fontSize:12}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                   </div>
                 </div>
               </div>
@@ -5117,13 +5130,36 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                               boxed, not removed, so it's easy to bring back
                               exactly as it was or swap out later. */}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,...lineField,padding:"6px 2px"}}>
-                            <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>update({amount:v})} onKeyDown={e=>{
+                            <CalcAmountInput placeholder="0" value={r.amount||""} onChange={v=>{
+                              update({amount:v});
+                              // Re-price the base-currency equivalent whenever
+                              // the foreign amount changes, same auto-lookup
+                              // as picking a different currency below.
+                              const rCur=(r.currency||defaultCurrency).toUpperCase();
+                              if(rCur!==defaultCurrency&&form.date&&parseFloat(v)>0){
+                                fetchHistoricalRate(rCur,defaultCurrency,form.date).then(res=>{
+                                  if(res)update({amountNok:String(Math.round(parseFloat(v)*res.rate*100)/100)});
+                                });
+                              }
+                            }} onKeyDown={e=>{
                               if(e.key==="Tab"&&!e.shiftKey&&idx===rows.length-1){setInvLinesManual(true);setInvExtraLines(p=>[...p,newLine()]);}
                             }} style={{background:"transparent",border:"none",outline:"none",fontSize:12,fontWeight:700,padding:0,width:"100%",textAlign:"left",fontFamily:"inherit",color:T.text}}/>
-                            <ThemedSelect value={r.currency||defaultCurrency} onChange={v=>update({currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                            {/* Options list to the company's own base
+                                currency at the top (not hardcoded NOK) so a
+                                PKR-based company sees "this line's own
+                                currency" first, matching what "foreign"
+                                actually means for THIS company. */}
+                            <ThemedSelect value={r.currency||defaultCurrency} onChange={v=>{
+                              update({currency:v,amountNok:""});
+                              if(v!==defaultCurrency&&form.date&&parseFloat(r.amount)>0){
+                                fetchHistoricalRate(v,defaultCurrency,form.date).then(res=>{
+                                  if(res)update({amountNok:String(Math.round((parseFloat(r.amount)||0)*res.rate*100)/100)});
+                                });
+                              }
+                            }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                           </div>
-                          {(r.currency||"NOK")!=="NOK"&&(
-                            <CalcAmountInput placeholder="Amount in NOK" value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>
+                          {(r.currency||defaultCurrency).toUpperCase()!==defaultCurrency&&(
+                            <CalcAmountInput placeholder={`Amount in ${defaultCurrency}`} value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>
                           )}
                         </div>
                         <div>
