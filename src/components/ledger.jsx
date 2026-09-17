@@ -1131,7 +1131,7 @@ function Menu3({items}){
 
 // ─── Customer/Supplier search widget for new entry ───────────────────────────
 
-function ContactSearch({contacts,value,onChange,onCreateContact}){
+function ContactSearch({contacts,value,onChange,onCreateContact,flat=false}){
   const[q,setQ]=useState("");
   const[open,setOpen]=useState(false);
   const[creating,setCreating]=useState(false);
@@ -1172,15 +1172,31 @@ function ContactSearch({contacts,value,onChange,onCreateContact}){
     setOpen(false);setCreating(false);
   };
 
+  // Flat mode — a plain underline, same as every other field on New
+  // Entry's invoice screen (Date, Invoice No, Total amount, ...), instead
+  // of a filled/bordered chip. The chip reads correctly in the OTHER two
+  // places this component is used (a standalone reconciliation picker,
+  // settings) where it's the one contact-looking control on the screen;
+  // here it stood out as a visibly different style from its neighbors.
+  const flatField={background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,padding:"6px 2px",fontSize:12,width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"inherit",color:T.text};
   return(
     <div ref={containerRef} style={{position:"relative"}}>
       {selectedContact?(
-        <div style={{display:"flex",alignItems:"center",gap:8,background:selectedContact.type==="customer"?T.blueBg:T.redLight,border:`1px solid ${selectedContact.type==="customer"?T.blue:T.red}`,borderRadius:10,padding:"10px 14px"}}>
-          <span style={{fontSize:11,fontWeight:800,color:selectedContact.type==="customer"?T.blue:T.red,background:"#fff",padding:"2px 7px",borderRadius:5}}>{selectedContact.type==="customer"?"AR":"AP"}</span>
-          <span style={{fontSize:13,fontWeight:700,flex:1,color:selectedContact.type==="customer"?T.blue:T.red}}>{selectedContact.name}</span>
-          <span style={{fontSize:10,color:T.muted,fontWeight:600}}>{selectedContact.id}</span>
-          <button onClick={clear} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:14,lineHeight:1,padding:"0 2px"}}>✕</button>
-        </div>
+        flat?(
+          <div style={{display:"flex",alignItems:"center",gap:8,borderBottom:`1.5px solid ${T.border}`,padding:"6px 2px"}}>
+            <span style={{fontSize:10,color:T.muted,fontWeight:700}}>{selectedContact.type==="customer"?"AR":"AP"}</span>
+            <span style={{fontSize:13,fontWeight:600,flex:1,color:T.text}}>{selectedContact.name}</span>
+            <span style={{fontSize:10,color:T.muted,fontWeight:600}}>{selectedContact.id}</span>
+            <button onClick={clear} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,lineHeight:1,padding:"0 2px"}}>✕</button>
+          </div>
+        ):(
+          <div style={{display:"flex",alignItems:"center",gap:8,background:selectedContact.type==="customer"?T.blueBg:T.redLight,border:`1px solid ${selectedContact.type==="customer"?T.blue:T.red}`,borderRadius:10,padding:"10px 14px"}}>
+            <span style={{fontSize:11,fontWeight:800,color:selectedContact.type==="customer"?T.blue:T.red,background:"#fff",padding:"2px 7px",borderRadius:5}}>{selectedContact.type==="customer"?"AR":"AP"}</span>
+            <span style={{fontSize:13,fontWeight:700,flex:1,color:selectedContact.type==="customer"?T.blue:T.red}}>{selectedContact.name}</span>
+            <span style={{fontSize:10,color:T.muted,fontWeight:600}}>{selectedContact.id}</span>
+            <button onClick={clear} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:14,lineHeight:1,padding:"0 2px"}}>✕</button>
+          </div>
+        )
       ):(
         <>
           <input
@@ -1190,7 +1206,7 @@ function ContactSearch({contacts,value,onChange,onCreateContact}){
             onBlur={handleBlur}
             onKeyDown={e=>{if(e.key==="Enter"&&open&&filtered.length>0){e.preventDefault();select(filtered[0]);}}}
             placeholder="Search customer or supplier…"
-            style={inp}
+            style={flat?flatField:inp}
           />
           {open&&(q.trim()||creating)&&(
             <>
@@ -2009,7 +2025,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       <div style={{padding:isWide?"12px 14px":14,display:"grid",gridTemplateColumns:isWide?"1.3fr 1fr 1fr":"1fr 1fr",gap:8}}>
         <div>
           <div style={{fontSize:9,fontWeight:800,color:entryModeVal==="customer_invoice"?T.blue:T.red,marginBottom:3,textTransform:"uppercase"}}>{entryModeVal==="customer_invoice"?"Customer":"Supplier"}</div>
-          <ContactSearch contacts={contacts.filter(c=>c.type===invContactCode)} value={linkedContactId||""} onChange={setInvContact} onCreateContact={onCreateContact}/>
+          <ContactSearch contacts={contacts.filter(c=>c.type===invContactCode)} value={linkedContactId||""} onChange={setInvContact} onCreateContact={onCreateContact} flat/>
         </div>
         <div>
           <SL>Date</SL>
