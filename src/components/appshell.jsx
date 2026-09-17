@@ -50,6 +50,13 @@ function AppShell({user}){
     }catch(e){/* storage blocked — switch still works for this session */}
   };
   const[myClientAccess,setMyClientAccess]=useState([]); // [{id,clientUserId,clientName,clientEmail,accessLevel,companyId}]
+  // Whether the client_access fetch below has actually resolved at least
+  // once — myClientAccess starting at [] is indistinguishable from "this
+  // employee genuinely has zero grants" from the companies-fetch effect's
+  // point of view, and that effect fires on mount before this fetch has
+  // had a chance to land. See its own use of this flag for the real bug
+  // that gap caused.
+  const[myClientAccessLoaded,setMyClientAccessLoaded]=useState(false);
   // getCurrentUserId() deliberately stays the REAL authenticated user (not
   // viewingUserId) — it's also used to build Supabase Storage paths
   // (uploadFileToStorage: `${getCurrentUserId()}/filename`), and Storage
@@ -158,6 +165,18 @@ function AppShell({user}){
   const currentAccessLevel=viewingUserId===user.id?"full":((myClientAccess.find(c=>c.clientUserId===viewingUserId&&c.companyId===cid)||{}).accessLevel||"readonly");
 
   useEffect(()=>{
+    // Viewing a granted client's books, but the client_access fetch hasn't
+    // resolved even once yet on this page load: myClientAccess is still
+    // its initial [], which is indistinguishable from "genuinely zero
+    // grants" below — filtering against it now would find NO companies for
+    // someone who very much has real access, transiently flip
+    // activeCompanyId to "__no_company_scoping__", and flash the admin-only
+    // "Company data scoping is broken" banner on every refresh (self-
+    // correcting the moment the real grants land and this effect re-runs).
+    // Wait for the real data instead of guessing from an empty default —
+    // same fix already applied to the auto-create-company branch below via
+    // inviteCheckDone, just covering the OTHER branch this effect has.
+    if(viewingUserId!==user.id&&!myClientAccessLoaded)return;
     setCompaniesLoading(true);
     // Viewing your OWN login (viewingUserId===user.id): every one of your
     // companies. Viewing a CLIENT's login you were granted into: every
@@ -273,7 +292,7 @@ function AppShell({user}){
       setActiveCompanyId("__no_company_scoping__");
       setCompaniesLoading(false);
     });
-  },[viewingUserId,myClientAccess,inviteCheckDone,hasResolvedInvite]);
+  },[viewingUserId,myClientAccess,myClientAccessLoaded,inviteCheckDone,hasResolvedInvite]);
 
   // Landing on a ?confirmDeleteCompany=<id>&token=<token> link (shown/
   // copied from the deletion-request screen, standing in for a real
@@ -376,7 +395,7 @@ function AppShell({user}){
   };
   useEffect(()=>{
     sb.from("client_access").select("*").eq("employee_user_id",user.id).then(async({data,error})=>{
-      if(error||!data||!data.length){setMyClientAccess([]);return;}
+      if(error||!data||!data.length){setMyClientAccess([]);setMyClientAccessLoaded(true);return;}
       const clientIds=data.map(r=>r.client_user_id);
       const{data:profs}=await sb.from("profiles").select("id,email,display_name").in("id",clientIds);
       const profMap={};(profs||[]).forEach(p=>{profMap[p.id]=p;});
@@ -391,6 +410,7 @@ function AppShell({user}){
         (comps||[]).forEach(c=>{companyMap[c.id]=c.name;});
       }
       setMyClientAccess(data.map(r=>({id:r.id,clientUserId:r.client_user_id,clientEmail:profMap[r.client_user_id]?(profMap[r.client_user_id].display_name||profMap[r.client_user_id].email):"Client",accessLevel:r.access_level,companyId:r.company_id||null,companyName:r.company_id?(companyMap[r.company_id]||"Unknown company"):null})));
+      setMyClientAccessLoaded(true);
     });
   },[user.id]);
   const[accounts,setAccountsState]=useState([]);
