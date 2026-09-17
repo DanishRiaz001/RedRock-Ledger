@@ -1990,11 +1990,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                       <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={lineField}/>
                     </div>
                     <div style={{display:"flex",alignItems:"flex-end",gap:12}}>
-                      <div style={{flex:1}}>
+                      <div style={{flex:"0 0 60%"}}>
                         <div style={fieldLbl}>VAT</div>
                         <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={lineField}/>
                       </div>
-                      <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{textAlign:"right",flex:1}}>
                         <div style={fieldLbl}>VAT amount</div>
                         <div style={{...lineField,borderBottom:"none",padding:"6px 0",fontWeight:600,color:lineVatAmt?T.text:T.muted}}>{fmt(lineVatAmt)}</div>
                       </div>
