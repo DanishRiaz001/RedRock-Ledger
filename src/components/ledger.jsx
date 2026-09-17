@@ -2141,15 +2141,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // them, so it read as plain page background instead.
   const detailsTab=(
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:16}}>
-      {isInvoiceMode?(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1.3fr",gap:18,alignItems:"start"}}>
-          {voucherDetailsBox}
-          {rightColumn}
-        </div>
-      ):(<>
-        {voucherDetailsBox}
-        {rightColumn}
-      </>)}
+      {/* Single stacked column, full width — matches New Entry's own
+          Advance Voucher/invoice screen (Customer information card, then
+          Sales lines/Costs card, full width, one under the other). This
+          used to split into a side-by-side 1fr/1.3fr grid for invoice-mode
+          entries specifically, which read as a visibly different screen
+          from the one that actually created the invoice. */}
+      {voucherDetailsBox}
+      {rightColumn}
       {isGroup&&!groupBalanced&&(
         <div style={{fontSize:11,fontWeight:700,color:T.red,background:T.redLight,borderRadius:8,padding:"7px 12px"}}>
           Off by {fmt(Math.abs(groupTotals.totalDebit-groupTotals.totalCredit))} — total debit {fmt(groupTotals.totalDebit)} vs total credit {fmt(groupTotals.totalCredit)}. Save is disabled until these match.
