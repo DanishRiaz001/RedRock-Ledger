@@ -1952,6 +1952,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               const otherAcc=accounts.find(a=>a.code===otherCode);
               const otherLocked=!!(otherAcc&&otherAcc.vatLocked&&otherAcc.defaultVatCode);
               const vatDirection=entryModeVal==="customer_invoice"?"output":"input";
+              // Every line computes and shows its OWN VAT the moment it
+              // carries a code — a freshly added line (see addGroupLine)
+              // starts with no VAT code and no amount, so this reads 0
+              // until both are filled in, exactly like the totals footer
+              // already does for the whole card.
+              const lineVc=otherVatCode?findVatCode(otherVatCode,vatDirection):null;
+              const lineVatAmt=lineVc?computeVat(parseFloat(l.amount)||0,lineVc):0;
               const setOther=patch=>{
                 if(arApSide==="debit")updateRow(li,{creditCode:"code"in patch?patch.code:l.creditCode,creditVatCode:"vatCode"in patch?patch.vatCode:l.creditVatCode});
                 else updateRow(li,{debitCode:"code"in patch?patch.code:l.debitCode,debitVatCode:"vatCode"in patch?patch.vatCode:l.debitVatCode});
@@ -1971,14 +1978,26 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                       </div>
                     </div>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:isWide?"1fr 230px":"1fr",gap:isWide?"8px 16px":8,marginTop:8}}>
+                  {/* Description narrowed ~40% from its old even split with
+                      VAT — VAT now takes the freed space, sitting right
+                      where the shorter description ends, and shows this
+                      line's own computed VAT amount next to the code
+                      picker (0 until a code and amount are both filled
+                      in) instead of just the bare dropdown. */}
+                  <div style={{display:"grid",gridTemplateColumns:isWide?"0.6fr 1fr":"1fr",gap:isWide?"8px 16px":8,marginTop:8}}>
                     <div>
                       <div style={fieldLbl}>Description</div>
                       <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={lineField}/>
                     </div>
-                    <div>
-                      <div style={fieldLbl}>VAT</div>
-                      <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={lineField}/>
+                    <div style={{display:"flex",alignItems:"flex-end",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={fieldLbl}>VAT</div>
+                        <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={lineField}/>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={fieldLbl}>VAT amount</div>
+                        <div style={{...lineField,borderBottom:"none",padding:"6px 0",fontWeight:600,color:lineVatAmt?T.text:T.muted}}>{fmt(lineVatAmt)}</div>
+                      </div>
                     </div>
                   </div>
                   {isGroup&&mainRows.length>1&&(confirmDelLine===l.id?(
