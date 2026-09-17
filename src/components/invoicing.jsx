@@ -3077,7 +3077,7 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
             <div style={{width:260}}><AccDrop value={deductionsAccount} onChange={setDeductionsAccount} accounts={liabAccounts}/></div>
           </div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:14}}>
-            <thead><tr style={{color:T.muted,fontSize:11}}>
+            <thead><tr style={{color:T.sub,fontSize:11}}>
               <td style={{padding:"6px 0"}}>Employee</td><td style={{textAlign:"right"}}>Gross</td><td style={{textAlign:"right"}}>Deductions</td><td style={{textAlign:"right"}}>Net</td>
             </tr></thead>
             <tbody>
@@ -3310,7 +3310,7 @@ function AuditLogScreen({auditLog,transactions,profiles=[],currentUserId}){
       <p style={{fontSize:11,color:T.muted,marginBottom:16}}>Read-only history of every create, edit, and delete on transactions and invoice status. Nothing here can be altered after the fact.</p>
       <input placeholder="Search by bilag or action" value={filter} onChange={e=>setFilter(e.target.value)} style={{...inp,width:260,marginBottom:16}}/>
       <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
+        <thead><tr style={{color:T.sub,fontSize:11}}>
           <td style={{padding:"6px 0"}}>When</td><td>Who</td><td>Entity</td><td>Action</td><td>Before</td><td>After</td>
         </tr></thead>
         <tbody>

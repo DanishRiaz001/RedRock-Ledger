@@ -1684,9 +1684,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // lost the instant the grid switches to rendering groupLinesState.
     const row0=isGroup?groupLinesState[0]:{...groupLinesState[0],date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode};
     if(!isGroup)setGroupLinesState([row0]);
-    const res=await onAddLine({date:row0?.date||today,debitCode:"",creditCode:"",description:row0?.description||"",amount:0,bilag});
+    // A new invoice line needs the fixed AR/AP side pre-filled — otherwise
+    // it comes back with BOTH sides blank, invArApSideFor finds neither
+    // side matching 1500/2400, and the line lands in the "Other lines on
+    // this bilag" fallback grid instead of joining Sales lines/Costs where
+    // it actually belongs, exactly like every other line on this invoice.
+    const newDebitCode=entryModeVal==="customer_invoice"?"1500":"";
+    const newCreditCode=entryModeVal==="supplier_invoice"?"2400":"";
+    const res=await onAddLine({date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:0,bilag});
     setAddingLine(false);
-    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:row0?.date||today,debitCode:"",creditCode:"",description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
+    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
     else if(res&&res.error)alert(`Couldn't add a new line:\n\n${res.error}`);
   };
 

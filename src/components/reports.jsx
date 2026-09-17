@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect, NewContactModal } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
@@ -2281,7 +2281,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
           </div>
           <div style={cardBody}>
           <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{color:T.muted,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>
+            <thead><tr style={{color:T.sub,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>
               <td style={{padding:"0 0 10px"}}>Bilag</td><td>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td>
             </tr></thead>
             <tbody>
@@ -3008,7 +3008,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto",background:"#fff",borderRadius:12,border:`1px solid ${T.border}`}}>
       <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}{extraCols.map(c=><col key={c.key} style={{width:c.width}}/>)}</colgroup>
-        <thead><tr style={{color:T.muted,fontSize:10.5,background:T.bg,position:"sticky",top:0,zIndex:2}}>
+        <thead><tr style={{color:T.sub,fontSize:10.5,background:T.bg,position:"sticky",top:0,zIndex:2}}>
           <td style={{padding:"8px 10px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
           <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={1} align="center"/>
           <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2} align="center"/>
@@ -3840,7 +3840,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false,
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Assets</div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <colgroup><col style={{width:"55%"}}/><col style={{width:compareOn?"22.5%":"45%"}}/>{compareOn&&<col style={{width:"22.5%"}}/>}</colgroup>
-            {compareOn&&<thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
+            {compareOn&&<thead><tr style={{color:T.sub,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={assetGroups}/>
               <tr style={{borderTop:`2px solid ${T.text}`}}>
@@ -3855,7 +3855,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false,
           <div style={{fontSize:12,fontWeight:800,color:T.text,textTransform:"uppercase",marginBottom:6}}>Equity and liabilities</div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <colgroup><col style={{width:"55%"}}/><col style={{width:compareOn?"22.5%":"45%"}}/>{compareOn&&<col style={{width:"22.5%"}}/>}</colgroup>
-            {compareOn&&<thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
+            {compareOn&&<thead><tr style={{color:T.sub,fontSize:11}}><td style={{padding:"6px 10px"}}></td><td style={{textAlign:"right",padding:"6px 10px"}}>{asOf}</td><td style={{textAlign:"right",padding:"6px 10px"}}>{compareDate}</td></tr></thead>}
             <tbody>
               <GroupRows groups={eqLiabGroups}/>
               <tr style={{borderTop:`2px solid ${T.text}`}}>
@@ -3978,7 +3978,7 @@ function VATReportScreen({invoices,contacts,transactions,companyProfile}){
         <div style={{marginBottom:20}}>
           <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>By rate</div>
           <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{color:T.muted,fontSize:11}}><td style={{padding:"6px 0"}}>Rate</td><td style={{textAlign:"right"}}>Sales excl. VAT</td><td style={{textAlign:"right"}}>VAT</td></tr></thead>
+            <thead><tr style={{color:T.sub,fontSize:11}}><td style={{padding:"6px 0"}}>Rate</td><td style={{textAlign:"right"}}>Sales excl. VAT</td><td style={{textAlign:"right"}}>VAT</td></tr></thead>
             <tbody>{byRate.map(r=>(
               <tr key={r.rate} style={{borderTop:`1px solid ${T.border}`}}>
                 <td style={{padding:"6px 0"}}>{r.rate}%</td><td style={{textAlign:"right"}}>{fmt(r.subtotal)}</td><td style={{textAlign:"right"}}>{fmt(r.vat)}</td>
@@ -3990,7 +3990,7 @@ function VATReportScreen({invoices,contacts,transactions,companyProfile}){
 
       <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:8}}>Invoices this period</div>
       <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",marginBottom:24}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
+        <thead><tr style={{color:T.sub,fontSize:11}}>
           <td style={{padding:"6px 0"}}>Invoice</td><td>Customer</td><td>Date</td><td style={{textAlign:"right"}}>Excl. VAT</td><td style={{textAlign:"right"}}>VAT</td><td style={{textAlign:"right"}}>Total</td>
         </tr></thead>
         <tbody>
@@ -4020,7 +4020,7 @@ function VATReportScreen({invoices,contacts,transactions,companyProfile}){
         </div>
       </div>
       <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-        <thead><tr style={{color:T.muted,fontSize:11}}>
+        <thead><tr style={{color:T.sub,fontSize:11}}>
           <td style={{padding:"6px 0"}}>Bilag</td><td>Description</td><td>Date</td><td style={{textAlign:"right"}}>Excl. VAT</td><td style={{textAlign:"right"}}>VAT</td><td style={{textAlign:"right"}}>Total</td>
         </tr></thead>
         <tbody>
@@ -4510,7 +4510,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               {vlcShowCustomer&&<col style={{width:"13%"}}/>}
               <col style={{width:"9%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"9%"}}/>
             </colgroup>
-            <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+            <thead><tr style={{color:T.sub,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
               <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
               {vlcShowSupplier&&<td>Leverandør</td>}
               {vlcShowCustomer&&<td>Kunde</td>}
@@ -4639,7 +4639,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
               {showCustomerCol&&<col style={{width:"13%"}}/>}
               <col style={{width:"8%"}}/><col style={{width:"10%"}}/><col style={{width:"6%"}}/><col style={{width:"10%"}}/><col style={{width:"9%"}}/>
             </colgroup>
-            <thead><tr style={{color:T.muted,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+            <thead><tr style={{color:T.sub,fontSize:10,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
               <td style={{padding:"9px 12px"}}>Bilagsnr.</td><td>Dato</td><td>Beskrivelse</td>
               {showSupplierCol&&<td>Leverandør</td>}
               {showCustomerCol&&<td>Kunde</td>}
@@ -4812,7 +4812,7 @@ function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,det
           (and third) time in a separate always-visible section below. */}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{color:T.muted,fontSize:11,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+          <thead><tr style={{color:T.sub,fontSize:11,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
             <td style={{padding:"10px 14px"}}>Mva-kode</td><td>Beskrivelse</td><td style={{textAlign:"right"}}>Sats</td><td style={{textAlign:"right"}}>Grunnlag</td><td style={{textAlign:"right",padding:"10px 14px"}}>Mva</td>
           </tr></thead>
           <tbody>
@@ -5890,7 +5890,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
             </div>
             <div style={{fontSize:11,color:T.muted,marginBottom:12}}>These were reconciled by hand, or as the "extra" side of a many-to-one match — they don't carry a direct link to a specific statement line, so they're listed here separately.</div>
             <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-              <thead><tr style={{color:T.muted,fontSize:10}}><td style={{padding:"6px 0"}}>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td></tr></thead>
+              <thead><tr style={{color:T.sub,fontSize:10}}><td style={{padding:"6px 0"}}>Date</td><td>Description</td><td style={{textAlign:"right"}}>Amount</td><td></td></tr></thead>
               <tbody>
                 {matchedLedgerEntries.filter(t=>!matchedTxnIds.has(t.id)).map(t=>(
                   <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
@@ -6656,6 +6656,11 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   // silently jumped them to a different screen. Opens the same DetailModal
   // every other ledger view uses instead.
   const[detailTxn,setDetailTxn]=useState(null);
+  // The old "Edit existing" button navigated clean away from this screen
+  // to the whole separate Customers/Suppliers list — reported as getting
+  // "stuck", with no obvious way back to the ledger view being edited.
+  // Editing now opens in place, right from clicking the contact.
+  const[editingContactId,setEditingContactId]=useState(null);
   const[search,setSearch]=useState("");
   const[contactFilter,setContactFilter]=useState("");
   const[viewMonth,setViewMonth]=useState(()=>new Date().toISOString().slice(0,7));
@@ -6807,7 +6812,6 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>{type==="customer"?"Customer ledger":"Supplier ledger"}</h1>
         {onNavigate&&(
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>onNavigate("Contacts")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Edit existing</button>
             <button onClick={()=>onNavigate("ContactNew")} style={{background:T.accent,border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>+ New {type==="customer"?"customer":"supplier"}</button>
           </div>
         )}
@@ -6855,8 +6859,9 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
             )}
           </div>
         </div>
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none"}}>
-          <tbody><tr style={{color:T.muted,fontSize:11,background:T.bg}}>
+        <table style={{width:"100%",tableLayout:"fixed",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none"}}>
+          <colgroup><col style={{width:32}}/><col style={{width:76}}/><col style={{width:88}}/><col style={{width:84}}/><col style={{width:84}}/><col/><col style={{width:120}}/></colgroup>
+          <tbody><tr style={{color:T.sub,fontSize:11,background:T.bg}}>
             <td style={{padding:"9px 14px",width:32}}></td>
             <td style={{width:76}}>Bilag</td>
             <td style={{width:88}}>Invoice no.</td>
@@ -6875,7 +6880,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         {type==="customer"?"Customer":"Supplier"} ledger — {periodLabel}{contactFilter?` — ${(relevantContacts.find(c=>c.id===contactFilter)||{}).name||""}`:""} — {entriesView==="all"?"all items":entriesView==="closed"?"closed items":"open items"}
       </div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",marginTop:-1}}>
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <table style={{width:"100%",tableLayout:"fixed",fontSize:13,borderCollapse:"collapse"}}>
+          <colgroup><col style={{width:32}}/><col style={{width:76}}/><col style={{width:88}}/><col style={{width:84}}/><col style={{width:84}}/><col/><col style={{width:120}}/></colgroup>
           <tbody>
             {groups.map(({contact,txns,total})=>{
               const sel=selected[contact.id]||[];
@@ -6890,8 +6896,13 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                       )}
                     </td>
                     <td colSpan="6" style={{padding:"7px 14px 4px",background:T.bg}}>
-                      <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                        {contact.name}
+                      <div style={{display:"inline-flex",alignItems:"center",gap:8}}>
+                        <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                          {contact.name}
+                        </div>
+                        <button onClick={()=>setEditingContactId(contact.id)} title={`Edit ${contact.name}`} style={{background:"none",border:"none",padding:2,cursor:"pointer",color:T.muted,display:"inline-flex"}}>
+                          <i className="ti ti-pencil" style={{fontSize:13}}/>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -6970,6 +6981,19 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           onDelete={id=>onDeleteTxn&&onDeleteTxn(id)}
           onReverse={tx=>{onReverseTxn&&onReverseTxn(tx);setDetailTxn(null);}}
           onClose={()=>setDetailTxn(null)}/>
+      )}
+      {editingContactId&&(
+        <NewContactModal
+          defaultType={type}
+          country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
+          initial={contacts.find(c=>c.id===editingContactId)}
+          companyCurrency={companyProfile&&companyProfile.currency}
+          onSave={contact=>{
+            setContacts(contacts.map(c=>c.id===editingContactId?{...c,...contact,id:contact.id||editingContactId}:c));
+            setEditingContactId(null);
+          }}
+          onClose={()=>setEditingContactId(null)}
+        />
       )}
     </div>
   );

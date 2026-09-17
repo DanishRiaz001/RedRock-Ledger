@@ -551,7 +551,7 @@ function AdminPanel({onBack,profiles=[],onToggleActive,fetchClientAccessFor,gran
               )}
             </div>
             <table className="rr-sticky-thead" style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-              <thead><tr style={{color:T.muted,fontSize:11}}>
+              <thead><tr style={{color:T.sub,fontSize:11}}>
                 <td style={{padding:"6px 0"}}><input type="checkbox" checked={shownProfiles.length>0&&shownProfiles.every(p=>selectedUserIds.includes(p.id))} onChange={()=>{
                   if(shownProfiles.every(p=>selectedUserIds.includes(p.id)))setSelectedUserIds(prev=>prev.filter(id=>!shownProfiles.some(p=>p.id===id)));
                   else setSelectedUserIds(prev=>[...new Set([...prev,...shownProfiles.map(p=>p.id)])]);
