@@ -1636,7 +1636,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       const amountNum=parseFloat(l.amount);
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
       const vatAmount=vc?computeVat(amountNum,vc):null;
-      const res=await onSave({...l,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+      // A line added via "+ Add line" this session (see addGroupLine) only
+      // exists in local state so far — never posted to the database, so
+      // there's nothing for onSave (an UPDATE by id) to update. It's
+      // created for real here, for the first time, exactly like every
+      // other line was when the whole bilag was first entered.
+      const isNewLocalLine=String(l.id).startsWith("temp-");
+      const res=isNewLocalLine
+        ?await onAddLine({date:l.date,debitCode:l.debitCode,creditCode:l.creditCode,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount,bilag,currency:l.currency})
+        :await onSave({...l,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
       if(res&&res.error){
         setSavingGroup(false);
         alert(`Saved ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to save:\n\n${res.error}\n\nThis voucher is left partially saved — please check it before continuing.`);
@@ -1647,6 +1655,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     onClose();
   };
   const deleteGroupLine=async(id)=>{
+    // A line that was only ever added locally (never saved — see
+    // addGroupLine/saveGroup) has no database row to delete at all;
+    // removing it from local state IS the delete.
+    if(String(id).startsWith("temp-")){
+      setGroupLinesState(p=>p.filter(l=>l.id!==id));
+      setConfirmDelLine(null);
+      return;
+    }
     const res=await onDelete(id);
     if(res&&res.error){
       alert(`Couldn't delete this line:\n\n${res.error}`);
@@ -1658,6 +1674,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   };
   const deleteWholeGroup=async()=>{
     for(let li=0;li<groupLinesState.length;li++){
+      // A locally-added, never-saved line (see addGroupLine) has no
+      // database row to delete — skip straight past it.
+      if(String(groupLinesState[li].id).startsWith("temp-"))continue;
       const res=await onDelete(groupLinesState[li].id);
       if(res&&res.error){
         alert(`Deleted ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to delete:\n\n${res.error}\n\nThis voucher is left partially deleted — please check it before continuing.`);
@@ -1666,16 +1685,18 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     }
     onClose();
   };
-  const[addingLine,setAddingLine]=useState(false);
-  // Inserts a genuinely new transaction row sharing this SAME bilag —
-  // addTransaction (threaded through as onAddLine) already supports
-  // reusing an explicit bilag instead of always minting a fresh one.
-  // Starts blank so it reads the same way a freshly-added New Entry line
-  // does; it isn't part of groupValid's balance check until an account
-  // and amount are actually filled in.
-  const addGroupLine=async()=>{
-    if(!onAddLine||addingLine)return;
-    setAddingLine(true);
+  // Adds a new line to LOCAL state only — nothing is written to the
+  // database until the actual Save button is clicked (saveGroup creates
+  // it for real then, the same way every other line on this bilag was
+  // created). This used to call onAddLine (a real INSERT) the instant the
+  // button was clicked, so a blank line existed in the database before
+  // anything was typed into it or Save was ever pressed — confusing (the
+  // entry "already existed" despite nothing being saved) and meant
+  // deleting an untouched line required a real database delete instead of
+  // just discarding a draft. The temp- id marks it as not-yet-real so
+  // saveGroup knows to INSERT it (not UPDATE, which needs a real row to
+  // update) and deleteGroupLine knows it can just drop it locally.
+  const addGroupLine=()=>{
     const today=new Date().toISOString().split("T")[0];
     // A bilag that opened single-line has been living in `form`/
     // debitVatCode/creditVatCode (not groupLinesState) up to this exact
@@ -1691,10 +1712,8 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // it actually belongs, exactly like every other line on this invoice.
     const newDebitCode=entryModeVal==="customer_invoice"?"1500":"";
     const newCreditCode=entryModeVal==="supplier_invoice"?"2400":"";
-    const res=await onAddLine({date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:0,bilag});
-    setAddingLine(false);
-    if(res&&res.id)setGroupLinesState(p=>[...p,{id:res.id,date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
-    else if(res&&res.error)alert(`Couldn't add a new line:\n\n${res.error}`);
+    const tempId=`temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setGroupLinesState(p=>[...p,{id:tempId,date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
   };
 
   // Tripletex's own voucher screen: a "Details" tab holding the Voucher
@@ -2197,7 +2216,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         </div>
       )}
       {onAddLine&&(
-        <button onClick={addGroupLine} disabled={addingLine} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>{addingLine?"Adding…":"+ Add line"}</button>
+        <button onClick={addGroupLine} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>+ Add line</button>
       )}
       <div style={{display:"flex",gap:16,alignItems:"center"}}>
         <button style={{background:T.blue,color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:(isGroup?groupValid&&groupBalanced:valid)&&!savingAny?1:0.5}} onClick={saveAll}>{savingAny?"Saving…":"Save"}</button>
