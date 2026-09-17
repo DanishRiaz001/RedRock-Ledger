@@ -110,6 +110,22 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     return()=>window.removeEventListener("popstate",onPop);
   },[ledgerAcc,vatTerminView]);
   const[settingsWide,setSettingsWide]=useState(false);
+  // Which entry mode "New voucher"/"Supplier Invoice"/"Customer invoice"
+  // (three separate sidebar shortcuts into the same NewEntryForm screen)
+  // should start in — mirrors the same pattern Reskontro's own
+  // Customers/Suppliers sub-items already use (reskontroDefaultType).
+  const[newVoucherMode,setNewVoucherMode]=useState("receipt");
+  // SettingsMenu has its own internal "screen" sub-navigation (the main
+  // menu vs. User access, VAT codes, etc.) that setTab alone can't reset —
+  // clicking the sidebar's "Settings" link while ALREADY on the Settings
+  // tab is a no-op for tab itself (same value, no re-render triggered), so
+  // a user three screens deep inside Settings (e.g. User access) who
+  // clicks "Settings" again to back out stayed stuck exactly where they
+  // were. Bumped on every click of that link (whether or not tab actually
+  // changes) and watched by SettingsMenu to reset back to its own main
+  // menu — the one place in the app with this "one tab, several internal
+  // screens" shape, confirmed by search before writing this fix.
+  const[settingsResetTick,setSettingsResetTick]=useState(0);
   const[ledgerExpanded,setLedgerExpanded]=useState(false);
   const[lastDeleted,setLastDeleted]=useState(null);
   // Desktop gets a persistent sidebar + reflowed Dashboard; mobile keeps the
@@ -531,7 +547,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   if(tab==="AdminPanel"&&!isDesktop)return(isAdmin&&isAtHome)?(<AdminPanel onBack={()=>setTab("Dashboard")} profiles={profiles} onToggleActive={onToggleActive} fetchClientAccessFor={fetchClientAccessFor} grantClientAccess={grantClientAccess} revokeClientAccess={revokeClientAccess} fetchCompaniesFor={fetchCompaniesFor} fetchAccessRequests={fetchAccessRequests} dismissAccessRequest={dismissAccessRequest} resolveAccessRequestAsGranted={resolveAccessRequestAsGranted} companies={myOwnCompanies} createCompany={createCompany} renameCompany={renameCompany} requestCompanyDeletion={requestCompanyDeletion} confirmCompanyDeletion={confirmCompanyDeletion} cancelCompanyDeletion={cancelCompanyDeletion} fetchArchivedCompanies={fetchArchivedCompanies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId} ownUserId={user?user.id:null}/>):(<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-home" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Only available from Home</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Admin Panel is a platform-wide screen — switch to Home first.</div><button onClick={()=>{setViewingUserId(user.id);setActiveCompanyId("__admin_home__");}} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Go to Home</button></div>);
   if(tab==="BugLog"&&!isDesktop)return isAdmin?(<BugLogScreen onBack={()=>setTab("Dashboard")}/>):null;
   if(tab==="AuditLog"&&!isDesktop)return(<div style={{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto"}}><BackHeader title="Audit Trail" sub="SECURITY" onBack={()=>setTab("Dashboard")}/><div style={{padding:16}}><AuditLogScreen auditLog={auditLog} transactions={transactions} profiles={profiles} currentUserId={user?user.id:null}/></div></div>);
-  if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} activeCompanyId={activeCompanyId} inviteUserToCompany={inviteUserToCompany} fetchAccessInvitesFor={fetchAccessInvitesFor} revokeAccessInvite={revokeAccessInvite} fetchCompanyAccessGrants={fetchCompanyAccessGrants} revokeCompanyAccessGrant={revokeCompanyAccessGrant}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
+  if(tab==="Settings"&&!isDesktop)return(canWriteFull?<SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} activeCompanyId={activeCompanyId} inviteUserToCompany={inviteUserToCompany} fetchAccessInvitesFor={fetchAccessInvitesFor} revokeAccessInvite={revokeAccessInvite} fetchCompanyAccessGrants={fetchCompanyAccessGrants} revokeCompanyAccessGrant={revokeCompanyAccessGrant} resetSignal={settingsResetTick} isViewingOwnBooks={viewingUserId===user.id}/>:<div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted,marginBottom:16}}>Your access level for these books doesn't include Settings.</div><button onClick={()=>setTab("Dashboard")} style={{...btnRed,width:"auto",padding:"10px 20px"}}>Back to Dashboard</button></div>);
   if(tab==="Reskontro"&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} addTransaction={addTransactionNotified}/>);
@@ -983,6 +999,46 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </a>
           {!isAtHome&&(<>
+          {(()=>{
+            const voucherItems=[
+              {tab:"NewVoucher",label:"New voucher",mode:"receipt"},
+              {tab:"NewVoucher",label:"Supplier Invoice",mode:"supplier"},
+              {tab:"NewVoucher",label:"Customer invoice",mode:"customer"},
+              {tab:"Files",label:"Inbox"},
+              {tab:"DailyLog",label:"Daily Log"},
+              {tab:"VoucherDrafts",label:"Drafts",requiresWrite:true},
+              {tab:"Entries",label:"Voucher overview"},
+              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
+              {tab:"Import",label:"Import Excel",featureKey:"import",requiresWrite:true},
+              {tab:"VoucherSettings",label:"Settings"},
+            ].filter(it=>!it.featureKey||feat[it.featureKey]);
+            const voucherExpanded=expandedCat==="voucher";
+            const voucherActive=voucherItems.some(it=>it.tab===tab);
+            return(
+              <div>
+                <div onClick={()=>setExpandedCat(e=>e==="voucher"?null:"voucher")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:voucherActive&&!voucherExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:voucherActive&&!voucherExpanded?T.accentLight:"transparent"}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:voucherActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-receipt-2" style={{fontSize:13,color:voucherActive?"#fff":T.sub}}/></div>
+                  <span style={{fontSize:12,fontWeight:voucherActive?700:400,color:voucherActive?T.accent:T.sub,flex:1}}>Voucher</span>
+                  <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:voucherExpanded?"rotate(180deg)":"none"}}/>
+                </div>
+                {voucherExpanded&&(
+                  <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
+                    {voucherItems.map((it,i)=>{
+                      const active=tab===it.tab&&(!it.mode||newVoucherMode===it.mode);
+                      const locked=it.requiresWrite&&!canWriteEntries;
+                      const linkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab,it.mode?()=>setNewVoucherMode(it.mode):undefined,it.mode?{mode:it.mode}:undefined);
+                      return(
+                        <a key={it.tab+i} {...linkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
+                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
+                          {locked&&<i className="ti ti-lock" style={{fontSize:11,color:T.muted}}/>}
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {feat.bank&&(()=>{
             const bankItems=[
               {tab:"BankWhose",label:"Whose"},
@@ -1048,16 +1104,6 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           })()}
 
           {[
-            {id:"voucher",label:"Voucher",icon:"ti-receipt-2",items:[
-              {tab:"Files",label:"Inbox"},
-              {tab:"DailyLog",label:"Daily Log"},
-              {tab:"NewVoucher",label:"Advance Voucher",requiresWrite:true},
-              {tab:"VoucherDrafts",label:"Drafts",requiresWrite:true},
-              {tab:"Entries",label:"Voucher overview"},
-              {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
-              {tab:"Import",label:"Import Excel",featureKey:"import",requiresWrite:true},
-              {tab:"VoucherSettings",label:"Settings"},
-            ]},
             {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
               {tab:"InvoiceNew",label:"New invoice",requiresWrite:true},
               {tab:"InvoiceOverview",label:"Invoice overview"},
@@ -1158,7 +1204,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       const active=tab===it.tab;
                       const isPinned=pinnedTabs.some(p=>p.tab===it.tab);
                       const locked=it.requiresWrite&&!canWriteEntries;
-                      const leafLinkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab);
+                      const leafLinkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab,it.tab==="Settings"?()=>setSettingsResetTick(t=>t+1):undefined);
                       return(
                         <a key={it.tab} {...leafLinkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
                           <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
@@ -1183,7 +1229,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             const bugCount=item.id==="BugLog"?getBugs().filter(b=>!b.resolved).length:0;
             const tiIcon={Settings:"ti-settings",Profile:"ti-user",AdminPanel:"ti-shield-lock",BugLog:"ti-bug"}[item.id]||"ti-circle";
             return(
-              <a key={item.id} {...navProps(item.id)} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
+              <a key={item.id} {...navProps(item.id,item.id==="Settings"?()=>setSettingsResetTick(t=>t+1):undefined)} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:active?`3px solid ${T.accent}`:"3px solid transparent",background:active?T.accentLight:"transparent"}}>
                 <i className={`ti ${tiIcon}`} style={{fontSize:16,width:18,textAlign:"center",color:active?T.accent:T.sub}}/>
                 <span style={{fontSize:12,fontWeight:active?700:400,color:active?T.accent:T.sub,flex:1}}>{item.label}</span>
                 {bugCount>0&&<span style={{fontSize:9,fontWeight:800,background:"#dc2626",color:"#fff",borderRadius:10,padding:"2px 6px"}}>{bugCount}</span>}
@@ -1370,7 +1416,12 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           // TRUE window edge and caps the form side itself (1100px), so
           // an outer cap here just left a dead gray gap between the two
           // whenever the window was wider than the cap.
-          <NewEntryForm accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
+          // key forces a fresh mount whenever a different sidebar shortcut
+          // (New voucher / Supplier Invoice / Customer invoice) is clicked
+          // — initialEntryMode alone only seeds useState on first mount, so
+          // clicking "Customer invoice" right after "Supplier Invoice"
+          // without this would stay stuck on whichever mode mounted first.
+          <NewEntryForm key={newVoucherMode} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
         )}
 
         {tab==="VoucherDrafts"&&(
@@ -1638,7 +1689,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           </div>
         )}
 
-        {tab==="Settings"&&(canWriteFull?<div style={{maxWidth:settingsWide?"100%":900}}><SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} isDesktop={true} onWideChange={setSettingsWide} activeCompanyId={activeCompanyId} inviteUserToCompany={inviteUserToCompany} fetchAccessInvitesFor={fetchAccessInvitesFor} revokeAccessInvite={revokeAccessInvite} fetchCompanyAccessGrants={fetchCompanyAccessGrants} revokeCompanyAccessGrant={revokeCompanyAccessGrant}/></div>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted}}>Your access level for these books doesn't include Settings.</div></div>)}
+        {tab==="Settings"&&(canWriteFull?<div style={{maxWidth:settingsWide?"100%":900}}><SettingsMenu accounts={accounts} projects={projects} onSave={setAccounts} onAddAccount={addAccount} onUpdateAccount={updateAccount} contacts={contacts} setContacts={setContacts} transactions={transactions} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} budgets={budgets} saveBudget={saveBudget} restoreBudgets={restoreBudgets} companyProfile={companyProfile} saveCompanyProfile={saveCompanyProfile} invoices={invoices} quotes={quotes} recurringInvoices={recurringInvoices} employees={employees} onBack={()=>setTab("Dashboard")} onNavigate={setTab} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} isDesktop={true} onWideChange={setSettingsWide} activeCompanyId={activeCompanyId} inviteUserToCompany={inviteUserToCompany} fetchAccessInvitesFor={fetchAccessInvitesFor} revokeAccessInvite={revokeAccessInvite} fetchCompanyAccessGrants={fetchCompanyAccessGrants} revokeCompanyAccessGrant={revokeCompanyAccessGrant} resetSignal={settingsResetTick} isViewingOwnBooks={viewingUserId===user.id}/></div>:<div style={{background:"#fff",borderRadius:14,border:`1px solid ${T.border}`,padding:40,textAlign:"center",maxWidth:500}}><i className="ti ti-lock" style={{fontSize:32,color:T.muted,marginBottom:12}}/><div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:6}}>Settings access restricted</div><div style={{fontSize:12,color:T.muted}}>Your access level for these books doesn't include Settings.</div></div>)}
 
         {tab==="Profile"&&<div style={{maxWidth:700}}><ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin} isDesktop={true}/></div>}
 

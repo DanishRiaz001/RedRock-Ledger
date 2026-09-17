@@ -857,7 +857,19 @@ function FlexDateInput({value,onChange,style,inputStyle}){
       <input
         value={editing?draft:fmtDateDisplay(value)}
         placeholder="e.g. 120626 or 12062026"
-        onFocus={()=>{setEditing(true);setDraft("");}}
+        onFocus={()=>{
+          setEditing(true);
+          // Was setDraft("") — clicking a field that already had a date
+          // made it visually vanish (the input switches to showing `draft`
+          // the instant editing starts), which read as the date being
+          // lost even though the real value hadn't changed yet. Seeds the
+          // draft with the SAME short digit format this field already
+          // parses (DDMMYYYY) instead, so clicking in shows the current
+          // date, ready to select-all-and-retype or edit in place — never
+          // blank — and blurring untouched round-trips to the exact same
+          // value.
+          setDraft(value?`${value.slice(8,10)}${value.slice(5,7)}${value.slice(0,4)}`:"");
+        }}
         onChange={e=>setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){setEditing(false);}}}

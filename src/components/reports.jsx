@@ -755,8 +755,18 @@ function AccountModal({account,filtered,editForm,setEditForm,saveEdit,onClose,on
 // shape for one would not. A few genuinely informed defaults are called
 // out inline below (GroupingCategory, address split, per-line timestamps).
 
-function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange,activeCompanyId,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,isSuperAdmin=false}){
+function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,contacts,setContacts,transactions,sinkingFunds,saveSinkingFunds,budgets,saveBudget,restoreBudgets,companyProfile,saveCompanyProfile,invoices,quotes,recurringInvoices,employees,onBack,onNavigate,isAdmin=false,isDesktop=false,onWideChange,activeCompanyId,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,isSuperAdmin=false,resetSignal,isViewingOwnBooks=true}){
   const[screen,setScreen]=useState(null);
+  // Clicking the sidebar's "Settings" link while already on this screen
+  // doesn't change the outer tab (same value, no re-render) — nothing else
+  // tells this component to step back out of whatever sub-screen (User
+  // access, VAT codes, ...) it's showing. The parent bumps resetSignal on
+  // every click of that link specifically so this can reset itself.
+  const isFirstRender=React.useRef(true);
+  useEffect(()=>{
+    if(isFirstRender.current){isFirstRender.current=false;return;}
+    setScreen(null);
+  },[resetSignal]);
   const[contactType,setContactType]=useState("customer");
   const[newName,setNewName]=useState("");
   const[showNew,setShowNew]=useState(false);
@@ -1055,6 +1065,10 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
     </div>
   );
 
+  // Belt-and-suspenders alongside removing the menu entry above — a
+  // non-owner landing on this screen some other way (a stale link, a
+  // direct URL) still can't manage access to books that aren't theirs.
+  if(screen==="useraccess"&&!isViewingOwnBooks)return(<div style={{padding:24,textAlign:"center"}}><i className="ti ti-lock" style={{fontSize:28,color:T.muted,marginBottom:10}}/><div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Owner only</div><div style={{fontSize:12,color:T.muted}}>Only this company's owner can manage who has access to it.</div></div>);
   if(screen==="useraccess")return(
     <div style={isDesktop?{maxWidth:700}:{background:T.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",paddingBottom:40}}>
       {isDesktop?(
@@ -1385,7 +1399,11 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
         const settingsItems=[
           {icon:"🏢",tiIcon:"ti-building",label:"Company Info",sub:companyProfile.companyName||"Name, address, logo, VAT",action:()=>onNavigate&&onNavigate("CompanyInfo"),bg:T.blueBg,color:T.blue,section:"Company"},
           {icon:"📋",tiIcon:"ti-list-details",label:"Account Plan",sub:`${accounts.length} accounts`,action:()=>setScreen("plan"),bg:T.accentLight,color:T.accent,section:"Company"},
-          {icon:"🔑",tiIcon:"ti-key",label:"User Access",sub:"Invite an accountant or team member",action:()=>setScreen("useraccess"),bg:"#DBEAFE",color:"#2563EB",section:"Company"},
+          // Only the company's real owner can manage who else has access to
+          // it — an employee/accountant granted "Full" access to someone
+          // else's books could otherwise invite (or remove!) other people's
+          // access to a company that isn't theirs.
+          ...(isViewingOwnBooks?[{icon:"🔑",tiIcon:"ti-key",label:"User Access",sub:"Invite an accountant or team member",action:()=>setScreen("useraccess"),bg:"#DBEAFE",color:"#2563EB",section:"Company"}]:[]),
           {icon:"👥",tiIcon:"ti-users",label:"Customers & suppliers",sub:`${contacts.length} contacts`,action:()=>onNavigate?onNavigate("Contacts"):setScreen("contacts"),bg:T.redLight,color:T.red,section:"Company"},
           {icon:"🏷️",tiIcon:"ti-tag",label:"Project Tracking",sub:companyProfile.trackProjects?"On":"Off — tag entries by project/department",action:()=>onNavigate&&onNavigate("ProjectTracking"),bg:"#F3E8FF",color:"#9333EA",section:"Company"},
           {icon:"📥",tiIcon:"ti-file-import",label:"Opening Balance",sub:"Import a trial balance from another system",action:()=>onNavigate&&onNavigate("OpeningBalance"),bg:"#E0F2FE",color:"#0284C7",section:"Accounting"},
