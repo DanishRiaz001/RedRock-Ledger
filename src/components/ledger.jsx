@@ -125,7 +125,16 @@ const selSm={background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,col
 // Grouped dropdown (for new entry — shows AR/AP groups with icon)
 function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactPick,onCreateContact,contactId,inputStyle}){
   const[open,setOpen]=useState(false);
-  const[q,setQ]=useState("");
+  // q===null means "opened but nothing typed yet" — the box keeps showing
+  // the current selection (displayValue below) instead of blanking to
+  // empty the instant it's clicked, while the list underneath is still
+  // open and unfiltered so every option (including the current one) is
+  // right there to search through. Only once a keystroke actually lands
+  // does q become a real (possibly empty) search string. Used to reset
+  // straight to "" on open, which blanked the field's visible text before
+  // anything had been typed — same bug class as the date field's onFocus
+  // fixed earlier this session.
+  const[q,setQ]=useState(null);
   // "+ New account" / "+ New customer/supplier" open the SAME real popups
   // as the Chart of Accounts / Customers screens (NewAccountModal,
   // NewContactModal) instead of a cramped inline mini-form squeezed into
@@ -168,7 +177,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   // is exactly "post here, linked to them". Only offered where a caller
   // actually wants this (onContactPick passed) — every other AccDrop use
   // (sale account, bank account, …) is completely unaffected.
-  const qTrim=q.trim();
+  const qTrim=(q||"").trim();
   const contactMatches=useMemo(()=>{
     if(!onContactPick)return[];
     if(qTrim==="1500")return contacts.filter(c=>c.type==="customer");
@@ -202,9 +211,9 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   // the moment it opens near that ancestor's edge.
   const openAndSearch=()=>{
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:Math.max(r.width,320)});}
-    setOpen(true);setQ("");setActiveIdx(-1);
+    setOpen(true);setQ(null);setActiveIdx(-1);
   };
-  const closeAndRevert=()=>{setOpen(false);setQ("");setActiveIdx(-1);};
+  const closeAndRevert=()=>{setOpen(false);setQ(null);setActiveIdx(-1);};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. relatedTarget tells us where focus is going; when the
   // browser doesn't supply it (Safari on some events) fall back to a
@@ -244,7 +253,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     <div ref={containerRef} style={{position:"relative"}}>
       <input
         ref={inputRef}
-        value={open?q:displayValue}
+        value={open?(q===null?displayValue:q):displayValue}
         placeholder="— Select or type to search —"
         onFocus={openAndSearch}
         onChange={e=>{if(!open)setOpen(true);setQ(e.target.value);setActiveIdx(-1);}}
@@ -339,7 +348,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
       {showAccountModal&&(
         <NewAccountModal
           existingCodes={new Set(accounts.map(a=>a.code))}
-          initialCode={/^\d+$/.test(q)?q:""}
+          initialCode={/^\d+$/.test(q||"")?q:""}
           onCreate={submitCreate}
           onClose={()=>setShowAccountModal(false)}
         />
@@ -622,7 +631,12 @@ function NewAccountModal({onCreate,onClose,existingCodes,initialCode}){
 // needed, just live filtering by code, rate, or name.
 function VatDrop({value,onChange,options,disabled=false,inputStyle}){
   const[open,setOpen]=useState(false);
-  const[q,setQ]=useState("");
+  // q===null means "opened but nothing typed yet" — see AccDrop's identical
+  // sentinel above. Keeps the box showing the current VAT code instead of
+  // blanking to empty the instant it's clicked, while the list underneath
+  // opens unfiltered so every code (the current one included) is right
+  // there to search through.
+  const[q,setQ]=useState(null);
   const inputRef=React.useRef(null);
   const containerRef=React.useRef(null);
   const sel=options.find(o=>o.code===value);
@@ -642,9 +656,9 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
   const openAndSearch=()=>{
     if(disabled)return;
     if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:r.width});}
-    setOpen(true);setQ("");setActiveIdx(-1);
+    setOpen(true);setQ(null);setActiveIdx(-1);
   };
-  const closeAndRevert=()=>{setOpen(false);setQ("");setActiveIdx(-1);};
+  const closeAndRevert=()=>{setOpen(false);setQ(null);setActiveIdx(-1);};
   const handleBlur=e=>{
     const next=e.relatedTarget;
     if(next&&containerRef.current&&containerRef.current.contains(next))return;
@@ -658,7 +672,7 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
     <div ref={containerRef} style={{position:"relative",opacity:disabled?0.6:1}}>
       <input
         ref={inputRef}
-        value={open?q:displayValue}
+        value={open?(q===null?displayValue:q):displayValue}
         placeholder="— Select VAT code —"
         disabled={disabled}
         onFocus={openAndSearch}
@@ -1757,9 +1771,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // wrapper), so width is read straight off the window instead of being
   // threaded through every caller. Wide enough for a permanent side-by-side
   // attachment panel; narrow falls back to the Details/Attachments tabs.
-  const[isWide,setIsWide]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=900);
+  // On the WEB app (never the native app), FinanceTracker's own 220px
+  // sidebar always eats into the window's real width — this used to
+  // compare the raw window width against 900 with no allowance for that,
+  // so a browser window between ~900 and ~1120px wide reported "wide"
+  // (triggering the 2-column split + every 1fr/230px field grid on this
+  // screen) with well under 900px of ACTUAL usable room, pushing the
+  // rightmost fields on each row past the visible edge instead of
+  // stacking — the same isDesktopChrome bug class fixed elsewhere on this
+  // screen, here for the width THRESHOLD rather than a fixed offset.
+  const contentWidth=()=>typeof window==="undefined"?0:window.innerWidth-(isNativeApp()?0:220);
+  const[isWide,setIsWide]=useState(()=>contentWidth()>=900);
   useEffect(()=>{
-    const onResize=()=>setIsWide(window.innerWidth>=900);
+    const onResize=()=>setIsWide(contentWidth()>=900);
     window.addEventListener("resize",onResize);
     return()=>window.removeEventListener("resize",onResize);
   },[]);
@@ -2083,25 +2107,27 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                       )}
                     </div>
                   </div>
-                  {/* Description narrowed ~40% from its old even split with
-                      VAT — VAT now takes the freed space, sitting right
-                      where the shorter description ends, and shows this
-                      line's own computed VAT amount next to the code
-                      picker (0 until a code and amount are both filled
-                      in) instead of just the bare dropdown. */}
-                  <div style={{display:"grid",gridTemplateColumns:isWide?"0.6fr 1fr":"1fr",gap:isWide?"8px 16px":8,marginTop:8}}>
+                  {/* Same 1fr/230px split as the Account+Amount row above —
+                      Description lines up under Account, and the VAT block
+                      is pinned to the exact same 230px column as Amount, so
+                      its right edge lands right where the account line's
+                      amount ends instead of drifting wider on its own
+                      0.6fr/1fr split. VAT dropdown trimmed a little further
+                      within that narrower column to leave the amount
+                      readout room. */}
+                  <div style={{display:"grid",gridTemplateColumns:isWide?"1fr 230px":"1fr",gap:isWide?"8px 16px":8,marginTop:8}}>
                     <div>
                       <div style={fieldLbl}>Description</div>
                       <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={lineField}/>
                     </div>
-                    <div style={{display:"flex",alignItems:"flex-end",gap:12}}>
-                      <div style={{flex:"0 0 60%"}}>
+                    <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
+                      <div style={{flex:"0 0 52%"}}>
                         <div style={fieldLbl}>VAT</div>
-                        <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={lineField}/>
+                        <VatDrop value={otherVatCode||""} onChange={code=>setOther({vatCode:code})} options={vatCodeOptions(vatDirection)} disabled={otherLocked} inputStyle={{...lineField,fontSize:9.5}}/>
                       </div>
-                      <div style={{textAlign:"right",flex:1}}>
+                      <div style={{textAlign:"right",flex:1,minWidth:0}}>
                         <div style={fieldLbl}>VAT amount</div>
-                        <div style={{...lineField,borderBottom:"none",padding:"6px 0",fontWeight:600,color:lineVatAmt?T.text:T.muted}}>{fmt(lineVatAmt)}</div>
+                        <div style={{...lineField,borderBottom:"none",padding:"6px 0",fontWeight:600,color:lineVatAmt?T.text:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmt(lineVatAmt)}</div>
                       </div>
                     </div>
                   </div>
@@ -2126,6 +2152,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 </div>
               );
             })}
+            {/* Lives right under this card's own lines now instead of down
+                near Save/Delete, well past the totals footer and the
+                Description/VAT card — clicking it used to add a line here
+                but the button itself sat far below where that line actually
+                appeared. */}
+            {onAddLine&&(
+              <button onClick={addGroupLine} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginTop:mainRows.length?14:0}}>+ Add line</button>
+            )}
           </div>
           <div style={{padding:"10px 14px",borderTop:`1px solid ${T.border}`,background:balanced?T.bg:T.redLight,display:"flex",gap:20,justifyContent:"flex-end"}}>
             <div><div style={{fontSize:8,color:T.muted,fontWeight:700,textTransform:"uppercase"}}>Debit</div><div style={{fontSize:12,fontWeight:700,color:T.text}}>{fmt(totals.totalDebit)}</div></div>
@@ -2314,7 +2348,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           Off by {fmt(Math.abs(groupTotals.totalDebit-groupTotals.totalCredit))} — total debit {fmt(groupTotals.totalDebit)} vs total credit {fmt(groupTotals.totalCredit)}. Save is disabled until these match.
         </div>
       )}
-      {onAddLine&&(
+      {/* Invoice mode (customer/supplier invoice) puts its own "+ Add line"
+          right under the Sales lines/Costs card itself (see invoiceLinesGrid
+          above) — this generic one stays only for the plain Advance Voucher
+          grid, which has no such card of its own to live inside. */}
+      {onAddLine&&!isInvoiceMode&&(
         <button onClick={addGroupLine} style={{background:"none",border:"none",color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",padding:0}}>+ Add line</button>
       )}
       <div style={{display:"flex",gap:16,alignItems:"center"}}>
@@ -2336,20 +2374,29 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           )
         ):isGroup?(
           confirmDelGroup?(
-            <button onClick={deleteWholeGroup} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete whole bilag</button>
+            <>
+              <button onClick={deleteWholeGroup} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete whole bilag</button>
+              {/* A confirm step with no way back except closing the whole
+                  editor wasn't really a way to back out — this lets a
+                  mis-click on Delete just be undone in place. */}
+              <button onClick={()=>setConfirmDelGroup(false)} style={{background:"none",border:"none",color:T.muted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </>
           ):(
             <button onClick={()=>setConfirmDelGroup(true)} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
           )
         ):(
           confirmDel?(
-            <button onClick={async()=>{
-              // Same fix as saveAll — wait for the delete to actually
-              // finish and check it worked before closing, instead of
-              // firing it and closing on the same tick.
-              const res=await onDelete(txn.id);
-              if(res&&res.error){alert(`Couldn't delete this entry:\n\n${res.error}`);return;}
-              onClose();
-            }} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete</button>
+            <>
+              <button onClick={async()=>{
+                // Same fix as saveAll — wait for the delete to actually
+                // finish and check it worked before closing, instead of
+                // firing it and closing on the same tick.
+                const res=await onDelete(txn.id);
+                if(res&&res.error){alert(`Couldn't delete this entry:\n\n${res.error}`);return;}
+                onClose();
+              }} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Confirm delete</button>
+              <button onClick={()=>setConfirmDel(false)} style={{background:"none",border:"none",color:T.muted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            </>
           ):(
             <button onClick={()=>setConfirmDel(true)} style={{background:"none",border:"none",color:T.red,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
           )
@@ -2472,7 +2519,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           now (Inbox is the reference) — was its own smaller 22%-based
           520/300/800. */}
       <ResizableSplit
-        defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))}
+        defaultRightWidth={Math.min(1100,Math.max(380,Math.round(contentWidth()*0.3)))}
         minRightWidth={380} maxRightWidth={1100}
         collapsible collapseLabel="Hide attachment" expandLabel="Show attachment"
         left={detailsTab}
