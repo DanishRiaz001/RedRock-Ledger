@@ -6,6 +6,7 @@ import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilen
 import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
 import { isNativeApp } from "../lib/native.js";
+import { fetchHistoricalRate } from "../lib/fx.js";
 
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 // A tiny cross-component navigation hook — set once by FinanceTracker on
@@ -1646,7 +1647,19 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // into something the user can actually see and act on.
     for(let li=0;li<groupLinesState.length;li++){
       const l=groupLinesState[li];
-      const amountNum=parseFloat(l.amount);
+      const typedAmount=parseFloat(l.amount)||0;
+      const lineCur=(l.currency||defaultCurrency).toUpperCase();
+      const lineBaseAmt=parseFloat(l.amountNok);
+      // A line in a foreign currency books the CONVERTED base-currency
+      // figure to the ledger (amountNok, resolved via fetchHistoricalRate
+      // as the amount was typed — see the Amount+Currency picker above),
+      // keeping the as-typed foreign figure alongside as currency/
+      // currencyAmount. This mirrors resolveFx in appshell.jsx exactly —
+      // until this fix, this picker only tagged a currency label with no
+      // conversion math behind it at all, so every edited foreign-currency
+      // line posted its raw foreign figure straight to the base ledger.
+      const useForeign=lineCur!==defaultCurrency&&lineBaseAmt>0;
+      const amountNum=useForeign?Math.round(lineBaseAmt*100)/100:typedAmount;
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
       const vatAmount=vc?computeVat(amountNum,vc):null;
       // A line added via "+ Add line" this session (see addGroupLine) only
@@ -1656,8 +1669,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       // other line was when the whole bilag was first entered.
       const isNewLocalLine=String(l.id).startsWith("temp-");
       const res=isNewLocalLine
-        ?await onAddLine({date:l.date,debitCode:l.debitCode,creditCode:l.creditCode,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount,bilag,currency:l.currency})
-        :await onSave({...l,description:l.description||masterDescription,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+        // addTransaction (onAddLine) resolves its own FX from the typed
+        // foreign amount + amountNok — pass it the raw figures, not the
+        // already-resolved amountNum, so it doesn't get double-converted.
+        ?await onAddLine({date:l.date,debitCode:l.debitCode,creditCode:l.creditCode,description:l.description||masterDescription,amount:typedAmount,amountNok:useForeign?amountNum:undefined,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount,bilag,currency:l.currency})
+        // saveEdit (onSave) does NOT resolve FX itself — it persists
+        // whatever amount/currency/currencyAmount it's given verbatim, so
+        // the base-currency figure has to be computed here first.
+        :await onSave({...l,description:l.description||masterDescription,amount:amountNum,currency:useForeign?lineCur:null,currencyAmount:useForeign?typedAmount:null,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
       if(res&&res.error){
         setSavingGroup(false);
         alert(`Saved ${li} of ${groupLinesState.length} line(s), then line ${li+1} failed to save:\n\n${res.error}\n\nThis voucher is left partially saved — please check it before continuing.`);
@@ -1744,7 +1763,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     window.addEventListener("resize",onResize);
     return()=>window.removeEventListener("resize",onResize);
   },[]);
-  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,currency:form.currency,debitVatCode,creditVatCode,contactId:form.contactId}];
+  const gridRows=isGroup?groupLinesState:[{id:txn.id,date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,currency:form.currency,amountNok:form.amountNok,debitVatCode,creditVatCode,contactId:form.contactId}];
   // What this entry was actually created AS (a supplier invoice, a
   // customer invoice, or nothing tracked — receipt/manual/bank/etc.) —
   // tagged once at creation (invoicing.jsx's saveInvoice), never touched
@@ -1768,6 +1787,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     if("creditCode"in patch)formPatch.creditCode=patch.creditCode;
     if("amount"in patch)formPatch.amount=patch.amount;
     if("currency"in patch)formPatch.currency=patch.currency;
+    if("amountNok"in patch)formPatch.amountNok=patch.amountNok;
     if(Object.keys(formPatch).length)setForm(f=>({...f,...formPatch}));
     if("debitVatCode"in patch)setDebitVatCode(patch.debitVatCode);
     if("creditVatCode"in patch)setCreditVatCode(patch.creditVatCode);
@@ -1780,7 +1800,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     if(!valid||savingSingle)return;
     if(isDateClosed(form.date)){alert(`Period closed up to ${getPeriodClose()}. Edit the date first.`);return;}
     if(tagTransaction&&(form.moneySourceId||"")!==(txn.moneySourceId||""))tagTransaction(txn.id,form.moneySourceId||null);
-    const amountNum=parseFloat(form.amount);
+    const typedAmount=parseFloat(form.amount)||0;
+    const formCur=(form.currency||defaultCurrency).toUpperCase();
+    const formBaseAmt=parseFloat(form.amountNok);
+    // saveEdit (onSave) doesn't resolve FX itself — same reasoning as the
+    // group-line save path above, this has to compute the base-currency
+    // figure to post before calling it.
+    const useForeign=formCur!==defaultCurrency&&formBaseAmt>0;
+    const amountNum=useForeign?Math.round(formBaseAmt*100)/100:typedAmount;
     // The transaction only has one vatCode/vatPct/vatAmount slot — debit
     // takes priority when both sides somehow carry a code, same
     // convention Register voucher's general lines use.
@@ -1793,7 +1820,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     // checked: only a confirmed success closes the editor; a failure stays
     // open and tells the user what happened instead of silently vanishing
     // the entry.
-    const res=await onSave({...form,amount:amountNum,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
+    const res=await onSave({...form,amount:amountNum,currency:useForeign?formCur:null,currencyAmount:useForeign?typedAmount:null,vatCode:vc?vc.code:null,vatPct:vc?vc.rate:null,vatAmount});
     setSavingSingle(false);
     if(res&&res.error){alert(`Couldn't save this entry:\n\n${res.error}`);return;}
     onClose();
@@ -1902,15 +1929,35 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                   </>
                 )}
               </div>
-              <div style={{...rowCell,minWidth:0,display:"flex",alignItems:"baseline",gap:5}}>
-                <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
-                {/* Plain text, no drawn chevron — a real dropdown though
-                    (ThemedSelect, hideChevron), same as every other
-                    currency picker in the app. Used to be a bare native
-                    <select> styled to look like plain text, which still
-                    opened the browser's own unstyled OS options list the
-                    moment you clicked it. */}
-                <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+              <div style={{...rowCell,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+                  <CalcAmountInput value={l.amount} onChange={v=>{
+                    updateRow(li,{amount:v});
+                    const lCur=(l.currency||defaultCurrency).toUpperCase();
+                    if(lCur!==defaultCurrency&&l.date&&parseFloat(v)>0){
+                      fetchHistoricalRate(lCur,defaultCurrency,l.date).then(res=>{
+                        if(res)updateRow(li,{amountNok:String(Math.round(parseFloat(v)*res.rate*100)/100)});
+                      });
+                    }
+                  }} style={{...flatField,fontSize:12,fontWeight:700,width:"100%",padding:"6px 2px",textAlign:"right"}}/>
+                  {/* Plain text, no drawn chevron — a real dropdown though
+                      (ThemedSelect, hideChevron), same as every other
+                      currency picker in the app. Used to be a bare native
+                      <select> styled to look like plain text, which still
+                      opened the browser's own unstyled OS options list the
+                      moment you clicked it. */}
+                  <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>{
+                    updateRow(li,{currency:v,amountNok:""});
+                    if(v!==defaultCurrency&&l.date&&parseFloat(l.amount)>0){
+                      fetchHistoricalRate(v,defaultCurrency,l.date).then(res=>{
+                        if(res)updateRow(li,{amountNok:String(Math.round((parseFloat(l.amount)||0)*res.rate*100)/100)});
+                      });
+                    }
+                  }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
+                </div>
+                {(l.currency||defaultCurrency).toUpperCase()!==defaultCurrency&&(
+                  <CalcAmountInput placeholder={defaultCurrency} value={l.amountNok||""} onChange={v=>updateRow(li,{amountNok:v})} style={{...flatField,fontSize:10.5,fontWeight:600,color:T.muted,width:"100%",padding:"4px 2px",textAlign:"right",marginTop:2}}/>
+                )}
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
                 {isGroup&&(confirmDelLine===l.id?(
@@ -2005,9 +2052,35 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                     <div>
                       <div style={fieldLbl}>Amount</div>
                       <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                        <CalcAmountInput value={l.amount} onChange={v=>updateRow(li,{amount:v})} style={{...lineField,fontWeight:700,textAlign:"right"}}/>
-                        <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>updateRow(li,{currency:v})} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                        <CalcAmountInput value={l.amount} onChange={v=>{
+                          updateRow(li,{amount:v});
+                          // Re-price the base-currency equivalent whenever
+                          // the foreign amount changes — this line's own
+                          // currency picker never did ANY conversion before
+                          // (purely cosmetic tag, no amount math at all);
+                          // see saveGroup for where amountNok actually
+                          // becomes the posted ledger amount.
+                          const lCur=(l.currency||defaultCurrency).toUpperCase();
+                          const lDate=l.date||form.date;
+                          if(lCur!==defaultCurrency&&lDate&&parseFloat(v)>0){
+                            fetchHistoricalRate(lCur,defaultCurrency,lDate).then(res=>{
+                              if(res)updateRow(li,{amountNok:String(Math.round(parseFloat(v)*res.rate*100)/100)});
+                            });
+                          }
+                        }} style={{...lineField,fontWeight:700,textAlign:"right"}}/>
+                        <ThemedSelect value={l.currency||defaultCurrency} onChange={v=>{
+                          updateRow(li,{currency:v,amountNok:""});
+                          const lDate=l.date||form.date;
+                          if(v!==defaultCurrency&&lDate&&parseFloat(l.amount)>0){
+                            fetchHistoricalRate(v,defaultCurrency,lDate).then(res=>{
+                              if(res)updateRow(li,{amountNok:String(Math.round((parseFloat(l.amount)||0)*res.rate*100)/100)});
+                            });
+                          }
+                        }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                       </div>
+                      {(l.currency||defaultCurrency).toUpperCase()!==defaultCurrency&&(
+                        <CalcAmountInput placeholder={`Amount in ${defaultCurrency}`} value={l.amountNok||""} onChange={v=>updateRow(li,{amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"right"}}/>
+                      )}
                     </div>
                   </div>
                   {/* Description narrowed ~40% from its old even split with
