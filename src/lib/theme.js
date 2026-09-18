@@ -30,8 +30,12 @@ const T = {
   blue:"#0D7377",blueBg:"#E8F4F4",
   orange:"#D97706",orangeBg:"#FFFBEB",
   purple:"#7C3AED",purpleBg:"#EDE9FE",
-  // Typography colors
-  text:"#1F2937",sub:"#6B7280",muted:"#9CA3AF",
+  // Typography colors — sub/muted darkened a step from the original
+  // #6B7280/#9CA3AF (reported as too light/hard to read across the site,
+  // same complaint that already led to darkening table headers
+  // specifically); kept a clear step below `text` so the muted/sub/text
+  // hierarchy is still legible, just less washed-out throughout.
+  text:"#1F2937",sub:"#525A68",muted:"#808896",
   // --- SPACING SCALE (4px grid) — for new/updated components going forward ---
   spacing:{xs:"4px",sm:"8px",md:"12px",lg:"16px",xl:"24px",xxl:"32px"},
   // --- CORNER SCALE ---

@@ -4251,9 +4251,16 @@ function VATTerminScreen({transactions,accounts,contacts,onOpenTermin,vatTerminS
 // exact same DetailModal used everywhere else in the app (same edit form,
 // same comment thread), so "controlled"/notes just reuses the comment
 // system that already exists rather than inventing a parallel one.
-function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps,vatTerminStatus={},onSaveVatStatus,companyProfile}){
+function VATTerminDetailScreen({termin,transactions,accounts,contacts,onBack,detailModalProps,vatTerminStatus={},onSaveVatStatus,companyProfile,openTxn:openTxnProp,setOpenTxn:setOpenTxnProp}){
   const info=terminInfo(termin.year,termin.n);
-  const[openTxn,setOpenTxn]=useState(null);
+  // Controlled by the parent when given (FinanceTracker threads it into the
+  // same back-navigation stack tab/ledgerAcc/vatTerminView already use — a
+  // bilag opened from in here was invisible to that history trail, so Back
+  // skipped past both it and this whole drill-down in one press). Falls
+  // back to local state for any other caller that doesn't control it.
+  const[localOpenTxn,setLocalOpenTxn]=useState(null);
+  const openTxn=setOpenTxnProp?openTxnProp:localOpenTxn;
+  const setOpenTxn=setOpenTxnProp||setLocalOpenTxn;
   const status=vatTerminStatus[`${termin.year}-${termin.n}`]||{};
   const markFiled=()=>{onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{filed:true,filedDate:new Date().toISOString().slice(0,10)});};
   const markPaid=()=>{onSaveVatStatus&&onSaveVatStatus(termin.year,termin.n,{paid:true,paidDate:new Date().toISOString().slice(0,10)});};

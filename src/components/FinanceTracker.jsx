@@ -52,6 +52,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[ledgerAcc,setLedgerAcc]=useState(null);
   const[vatTerminView,setVatTerminView]=useState(null); // null = Termin list, or {year,n} = drill-down
+  // A bilag opened FROM INSIDE a Mva-meldinger drill-down (VATTerminDetailScreen's
+  // own local openTxn, before this) wasn't part of this trail either — same
+  // bug as vatTerminView above, one level deeper: Back from an open bilag
+  // skipped past both it AND the termin drill-down in one press. Lifted up
+  // here (and passed down as a controlled prop) so it can join the same
+  // history stack, checked before vatTerminView since it's the deeper level.
+  const[vatTerminOpenTxn,setVatTerminOpenTxn]=useState(null);
   // This app has no client-side router — switching screens is just this
   // `tab` state, so the browser's real history never grew past one entry.
   // A user could navigate three or four screens deep and one Back press
@@ -69,7 +76,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       params.set("tab",tab);
       window.history.pushState({tab},"",`${window.location.pathname}?${params.toString()}`);
     }catch{window.history.pushState({tab},"");}
-  },[tab,ledgerAcc,vatTerminView]);
+  },[tab,ledgerAcc,vatTerminView,vatTerminOpenTxn]);
   // Builds the real href for a sidebar/nav link to a tab, preserving any
   // other query params already on the URL (e.g. ?company=). Paired with
   // navProps below, which intercepts a plain left-click to keep using the
@@ -97,6 +104,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     const onPop=()=>{
       poppingRef.current=true;
       if(ledgerAcc){setLedgerAcc(null);return;}
+      // Deepest level first — a bilag opened from inside the Mva-meldinger
+      // drill-down closes before the drill-down itself steps back.
+      if(vatTerminOpenTxn){setVatTerminOpenTxn(null);return;}
       // Mva-meldinger's own drill-down (termin -> spesifikasjon -> VAT code
       // ledger) isn't part of this history trail at all — without this,
       // Back from anywhere inside it skipped straight past the Mva-meldinger
@@ -108,7 +118,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[ledgerAcc,vatTerminView]);
+  },[ledgerAcc,vatTerminView,vatTerminOpenTxn]);
   const[settingsWide,setSettingsWide]=useState(false);
   // Which entry mode "New voucher"/"Supplier Invoice"/"Customer invoice"
   // (three separate sidebar shortcuts into the same NewEntryForm screen)
@@ -1562,7 +1572,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           !feat.vat?<DisabledScreen title="Mva-meldinger" onBack={()=>setTab("Dashboard")}/>
           :<ScreenErrorBoundary name="Mva-meldinger">
             {vatTerminView
-              ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus} companyProfile={companyProfile} detailModalProps={{
+              ?<VATTerminDetailScreen termin={vatTerminView} transactions={transactions} accounts={accounts} contacts={contacts} onBack={()=>setVatTerminView(null)} vatTerminStatus={vatTerminStatus} onSaveVatStatus={saveVatTerminStatus} companyProfile={companyProfile} openTxn={vatTerminOpenTxn} setOpenTxn={setVatTerminOpenTxn} detailModalProps={{
                   addTransaction:addTransactionNotified,
                   auditLog,profiles,currentUserId:user?user.id:null,moneySources:effectiveMoneySources,projects,tagTransaction,
                   fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,fetchEntryComments,addEntryComment,
