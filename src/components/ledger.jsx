@@ -5,6 +5,7 @@ import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache,
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
+import { isNativeApp } from "../lib/native.js";
 
 const getGroupLinesMap=()=>{try{return JSON.parse(localStorage.getItem("rr_group_lines")||"{}")}catch{return{};}};
 // A tiny cross-component navigation hook — set once by FinanceTracker on
@@ -2031,11 +2032,24 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                       </div>
                     </div>
                   </div>
-                  {isGroup&&mainRows.length>1&&(confirmDelLine===l.id?(
-                    <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{position:"absolute",top:0,right:0,background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
-                  ):(
-                    <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{position:"absolute",top:0,right:0,background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
-                  ))}
+                  {/* A line with no account and no amount yet has nothing
+                      worth confirming — this is exactly the blank line
+                      "+ Add line" just created (or one someone started then
+                      backed out of), so one click removes it immediately
+                      instead of asking to confirm twice. A line that
+                      actually carries data still gets the confirm step, to
+                      protect against losing real work by mis-click. */}
+                  {isGroup&&mainRows.length>1&&(()=>{
+                    const lineHasData=!!(otherCode||parseFloat(l.amount)>0);
+                    if(!lineHasData)return(
+                      <button onClick={()=>deleteGroupLine(l.id)} title="Remove this empty line" style={{position:"absolute",top:0,right:0,background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
+                    );
+                    return confirmDelLine===l.id?(
+                      <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{position:"absolute",top:0,right:0,background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
+                    ):(
+                      <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{position:"absolute",top:0,right:0,background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -2703,9 +2717,17 @@ function DetailModal({txn,accounts,contacts,transactions=[],addTransaction,fetch
   // must NOT cover them: an unqualified full-viewport inset:0 sat above
   // the sidebar too, making it disappear entirely while editing — the
   // website should stay fully intact/navigable no matter what bilag is
-  // open. Narrow/mobile call sites of this same DetailModal have no such
-  // chrome to protect, so they still get the full viewport.
-  const isDesktopChrome=typeof window!=="undefined"&&window.innerWidth>=900;
+  // open. Only the native app (MobileApp.jsx, via isNativeApp()) has no
+  // such chrome to protect — the WEB app always uses FinanceTracker's
+  // fixed sidebar regardless of window width (appshell.jsx picks
+  // FinanceTracker vs MobileApp purely on isNativeApp(), never on window
+  // size), so this used to guess from window.innerWidth>=900 instead —
+  // wrong the moment a browser window was narrower than 900px: the
+  // overlay stopped offsetting for a sidebar that was still very much
+  // there, so its content laid out assuming the FULL window width and
+  // its rightmost fields ran straight off the true right edge of the
+  // screen (invisible, clipped) instead of wrapping.
+  const isDesktopChrome=!isNativeApp();
   if(showEdit)return(
     <div style={{position:"fixed",top:isDesktopChrome?60:0,left:isDesktopChrome?220:0,right:0,bottom:0,background:T.bg,zIndex:300,overflowY:"auto"}}>
     {showComments&&(
