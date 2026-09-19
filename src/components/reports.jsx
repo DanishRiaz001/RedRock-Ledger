@@ -5274,19 +5274,40 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     }catch{}
     return!/cash/i.test(a.name);
   }),[accounts]);
-  const[selectedAccount,setSelectedAccount]=useState(bankAccounts[0]?bankAccounts[0].code:"");
-  // Default to the earliest month that actually has activity for this
-  // account and isn't reconciled/approved yet — not always "now" — so
-  // opening the screen lands on the real work-in-progress month (e.g. an
-  // account whose current month is quiet but May is still open) instead of
-  // an empty current month the user then has to navigate away from.
-  const earliestOpenMonth=acctCode=>{
+  // Reopens whichever bank the user was last reconciling instead of always
+  // landing on the first account in the list — a real workflow (upload a
+  // statement, work through it, come back tomorrow) shouldn't have to
+  // re-pick the same bank every single visit. Falls back to the first
+  // account when nothing's saved yet, or the saved one no longer exists for
+  // this company (a different company's account code, or since removed).
+  const LAST_BANK_RECON_ACCOUNT_KEY="rr_last_bank_recon_account";
+  const[selectedAccount,setSelectedAccountState]=useState(()=>{
+    let saved=null;
+    try{saved=localStorage.getItem(LAST_BANK_RECON_ACCOUNT_KEY);}catch{}
+    if(saved&&bankAccounts.some(a=>a.code===saved))return saved;
+    return bankAccounts[0]?bankAccounts[0].code:"";
+  });
+  const setSelectedAccount=code=>{
+    setSelectedAccountState(code);
+    try{if(code)localStorage.setItem(LAST_BANK_RECON_ACCOUNT_KEY,code);}catch{}
+  };
+  // Default to the MOST RECENT month that still has open (not yet
+  // reconciled/approved) activity for this account — was the EARLIEST such
+  // month instead, on the reasoning that the oldest backlog should get
+  // cleared first; in practice that meant returning to this screen after
+  // approving a batch of older months kept landing back on whatever's still
+  // oldest rather than the period actually being worked on right now. Only
+  // once every month with activity is fully approved does this fall back to
+  // the latest month overall, then to the current calendar month with no
+  // activity at all.
+  const mostRecentOpenMonth=acctCode=>{
     if(!acctCode)return new Date().toISOString().slice(0,7);
     const months=Array.from(new Set(transactions.filter(t=>(t.debitCode===acctCode||t.creditCode===acctCode)&&t.date).map(t=>t.date.slice(0,7)))).sort();
     if(!months.length)return new Date().toISOString().slice(0,7);
-    return months.find(m=>!isBankReconApproved(acctCode,m))||months[months.length-1];
+    for(let i=months.length-1;i>=0;i--)if(!isBankReconApproved(acctCode,months[i]))return months[i];
+    return months[months.length-1];
   };
-  const[month,setMonth]=useState(()=>earliestOpenMonth(selectedAccount));
+  const[month,setMonth]=useState(()=>mostRecentOpenMonth(selectedAccount));
   const[selectedLineIds,setSelectedLineIds]=useState(()=>new Set()); // right side, multi-select
   const[selectedTxnIds,setSelectedTxnIds]=useState(()=>new Set()); // left side, multi-select
   const[dismissedSuggestions,setDismissedSuggestions]=useState(()=>new Set()); // line ids where the auto-suggested match was dismissed
@@ -5982,7 +6003,7 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
           <input placeholder="Search" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inp,paddingLeft:30,background:"#fff",width:"100%",borderRadius:8,height:36,boxSizing:"border-box"}}/>
         </div>
         <div style={{width:210,flexShrink:0}}>
-          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);setMonth(earliestOpenMonth(v));clearSelection();}} accounts={bankAccounts} inputStyle={{height:36,minHeight:36,boxSizing:"border-box"}}/>
+          <AccDrop value={selectedAccount} onChange={v=>{setSelectedAccount(v);setMonth(mostRecentOpenMonth(v));clearSelection();}} accounts={bankAccounts} inputStyle={{height:36,minHeight:36,boxSizing:"border-box"}}/>
         </div>
         <div style={{position:"relative",flexShrink:0}}>
           <div onClick={()=>setMonthDropdownOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,border:`1px solid ${T.border}`,borderRadius:8,padding:"0 6px",background:"#fff",height:36,boxSizing:"border-box",cursor:"pointer"}}>
