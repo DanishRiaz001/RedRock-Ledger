@@ -743,20 +743,32 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
 // jarring plain browser control despite everything else on the page
 // being themed). This is the fix: build the whole thing ourselves, same
 // pattern as VatDrop/AccDrop. options: [{value,label,group?}].
-function ThemedSelect({value,onChange,options,placeholder="— Select —",disabled=false,triggerStyle,allowClear=false,clearLabel,hideChevron=false,textStyle}){
+function ThemedSelect({value,onChange,options,placeholder="— Select —",disabled=false,triggerStyle,allowClear=false,clearLabel,hideChevron=false,textStyle,searchable=false}){
   const[open,setOpen]=useState(false);
+  // Opt-in only (default false) — every existing call site (currency
+  // micro-selects, VAT/project pickers, …) is a short, fixed list where a
+  // search box would just be clutter. A caller with a long or growing list
+  // (payment types PLUS every customer/supplier, for instance) passes
+  // searchable to get the same explicit, auto-focused search box AccDrop/
+  // VatDrop already have.
+  const[q,setQ]=useState("");
   const triggerRef=React.useRef(null);
   const[dropPos,setDropPos]=useState(null);
   const sel=options.find(o=>String(o.value)===String(value));
+  const filteredOptions=useMemo(()=>{
+    if(!searchable||!q.trim())return options;
+    const ql=q.trim().toLowerCase();
+    return options.filter(o=>o.label.toLowerCase().includes(ql));
+  },[options,q,searchable]);
   const groups=useMemo(()=>{
     const seen=new Map();
-    options.forEach(o=>{
+    filteredOptions.forEach(o=>{
       const g=o.group||"";
       if(!seen.has(g))seen.set(g,[]);
       seen.get(g).push(o);
     });
     return[...seen.entries()];
-  },[options]);
+  },[filteredOptions]);
   const openMenu=()=>{
     if(disabled)return;
     // A deliberately tiny trigger (the plain-text currency micro-selects,
@@ -764,9 +776,9 @@ function ThemedSelect({value,onChange,options,placeholder="— Select —",disab
     // sliver width, wrapping every option down to its first letter — the
     // popup needs to stay readable even when the trigger itself is small.
     if(triggerRef.current){const r=triggerRef.current.getBoundingClientRect();setDropPos({top:r.bottom+4,left:r.left,width:Math.max(r.width,140)});}
-    setOpen(true);
+    setOpen(true);setQ("");
   };
-  const pick=v=>{onChange(v);setOpen(false);};
+  const pick=v=>{onChange(v);setOpen(false);setQ("");};
   return(
     <div style={{position:"relative"}}>
       <div ref={triggerRef} onClick={openMenu} tabIndex={disabled?-1:0} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&!disabled){e.preventDefault();openMenu();}}} style={{...selSm,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:disabled?"default":"pointer",opacity:disabled?0.6:1,userSelect:"none",...triggerStyle}}>
@@ -775,19 +787,26 @@ function ThemedSelect({value,onChange,options,placeholder="— Select —",disab
       </div>
       {open&&!disabled&&dropPos&&(<>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-        <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:280,overflowY:"auto"}}>
-          {allowClear&&(
-            <div onClick={()=>pick("")} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:!value?T.accentLight:"#fff",color:T.muted,fontStyle:"italic",borderBottom:`1px solid ${T.border}`}}>{clearLabel||`— ${placeholder} —`}</div>
+        <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:searchable?340:280,display:"flex",flexDirection:"column"}}>
+          {searchable&&(
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{...inp,fontSize:12,padding:"6px 8px",margin:0}}/>
+            </div>
           )}
-          {groups.map(([g,opts])=>(
-            <React.Fragment key={g}>
-              {g&&<div style={{padding:"7px 12px 4px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,background:T.bg}}>{g}</div>}
-              {opts.map(o=>(
-                <div key={o.value} onClick={()=>pick(o.value)} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:String(o.value)===String(value)?T.accentLight:"#fff",fontWeight:String(o.value)===String(value)?700:400,color:T.text,borderBottom:`1px solid ${T.border}`}}>{o.label}</div>
-              ))}
-            </React.Fragment>
-          ))}
-          {!options.length&&<div style={{padding:"14px 12px",fontSize:11.5,color:T.muted,textAlign:"center"}}>Nothing to pick from.</div>}
+          <div style={{overflowY:"auto"}}>
+            {allowClear&&(
+              <div onClick={()=>pick("")} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:!value?T.accentLight:"#fff",color:T.muted,fontStyle:"italic",borderBottom:`1px solid ${T.border}`}}>{clearLabel||`— ${placeholder} —`}</div>
+            )}
+            {groups.map(([g,opts])=>(
+              <React.Fragment key={g}>
+                {g&&<div style={{padding:"7px 12px 4px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,background:T.bg}}>{g}</div>}
+                {opts.map(o=>(
+                  <div key={o.value} onClick={()=>pick(o.value)} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:String(o.value)===String(value)?T.accentLight:"#fff",fontWeight:String(o.value)===String(value)?700:400,color:T.text,borderBottom:`1px solid ${T.border}`}}>{o.label}</div>
+                ))}
+              </React.Fragment>
+            ))}
+            {!filteredOptions.length&&<div style={{padding:"14px 12px",fontSize:11.5,color:T.muted,textAlign:"center"}}>{options.length?"No matches.":"Nothing to pick from."}</div>}
+          </div>
         </div>
       </>)}
     </div>

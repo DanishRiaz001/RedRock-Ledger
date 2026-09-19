@@ -6297,6 +6297,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const acctName=c=>{const a=accounts.find(x=>x.code===c);return a?`${a.code} ${a.name}`:c;};
         const typesFor=dir=>postingTypes.filter(t=>t.direction===dir&&!t.inactive&&accounts.some(a=>a.code===t.accountCode));
         const activeType=(!bulkOffsetContactId&&bulkPostingTypeId)?postingTypes.find(t=>t.id===bulkPostingTypeId&&t.accountCode===bulkOffsetCode):null;
+        // Every customer/supplier folded into the SAME searchable "Post
+        // as" list as the curated payment types — used to mean opening a
+        // separate, collapsed "advanced" section just to search a contact
+        // by name, which was easy to miss entirely. Prefixed so a contact
+        // id can never collide with a payment-type id (always "pt_N").
+        const contactOptions=contacts.map(c=>({value:`contact:${c.id}`,label:`${c.id} — ${c.name}`,group:c.type==="customer"?"Customers":"Suppliers"}));
+        const topValue=bulkOffsetContactId?`contact:${bulkOffsetContactId}`:(activeType?activeType.id:"");
         return(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
@@ -6333,21 +6340,35 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   list is edited; the advanced section below still reaches
                   any account or contact. */}
               <ThemedSelect
-                value={activeType?activeType.id:""}
+                searchable
+                value={topValue}
                 onChange={id=>{
+                  if(id.startsWith("contact:")){
+                    const cid=id.slice("contact:".length);
+                    const c=contacts.find(x=>x.id===cid);
+                    if(c){setBulkOffsetCode(c.type==="customer"?"1500":"2400");setBulkOffsetContactId(cid);setBulkPostingTypeId("");setAdvancedPickerOpen(false);}
+                    return;
+                  }
                   const t=postingTypes.find(x=>x.id===id);
                   if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);}
-                  else{setBulkOffsetCode("");setBulkPostingTypeId("");}
+                  else{setBulkOffsetCode("");setBulkOffsetContactId("");setBulkPostingTypeId("");}
                 }}
-                placeholder="— Select a payment type —"
+                placeholder="— Select a payment type, customer, or supplier —"
                 triggerStyle={{...inp,fontSize:12.5,cursor:"pointer"}}
-                options={[leadDir,leadDir==="out"?"in":"out"].flatMap(dir=>typesFor(dir).map(t=>({value:t.id,label:`${t.name} — ${acctName(t.accountCode)}`,group:dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"})))}
+                options={[
+                  ...[leadDir,leadDir==="out"?"in":"out"].flatMap(dir=>typesFor(dir).map(t=>({value:t.id,label:`${t.name} — ${acctName(t.accountCode)}`,group:dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"}))),
+                  ...contactOptions,
+                ]}
               />
 
               <div style={{marginTop:10}}>
                 <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
                   <i className={advancedPickerOpen?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:12}}/>
-                  {activeType?"Or post against a different account / customer / supplier":"Or search any account / customer / supplier"}
+                  {/* Customers/suppliers now search straight from "Post
+                      as" above (searchable, folded into the same list) —
+                      this stays open for any GL account, or creating a
+                      brand-new customer/supplier on the spot. */}
+                  {pickedAcc||pickedContact?"Or post against a different account":"Or search any account, or create a new customer/supplier"}
                 </button>
                 {advancedPickerOpen&&(
                   <div style={{marginTop:8}}>
