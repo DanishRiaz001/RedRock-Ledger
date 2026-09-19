@@ -1179,6 +1179,29 @@ function AppShell({user}){
     if(isNaN(num))return null;
     return neg?-num:num;
   };
+  // The free-text fallback has no real amount/debit/credit COLUMNS to read
+  // (pdf.js only gives us positioned text, already flattened into plain
+  // lines above) — it was picking the last number-looking token on each
+  // line and trusting whatever sign was already printed there, which for
+  // most bank exports is none at all (statements print a bare positive
+  // figure and let column position or a Dr/Cr label carry the direction,
+  // not a literal minus sign). Every row landed positive regardless of
+  // whether money actually left or entered the account. This infers
+  // direction from the wording banks actually use in these narrations —
+  // "Fund Transfer To"/"Fund Received From" and similar — covering both
+  // the Pakistani IBFT/RAAST phrasing this app sees most and common
+  // English/Norwegian statement wording. Ambiguous lines (neither list
+  // matches, or both do) are left exactly as extracted rather than guessed.
+  const OUT_KEYWORDS=[/\btransfer\s*to\b/,/\bfund\s*transfer\s*to\b/,/\bpayment\s*to\b/,/\bpaid\s*to\b/,/\bwithdrawal\b/,/\batm\s*withdrawal\b/,/\bpurchase\b/,/\bpos\s*purchase\b/,/\bbill\s*payment\b/,/\butility\s*bill\b/,/\bdebit\b/,/\bdr\b/,/\bfee\b/,/\bcharge\b/,/\buttak\b/,/\bbelastning\b/,/\bkjøp\b/];
+  const IN_KEYWORDS=[/\breceived\s*from\b/,/\bfund\s*received\s*from\b/,/\btransfer\s*from\b/,/\bfund\s*transfer\s*from\b/,/\bdeposit\b/,/\bcredit\b/,/\bcr\b/,/\bsalary\b/,/\brefund\b/,/\breversal\b/,/\binnskudd\b/,/\bkreditering\b/];
+  const inferDirectionSign=description=>{
+    const d=description.toLowerCase();
+    const isOut=OUT_KEYWORDS.some(re=>re.test(d));
+    const isIn=IN_KEYWORDS.some(re=>re.test(d));
+    if(isOut&&!isIn)return -1;
+    if(isIn&&!isOut)return 1;
+    return null; // ambiguous — leave the extracted sign alone
+  };
   const DATE_LINE_PATTERNS=[
     {re:/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/,toISO:m=>`${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`},
     {re:/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/,toISO:m=>`${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`},
@@ -1223,7 +1246,13 @@ function AppShell({user}){
         const amount=parseAmountToken(lastToken);
         if(amount==null||amount===0)return;
         const description=remainder.slice(0,remainder.lastIndexOf(lastToken)).replace(/[|,;:\-]+$/,"").trim()||"(no description found)";
-        rows.push({rowNum:rows.length+1,date:dateISO,description,amount});
+        // Force the sign onto whichever direction the wording clearly says
+        // (see inferDirectionSign above) — falls back to whatever sign
+        // parseAmountToken already found (a real "-" or parens in the raw
+        // text) when the description doesn't clearly say either way.
+        const dirSign=inferDirectionSign(description);
+        const signedAmount=dirSign!=null?dirSign*Math.abs(amount):amount;
+        rows.push({rowNum:rows.length+1,date:dateISO,description,amount:signedAmount});
       });
       if(!rows.length)return{error:"Couldn't find any transaction-looking lines in this PDF using free text extraction. It's likely a scanned image (no real text to read) — add an Anthropic API key in Company → Settings to read it with AI instead, or use a CSV/Excel export if your bank offers one."};
       return{rows,isPdf:true,isFallback:true};
