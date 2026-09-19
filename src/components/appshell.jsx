@@ -1207,12 +1207,30 @@ function AppShell({user}){
     {re:/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/,toISO:m=>`${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`},
     {re:/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{2})\b/,toISO:m=>`20${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`},
   ];
+  // A strict currency-amount shape — digits (with optional thousands
+  // commas) and a MANDATORY 2-decimal-place suffix, e.g. "11,500.00" or
+  // "41.32". Account numbers, card numbers, and transfer reference numbers
+  // embedded in the transaction detail text (e.g. "0907896001",
+  // "6234070002845269") are always plain digit runs with no decimal
+  // point — this shape excludes every one of them, whereas the old
+  // "any digit run" pattern happily matched them as candidate amounts too.
+  const MONEY_RE=/^\(?-?[\d,]+\.\d{2}\)?$/;
   const parseBankStatementPDFFallback=async(file)=>{
     if(!window.pdfjsLib)return{error:"PDF reader didn't load — check your connection and try again."};
     try{
       const buf=await file.arrayBuffer();
       const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
       const lines=[];
+      // Debit/Credit/Balance column X-positions, read once off the
+      // statement's own header row (repeated on every page of a real
+      // bank export) — lets each transaction row's amount be classified by
+      // which COLUMN it physically sits under, the same way a person
+      // reading the table would, instead of guessing from wording alone
+      // (many rows — a plain monthly fee, a bill payment — carry no
+      // in/out keyword at all) or assuming "the last number on the line"
+      // (which is reliably the running BALANCE, not the transaction
+      // amount, on every tabular bank statement of this shape).
+      let colX=null;
       for(let p=1;p<=pdf.numPages;p++){
         const page=await pdf.getPage(p);
         const content=await page.getTextContent();
@@ -1227,12 +1245,26 @@ function AppShell({user}){
           byY[y].push(it);
         });
         Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
-          const lineText=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>it.str).join(" ").replace(/\s+/g," ").trim();
-          if(lineText)lines.push(lineText);
+          const items=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>({str:it.str,x:it.transform[4]}));
+          const lineText=items.map(it=>it.str).join(" ").replace(/\s+/g," ").trim();
+          if(!lineText)return;
+          if(!colX){
+            const debitIt=items.find(it=>/^debit$/i.test(it.str.trim()));
+            const creditIt=items.find(it=>/^credit$/i.test(it.str.trim()));
+            const balanceIt=items.find(it=>/^balance$/i.test(it.str.trim()));
+            if(debitIt&&creditIt&&balanceIt)colX={debit:debitIt.x,credit:creditIt.x,balance:balanceIt.x};
+          }
+          lines.push({text:lineText,items});
         });
       }
+      // Column boundaries sit at the MIDPOINT between adjacent headers —
+      // a value is right-aligned within its own column, so its rendered
+      // (left-edge) X varies with how many digits it has, but it can never
+      // cross into a neighboring column's half of the gap between headers.
+      const debitCreditMid=colX?(colX.debit+colX.credit)/2:null;
+      const creditBalanceMid=colX?(colX.credit+colX.balance)/2:null;
       const rows=[];
-      lines.forEach(line=>{
+      lines.forEach(({text:line,items})=>{
         let dateMatch=null,dateISO=null;
         for(const p of DATE_LINE_PATTERNS){
           const m=line.match(p.re);
@@ -1240,18 +1272,43 @@ function AppShell({user}){
         }
         if(!dateISO)return;
         const remainder=line.replace(dateMatch[0],"");
-        const amountTokens=remainder.match(/\(?-?\d[\d.,]*\)?/g)||[];
-        if(!amountTokens.length)return;
-        const lastToken=amountTokens[amountTokens.length-1];
-        const amount=parseAmountToken(lastToken);
-        if(amount==null||amount===0)return;
-        const description=remainder.slice(0,remainder.lastIndexOf(lastToken)).replace(/[|,;:\-]+$/,"").trim()||"(no description found)";
-        // Force the sign onto whichever direction the wording clearly says
-        // (see inferDirectionSign above) — falls back to whatever sign
-        // parseAmountToken already found (a real "-" or parens in the raw
-        // text) when the description doesn't clearly say either way.
-        const dirSign=inferDirectionSign(description);
-        const signedAmount=dirSign!=null?dirSign*Math.abs(amount):amount;
+        const moneyItems=items.filter(it=>MONEY_RE.test(it.str.trim()));
+        if(!moneyItems.length)return;
+        let signedAmount=null;
+        if(colX){
+          // Column-position classification — exact regardless of row
+          // order or how the description text reads, since it reads the
+          // same columns a human would.
+          let debitVal=null,creditVal=null;
+          moneyItems.forEach(it=>{
+            if(it.x<debitCreditMid){if(debitVal==null)debitVal=it.str;}
+            else if(it.x<creditBalanceMid){if(creditVal==null)creditVal=it.str;}
+            // x beyond creditBalanceMid is the running balance — not needed.
+          });
+          if(creditVal!=null)signedAmount=Math.abs(parseAmountToken(creditVal));
+          else if(debitVal!=null)signedAmount=-Math.abs(parseAmountToken(debitVal));
+        }
+        if(signedAmount==null){
+          // No clean Debit/Credit/Balance header found on this statement
+          // (a different bank's layout) — fall back to position-in-text
+          // plus wording. With 2+ real amount tokens the rightmost is
+          // almost always a running balance, so the transaction amount is
+          // the one just before it, not the last one.
+          const tokenStrs=moneyItems.map(it=>it.str);
+          const chosen=tokenStrs.length>=2?tokenStrs[tokenStrs.length-2]:tokenStrs[0];
+          const amount=parseAmountToken(chosen);
+          if(amount==null||amount===0)return;
+          const dirSign=inferDirectionSign(remainder);
+          signedAmount=dirSign!=null?dirSign*Math.abs(amount):amount;
+        }
+        if(signedAmount==null||signedAmount===0)return;
+        // Description excludes every trailing numeric column (debit,
+        // credit, AND balance) — cut at the FIRST money-shaped token on
+        // the line rather than the last, so a credit row's blank Debit
+        // cell (nothing to cut before it) doesn't leave the Balance
+        // figure dangling in the description text.
+        const firstMoneyIdx=remainder.indexOf(moneyItems[0].str);
+        const description=(firstMoneyIdx>=0?remainder.slice(0,firstMoneyIdx):remainder).replace(/[|,;:\-]+$/,"").trim()||"(no description found)";
         rows.push({rowNum:rows.length+1,date:dateISO,description,amount:signedAmount});
       });
       if(!rows.length)return{error:"Couldn't find any transaction-looking lines in this PDF using free text extraction. It's likely a scanned image (no real text to read) — add an Anthropic API key in Company → Settings to read it with AI instead, or use a CSV/Excel export if your bank offers one."};
