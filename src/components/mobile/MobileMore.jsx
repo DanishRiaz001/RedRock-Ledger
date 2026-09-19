@@ -18,7 +18,7 @@ const MENU=[
 ];
 
 export default function MobileMore(props){
-  const{contacts,setContacts,transactions,matchTransactions,unmatchTransactions,saveEdit,deleteTxn,accounts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,auditLog,profiles,user,moneySources,tagTransaction,fetchEntryComments,addEntryComment,isAdmin,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,onSignOut,setAccounts,addAccount,updateAccount,budgets,saveBudget,mergeAccounts,companyProfile,saveCompanyProfile,requestRedrockAccess,invoices,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,getInvoicePaid,nextInvoiceNo,createInvoice,reverseTransaction,viewingUserId,setViewingUserId,myClientAccess,companies,activeCompanyId,setActiveCompanyId,createCompany}=props;
+  const{contacts,setContacts,transactions,matchTransactions,unmatchTransactions,saveEdit,deleteTxn,accounts,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,inboxFiles,auditLog,profiles,user,moneySources,tagTransaction,fetchEntryComments,addEntryComment,isAdmin,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,onSignOut,setAccounts,addAccount,updateAccount,budgets,saveBudget,mergeAccounts,companyProfile,saveCompanyProfile,requestRedrockAccess,invoices,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,getInvoicePaid,nextInvoiceNo,createInvoice,reverseTransaction,viewingUserId,setViewingUserId,myClientAccess,companies,activeCompanyId,setActiveCompanyId,createCompany,onNavigate}=props;
   const[screen,setScreen]=useState(null);
   const[showAdmin,setShowAdmin]=useState(false);
   const[showSwitcher,setShowSwitcher]=useState(false);
@@ -31,7 +31,12 @@ export default function MobileMore(props){
   if(showSwitcher)return(
     <MobileCompanySwitcher user={user} isAdmin={isAdmin} viewingUserId={viewingUserId} setViewingUserId={setViewingUserId}
       myClientAccess={myClientAccess} companies={companies} activeCompanyId={activeCompanyId} setActiveCompanyId={setActiveCompanyId}
-      createCompany={createCompany} onClose={()=>setShowSwitcher(false)}/>
+      createCompany={createCompany} onClose={()=>setShowSwitcher(false)}
+      // Same fix as the desktop switcher — actually switching client/company
+      // (not just opening or backing out of the switcher) lands on Home
+      // instead of leaving you on whatever screen you had open before,
+      // which used to just re-render with the new company's data in place.
+      onSwitch={()=>onNavigate&&onNavigate("Home")}/>
   );
 
   if(screen==="dailylog")return(

@@ -756,7 +756,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                         <a key={c.id} href={href} onClick={e=>{
                           if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
                           e.preventDefault();
-                          setViewingUserId(user.id);setActiveCompanyId(c.id);setClientSwitcherOpen(false);setClientSwitcherSearch("");
+                          // Switching company used to leave you wherever you
+                          // already were (e.g. still on Reskontro or a
+                          // ledger drilldown), showing that same screen
+                          // re-rendered for the NEW company's data — easy to
+                          // mistake for the old company's books still being
+                          // open. Landing on Home/Dashboard every time makes
+                          // the switch unambiguous.
+                          setViewingUserId(user.id);setActiveCompanyId(c.id);setTab("Dashboard");setClientSwitcherOpen(false);setClientSwitcherSearch("");
                         }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
                           <div style={{width:20,height:20,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
                           <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
@@ -785,8 +792,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       const label=c.companyName||c.clientEmail;
                       return(
                         <div key={c.id} onClick={()=>{
+                          // Same "land on Home" fix as the own-companies list
+                          // above — switching to a client's books used to
+                          // leave whatever screen was open showing THIS
+                          // client's data instead, easy to mistake for the
+                          // previous client's.
                           setViewingUserId(c.clientUserId);
                           if(c.companyId)setActiveCompanyId(c.companyId);
+                          setTab("Dashboard");
                           setClientSwitcherOpen(false);setClientSwitcherSearch("");
                         }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff"}}>
                           <div style={{width:20,height:20,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{initials(label)}</div>

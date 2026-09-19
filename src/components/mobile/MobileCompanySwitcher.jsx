@@ -8,7 +8,7 @@ const initials=s=>(s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").
 // in FinanceTracker.jsx — same two dimensions, same underlying state
 // (viewingUserId / activeCompanyId), just surfaced as one full screen instead
 // of two dropdown buttons, since there's no header real estate for that here.
-export default function MobileCompanySwitcher({user,isAdmin,viewingUserId,setViewingUserId,myClientAccess=[],companies=[],activeCompanyId,setActiveCompanyId,createCompany,onClose}){
+export default function MobileCompanySwitcher({user,isAdmin,viewingUserId,setViewingUserId,myClientAccess=[],companies=[],activeCompanyId,setActiveCompanyId,createCompany,onClose,onSwitch}){
   const[search,setSearch]=useState("");
   const[showAddClient,setShowAddClient]=useState(false);
   const[newClientName,setNewClientName]=useState("");
@@ -38,7 +38,7 @@ export default function MobileCompanySwitcher({user,isAdmin,viewingUserId,setVie
         {clientRows.map((r,i)=>{
           const active=viewingUserId===r.id;
           return(
-            <div key={r.id} onClick={()=>{setViewingUserId(r.id);onClose();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 16px",borderBottom:i<clientRows.length-1?"1px solid #F1F5F4":"none",background:active?T.accentLight:"#fff"}}>
+            <div key={r.id} onClick={()=>{setViewingUserId(r.id);onSwitch&&onSwitch();onClose();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 16px",borderBottom:i<clientRows.length-1?"1px solid #F1F5F4":"none",background:active?T.accentLight:"#fff"}}>
               <div style={{width:30,height:30,borderRadius:"50%",background:active?T.accent:"#F6F8FA",color:active?"#fff":"#8A93A3",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>{initials(r.label)}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12.5,fontWeight:active?700:600,color:active?T.accent:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label}</div>
@@ -58,7 +58,7 @@ export default function MobileCompanySwitcher({user,isAdmin,viewingUserId,setVie
             {companies.map((c,i)=>{
               const active=c.id===activeCompanyId;
               return(
-                <div key={c.id} onClick={()=>{setActiveCompanyId(c.id);onClose();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 16px",borderBottom:i<companies.length-1?"1px solid #F1F5F4":"none",background:active?T.accentLight:"#fff"}}>
+                <div key={c.id} onClick={()=>{setActiveCompanyId(c.id);onSwitch&&onSwitch();onClose();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 16px",borderBottom:i<companies.length-1?"1px solid #F1F5F4":"none",background:active?T.accentLight:"#fff"}}>
                   <div style={{width:30,height:30,borderRadius:9,background:active?T.accent:"#F6F8FA",color:active?"#fff":"#8A93A3",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-building-store" style={{fontSize:14}}/></div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:active?700:600,color:active?T.accent:"#0F172A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
                   {active&&<i className="ti ti-check" style={{fontSize:15,color:T.accent}}/>}
