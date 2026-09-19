@@ -4616,7 +4616,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                     const lines=[...(form.lines||[{debitCode:form.debitCode,creditCode:form.creditCode}])];
                     lines[li]={...lines[li],currency:v};
                     setForm(p=>({...p,lines}));
-                  }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+                  }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto"}} textStyle={{fontSize:10,color:T.muted,fontWeight:700}}
+                  // The options list left out the company's own currency
+                  // whenever it wasn't one of NOK/USD/EUR/GBP/SEK/DKK (e.g.
+                  // a PKR company) — ThemedSelect only shows a label for a
+                  // value it actually finds in `options`, so this field
+                  // rendered blank ("— Select —") on a fresh line instead of
+                  // showing PKR, even though the value passed in above was
+                  // already correctly defaulting to defaultCurrency.
+                  options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate

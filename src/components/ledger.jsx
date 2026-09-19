@@ -2269,7 +2269,13 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         </div>
         <div>
           <SL>Currency</SL>
-          <ThemedSelect value={invCurrency} onChange={setInvCurrency} hideChevron triggerStyle={invLineField} options={["NOK","USD","EUR","GBP","SEK","DKK"].map(c=>({value:c,label:c}))}/>
+          {/* The options list left out the company's own currency whenever
+              it wasn't NOK/USD/EUR/GBP/SEK/DKK (e.g. a PKR company) — since
+              ThemedSelect only shows a label for a value it actually finds
+              in `options`, this field silently rendered as blank/unselected
+              (the "— Select —" placeholder) instead of showing PKR, even
+              though invCurrency correctly already held "PKR" underneath. */}
+          <ThemedSelect value={invCurrency} onChange={setInvCurrency} hideChevron triggerStyle={invLineField} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
         </div>
       </div>
       {((moneySources&&moneySources.length>0)||(projects&&projects.length>0))&&(
