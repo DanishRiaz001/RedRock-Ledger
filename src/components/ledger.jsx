@@ -274,14 +274,29 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
       {open&&dropPos&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          {/* maxHeight covers the header row + the scrolling list below
-              (230) + BOTH footer action rows ("+ New account" and
-              "+ New customer/supplier") — it used to cap out at 280,
-              which fit only the first footer row and silently clipped
-              the second one off (overflow:hidden on this same box), so
-              "+ New customer/supplier" never showed even though it was
-              rendering. */}
-          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:350}}>
+          {/* maxHeight covers the search box (38) + header row + the
+              scrolling list below (230) + BOTH footer action rows
+              ("+ New account" and "+ New customer/supplier") — it used to
+              cap out at 280, which fit only the first footer row and
+              silently clipped the second one off (overflow:hidden on this
+              same box), so "+ New customer/supplier" never showed even
+              though it was rendering. */}
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:388}}>
+            {/* A dedicated search box inside the dropdown itself — the
+                trigger field above already doubles as a search box (typing
+                straight into it filters live), but that wasn't obvious
+                since clicking it used to just show the current selection
+                with no visual cue that typing does anything. This makes
+                "type here to search" explicit and discoverable, and gets
+                the keyboard focus the instant the dropdown opens. */}
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
+              <input autoFocus value={q===null?"":q} onChange={e=>{setQ(e.target.value);setActiveIdx(-1);}} onKeyDown={e=>{
+                if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+                if(e.key==="ArrowDown"&&combined.length>0){e.preventDefault();setActiveIdx(i=>Math.min(i+1,combined.length-1));}
+                if(e.key==="ArrowUp"&&combined.length>0){e.preventDefault();setActiveIdx(i=>Math.max(i-1,0));}
+                if(e.key==="Enter"&&combined.length>0){e.preventDefault();pickCombined(combined[activeIdx>=0?activeIdx:0]);}
+              }} placeholder="Search accounts or customers/suppliers…" style={{...inp,fontSize:11,padding:"6px 8px",margin:0}}/>
+            </div>
             {/* Type dropped — every row already says what it is via its
                 own color/number range or an inline Customer/Supplier tag,
                 so the column never added information. VAT% sits where
@@ -690,7 +705,19 @@ function VatDrop({value,onChange,options,disabled=false,inputStyle}){
       {open&&!disabled&&dropPos&&(
         <>
           <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:230}}>
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:268}}>
+            {/* Same explicit, discoverable search box as AccDrop's dropdown
+                — the trigger field above still doubles as a search box too,
+                but a visible "type here" box inside the list itself makes
+                that obvious instead of relying on it being implicit. */}
+            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
+              <input autoFocus value={q===null?"":q} onChange={e=>{setQ(e.target.value);setActiveIdx(-1);}} onKeyDown={e=>{
+                if(e.key==="Escape"){closeAndRevert();inputRef.current&&inputRef.current.blur();}
+                if(e.key==="ArrowDown"&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.min(i+1,filtered.length-1));}
+                if(e.key==="ArrowUp"&&filtered.length>0){e.preventDefault();setActiveIdx(i=>Math.max(i-1,0));}
+                if(e.key==="Enter"&&filtered.length>0){e.preventDefault();onChange(filtered[activeIdx>=0?activeIdx:0].code);closeAndRevert();}
+              }} placeholder="Search VAT codes…" style={{...inp,fontSize:10,padding:"5px 8px",margin:0}}/>
+            </div>
             <div style={{overflowY:"auto",maxHeight:230}}>
               {filtered.length===0&&<div style={{padding:"12px 12px",fontSize:9,color:T.muted,textAlign:"center"}}>No VAT codes found</div>}
               {filtered.map((o,i)=>(
