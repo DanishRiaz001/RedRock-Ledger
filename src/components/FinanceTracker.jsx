@@ -745,26 +745,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                       const active=viewingUserId===user.id&&c.id===activeCompanyId;
                       const href=`${window.location.origin}${window.location.pathname}?company=${c.id}`;
                       return(
-                        // A real <a href> on purpose, not a div onClick — a
-                        // plain left-click still switches in place below
-                        // (same as before), but this is what actually makes
-                        // right-click → "Open link in new tab" (and middle-
-                        // click, and Cmd/Ctrl+click) work at all. Browsers
-                        // only offer those for genuine links; no div/span
-                        // with an onClick handler, however link-like, ever
-                        // gets that context-menu option.
-                        <a key={c.id} href={href} onClick={e=>{
-                          if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // let the browser handle every non-plain-click case itself
-                          e.preventDefault();
-                          // Switching company used to leave you wherever you
-                          // already were (e.g. still on Reskontro or a
-                          // ledger drilldown), showing that same screen
-                          // re-rendered for the NEW company's data — easy to
-                          // mistake for the old company's books still being
-                          // open. Landing on Home/Dashboard every time makes
-                          // the switch unambiguous.
-                          setViewingUserId(user.id);setActiveCompanyId(c.id);setTab("Dashboard");setClientSwitcherOpen(false);setClientSwitcherSearch("");
-                        }} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
+                        // A real <a href target="_blank"> — clicking a
+                        // company opens it directly in a brand-new tab
+                        // (this used to intercept a plain click to switch in
+                        // the SAME tab instead, only opening a new one for a
+                        // deliberate Ctrl/Cmd/middle-click or right-click →
+                        // "Open in new tab"). Now every click, plain or
+                        // modified, opens a fresh tab on that company's own
+                        // Home/Dashboard (via the ?company= deep link) and
+                        // this tab is simply left exactly where it was —
+                        // lets you keep whatever report/screen you're on
+                        // here while comparing another company's books
+                        // side by side.
+                        <a key={c.id} href={href} target="_blank" rel="noopener noreferrer" onClick={()=>{setClientSwitcherOpen(false);setClientSwitcherSearch("");}} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="#EEF1F0";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="#fff";}} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",cursor:"pointer",background:active?T.accentLight:"#fff",textDecoration:"none",color:"inherit"}}>
                           <div style={{width:20,height:20,borderRadius:"50%",background:active?T.accent:T.bg,color:active?"#fff":T.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{initials(c.name)}</div>
                           <span style={{fontSize:11.5,fontWeight:active?700:500,color:active?T.accent:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                           {active&&<i className="ti ti-check" style={{fontSize:11.5,color:T.accent,flexShrink:0}}/>}
