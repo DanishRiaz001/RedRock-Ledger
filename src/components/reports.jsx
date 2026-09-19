@@ -5729,6 +5729,12 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
     if(result.error){alert(result.error);return;}
     setLastImport({ids:result.insertedIds,count:result.count,accountCode:selectedAccount});
     setPreview(null);
+    // Same date+amount+description already sitting in this account's
+    // queue — most likely this exact file (or an overlapping one)
+    // already got imported once before. Silently skipped rather than
+    // inserted a second time; surfaced here since "Import 43 rows"
+    // importing fewer than that with no explanation would look broken.
+    if(result.skippedDuplicates)alert(`Imported ${result.count} row${result.count===1?"":"s"} — skipped ${result.skippedDuplicates} that matched a line already in this account's reconciliation queue (same date, amount, and description).`);
   };
   const doUndoImport=async()=>{
     if(!lastImport||!undoBankImport)return;

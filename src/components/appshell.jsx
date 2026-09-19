@@ -1350,12 +1350,33 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // whole import can be undone as one action if it turns out to be wrong.
   const commitBankStatementRows=async(accountCode,rows)=>{
     if(!canEdit)return{error:"No permission to edit."};
-    const dbRows=rows.map(r=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
+    // Nothing used to stop the same statement being imported twice — the
+    // exact same date+description+amount would just insert again as a
+    // second, indistinguishable row. That's a real risk right after a
+    // parser fix (re-uploading a file already imported with the old,
+    // buggy reading) but just as easily a plain accidental double-upload.
+    // Skips a row already present for this account with an identical
+    // date, amount, AND description — a genuine coincidence (two real
+    // transactions that happen to share all three) is vanishingly rare
+    // for a bank statement line, so this is safe as an exact-match check
+    // rather than needing the user to review every row again.
+    const existingKey=l=>`${l.date}|${l.amount}|${l.description||""}`;
+    const existingKeys=new Set(bankStatementLines.filter(l=>l.accountCode===accountCode).map(existingKey));
+    const seenThisBatch=new Set();
+    const toInsert=[],skipped=[];
+    rows.forEach(r=>{
+      const key=`${r.date}|${r.amount}|${r.description||""}`;
+      if(existingKeys.has(key)||seenThisBatch.has(key)){skipped.push(r);return;}
+      seenThisBatch.add(key);
+      toInsert.push(r);
+    });
+    if(!toInsert.length)return{insertedIds:[],count:0,skippedDuplicates:skipped.length};
+    const dbRows=toInsert.map(r=>({user_id:viewingUserId,...(cid?{company_id:cid}:{}),account_code:accountCode,date:r.date,description:r.description,amount:r.amount}));
     const{data,error}=await sb.from("bank_statement_lines").insert(dbRows).select();
     if(error)return{error:"Upload failed: "+error.message};
     const mapped=(data||[]).map(r=>({id:r.id,accountCode:r.account_code,date:r.date,description:r.description,amount:parseFloat(r.amount),posted:r.posted,postedTxnId:r.posted_txn_id}));
     setBankStatementLines(p=>[...p,...mapped]);
-    return{insertedIds:mapped.map(r=>r.id),count:mapped.length};
+    return{insertedIds:mapped.map(r=>r.id),count:mapped.length,skippedDuplicates:skipped.length};
   };
   const undoBankImport=async(ids)=>{
     if(!canEdit||!ids||!ids.length)return;
