@@ -2086,20 +2086,29 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     // once the delete is confirmed.
     if(original&&blockIfLocked(original.date))return{error:"This period is closed."};
     if(!canEdit)return{error:"You don't have permission to delete entries."};
-    // Bokføring rule: the bilag series must stay unbroken. A voucher can only
-    // be deleted while it's still the most recent one — as soon as a later
-    // bilag exists, deleting this one would leave a gap in the numbered
-    // series, so it can only be corrected (Edit) or Reversed (which cancels
-    // its effect on every account and keeps both entries on the audit trail).
-    if(original){
-      const laterBilag=transactions.some(t=>(t.bilag||0)>(original.bilag||0));
-      if(laterBilag)return{error:`Bilag ${original.bilag} can't be deleted — it's not the most recent entry, and removing it would break the voucher number sequence. Reverse it instead (that cancels its effect on every account and keeps the audit trail).`};
-    }
     // Deleting one leg of a VAT-split voucher would leave it unbalanced — take
     // the whole bilag (net P&L row + its 27xx VAT row) together.
     const ids=(original&&original.vatSplit)
       ? transactions.filter(t=>t.bilag===original.bilag&&t.vatSplit).map(t=>t.id)
       : [id];
+    // Bokføring rule: the bilag series must stay unbroken — but only once
+    // this delete would remove EVERY line still carrying this bilag
+    // number. Removing one line out of a multi-line voucher (the per-line
+    // delete in EditModal) leaves the bilag itself very much still in use
+    // by whatever lines remain, so there's no gap to create. This used to
+    // run unconditionally the moment ANY bilag existed, which blocked
+    // deleting even a single stray empty line from an old multi-line
+    // voucher purely because some LATER bilag existed elsewhere in the
+    // company — true of almost every bilag except the single most recent
+    // one, so a multi-line voucher's per-line delete silently never
+    // completed for anything but the newest entry.
+    if(original){
+      const bilagSurvives=transactions.some(t=>t.bilag===original.bilag&&!ids.includes(t.id));
+      if(!bilagSurvives){
+        const laterBilag=transactions.some(t=>(t.bilag||0)>(original.bilag||0));
+        if(laterBilag)return{error:`Bilag ${original.bilag} can't be deleted — it's not the most recent entry, and removing it would break the voucher number sequence. Reverse it instead (that cancels its effect on every account and keeps the audit trail).`};
+      }
+    }
     const{error}=await sb.from("transactions").delete().in("id",ids);
     if(error){
       logBug("DB_ERROR","Failed to delete transaction",error.message,"deleteTxn");
