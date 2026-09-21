@@ -6739,6 +6739,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matchTxns,unmatchTxns,onOpenLedger,registerExcelExport,defaultType,auditLog=[],profiles=[],currentUserId,onNavigate,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,moneySources,projects=[],tagTransaction,companyProfile,addTransaction}){
   const[type,setType]=useState(defaultType||"supplier"); // "customer" | "supplier"
   useEffect(()=>{if(defaultType)setType(defaultType);},[defaultType]);
+  // Every posted amount is ALWAYS in the company's own base currency
+  // (t.currency/t.currencyAmount just carry the ORIGINAL foreign figure
+  // alongside it) — but the primary figure shown was a bare number with
+  // no currency code at all, so on a line with a foreign component it
+  // read as ambiguous which currency was which. Labeling both explicitly
+  // removes the guesswork.
+  const defaultCurrency=(companyProfile&&companyProfile.currency)||"NOK";
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   // Clicking a bilag here used to only navigate away to the General ledger
   // for its control account — this screen itself had no edit/delete
@@ -7015,14 +7022,22 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                         <td style={{width:84,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
                         <td style={{color:T.text}}>{t.description}</td>
                         <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>
-                          {sign(mv(t))}
                           {/* A line posted in a currency other than the
                               company's own base currency shows both figures
-                              — the base amount actually on the ledger (above)
-                              and the original invoiced/entered amount in its
-                              own currency — so it's clear at a glance which
-                              currency the AR/AP balance is actually tracked
-                              in versus what the customer/supplier was billed. */}
+                              — the base amount actually on the ledger (main,
+                              bold) and the original invoiced/entered amount
+                              in its own currency (below) — so it's clear at
+                              a glance which currency the AR/AP balance is
+                              actually tracked in versus what the customer/
+                              supplier was billed. Both are now explicitly
+                              labeled with their own currency code — the
+                              main figure used to show as a bare number with
+                              no code at all, reading as ambiguous (or
+                              silently assumed to be whichever currency the
+                              line's OWN tag said, when it's actually always
+                              the base currency) the moment a second figure
+                              sat right underneath it. */}
+                          {sign(mv(t))}{t.currency&&t.currencyAmount!=null?` ${defaultCurrency}`:""}
                           {t.currency&&t.currencyAmount!=null&&(
                             <div style={{fontSize:10,fontWeight:500,color:T.muted,marginTop:2}}>{fmt(t.currencyAmount)} {t.currency}</div>
                           )}
