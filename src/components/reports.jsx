@@ -6309,7 +6309,13 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         // by name, which was easy to miss entirely. Prefixed so a contact
         // id can never collide with a payment-type id (always "pt_N").
         const contactOptions=contacts.map(c=>({value:`contact:${c.id}`,label:`${c.id} — ${c.name}`,group:c.type==="customer"?"Customers":"Suppliers"}));
-        const topValue=bulkOffsetContactId?`contact:${bulkOffsetContactId}`:(activeType?activeType.id:"");
+        // Same idea for the full chart of accounts — searching "17" used to
+        // only surface it if some curated payment type happened to point at
+        // a 17xx account; now every real account is in the same list, using
+        // its own code as the value (never collides with a "pt_N" or
+        // "contact:" id).
+        const accountOptions=offsetOptions.map(a=>({value:a.code,label:`${a.code} — ${a.name}`,group:"All accounts"}));
+        const topValue=bulkOffsetContactId?`contact:${bulkOffsetContactId}`:(activeType?activeType.id:(bulkOffsetCode||""));
         return(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
@@ -6356,25 +6362,30 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                     return;
                   }
                   const t=postingTypes.find(x=>x.id===id);
-                  if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);}
-                  else{setBulkOffsetCode("");setBulkOffsetContactId("");setBulkPostingTypeId("");}
+                  if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);return;}
+                  // Not a curated type or a contact — a plain account code,
+                  // picked straight out of the full chart-of-accounts group.
+                  const acc=offsetOptions.find(a=>a.code===id);
+                  if(acc){setBulkOffsetCode(acc.code);setBulkOffsetContactId("");setBulkPostingTypeId("");setAdvancedPickerOpen(false);return;}
+                  setBulkOffsetCode("");setBulkOffsetContactId("");setBulkPostingTypeId("");
                 }}
-                placeholder="— Select a payment type, customer, or supplier —"
+                placeholder="— Search a payment type, account, customer, or supplier —"
                 triggerStyle={{...inp,fontSize:12.5,cursor:"pointer"}}
                 options={[
                   ...[leadDir,leadDir==="out"?"in":"out"].flatMap(dir=>typesFor(dir).map(t=>({value:t.id,label:`${t.name} — ${acctName(t.accountCode)}`,group:dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"}))),
                   ...contactOptions,
+                  ...accountOptions,
                 ]}
               />
 
               <div style={{marginTop:10}}>
                 <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
                   <i className={advancedPickerOpen?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:12}}/>
-                  {/* Customers/suppliers now search straight from "Post
-                      as" above (searchable, folded into the same list) —
-                      this stays open for any GL account, or creating a
-                      brand-new customer/supplier on the spot. */}
-                  {pickedAcc||pickedContact?"Or post against a different account":"Or search any account, or create a new customer/supplier"}
+                  {/* Every account, customer, and supplier now searches
+                      straight from "Post as" above — this stays open only
+                      for creating a brand-new account or contact on the
+                      spot, which the searchable list can't do. */}
+                  {pickedAcc||pickedContact?"Or post against a different account":"Create a new account, customer, or supplier"}
                 </button>
                 {advancedPickerOpen&&(
                   <div style={{marginTop:8}}>
