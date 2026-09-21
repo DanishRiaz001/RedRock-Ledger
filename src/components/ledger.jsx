@@ -1649,6 +1649,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const[savingSingle,setSavingSingle]=useState(false);
   const[confirmDelGroup,setConfirmDelGroup]=useState(false);
   const[confirmDelLine,setConfirmDelLine]=useState(null);
+  const[lineMenuOpen,setLineMenuOpen]=useState(null); // id of the posting line whose ⋮ menu is open, or null
   const updateGroupLine=(li,patch)=>setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,...patch}:l));
   // One "master" date at the top of a multi-line voucher — changing it
   // updates every line's date, EXCEPT a line whose own date was edited
@@ -1806,6 +1807,40 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     const newCreditCode=entryModeVal==="supplier_invoice"?"2400":"";
     const tempId=`temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setGroupLinesState(p=>[...p,{id:tempId,date:row0?.date||today,debitCode:newDebitCode,creditCode:newCreditCode,description:row0?.description||"",amount:"0",debitVatCode:"",creditVatCode:""}]);
+  };
+  // Same "local until Save" convention as addGroupLine — a duplicated line
+  // is a copy of an existing one's fields under a fresh temp- id, never a
+  // real INSERT until Save. Single-line mode has only row 0 to duplicate
+  // from and has to seed groupLinesState from form/debitVatCode/
+  // creditVatCode first, same conversion addGroupLine already does.
+  const duplicateGroupLine=(li)=>{
+    const tempId=`temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if(!isGroup){
+      const row0={...groupLinesState[0],date:form.date,description:form.description,debitCode:form.debitCode,creditCode:form.creditCode,amount:form.amount,debitVatCode,creditVatCode};
+      setGroupLinesState([row0,{...row0,id:tempId}]);
+      return;
+    }
+    setGroupLinesState(p=>{
+      const source=p[li];
+      if(!source)return p;
+      const next=[...p];
+      next.splice(li+1,0,{...source,id:tempId});
+      return next;
+    });
+  };
+  // Swaps this line's Debit and Credit — account AND VAT code together —
+  // for a line entered the wrong way round, or a genuine reversal, same
+  // as the identical action on the invoice-creation screen (NewEntryForm).
+  const reverseGroupLine=(li)=>{
+    if(!isGroup){
+      // Single-line mode keeps its fields on form/debitVatCode/
+      // creditVatCode, not groupLinesState — same routing updateRow uses.
+      setForm(f=>({...f,debitCode:f.creditCode,creditCode:f.debitCode}));
+      setDebitVatCode(creditVatCode);
+      setCreditVatCode(debitVatCode);
+      return;
+    }
+    setGroupLinesState(p=>p.map((l,i)=>i===li?{...l,debitCode:l.creditCode,creditCode:l.debitCode,debitVatCode:l.creditVatCode,creditVatCode:l.debitVatCode}:l));
   };
 
   // Tripletex's own voucher screen: a "Details" tab holding the Voucher
@@ -2030,11 +2065,43 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 )}
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
-                {isGroup&&(confirmDelLine===l.id?(
-                  <button onClick={()=>deleteGroupLine(l.id)} title="Confirm delete this line" style={{background:T.red,color:"#fff",border:"none",borderRadius:6,width:20,height:20,cursor:"pointer",fontSize:11,lineHeight:1}}>✓</button>
-                ):(
-                  <button onClick={()=>setConfirmDelLine(l.id)} title="Delete this line" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:0}}>✕</button>
-                ))}
+                {/* One ⋮ menu — Duplicate, Reverse (swap Debit/Credit,
+                    account + VAT code together), Delete — instead of a
+                    lone delete button, matching the same three actions
+                    the invoice-creation screen's own per-line menu
+                    already has. Delete keeps its confirm step (a red ✓
+                    right after) for a line that actually carries data;
+                    an empty line still removes in one click. */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <button onClick={()=>{setLineMenuOpen(o=>o===l.id?null:l.id);setConfirmDelLine(null);}} title="Line options" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,fontFamily:"inherit"}}>
+                    <i className="ti ti-dots-vertical" style={{fontSize:15}}/>
+                  </button>
+                  {lineMenuOpen===l.id&&(
+                    <>
+                      <div onClick={()=>{setLineMenuOpen(null);setConfirmDelLine(null);}} style={{position:"fixed",inset:0,zIndex:298}}/>
+                      <div style={{position:"absolute",right:0,top:24,zIndex:299,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 10px 30px rgba(20,40,50,0.15)",padding:4,width:140}}>
+                        <button onClick={()=>{duplicateGroupLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                          <i className="ti ti-copy" style={{fontSize:14}}/>Duplicate
+                        </button>
+                        <button onClick={()=>{reverseGroupLine(li);setLineMenuOpen(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.text,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                          <i className="ti ti-arrows-left-right" style={{fontSize:14}}/>Reverse
+                        </button>
+                        {isGroup&&(()=>{
+                          const lineHasData=!!(l.debitCode||l.creditCode||parseFloat(l.amount)>0);
+                          const label=!lineHasData?"Delete":confirmDelLine===l.id?"Confirm delete":"Delete";
+                          return(
+                            <button onClick={()=>{
+                              if(!lineHasData||confirmDelLine===l.id){deleteGroupLine(l.id);setLineMenuOpen(null);return;}
+                              setConfirmDelLine(l.id);
+                            }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
+                              <i className="ti ti-trash" style={{fontSize:14}}/>{label}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </React.Fragment>);
           })}
