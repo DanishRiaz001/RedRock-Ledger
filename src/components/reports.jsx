@@ -6343,7 +6343,14 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
                 <div style={{fontSize:10.5,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Post as *</div>
-                {onNavigate&&<button onClick={()=>{closeModal();onNavigate("BankSettings");}} style={{background:"none",border:"none",color:T.accent,fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Manage payment types <i className="ti ti-external-link" style={{fontSize:10}}/></button>}
+                {/* A real link that opens in a NEW tab (the icon always
+                    implied this, but it used to just navigate away in the
+                    same tab via onNavigate — closing this reconciliation
+                    session's whole context, selected lines and all, just to
+                    glance at or tweak a payment type). Deep-links via the
+                    same ?tab= param FinanceTracker's own tab state already
+                    reads on load. */}
+                {onNavigate&&<a href={`${window.location.origin}${window.location.pathname}?tab=BankSettings`} target="_blank" rel="noopener noreferrer" style={{background:"none",border:"none",color:T.accent,fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}>Manage payment types <i className="ti ti-external-link" style={{fontSize:10}}/></a>}
               </div>
               {/* Curated payment-type shortlist — the common cases (bank
                   fees, interest, open items) as one click, each mapped to
