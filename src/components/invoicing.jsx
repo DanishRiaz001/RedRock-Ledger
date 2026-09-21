@@ -103,12 +103,21 @@ function VATCodesScreen({accounts}){
 // click right afterward. This asks for everything at once, in the same
 // themed modal shape as BankAccountDetailsModal (the one used to edit an
 // existing bank account), just without a pre-existing account to show.
-function AddBankAccountModal({onSave,onClose}){
+function AddBankAccountModal({onSave,onClose,suggestedCode,usedCodes}){
   const[bankName,setBankName]=useState("");
   const[accountNumber,setAccountNumber]=useState("");
+  const[code,setCode]=useState("");
   const[visibleInReconciliation,setVisibleInReconciliation]=useState(true);
-  const valid=bankName.trim().length>0;
-  const submit=()=>{if(!valid)return;onSave({bankName:bankName.trim(),accountNumber:accountNumber.trim(),visibleInReconciliation});};
+  // Left blank, this reuses/auto-assigns a code the same way it always
+  // did (see addBankAccount) — typing one here is what's new: the GL
+  // account code this bank posts through is picked FOR you otherwise,
+  // with no way to choose which 1900-series number a specific bank
+  // actually gets, or to land on a number outside that reserved series
+  // at all (matching an existing external chart, say).
+  const codeTrimmed=code.trim();
+  const codeTaken=!!codeTrimmed&&usedCodes.has(codeTrimmed);
+  const valid=bankName.trim().length>0&&!codeTaken;
+  const submit=()=>{if(!valid)return;onSave({bankName:bankName.trim(),accountNumber:accountNumber.trim(),visibleInReconciliation,code:codeTrimmed||undefined});};
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
@@ -118,6 +127,12 @@ function AddBankAccountModal({onSave,onClose}){
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Bank name *</div>
             <input autoFocus value={bankName} onChange={e=>setBankName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}} placeholder="e.g. DNB, Nordea, Sparebank 1" style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Account number (optional)</div>
+            <input value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}} placeholder={`${suggestedCode} (auto-assigned if left blank)`} style={{...inp,...(codeTaken?{borderColor:T.red}:{})}}/>
+            {codeTaken&&<div style={{fontSize:10.5,color:T.red,marginTop:4}}>That account number is already in use.</div>}
+            <div style={{fontSize:10.5,color:T.muted,marginTop:4}}>The chart-of-accounts code this bank posts through — stays fixed to this account everywhere once set.</div>
           </div>
           <div>
             <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Kontonummer (optional)</div>
@@ -195,13 +210,24 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
   // separate "Edit" click right afterward.
   const addBankAccount=(details)=>{
     if(!onSaveAccounts)return;
+    const used=new Set(accounts.map(a=>a.code));
+    // A code typed into the modal is a deliberate choice — post straight
+    // to it (even outside the 1900 series, e.g. matching an existing
+    // external chart) instead of silently reusing or auto-assigning one
+    // regardless of what was asked for.
+    if(details.code){
+      if(used.has(details.code)){alert("That account number is already in use.");return;}
+      const newAcct={code:details.code,name:details.bankName,matchable:false,notes:JSON.stringify(details)};
+      onSaveAccounts([...accounts,newAcct]);
+      setAddingBank(false);
+      return;
+    }
     const reusable=accounts.find(a=>getSK(a.code)==="1900"&&!isCashAccount(a)&&!configured(a));
     if(reusable){
       saveBankDetails(reusable.code,details);
       setAddingBank(false);
       return;
     }
-    const used=new Set(accounts.map(a=>a.code));
     let code=null;
     for(let c=1922;c<1999;c++){if(!used.has(String(c))){code=String(c);break;}}
     if(!code){alert("No free account code available in the 1900 series.");return;}
@@ -218,9 +244,12 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
       {editingAccount&&(
         <BankAccountDetailsModal account={editingAccount} initial={bankDetailsFor(editingAccount)} onSave={details=>saveBankDetails(editingAccount.code,details)} onClose={()=>setEditingAccount(null)}/>
       )}
-      {addingBank&&(
-        <AddBankAccountModal onSave={addBankAccount} onClose={()=>setAddingBank(false)}/>
-      )}
+      {addingBank&&(()=>{
+        const used=new Set(accounts.map(a=>a.code));
+        let suggestedCode=null;
+        for(let c=1922;c<1999;c++){if(!used.has(String(c))){suggestedCode=String(c);break;}}
+        return<AddBankAccountModal onSave={addBankAccount} onClose={()=>setAddingBank(false)} suggestedCode={suggestedCode||"1922"} usedCodes={used}/>;
+      })()}
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
         <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
           <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Bank</td><td style={{fontWeight:700}}>Kontonummer</td><td style={{fontWeight:700}}>In reconciliation</td><td style={{fontWeight:700,padding:"10px 16px"}}></td></tr></thead>
