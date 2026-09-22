@@ -6,6 +6,7 @@ import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModa
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
+import { ScreenErrorBoundary } from "./settings2.jsx";
 
 // Render a print-area element to PDF and OPEN IT in a new tab (the browser's
 // own PDF viewer — preview, print and save all built in) instead of forcing an
@@ -1256,7 +1257,12 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
     </div>
   );
 
-  if(screen==="plan")return(<AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate} companyProfile={companyProfile} isSuperAdmin={isSuperAdmin}/>);
+  // Wrapped in the same ScreenErrorBoundary the top-level "Accounts" tab
+  // uses — reached through Settings, this screen previously had NO
+  // boundary above it, so any render crash while opening an account (a
+  // malformed code from an import, say) blanked the entire app instead
+  // of showing a recoverable error.
+  if(screen==="plan")return(<ScreenErrorBoundary name="Chart of Accounts"><AccountPlanScreen accounts={accounts} onSave={onSave} onAddAccount={onAddAccount} onUpdateAccount={onUpdateAccount} transactions={transactions} onBack={()=>setScreen(null)} isDesktop={isDesktop} budgets={budgets} saveBudget={saveBudget} onNavigate={onNavigate} companyProfile={companyProfile} isSuperAdmin={isSuperAdmin}/></ScreenErrorBoundary>);
   if(screen==="contacts"){
     const ManageContactsInner=()=>{
       const[cType,setCType]=useState("customer");
