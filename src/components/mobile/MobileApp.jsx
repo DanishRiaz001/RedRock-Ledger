@@ -46,6 +46,12 @@ export default function MobileApp(props){
   // actually switching tabs, so the tab bar's active state doesn't jump
   // around underneath a modal-like flow.
   const[overlay,setOverlay]=useState(null);
+  // Set by MobileVouchers while its own "New voucher" entry form is open —
+  // that screen has a keyboard up for most of its use, and the tab bar
+  // (always-on-top by design, see below) would otherwise sit sandwiched
+  // between the form and the keyboard instead of getting out of the way
+  // the way a real modal's chrome would.
+  const[hideTabBar,setHideTabBar]=useState(false);
 
   useEffect(()=>{
     const light=tab==="Home"&&!overlay;
@@ -64,14 +70,15 @@ export default function MobileApp(props){
 
   return(
     <div style={{position:"fixed",inset:0,background:T.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:TABBAR_H}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:hideTabBar?0:TABBAR_H}}>
         {tab==="Home"&&<MobileHome {...props} feat={feat} onNavigate={setTab} onOpenOverlay={setOverlay}/>}
         {tab==="Bank"&&<MobileBank {...props}/>}
-        {tab==="Vouchers"&&<MobileVouchers {...props} feat={feat} moneySources={effectiveMoneySources} overlay={overlay} setOverlay={setOverlay}/>}
+        {tab==="Vouchers"&&<MobileVouchers {...props} feat={feat} moneySources={effectiveMoneySources} overlay={overlay} setOverlay={setOverlay} onFullScreenChange={setHideTabBar}/>}
         {tab==="Reports"&&<MobileReports {...props} feat={feat}/>}
         {tab==="More"&&<MobileMore {...props} onNavigate={setTab}/>}
       </div>
 
+      {!hideTabBar&&(
       <div style={{
         position:"fixed",left:0,right:0,bottom:0,zIndex:200,
         display:"flex",background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
@@ -87,6 +94,7 @@ export default function MobileApp(props){
           );
         })}
       </div>
+      )}
 
       {overlay&&overlay.type==="Settings"&&(
         <MobileSettings accounts={props.accounts} setAccounts={props.setAccounts} addAccount={props.addAccount} updateAccount={props.updateAccount}

@@ -209,10 +209,43 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   // ancestor with overflow:hidden/auto for its own rounded corners (a
   // scrolling postings table, a clipped card) clips this list to invisible
   // the moment it opens near that ancestor's edge.
+  //
+  // Also keyboard-aware: on mobile, focusing this field opens the on-screen
+  // keyboard, which (with Capacitor's Keyboard resize:"native") shrinks the
+  // visible viewport reported by visualViewport — but not window.innerHeight,
+  // and not until the keyboard finishes animating in, well after this first
+  // runs. A trigger low on screen (e.g. a posting line's second/third row)
+  // used to get a popup anchored below the trigger with a stale height
+  // budget, landing it partly or wholly behind the keyboard — exactly the
+  // "search box is hidden" report. Recomputing against the CURRENT visible
+  // height, and flipping above the trigger when there isn't room below,
+  // fixes it regardless of trigger position or keyboard state.
+  const MAX_DROP_H=388;
+  const computeDropPos=()=>{
+    if(!inputRef.current)return null;
+    const r=inputRef.current.getBoundingClientRect();
+    const viewportH=(window.visualViewport&&window.visualViewport.height)||window.innerHeight;
+    const width=Math.max(r.width,320);
+    const spaceBelow=viewportH-r.bottom-8;
+    const spaceAbove=r.top-8;
+    if(spaceBelow>=Math.min(MAX_DROP_H,160)||spaceBelow>=spaceAbove){
+      return{top:r.bottom+3,left:r.left,width,maxHeight:Math.max(160,Math.min(MAX_DROP_H,spaceBelow))};
+    }
+    const maxHeight=Math.max(160,Math.min(MAX_DROP_H,spaceAbove));
+    return{top:Math.max(8,r.top-3-maxHeight),left:r.left,width,maxHeight};
+  };
   const openAndSearch=()=>{
-    if(inputRef.current){const r=inputRef.current.getBoundingClientRect();setDropPos({top:r.bottom+3,left:r.left,width:Math.max(r.width,320)});}
+    setDropPos(computeDropPos());
     setOpen(true);setQ(null);setActiveIdx(-1);
   };
+  useEffect(()=>{
+    if(!open)return;
+    const reposition=()=>setDropPos(computeDropPos());
+    const vv=window.visualViewport;
+    (vv||window).addEventListener("resize",reposition);
+    return()=>(vv||window).removeEventListener("resize",reposition);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[open]);
   const closeAndRevert=()=>{setOpen(false);setQ(null);setActiveIdx(-1);};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. relatedTarget tells us where focus is going; when the
@@ -280,8 +313,10 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               cap out at 280, which fit only the first footer row and
               silently clipped the second one off (overflow:hidden on this
               same box), so "+ New customer/supplier" never showed even
-              though it was rendering. */}
-          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:388}}>
+              though it was rendering. dropPos.maxHeight shrinks this (and
+              flips the popup above the trigger) when the visible viewport
+              — post-keyboard — doesn't have the full 388px to give. */}
+          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:dropPos.maxHeight||MAX_DROP_H,display:"flex",flexDirection:"column"}}>
             {/* A dedicated search box inside the dropdown itself — the
                 trigger field above already doubles as a search box (typing
                 straight into it filters live), but that wasn't obvious
@@ -308,7 +343,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
                 <div style={{fontSize:9,color:T.muted,fontWeight:700,textTransform:"uppercase",textAlign:"right"}}>VAT</div>
               </div>
             )}
-            <div style={{overflowY:"auto",maxHeight:230}}>
+            <div style={{overflowY:"auto",flex:"1 1 auto",minHeight:0}}>
               {/* Pinned at the top so a debit/credit field can be deliberately
                   left empty from the dropdown itself, not just by never
                   picking anything — lets a line intentionally post to just

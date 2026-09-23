@@ -61,7 +61,7 @@ function EditVoucherSheet({txn,accounts,saveEdit,deleteTxn,onClose}){
 }
 
 export default function MobileVouchers(props){
-  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment,overlay,setOverlay,saveEdit,deleteTxn}=props;
+  const{accounts,contacts,setContacts,nextBilag,feat,sinkingFunds,saveSinkingFunds,inboxFiles,uploadInboxFile,transactions,moneySources,tagTransaction,projects,companyProfile,saveProjects,addTransaction,addEntryComment,overlay,setOverlay,saveEdit,deleteTxn,onFullScreenChange}=props;
   const[showNew,setShowNew]=useState(false);
   const[newEntryMode,setNewEntryMode]=useState("receipt");
   const[search,setSearch]=useState("");
@@ -73,6 +73,18 @@ export default function MobileVouchers(props){
   useEffect(()=>{
     if(overlay&&overlay.type==="NewVoucher"){setNewEntryMode(overlay.mode||"receipt");setShowNew(true);setOverlay&&setOverlay(null);}
   },[overlay]);
+
+  // The bottom tab bar is otherwise always on screen (by design, so every
+  // other full-screen overlay stops above it) — but with the keyboard up
+  // for this entry form, it ends up sandwiched between the form and the
+  // keyboard instead of hidden the way a real modal's chrome would be.
+  // Telling MobileApp to hide it for exactly this screen fixes that at
+  // the source instead of trying to out-guess the keyboard's height.
+  useEffect(()=>{
+    onFullScreenChange&&onFullScreenChange(showNew);
+    return()=>{onFullScreenChange&&onFullScreenChange(false);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[showNew]);
 
   const list=useMemo(()=>{
     const sorted=[...transactions].sort((a,b)=>b.bilag-a.bilag);
