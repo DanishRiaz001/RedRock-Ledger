@@ -472,7 +472,14 @@ function LoginScreen({onLogin,skipMarketing=false}){
   const[err,setErr]=useState("");
   const[loading,setLoading]=useState(false);
   const[done,setDone]=useState(false);
-  const[publicPage,setPublicPage]=useState(null); // null | "pricing" | "privacy" | "terms" | "status"
+  // Reads ?page=privacy (etc.) at mount so these have a real, direct,
+  // shareable URL — needed for things like the App Store Connect "Privacy
+  // Policy URL" field, which expects a link that shows the policy on its
+  // own rather than "go to the homepage and click Privacy."
+  const[publicPage,setPublicPage]=useState(() => {
+    const p = new URLSearchParams(window.location.search).get("page");
+    return ["pricing","privacy","terms","status"].includes(p) ? p : null;
+  }); // null | "pricing" | "privacy" | "terms" | "status"
   // The marketing homepage is a website-only front door — inside the native
   // app there's no "landing on the site" moment, so it would just be an
   // extra desktop-shaped screen to swipe past before the real (already
@@ -538,6 +545,7 @@ function LoginScreen({onLogin,skipMarketing=false}){
             <p>Your financial data belongs to you. We store it securely using Supabase (PostgreSQL) with row-level security, meaning your data is isolated from every other account on this platform.</p>
             <p>We do not sell, share, or use your financial data for advertising. Data you enter — transactions, invoices, contacts, company information — is used only to provide the accounting features you're using.</p>
             <p>Uploaded documents (receipts, invoices) are stored in encrypted cloud storage and are only accessible to your account and platform administrators for support purposes.</p>
+            <p>The RedRock Documents companion app requests camera and photo library access only so you can photograph or select a document to upload — photos aren't kept on your device or accessed for any other purpose, and nothing is uploaded until you choose to.</p>
             <p>You can export a complete copy of your data at any time from Settings → Backup & Restore.</p>
             <p style={{color:"#94A3B8",fontSize:11,marginTop:20}}>This is a working draft — have a lawyer review it before relying on it for real customers.</p>
           </div>
