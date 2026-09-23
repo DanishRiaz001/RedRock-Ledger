@@ -348,6 +348,34 @@ function POSSettingsScreen({accounts}){
   );
 }
 
+// A small "(i)" that reveals a plain-language explanation on click/tap —
+// the SAF-T import screen has several checkboxes whose consequences
+// aren't obvious from their label alone (what does "renaming" an account
+// actually do to it? what happens to a line that's already balanced?),
+// and a wrong guess here can mean duplicate accounts or wrong balances.
+// Click-to-toggle rather than hover so it works the same on a touchscreen.
+function InfoTip({text}){
+  const[open,setOpen]=useState(false);
+  const ref=React.useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const onDoc=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener("mousedown",onDoc);
+    return()=>document.removeEventListener("mousedown",onDoc);
+  },[open]);
+  return(
+    <span ref={ref} style={{position:"relative",display:"inline-flex",verticalAlign:"middle",marginLeft:6}}>
+      <button type="button" onClick={e=>{e.preventDefault();e.stopPropagation();setOpen(o=>!o);}} title="What does this mean?"
+        style={{width:15,height:15,borderRadius:"50%",border:`1px solid ${T.muted}`,background:open?T.muted:"none",color:open?"#fff":T.muted,fontSize:9,fontWeight:800,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,fontFamily:"inherit",flexShrink:0}}>i</button>
+      {open&&(
+        <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:20,left:0,zIndex:60,width:250,background:"#1F2937",color:"#F3F4F6",fontSize:11.5,lineHeight:1.55,borderRadius:9,padding:"10px 12px",boxShadow:"0 10px 26px rgba(0,0,0,0.28)"}}>
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
 // SAF-T import — Standard Audit File for Tax, the international standard
 // format for exporting a full chart of accounts + contacts + journal from
 // one accounting system to migrate into another. Parsed with the browser's
@@ -363,12 +391,22 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
     createVouchers:true,
     createContacts:true,createContactsCustomers:true,createContactsSuppliers:true,
     overwriteContacts:false,contactsWithTxnsOnly:false,
-    createAccounts:true,accountsWithTxnsOnly:false,overwriteAccountNames:false,
+    createAccounts:true,accountsWithTxnsOnly:false,
     openingBalanceAccounts:false,openingBalanceAR:false,openingBalanceAP:false,
   });
   const[importing,setImporting]=useState(false);
   const[importResult,setImportResult]=useState(null);
-  const[accountMap,setAccountMap]=useState({}); // importedCode -> existing account code to post against instead
+  const[accountMap,setAccountMap]=useState({}); // importedCode -> existing account code to post against instead ("" = "choosing", not yet picked)
+  // Per-account name to actually use on import — seeded from the FILE's
+  // name the moment an account is parsed (see parseFile), not left to
+  // default silently to whatever's already in the chart. Editing this in
+  // the preview table is how someone opts an existing account OUT of
+  // being renamed (type the old name back in) rather than a separate
+  // all-or-nothing "overwrite names" checkbox that previously made this
+  // decision for every account at once, with no per-account visibility
+  // into what would actually change.
+  const[nameOverrides,setNameOverrides]=useState({});
+  const[importProgress,setImportProgress]=useState({done:0,total:0});
 
   // A REAL Visma SAF-T export puts a namespace PREFIX on every single
   // element (<n1:Company>, <n1:AccountID>, <n1:Transaction>...) — plain
@@ -385,7 +423,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
   const num=(el,tag)=>{const v=text(el,tag);return v?parseFloat(v):null;};
 
   const parseFile=async(file)=>{
-    setParsing(true);setParseError("");setParsed(null);setImportResult(null);setAccountMap({});
+    setParsing(true);setParseError("");setParsed(null);setImportResult(null);setAccountMap({});setNameOverrides({});setImportProgress({done:0,total:0});
     try{
       const xmlText=await file.text();
       const doc=new DOMParser().parseFromString(xmlText,"text/xml");
@@ -485,10 +523,40 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
     return updated;
   };
 
+  // What name actually gets used for a parsed account — the file's own
+  // name by default, or whatever's been typed into the preview table's
+  // name field for that account instead (which is how "keep the current
+  // name" gets expressed: typing the existing name back in there).
+  const nameFor=a=>{const v=nameOverrides[a.code];return(v!=null?v:a.name).trim()||a.name;};
+
   const doImport=async()=>{
     if(!parsed)return;
     setImporting(true);
     let accountsAdded=0,accountsUpdated=0,contactsAdded=0,contactsUpdated=0,txnsAdded=0,openingBalancesAdded=0;
+
+    // Precompute how many individual posting steps this run will actually
+    // make, so the progress bar reflects real work instead of a fake timer
+    // — the dominant cost by far is the sequential addTransaction() calls
+    // below (one network round-trip each), not the accounts/contacts
+    // batches (each one save).
+    let totalSteps=0;
+    const debitLines0=t=>t.lines.filter(l=>l.debit>0);
+    const creditLines0=t=>t.lines.filter(l=>l.credit>0);
+    if(opts.createVouchers){
+      for(const t of parsed.transactions){
+        const debitLines=debitLines0(t),creditLines=creditLines0(t);
+        if(debitLines.length===1&&creditLines.length===1){
+          if(debitLines[0].debit&&Math.abs(debitLines[0].debit-creditLines[0].credit)<=0.01)totalSteps+=1;
+        }else if(debitLines.length+creditLines.length>2){
+          totalSteps+=debitLines.filter(l=>l.debit).length+creditLines.filter(l=>l.credit).length;
+        }
+      }
+    }
+    if(opts.openingBalanceAccounts)totalSteps+=parsed.accounts.filter(a=>((a.openingDebit||0)-(a.openingCredit||0))!==0).length;
+    if(opts.openingBalanceAR)totalSteps+=parsed.customers.filter(c=>((c.openingDebit||0)-(c.openingCredit||0))!==0).length;
+    if(opts.openingBalanceAP)totalSteps+=parsed.suppliers.filter(s=>((s.openingCredit||0)-(s.openingDebit||0))!==0).length;
+    setImportProgress({done:0,total:totalSteps});
+    const tick=()=>setImportProgress(p=>({...p,done:p.done+1}));
 
     let currentAccounts=accounts;
     if(opts.createAccounts){
@@ -497,8 +565,9 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       const toAdd=[],toUpdate=new Map();
       relevantParsed.forEach(a=>{
         if(accountMap[a.code])return; // mapped to an existing account — don't create a duplicate
-        if(!byCode[a.code])toAdd.push({code:a.code,name:a.name,matchable:false});
-        else if(opts.overwriteAccountNames&&byCode[a.code].name!==a.name)toUpdate.set(a.code,a.name);
+        const useName=nameFor(a);
+        if(!byCode[a.code])toAdd.push({code:a.code,name:useName,matchable:false});
+        else if(byCode[a.code].name!==useName)toUpdate.set(a.code,useName);
       });
       if(toAdd.length||toUpdate.size){
         currentAccounts=currentAccounts.map(a=>toUpdate.has(a.code)?{...a,name:toUpdate.get(a.code)}:a).concat(toAdd);
@@ -532,8 +601,6 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
     }
 
     if(opts.createVouchers){
-      const debitLines0=t=>t.lines.filter(l=>l.debit>0);
-      const creditLines0=t=>t.lines.filter(l=>l.credit>0);
       for(const t of parsed.transactions){
         const debitLines=debitLines0(t),creditLines=creditLines0(t);
         const desc=t.description||"Imported from SAF-T";
@@ -543,7 +610,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           const amount=debitLines[0].debit;
           if(!amount||Math.abs(amount-creditLines[0].credit)>0.01)continue; // guards against a malformed 2-line entry that doesn't actually balance
           await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(debitLines[0].accountId),creditCode:resolveCode(creditLines[0].accountId),description:desc,amount});
-          txnsAdded++;
+          txnsAdded++;tick();
         } else if(debitLines.length+creditLines.length>2){
           // A genuine multi-line journal entry (this app's transaction
           // model only supports simple two-account vouchers) — used to
@@ -562,12 +629,12 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           for(const l of debitLines){
             if(!l.debit)continue;
             await addTransaction({date:t.date.slice(0,10),debitCode:resolveCode(l.accountId),creditCode:OPENING_BALANCE_CODE,description:desc,amount:l.debit,groupRef});
-            txnsAdded++;
+            txnsAdded++;tick();
           }
           for(const l of creditLines){
             if(!l.credit)continue;
             await addTransaction({date:t.date.slice(0,10),debitCode:OPENING_BALANCE_CODE,creditCode:resolveCode(l.accountId),description:desc,amount:l.credit,groupRef});
-            txnsAdded++;
+            txnsAdded++;tick();
           }
         }
         // A transaction with only one line total (all-debit or all-credit,
@@ -587,7 +654,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           const code=resolveCode(a.code);
           if(net>0)await addTransaction({date:today,debitCode:code,creditCode:OPENING_BALANCE_CODE,description:"Opening balance (SAF-T import)",amount:net});
           else await addTransaction({date:today,debitCode:OPENING_BALANCE_CODE,creditCode:code,description:"Opening balance (SAF-T import)",amount:-net});
-          openingBalancesAdded++;
+          openingBalancesAdded++;tick();
         }
       }
       if(opts.openingBalanceAR){
@@ -596,7 +663,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           if(!net)continue;
           const contact=contacts.find(x=>x.type==="customer"&&x.name===c.name);
           await addTransaction({date:today,debitCode:"1500",creditCode:OPENING_BALANCE_CODE,description:`Opening balance — ${c.name}`,amount:net,contactId:contact?contact.id:undefined});
-          openingBalancesAdded++;
+          openingBalancesAdded++;tick();
         }
       }
       if(opts.openingBalanceAP){
@@ -605,7 +672,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           if(!net)continue;
           const contact=contacts.find(x=>x.type==="supplier"&&x.name===s.name);
           await addTransaction({date:today,debitCode:OPENING_BALANCE_CODE,creditCode:"2400",description:`Opening balance — ${s.name}`,amount:net,contactId:contact?contact.id:undefined});
-          openingBalancesAdded++;
+          openingBalancesAdded++;tick();
         }
       }
     }
@@ -637,6 +704,12 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
 
       {parsed&&!importResult&&(
         <>
+        {/* Locked (dimmed, unclickable) the moment the import actually
+            starts — every one of these settings, the account names/
+            mappings, all of it feeds decisions doImport already made when
+            it kicked off, so changing anything mid-run wouldn't do
+            anything except confuse whoever's watching it happen. */}
+        <div style={{opacity:importing?0.5:1,pointerEvents:importing?"none":"auto",transition:"opacity .15s"}}>
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Found in {parsed.companyName}</div>
           <div style={{display:"flex",gap:20,marginBottom:18,fontSize:12,color:T.sub,flexWrap:"wrap"}}>
@@ -651,6 +724,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
               <input type="checkbox" checked={opts.createVouchers} onChange={e=>setOpts(o=>({...o,createVouchers:e.target.checked}))}/>
               Create vouchers from journal entries ({parsed.transactions.length} found)
+              <InfoTip text="Each journal entry becomes a posted voucher. A simple one debit + one credit entry posts directly; an entry with more lines than that posts each line individually against a temporary 'Opening balance equity' account instead, since vouchers here only support one debit and one credit account each — the group always still nets to zero."/>
             </label>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
               <input type="checkbox" checked={opts.createContacts} onChange={e=>setOpts(o=>({...o,createContacts:e.target.checked}))}/>
@@ -669,30 +743,12 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
                 <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
                   <input type="checkbox" checked={opts.overwriteContacts} onChange={e=>setOpts(o=>({...o,overwriteContacts:e.target.checked}))}/>
                   Overwrite existing customers/suppliers with matching names
+                  <InfoTip text="If a customer or supplier in the file has the exact same name as one you already have, checking this updates that existing contact's email/phone/address from the file (never their name or ID) instead of leaving them untouched."/>
                 </label>
                 <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
                   <input type="checkbox" checked={opts.contactsWithTxnsOnly} onChange={e=>setOpts(o=>({...o,contactsWithTxnsOnly:e.target.checked}))}/>
                   Import only customers/suppliers with transactions
-                </label>
-              </div>
-            )}
-          </div>
-
-          <div style={{fontSize:11,fontWeight:800,color:T.muted,textTransform:"uppercase",marginBottom:8}}>Accounts</div>
-          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={opts.createAccounts} onChange={e=>setOpts(o=>({...o,createAccounts:e.target.checked}))}/>
-              Create new accounts ({parsed.accounts.length} found)
-            </label>
-            {opts.createAccounts&&(
-              <div style={{marginLeft:26,display:"flex",flexDirection:"column",gap:8}}>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
-                  <input type="checkbox" checked={opts.accountsWithTxnsOnly} onChange={e=>setOpts(o=>({...o,accountsWithTxnsOnly:e.target.checked}))}/>
-                  Import only accounts with transactions ({parsed.accountsWithTxns?parsed.accountsWithTxns.size:0})
-                </label>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer"}}>
-                  <input type="checkbox" checked={opts.overwriteAccountNames} onChange={e=>setOpts(o=>({...o,overwriteAccountNames:e.target.checked}))}/>
-                  Overwrite existing names on accounts
+                  <InfoTip text="Skips any customer or supplier in the file that never actually appears on a journal entry — useful if the file's contact list is much longer than the ones you've actually traded with."/>
                 </label>
               </div>
             )}
@@ -711,6 +767,7 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
               <input type="checkbox" checked={opts.openingBalanceAP} onChange={e=>setOpts(o=>({...o,openingBalanceAP:e.target.checked}))}/>
               Create an opening balance on accounts payable to suppliers
+              <InfoTip text="These three post each account's/customer's/supplier's starting balance from the file as of today, so your books start at the right numbers. They're independent of each other — turn on just the ones you need."/>
             </label>
             {(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP)&&(
               <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"9px 12px"}}>Every opening balance is posted against a suspense account ({OPENING_BALANCE_CODE} · Opening balance equity, created automatically) so the import always nets to zero — move it into real equity yourself afterward if needed.</div>
@@ -718,31 +775,101 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
           </div>
         </div>
 
-        {/* Mapping of accounts — redirect an imported code onto one of your
-            existing accounts instead of creating a duplicate. */}
+        {/* Accounts preview & mapping, unified into one table — every
+            parsed account, its name defaulting to the file's own name
+            (edit any you'd rather leave alone), its opening balance
+            ("saldo") so amounts are visible before anything is imported,
+            and — for an account not already in the chart — either "New"
+            or a live picker to map it onto one of your existing accounts
+            instead, right there in the same row. */}
         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
-          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4}}>Mapping of accounts</div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:14}}>Optional — for any imported account code that should actually post against one of your existing accounts, map it here instead of letting the import create a new one.</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 30px",gap:8,marginBottom:6,fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase"}}>
-            <div>Imported account</div><div>Maps to (your account)</div><div></div>
+          <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:4,display:"flex",alignItems:"center"}}>
+            Accounts
+            <InfoTip text="Names here default to the ones from your import file. An account already in your chart shows as 'Renaming' if you leave the file's name in place, or 'Existing' if you edit the name back to what it already was. An account not in your chart yet shows as 'New' — or tap 'Map to existing' to redirect it onto one of your accounts instead of creating a duplicate."/>
           </div>
-          {Object.keys(accountMap).length===0&&<div style={{fontSize:12,color:T.muted,padding:"8px 0"}}>No mappings yet.</div>}
-          {Object.entries(accountMap).map(([from,to])=>(
-            <div key={from} style={{display:"grid",gridTemplateColumns:"1fr 1fr 30px",gap:8,alignItems:"center",marginBottom:6}}>
-              <AccDrop value={from} onChange={v=>setAccountMap(m=>{const n={...m};delete n[from];n[v]=to;return n;})} accounts={parsed.accounts}/>
-              <AccDrop value={to} onChange={v=>setAccountMap(m=>({...m,[from]:v}))} accounts={accounts}/>
-              <button onClick={()=>setAccountMap(m=>{const n={...m};delete n[from];return n;})} style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>
-            </div>
-          ))}
-          <button onClick={()=>{
-            const unmapped=parsed.accounts.find(a=>!(a.code in accountMap));
-            if(unmapped)setAccountMap(m=>({...m,[unmapped.code]:""}));
-          }} style={{background:"none",border:"none",color:T.accent,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",padding:0,marginTop:4}}>+ New row</button>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={opts.createAccounts} onChange={e=>setOpts(o=>({...o,createAccounts:e.target.checked}))}/>
+              Create/update accounts from this file ({parsed.accounts.length} found)
+            </label>
+            {opts.createAccounts&&(
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer",marginLeft:26}}>
+                <input type="checkbox" checked={opts.accountsWithTxnsOnly} onChange={e=>setOpts(o=>({...o,accountsWithTxnsOnly:e.target.checked}))}/>
+                Only accounts with transactions ({parsed.accountsWithTxns?parsed.accountsWithTxns.size:0})
+                <InfoTip text="When checked, accounts from the file that never appear on any journal entry are left out of the table below entirely — useful if the file's chart of accounts is much bigger than what's actually been used."/>
+              </label>
+            )}
+          </div>
+
+          {opts.createAccounts&&(()=>{
+            const byCode={};accounts.forEach(a=>{byCode[a.code]=a;});
+            const rows=opts.accountsWithTxnsOnly?parsed.accounts.filter(a=>parsed.accountsWithTxns.has(a.code)):parsed.accounts;
+            return(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"64px 1fr 84px 78px 130px",gap:8,padding:"0 10px 6px",fontSize:9,fontWeight:700,color:T.muted,textTransform:"uppercase"}}>
+                  <div>Code</div><div>Name to use</div><div style={{textAlign:"right"}}>Saldo</div><div>Status</div><div/>
+                </div>
+                <div style={{border:`1px solid ${T.border}`,borderRadius:10,maxHeight:420,overflowY:"auto"}}>
+                  {rows.map((a,i)=>{
+                    const existing=byCode[a.code];
+                    const isNew=!existing;
+                    const mapped=a.code in accountMap;
+                    const currentName=nameOverrides[a.code]!=null?nameOverrides[a.code]:a.name;
+                    const saldo=(a.openingDebit||0)-(a.openingCredit||0);
+                    return(
+                      <div key={a.code} style={{display:"grid",gridTemplateColumns:"64px 1fr 84px 78px 130px",gap:8,alignItems:"center",padding:"7px 10px",borderBottom:i<rows.length-1?`1px solid ${T.border}`:"none"}}>
+                        <div style={{fontSize:11,fontWeight:700,color:T.accent}}>{a.code}</div>
+                        {isNew&&mapped?(
+                          <div style={{fontSize:11,color:T.muted,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</div>
+                        ):(
+                          <input value={currentName} onChange={e=>setNameOverrides(m=>({...m,[a.code]:e.target.value}))} style={{...inp,fontSize:11,padding:"5px 7px"}}/>
+                        )}
+                        <div style={{fontSize:10.5,color:saldo?T.text:T.muted,textAlign:"right",fontWeight:saldo?600:400}}>{saldo?`${saldo>0?"Dr":"Cr"} ${fmt(saldo)}`:"—"}</div>
+                        <div>
+                          {isNew?(
+                            <span style={{fontSize:9,fontWeight:700,color:T.blue,background:"#EBF4FF",borderRadius:5,padding:"2px 7px",whiteSpace:"nowrap"}}>New</span>
+                          ):existing.name!==currentName?(
+                            <span style={{fontSize:9,fontWeight:700,color:T.orange,background:"#FFFBEB",borderRadius:5,padding:"2px 7px",whiteSpace:"nowrap"}}>Renaming</span>
+                          ):(
+                            <span style={{fontSize:9,fontWeight:700,color:T.muted,background:T.bg,borderRadius:5,padding:"2px 7px",whiteSpace:"nowrap"}}>Existing</span>
+                          )}
+                        </div>
+                        <div>
+                          {isNew&&(mapped?(
+                            <div style={{display:"flex",alignItems:"center",gap:4}}>
+                              <AccDrop value={accountMap[a.code]} onChange={v=>setAccountMap(m=>({...m,[a.code]:v}))} accounts={accounts} inputStyle={{fontSize:10,padding:"4px 6px",minHeight:22}}/>
+                              <button onClick={()=>setAccountMap(m=>{const n={...m};delete n[a.code];return n;})} title="Add as new instead" style={{background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:13,padding:0,flexShrink:0}}>✕</button>
+                            </div>
+                          ):(
+                            <button onClick={()=>setAccountMap(m=>({...m,[a.code]:""}))} style={{background:"none",border:"none",color:T.accent,fontWeight:700,fontSize:10.5,cursor:"pointer",fontFamily:"inherit",padding:0}}>Map to existing…</button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {rows.length===0&&<div style={{padding:"16px",fontSize:12,color:T.muted,textAlign:"center"}}>No accounts match the current filter.</div>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
+        </div>
+
+        {importing&&(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>Importing…</div>
+            <div style={{height:8,borderRadius:99,background:T.bg,overflow:"hidden",marginBottom:8}}>
+              <div style={{height:"100%",width:`${importProgress.total?Math.min(100,(importProgress.done/importProgress.total)*100):100}%`,background:T.accent,borderRadius:99,transition:"width .2s ease"}}/>
+            </div>
+            <div style={{fontSize:11.5,color:T.muted}}>
+              {importProgress.total?`${importProgress.done} of ${importProgress.total} entries posted`:"Setting up accounts and contacts…"} — please don't close this window until it finishes.
+            </div>
+          </div>
+        )}
 
         <div style={{display:"flex",gap:8}}>
           <button onClick={doImport} disabled={importing} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:importing?"wait":"pointer",fontFamily:"inherit"}}>{importing?"Importing…":"Import account information"}</button>
-          <button onClick={()=>{setParsed(null);setAccountMap({});}} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={()=>{setParsed(null);setAccountMap({});setNameOverrides({});}} disabled={importing} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:600,color:T.sub,cursor:importing?"default":"pointer",opacity:importing?0.5:1,fontFamily:"inherit"}}>Cancel</button>
         </div>
         </>
       )}
