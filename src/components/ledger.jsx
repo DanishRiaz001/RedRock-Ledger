@@ -905,17 +905,87 @@ function CalcAmountInput({value,onChange,style,placeholder,onKeyDown}){
     />
   );
 }
+const WEEKDAYS_MON_FIRST=["Mo","Tu","We","Th","Fr","Sa","Su"];
+
+// A real in-app month grid — the calendar icon used to just call
+// .showPicker() on a hidden native `type="date"` input, which depends on
+// browser/WebView support that iOS's WKWebView (the Capacitor app) doesn't
+// reliably provide, so tapping it silently did nothing on mobile. This
+// renders its own popup instead, so it works the same everywhere.
+function CalendarPopup({value,onSelect,onClose,position="below"}){
+  const seed=value?new Date(value+"T00:00:00"):new Date();
+  const[viewYear,setViewYear]=useState(seed.getFullYear());
+  const[viewMonth,setViewMonth]=useState(seed.getMonth());
+  const todayISO=new Date().toISOString().slice(0,10);
+  const firstOfMonth=new Date(viewYear,viewMonth,1);
+  const startOffset=(firstOfMonth.getDay()+6)%7; // Monday-first grid
+  const daysInMonth=new Date(viewYear,viewMonth+1,0).getDate();
+  const cells=[...Array(startOffset).fill(null),...Array(daysInMonth).keys()].map((d,i)=>i<startOffset?null:d+1);
+  const monthLabel=firstOfMonth.toLocaleString("default",{month:"long"});
+  const goMonth=(delta)=>{
+    let m=viewMonth+delta,y=viewYear;
+    if(m<0){m=11;y--;}else if(m>11){m=0;y++;}
+    setViewMonth(m);setViewYear(y);
+  };
+  const iso=(d)=>`${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const navBtn={background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,color:T.sub,cursor:"pointer",fontSize:14,lineHeight:1,fontFamily:"inherit"};
+  return(
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:400}}/>
+      <div style={{position:"absolute",[position==="above"?"bottom":"top"]:"calc(100% + 4px)",left:0,zIndex:401,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,boxShadow:"0 12px 30px rgba(0,0,0,0.18)",padding:12,width:246}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <button type="button" onClick={()=>goMonth(-1)} style={navBtn}>‹</button>
+          <div style={{fontSize:13,fontWeight:700,color:T.text}}>{monthLabel} {viewYear}</div>
+          <button type="button" onClick={()=>goMonth(1)} style={navBtn}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:2}}>
+          {WEEKDAYS_MON_FIRST.map(w=><div key={w} style={{fontSize:10,fontWeight:700,color:T.muted,textAlign:"center",padding:"2px 0"}}>{w}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+          {cells.map((d,i)=>{
+            if(d==null)return<div key={i}/>;
+            const cellIso=iso(d);
+            const isSelected=cellIso===value;
+            const isToday=cellIso===todayISO;
+            return(
+              <button key={i} type="button" onClick={()=>onSelect(cellIso)} style={{
+                aspectRatio:"1",border:isToday&&!isSelected?`1px solid ${T.accent}`:"none",borderRadius:8,
+                background:isSelected?T.accent:"transparent",color:isSelected?"#fff":T.text,
+                fontWeight:isSelected||isToday?700:500,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",padding:0,
+              }}>{d}</button>
+            );
+          })}
+        </div>
+        <div style={{marginTop:8,textAlign:"center"}}>
+          <button type="button" onClick={()=>onSelect(todayISO)} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Today</button>
+        </div>
+      </div>
+    </>
+  );
+}
 function FlexDateInput({value,onChange,style,inputStyle}){
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState("");
-  const nativeRef=React.useRef(null);
+  const[showCalendar,setShowCalendar]=useState(false);
+  const[calPos,setCalPos]=useState("below");
+  const wrapRef=React.useRef(null);
   const commit=()=>{
     const parsed=parseFlexDate(draft);
     if(parsed)onChange(parsed);
     setEditing(false);
   };
+  const openCalendar=()=>{
+    // Flip above the field when there's not enough room below (e.g. a
+    // date field near the bottom of a mobile bottom-sheet form) so the
+    // popup doesn't render off-screen or get clipped.
+    if(wrapRef.current){
+      const rect=wrapRef.current.getBoundingClientRect();
+      setCalPos(window.innerHeight-rect.bottom<330?"above":"below");
+    }
+    setShowCalendar(true);
+  };
   return(
-    <div style={{position:"relative",...style}}>
+    <div ref={wrapRef} style={{position:"relative",...style}}>
       <input
         value={editing?draft:fmtDateDisplay(value)}
         placeholder="e.g. 120626 or 12062026"
@@ -939,17 +1009,17 @@ function FlexDateInput({value,onChange,style,inputStyle}){
       />
       <i
         className="ti ti-calendar"
-        onClick={()=>nativeRef.current&&nativeRef.current.showPicker&&nativeRef.current.showPicker()}
+        onClick={openCalendar}
         style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:15,color:T.sub,cursor:"pointer"}}
       />
-      <input
-        ref={nativeRef}
-        type="date"
-        value={value||""}
-        onChange={e=>e.target.value&&onChange(e.target.value)}
-        style={{position:"absolute",inset:0,opacity:0,pointerEvents:"none",width:1,height:1}}
-        tabIndex={-1}
-      />
+      {showCalendar&&(
+        <CalendarPopup
+          value={value}
+          position={calPos}
+          onSelect={iso=>{onChange(iso);setShowCalendar(false);setEditing(false);}}
+          onClose={()=>setShowCalendar(false)}
+        />
+      )}
     </div>
   );
 }
