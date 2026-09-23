@@ -503,7 +503,33 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
       const accountsWithTxns=new Set();
       transactions.forEach(t=>t.lines.forEach(l=>accountsWithTxns.add(l.accountId)));
 
-      setParsed({companyName,accounts:glAccounts,customers,suppliers,transactions,accountsWithTxns});
+      // The file's own SelectionCriteria says which period it covers
+      // (PeriodStart 1-12 + PeriodStartYear) — used below so an opening
+      // balance posts as of the day BEFORE that period starts, not
+      // whatever day the import happens to be run on. Falls back to the
+      // earliest transaction date (also period-appropriate) if a file
+      // omits SelectionCriteria, and only reaches for today's date as a
+      // last resort when neither is present.
+      const critEl=byTag(doc,"SelectionCriteria")[0];
+      const periodStart=critEl&&num(critEl,"PeriodStart");
+      const periodStartYear=critEl&&num(critEl,"PeriodStartYear");
+      let openingDate=null;
+      if(periodStart&&periodStartYear){
+        // Day 0 of a month rolls back to the last day of the PREVIOUS
+        // month (and previous year, for January) — exactly "the day
+        // before this period starts". Built with Date.UTC (not the local-
+        // timezone constructor) so toISOString() can't shift the date
+        // backward a day for anyone west of UTC.
+        openingDate=new Date(Date.UTC(periodStartYear,periodStart-1,0)).toISOString().slice(0,10);
+      }else if(transactions.length){
+        const earliest=transactions.reduce((min,t)=>t.date<min?t.date:min,transactions[0].date);
+        const[ey,em,ed]=earliest.slice(0,10).split("-").map(Number);
+        const d=new Date(Date.UTC(ey,em-1,ed));
+        d.setUTCDate(d.getUTCDate()-1);
+        openingDate=d.toISOString().slice(0,10);
+      }
+
+      setParsed({companyName,accounts:glAccounts,customers,suppliers,transactions,accountsWithTxns,openingDate});
     }catch(e){
       setParseError("Couldn't parse this file as SAF-T XML. Double-check it's an unmodified export from your previous system.");
     }
@@ -645,7 +671,14 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
 
     if(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP){
       currentAccounts=await ensureOpeningBalanceAccount(currentAccounts);
-      const today=new Date().toISOString().slice(0,10);
+      // Dated to the day BEFORE the file's own period starts (or the day
+      // before its earliest transaction, if the file has no
+      // SelectionCriteria) — NOT today's real-world date. Posting an
+      // opening balance on the day it happens to be imported, rather
+      // than a date belonging to the period it represents, is exactly
+      // what let four separate year-by-year imports all land inside the
+      // same current reporting period and stack on top of each other.
+      const today=parsed.openingDate||new Date().toISOString().slice(0,10);
       if(opts.openingBalanceAccounts){
         for(const a of parsed.accounts){
           const debit=a.openingDebit||0,credit=a.openingCredit||0;
@@ -767,10 +800,18 @@ function SAFTImportScreen({accounts,setAccounts,contacts,setContacts,addTransact
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer"}}>
               <input type="checkbox" checked={opts.openingBalanceAP} onChange={e=>setOpts(o=>({...o,openingBalanceAP:e.target.checked}))}/>
               Create an opening balance on accounts payable to suppliers
-              <InfoTip text="These three post each account's/customer's/supplier's starting balance from the file as of today, so your books start at the right numbers. They're independent of each other — turn on just the ones you need."/>
+              <InfoTip text="These three post each account's/customer's/supplier's starting balance from the file, dated the day before the file's own period begins — not today's date — so your books start at the right numbers as of the right point in time. They're independent of each other — turn on just the ones you need."/>
             </label>
             {(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP)&&(
               <div style={{fontSize:11,color:T.muted,background:T.bg,borderRadius:8,padding:"9px 12px"}}>Every opening balance is posted against a suspense account ({OPENING_BALANCE_CODE} · Opening balance equity, created automatically) so the import always nets to zero — move it into real equity yourself afterward if needed.</div>
+            )}
+            {(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP)&&(
+              <div style={{fontSize:11.5,color:"#92400E",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,padding:"9px 12px"}}>
+                <strong>Migrating more than one year?</strong> Only check these for the EARLIEST file you import (e.g. 2023). A year's opening balance already includes everything before it — checking this again on 2024/2025/2026's file re-adds that same starting point on top of what the earlier years' own journal entries already built up, doubling it. Later years only need "Create vouchers from journal entries" checked.
+              </div>
+            )}
+            {parsed.openingDate&&(opts.openingBalanceAccounts||opts.openingBalanceAR||opts.openingBalanceAP)&&(
+              <div style={{fontSize:11,color:T.muted}}>This file's opening balance will be dated <strong>{parsed.openingDate}</strong> (the day before its period starts).</div>
             )}
           </div>
         </div>
