@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
-import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect, NewContactModal } from "./ledger.jsx";
+import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, AccountGroupDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect, NewContactModal } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
 import { DEFAULT_ACCOUNTS } from "../lib/accounts_data.js";
