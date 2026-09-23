@@ -97,6 +97,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
       e.preventDefault();
       if(onClickExtra)onClickExtra();
+      // A drill-down like the General ledger account view (ledgerAcc) is
+      // pushed on TOP of whatever tab was already showing — drilling into
+      // an account from Trial Balance never changes `tab` away from
+      // "TrialBalance" at all. So clicking "Trial balance" in the sidebar
+      // again was a same-value setTab() no-op, and the drill-down (whose
+      // render check doesn't look at `tab`) just kept covering it. Any
+      // sidebar click should exit whatever drill-down is open, the same
+      // way the browser Back button already does (see the popstate
+      // handler above) — clicking a nav link is always "take me to this
+      // screen," never "layer this under what I'm already looking at."
+      setLedgerAcc(null);
+      setVatTerminOpenTxn(null);
+      setVatTerminView(null);
       setTab(t);
     },
   });

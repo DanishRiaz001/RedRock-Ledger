@@ -2673,15 +2673,19 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
 // inputs or presets) since every screen that uses this already tracks a
 // single "viewMonth", not a from/to range — this just gives a fast way to
 // land on any month/year directly instead of only stepping one at a time.
-function MonthYearJump({year,month,onPick}){
+// `allowWholeYear` (opt-in per screen) adds a "Whole year" button above the
+// month grid — picking it calls onPick(year, null), month=null being the
+// signal for "the whole year" rather than any specific month.
+function MonthYearJump({year,month,onPick,allowWholeYear=false}){
   const[open,setOpen]=useState(false);
   const[gridYear,setGridYear]=useState(year);
   useEffect(()=>{if(open)setGridYear(year);},[open,year]);
   const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const isWholeYear=month==null;
   return(
     <div style={{position:"relative"}}>
       <span onClick={()=>setOpen(o=>!o)} style={{fontSize:13,fontWeight:700,color:T.text,minWidth:100,textAlign:"center",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4,justifyContent:"center"}}>
-        {MONTH_NAMES[month-1]} {year}
+        {isWholeYear?year:`${MONTH_NAMES[month-1]} ${year}`}
         <i className="ti ti-chevron-down" style={{fontSize:11,color:T.muted}}/>
       </span>
       {open&&(<>
@@ -2692,6 +2696,9 @@ function MonthYearJump({year,month,onPick}){
             <span style={{fontSize:13,fontWeight:800,color:T.text}}>{gridYear}</span>
             <button onClick={()=>setGridYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>›</button>
           </div>
+          {allowWholeYear&&(
+            <button onClick={()=>{onPick(gridYear,null);setOpen(false);}} style={{width:"100%",background:isWholeYear&&gridYear===year?T.accent:T.bg,color:isWholeYear&&gridYear===year?"#fff":T.text,border:"none",borderRadius:7,padding:"8px 4px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:6}}>Whole year {gridYear}</button>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
             {MONTH_NAMES.map((mName,i)=>{
               const m=i+1;
@@ -6783,15 +6790,26 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   // series instead of exact code is what actually fixes "no data shows".
   const code=type==="customer"?"1500":"2400";
   const inBucket=c=>getSK(c)===code;
+  // viewMonth is "YYYY-MM" for a single month, or bare "YYYY" (4 chars) for
+  // "whole year" — one state variable doing double duty, kept as a string
+  // specifically so every place already reading/writing it (Excel export
+  // filename, etc.) doesn't need its own separate "which mode" plumbing.
+  const isYearMode=viewMonth.length===4;
   const year=parseInt(viewMonth.slice(0,4));
-  const monthIdx=parseInt(viewMonth.slice(5,7))-1;
-  const periodEnd=`${year}-${String(monthIdx+1).padStart(2,"0")}-${String(new Date(year,monthIdx+1,0).getDate()).padStart(2,"0")}`;
-  const periodLabel=new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
+  const monthIdx=isYearMode?0:parseInt(viewMonth.slice(5,7))-1;
+  const periodEnd=isYearMode?`${year}-12-31`:`${year}-${String(monthIdx+1).padStart(2,"0")}-${String(new Date(year,monthIdx+1,0).getDate()).padStart(2,"0")}`;
+  const periodLabel=isYearMode?String(year):new Date(year,monthIdx,1).toLocaleString("default",{month:"long"})+" "+year;
   const stepMonth=(dir)=>{
+    if(isYearMode){setViewMonth(String(year+dir));return;}
     let m=monthIdx+dir,y=year;
     if(m<0){m=11;y-=1;}else if(m>11){m=0;y+=1;}
     setViewMonth(`${y}-${String(m+1).padStart(2,"0")}`);
   };
+  // A single month matches by exact "YYYY-MM"; the whole year matches any
+  // date whose year matches — used by the "closed"/"all" history filters
+  // below (the "open" filter doesn't need this, it's already a <= periodEnd
+  // cutoff that works the same whether periodEnd is a month-end or Dec 31).
+  const matchesPeriod=date=>isYearMode?date.slice(0,4)===viewMonth:date.slice(0,7)===viewMonth;
 
   const relevantContacts=useMemo(()=>contacts.filter(c=>c.type===type),[contacts,type]);
   const mv=(t)=>inBucket(t.debitCode)?t.amount:-t.amount;
@@ -6813,8 +6831,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
         // label but never touched this filter at all, so the period
         // selector had zero effect on what data appeared.
         if(entriesView==="open")txns=txns.filter(t=>!isMatched(t)&&t.date<=periodEnd);
-        else if(entriesView==="closed")txns=txns.filter(t=>isMatched(t)&&t.date.slice(0,7)===viewMonth);
-        else txns=txns.filter(t=>t.date.slice(0,7)===viewMonth);
+        else if(entriesView==="closed")txns=txns.filter(t=>isMatched(t)&&matchesPeriod(t.date));
+        else txns=txns.filter(t=>matchesPeriod(t.date));
         if(search){
           const q=search.toLowerCase();
           txns=txns.filter(t=>fmtB(t.bilag).toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q));
@@ -6934,7 +6952,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           </div>
           <div style={{display:"flex",alignItems:"center",gap:3,border:`1px solid ${T.border}`,borderRadius:6,padding:"3px 6px",flexShrink:0}}>
             <button onClick={()=>stepMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>‹</button>
-            <MonthYearJump year={year} month={monthIdx+1} onPick={(y,m)=>setViewMonth(`${y}-${String(m).padStart(2,"0")}`)}/>
+            <MonthYearJump year={year} month={isYearMode?null:monthIdx+1} allowWholeYear onPick={(y,m)=>setViewMonth(m==null?String(y):`${y}-${String(m).padStart(2,"0")}`)}/>
             <button onClick={()=>stepMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.sub}}>›</button>
           </div>
           <ThemedSelect value={contactFilter} onChange={setContactFilter} placeholder={`All ${type==="customer"?"customers":"suppliers"}`} allowClear clearLabel={`All ${type==="customer"?"customers":"suppliers"}`} triggerStyle={{...inp,width:130,padding:"5px 8px",fontSize:11,flexShrink:0}} options={relevantContacts.map(c=>({value:c.id,label:`${c.id} — ${c.name}`}))}/>
