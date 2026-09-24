@@ -21,6 +21,8 @@ export default function MobileSinkingFunds({sinkingFunds,saveSinkingFunds}){
   const[form,setForm]=useState({name:"",goal:"",months:"",icon:"🎯",color:"#0D9488"});
   const[contribute,setContribute]=useState(null);
   const[amount,setAmount]=useState("");
+  const[editing,setEditing]=useState(null);
+  const[editForm,setEditForm]=useState({});
 
   const activeFunds=funds.filter(f=>!f.inactive);
   const totalGoal=activeFunds.reduce((s,f)=>s+(f.goal||0),0);
@@ -41,6 +43,20 @@ export default function MobileSinkingFunds({sinkingFunds,saveSinkingFunds}){
     if(!amt||!contribute)return;
     saveSinkingFunds(funds.map(f=>f.id===contribute.id?{...f,saved:(f.saved||0)+amt}:f));
     setAmount("");setContribute(null);
+  };
+
+  const openEdit=f=>{setEditing(f);setEditForm({name:f.name,goal:String(f.goal||""),months:f.months?String(f.months):"",icon:f.icon,color:f.color});};
+  const saveEdit=()=>{
+    if(!editForm.name.trim()||!editForm.goal)return;
+    saveSinkingFunds(funds.map(f=>f.id===editing.id?{...f,name:editForm.name.trim(),goal:parseFloat(editForm.goal)||0,months:editForm.months?parseInt(editForm.months,10):null,icon:editForm.icon,color:editForm.color}:f));
+    setEditing(null);
+  };
+  const doDelete=()=>{
+    const savedAmt=editing.saved||0;
+    const warn=savedAmt>0?` It has ${fmtBal(savedAmt)} saved — that amount stays in your books, this only removes the fund's tracking card.`:"";
+    if(!window.confirm(`Delete "${editing.name}"?${warn}`))return;
+    saveSinkingFunds(funds.filter(f=>f.id!==editing.id));
+    setEditing(null);
   };
 
   return(
@@ -71,6 +87,7 @@ export default function MobileSinkingFunds({sinkingFunds,saveSinkingFunds}){
                 <div style={{fontSize:11,color:"#8A93A3",marginTop:1}}>{fmtBal(f.saved||0)} of {fmtBal(f.goal)}{monthly!=null?` · ${fmtBal(monthly)}/mo`:""}</div>
               </div>
               <div style={{fontSize:13,fontWeight:800,color:f.color,flexShrink:0}}>{pct}%</div>
+              <div onClick={()=>openEdit(f)} style={{width:24,height:24,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"#8A93A3",flexShrink:0}}><i className="ti ti-dots" style={{fontSize:16}}/></div>
             </div>
             <div style={{height:6,background:"#EEF2F1",borderRadius:3,overflow:"hidden",marginBottom:12}}>
               <div style={{height:"100%",width:`${Math.max(3,pct)}%`,background:f.color,borderRadius:3}}/>
@@ -84,6 +101,36 @@ export default function MobileSinkingFunds({sinkingFunds,saveSinkingFunds}){
       <div onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,padding:"12px",borderRadius:14,border:`1.5px dashed ${T.border}`,color:T.accent,fontSize:12.5,fontWeight:700}}>
         <i className="ti ti-plus" style={{fontSize:14}}/>New sinking fund
       </div>
+
+      {/* Edit / delete sheet */}
+      {editing&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:50,display:"flex",alignItems:"flex-end"}} onClick={()=>setEditing(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",padding:"22px 20px calc(env(safe-area-inset-bottom) + 20px)",width:"100%",maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#0F172A",marginBottom:14}}>Edit sinking fund</div>
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              {ICONS.map(ic=>(
+                <div key={ic} onClick={()=>setEditForm(f=>({...f,icon:ic}))} style={{width:38,height:38,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,background:editForm.icon===ic?T.accentLight:"#F6F8FA",border:editForm.icon===ic?`1.5px solid ${T.accent}`:"1.5px solid transparent"}}>{ic}</div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {COLORS.map(c=>(
+                <div key={c} onClick={()=>setEditForm(f=>({...f,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,border:editForm.color===c?"2.5px solid #0F172A":"2.5px solid transparent",boxShadow:editForm.color===c?"0 0 0 2px #fff inset":"none"}}/>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:"#8A93A3",fontWeight:600,marginBottom:5}}>What are you saving for?</div>
+            <input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
+            <div style={{fontSize:11,color:"#8A93A3",fontWeight:600,marginBottom:5}}>Goal amount</div>
+            <input type="number" value={editForm.goal} onChange={e=>setEditForm(f=>({...f,goal:e.target.value}))} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
+            <div style={{fontSize:11,color:"#8A93A3",fontWeight:600,marginBottom:5}}>Months to save in (optional)</div>
+            <input type="number" value={editForm.months} onChange={e=>setEditForm(f=>({...f,months:e.target.value}))} style={{width:"100%",background:"#F6F8FA",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",marginBottom:16}}/>
+            <div style={{display:"flex",gap:10}}>
+              <div onClick={()=>setEditing(null)} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,border:`1px solid ${T.border}`,color:"#5C6B73",fontWeight:700,fontSize:13}}>Cancel</div>
+              <div onClick={saveEdit} style={{flex:1,textAlign:"center",padding:"12px",borderRadius:12,background:T.accent,color:"#fff",fontWeight:700,fontSize:13}}>Save</div>
+            </div>
+            <div onClick={doDelete} style={{textAlign:"center",padding:"12px",marginTop:10,color:"#E14848",fontWeight:700,fontSize:12.5}}>Delete fund</div>
+          </div>
+        </div>
+      )}
 
       {/* Contribute sheet */}
       {contribute&&(
