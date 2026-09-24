@@ -2436,6 +2436,20 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     }
     return null;
   };
+  // Neither extraction path (this regex fallback, or the vision model below)
+  // truly understands a document's layout — both can grab the wrong number
+  // off a page that has several (an order ID, a tracking number, a phone
+  // number) instead of the actual amount due. A $99 Apple receipt once came
+  // back as "1,877,193,618,478,007,300" this way. No real invoice for this
+  // app's users is ever going to be anywhere near that, so anything past a
+  // generous sanity ceiling is treated as a bad read and dropped to null —
+  // consistent with "never guess or invent values" elsewhere in this flow —
+  // rather than saved and shown as if it were a real suggestion.
+  const sanitizeAiAmount=(v)=>{
+    if(v==null)return null;
+    const n=typeof v==="number"?v:parseFloat(String(v).replace(/[^0-9.\-]/g,""));
+    return Number.isFinite(n)&&n>0&&n<100000000?n:null;
+  };
   const analyzeInboxFilePDFFallback=async(file,fileId)=>{
     try{
       const lines=await pdfTextLines(file);
@@ -2466,7 +2480,7 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
       const supplier=lines.find(l=>l.trim().length>2&&!/^faktura$|^invoice$|^kvittering$|^receipt$/i.test(l.trim()))||null;
       const patch={
         ai_supplier:supplier,
-        ai_amount:amount,
+        ai_amount:sanitizeAiAmount(amount),
         ai_invoice_no:invoiceNo,
         ai_invoice_date:invoiceDate,
         ai_due_date:dueDate,
@@ -2531,7 +2545,7 @@ If you genuinely cannot read useful information from this file, return every fie
       const validDate=d=>typeof d==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null;
       const patch={
         ai_supplier:parsed.supplier||null,
-        ai_amount:parsed.amount!=null?parsed.amount:null,
+        ai_amount:sanitizeAiAmount(parsed.amount),
         ai_invoice_no:parsed.invoiceNo||null,
         ai_invoice_date:validDate(parsed.invoiceDate),
         ai_due_date:validDate(parsed.dueDate),
