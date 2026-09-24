@@ -4378,11 +4378,17 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       const per=Math.floor((pj.total/pj.n)*100)/100;
       const last=Math.round((pj.total-per*(pj.n-1))*100)/100; // remainder on the final month
       const pGrp=`per-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      // Every periodization posting is the SAME underlying voucher as the
+      // invoice it came from, not a new one each time — shares the
+      // invoice's own bilag (same pattern used above for multi-line
+      // invoices) and carries the same supporting document, so opening any
+      // month's entry later shows the original invoice attached, not
+      // nothing.
       // 1) reclass the full amount P&L -> balance account, at the invoice date
       if(pj.isCustomer){
-        await onSave({date:form.date,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — periodisering (utsatt inntekt)`,amount:pj.total,groupRef:pGrp,entryMode:invIsCustomer?"customer_invoice":"supplier_invoice"});
+        await onSave({date:form.date,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — periodisering (utsatt inntekt)`,amount:pj.total,groupRef:pGrp,bilag:firstBilag,attachmentIds:invAttachmentIds,entryMode:invIsCustomer?"customer_invoice":"supplier_invoice"});
       }else{
-        await onSave({date:form.date,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — periodisering (forskuddsbetalt)`,amount:pj.total,groupRef:pGrp,entryMode:"supplier_invoice"});
+        await onSave({date:form.date,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — periodisering (forskuddsbetalt)`,amount:pj.total,groupRef:pGrp,bilag:firstBilag,attachmentIds:invAttachmentIds,entryMode:"supplier_invoice"});
       }
       // 2) recognise 1/N per month, 1st of the month, starting from `start`
       const[sy,sm]=(pj.start||form.date).split("-").map(Number);
@@ -4393,9 +4399,9 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
         const amt=m===pj.n-1?last:per;
         if(amt<=0)continue;
         if(pj.isCustomer){
-          await onSave({date:d,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — inntektsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,entryMode:"customer_invoice"});
+          await onSave({date:d,debitCode:pj.balanceCode,creditCode:pj.expenseCode,description:`${pj.desc} — inntektsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,bilag:firstBilag,attachmentIds:invAttachmentIds,entryMode:"customer_invoice"});
         }else{
-          await onSave({date:d,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — kostnadsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,entryMode:"supplier_invoice"});
+          await onSave({date:d,debitCode:pj.expenseCode,creditCode:pj.balanceCode,description:`${pj.desc} — kostnadsføring ${m+1}/${pj.n}`,amount:amt,groupRef:pGrp,bilag:firstBilag,attachmentIds:invAttachmentIds,entryMode:"supplier_invoice"});
         }
       }
     }
