@@ -1541,6 +1541,26 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   const[viewMode,setViewMode]=useState("active"); // "active" | "deleted"
   const[filterOpen,setFilterOpen]=useState(false);
   const[typeFilter,setTypeFilter]=useState(""); // "" | "image" | "pdf"
+  // The "Deleted files" view never registered with the browser's own
+  // history — pressing Back while in it did nothing (the global tab-level
+  // popstate handler in FinanceTracker has no idea this view exists), so
+  // there was no way out except the in-page link. Same fix as the ledger
+  // drill-down/Mva-meldinger views: push one history entry on the way in,
+  // and let a local popstate listener step back out — the "← Back to
+  // Inbox" link now goes through window.history.back() too, so both exits
+  // stay in sync with the actual history depth instead of drifting apart.
+  const viewModePoppingRef=useRef(false);
+  useEffect(()=>{
+    if(viewModePoppingRef.current){viewModePoppingRef.current=false;return;}
+    if(viewMode==="deleted")window.history.pushState({inboxViewMode:"deleted"},"");
+  },[viewMode]);
+  useEffect(()=>{
+    const onPop=()=>{
+      if(viewMode==="deleted"){viewModePoppingRef.current=true;setViewMode("active");setSelected([]);}
+    };
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[viewMode]);
   // Folders were removed entirely per request — same underlying files,
   // Copy no longer files into one.
   const copyFile=async(id)=>{
@@ -1728,7 +1748,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
             {viewMode==="deleted"&&(
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
                 <p style={{fontSize:12,color:T.muted,margin:0}}>Deleted files — restore or permanently delete.</p>
-                <button onClick={()=>{setViewMode("active");setSelected([]);}} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,whiteSpace:"nowrap",marginLeft:10}}>← Back to Inbox</button>
+                <button onClick={()=>window.history.back()} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,whiteSpace:"nowrap",marginLeft:10}}>← Back to Inbox</button>
               </div>
             )}
 
