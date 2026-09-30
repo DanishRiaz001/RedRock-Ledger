@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, isExpenseSK, fmt, fmtB, nextContactId, xlsxHeaderRows } from "../lib/utils.js";
 import { LOGO_B64 } from "../lib/logo.js";
@@ -168,12 +168,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // for every OTHER company too, including a genuinely brand-new one with
   // zero transactions, which then landed on whatever tab happened to be
   // last active instead of an orientation screen.
-  const[onboardingDismissed,setOnboardingDismissedState]=useState(false);
-  useEffect(()=>{
-    try{setOnboardingDismissedState(localStorage.getItem(`rr_onboarding_done_${activeCompanyId}`)==="1");}
-    catch{setOnboardingDismissedState(false);}
-  },[activeCompanyId]);
-  const dismissOnboarding=()=>{setOnboardingDismissedState(true);try{localStorage.setItem(`rr_onboarding_done_${activeCompanyId}`,"1");}catch{}};
+  //
+  // Was stored in localStorage — per BROWSER, not per company — so a
+  // granted employee/accountant opening this company on their own device
+  // (which never dismissed it there) would see onboarding pop back up any
+  // time transactions.length happened to be 0, which can legitimately
+  // happen for an established company (e.g. right after deleting its only
+  // remaining entry, or a data cleanup). Now backed by
+  // company_profile.onboarding_dismissed so dismissing it once, from any
+  // device, is permanent for that company everywhere.
+  const onboardingDismissed=!!(companyProfile&&companyProfile.onboardingDismissed);
+  const dismissOnboarding=()=>{
+    saveCompanyProfile&&saveCompanyProfile({...companyProfile,onboardingDismissed:true});
+  };
   // Same as addTransaction, but also raises a save notification on the bell
   // icon — used by the flows where "did that actually save?" matters most:
   // registering vouchers from the Inbox, and the plain New Entry form.
@@ -275,6 +282,18 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const chooseLanguage=code=>{setUiLanguage(code);try{localStorage.setItem("redrock_ui_language",code);}catch{}setLanguageMenuOpen(false);setProfileMenuOpen(false);};
   const[downloadMenuOpen,setDownloadMenuOpen]=useState(false);
   const[screenExcelExport,setScreenExcelExport]=useState(null); // fn registered by whichever screen has its own Excel export
+  // Passed to screens as `registerExcelExport` — MUST be referentially
+  // stable. Each screen's own effect that calls this depends on the
+  // function reference itself; passing a fresh inline arrow every render
+  // (`fn=>setScreenExcelExport(()=>fn)`, as this used to be written at
+  // each call site) meant that effect never stopped re-firing: call it →
+  // setState here → this component re-renders → a brand-new inline
+  // function is created → the child's effect sees a "changed" dependency
+  // and calls it again — an infinite loop (visible as React's "Maximum
+  // update depth exceeded" warning, hundreds of times a second). useState
+  // setters are guaranteed stable by React, so wrapping it once in
+  // useCallback with no dependencies makes the reference permanent.
+  const registerScreenExcelExport=useCallback(fn=>setScreenExcelExport(()=>fn),[]);
   // Save notifications — shown via the bell icon. A real, lightweight toast
   // system (not tied to bug reports, which live in Settings now).
   const[toasts,setToasts]=useState([]);
@@ -561,7 +580,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   if(ledgerAcc&&!isDesktop)return(<LedgerScreen account={ledgerAcc} accounts={accounts} contacts={contacts} transactions={transactions} onBack={()=>setLedgerAcc(null)} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} onMatchTxns={matchTransactions} onUnmatchTxns={unmatchTransactions} filterFrom={filterFrom} filterTo={filterTo} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} addTransaction={addTransactionNotified}/>);
 
   // Handle direct ledger navigation from home KPI cards — redirect to Reskontro
-  if(tab==="ledger_1500"||tab==="ledger_2400"){
+  // Same missing "&&!isDesktop" bug as Import below — the Dashboard's
+  // Receivables/Payables stat cards (reports.jsx) navigate straight to
+  // these two tab values, which took this chrome-less return on desktop
+  // too. Desktop now falls through to the nested ledger_1500/ledger_2400
+  // block further down, which reuses the same ReskontroDesktopScreen the
+  // regular "Reskontro" tab already renders inside the normal chrome.
+  if((tab==="ledger_1500"||tab==="ledger_2400")&&!isDesktop){
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     const initView=tab==="ledger_1500"?"customer":"supplier";
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} initialView={initView} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} addTransaction={addTransactionNotified}/>);
@@ -575,7 +600,12 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
     if(!feat.reskontro)return(<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>);
     return(<ReskontroScreen contacts={contacts} setContacts={setContacts} transactions={transactions} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} editTxn={saveEdit} deleteTxn={deleteTxn} accounts={accounts} onBack={()=>setTab("Dashboard")} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} inboxFiles={inboxFiles} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} addTransaction={addTransactionNotified}/>);
   }
-  if(tab==="Import"){
+  // Missing "&&!isDesktop" here (every sibling early-return above has it)
+  // meant Import Excel took this chrome-less full-screen return on DESKTOP
+  // too, instead of only on mobile — the sidebar, header, and company
+  // switcher never rendered at all. Desktop now falls through to the
+  // normal chrome-wrapped {tab==="Import"&&...} block below instead.
+  if(tab==="Import"&&!isDesktop){
     if(!feat.import)return(<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>);
     return(<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>);
   }
@@ -1543,14 +1573,15 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="BankSettings"&&<BankSettingsScreen accounts={accounts} onSaveAccounts={setAccounts}/>}
         {tab==="POSSettings"&&<POSSettingsScreen accounts={accounts}/>}
         {tab==="SAFTImport"&&<SAFTImportScreen accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} addTransaction={addTransactionNotified}/>}
+        {tab==="Import"&&<div style={{maxWidth:900}}>{feat.import?<ImportScreen accounts={accounts} addTransaction={addTransaction} nextBilag={nextBilag} onBack={()=>setTab("Dashboard")}/>:<DisabledScreen title="Import Excel" onBack={()=>setTab("Dashboard")}/>}</div>}
         {tab==="ReportsHub"&&<ScreenErrorBoundary name="Reports"><ReportsHubScreen onNavigate={setTab}/></ScreenErrorBoundary>}
         {tab==="SalesPerCustomer"&&<ScreenErrorBoundary name="Sales per Customer"><SalesPerCustomerScreen transactions={transactions} contacts={contacts}/></ScreenErrorBoundary>}
         {tab==="AgedReskontro"&&(feat.reskontro?<ScreenErrorBoundary name="Aged Reskontro"><AgedReskontroScreen contacts={contacts} transactions={transactions}/></ScreenErrorBoundary>:<DisabledScreen title="Aged Reskontro" onBack={()=>setTab("Dashboard")}/>)}
         {tab==="BalanceLists"&&<ScreenErrorBoundary name="Balance Lists"><BalanceListsScreen contacts={contacts} transactions={transactions} employees={employees}/></ScreenErrorBoundary>}
 
-        {tab==="Reskontro"&&(
+        {(tab==="Reskontro"||tab==="ledger_1500"||tab==="ledger_2400")&&(
           feat.reskontro
-            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} defaultType={reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} companyProfile={companyProfile} addTransaction={addTransactionNotified}/></div>
+            ?<div style={{maxWidth:1000}}><ReskontroDesktopScreen key={tab==="ledger_1500"?"customer":tab==="ledger_2400"?"supplier":reskontroDefaultType} contacts={contacts} setContacts={setContacts} transactions={transactions} accounts={accounts} matchTxns={matchTransactions} unmatchTxns={unmatchTransactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} registerExcelExport={registerScreenExcelExport} defaultType={tab==="ledger_1500"?"customer":tab==="ledger_2400"?"supplier":reskontroDefaultType} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} onNavigate={setTab} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} companyProfile={companyProfile} addTransaction={addTransactionNotified}/></div>
             :<DisabledScreen title="Reskontro" onBack={()=>setTab("Dashboard")}/>
         )}
 
@@ -1629,7 +1660,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
         {tab==="TrialBalance"&&(
           <div style={{maxWidth:1000}}>
             <ScreenErrorBoundary name="Trial Balance">
-              <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={fn=>setScreenExcelExport(()=>fn)} isDesktop={isDesktop}/>
+              <TrialBalanceScreen accounts={accounts} transactions={transactions} onOpenLedger={(acct,from,to)=>{setFilterFrom(from);setFilterTo(to);setLedgerAcc(acct);}} onSaveAccounts={setAccounts} registerExcelExport={registerScreenExcelExport} isDesktop={isDesktop}/>
             </ScreenErrorBoundary>
           </div>
         )}
@@ -1727,10 +1758,26 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       </div>
 
       {justSaved&&(
-        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:900,background:"#1F2937",color:"#fff",borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:14,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",fontSize:13}}>
-          <span>Saved {fmtB(justSaved.bilag)} — {justSaved.description}</span>
-          <button onClick={undoJustSaved} style={{background:"none",border:"none",color:T.accent,fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>Undo</button>
-          <button onClick={()=>setJustSaved(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>✕</button>
+        // Same glassy "watery" toast as New Entry's own post-save
+        // confirmation (invoicing.jsx) instead of a plain dark banner — and,
+        // like that one, clicking it opens the bilag it just posted. Kept
+        // its own Undo (that one doesn't have it) by stopping propagation
+        // on both action buttons so they don't also trigger the open-bilag
+        // navigation underneath them.
+        <div onClick={()=>{
+          const full=transactions.find(t=>t.id===justSaved.id);
+          if(full){setEntriesDetailTxn(full);setTab("Entries");}
+          setJustSaved(null);
+        }} style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:900,display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.88)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${T.borderGlass}`,borderRadius:14,padding:"11px 16px",boxShadow:"0 12px 32px rgba(20,60,50,0.16)",cursor:"pointer"}}>
+          <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#0D9488,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <i className="ti ti-check" style={{fontSize:15,color:"#fff"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Saved {fmtB(justSaved.bilag)} — {justSaved.description}</div>
+            <div style={{fontSize:11,color:T.accent,fontWeight:700,marginTop:1}}>View bilag →</div>
+          </div>
+          <button onClick={e=>{e.stopPropagation();undoJustSaved();}} style={{background:"none",border:"none",color:T.accent,fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:13,flexShrink:0}}>Undo</button>
+          <button onClick={e=>{e.stopPropagation();setJustSaved(null);}} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
         </div>
       )}
     </div>

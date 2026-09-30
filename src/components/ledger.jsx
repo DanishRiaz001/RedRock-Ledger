@@ -141,7 +141,6 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
   // the bottom of this dropdown, which could overflow its own border.
   const[showAccountModal,setShowAccountModal]=useState(false);
   const[showContactModal,setShowContactModal]=useState(false);
-  const[dropPos,setDropPos]=useState(null);
   // Arrow-key highlight through the combined contact+account list — was
   // Enter-picks-the-top-match only, with no way to reach anything past
   // the first row without touching the mouse.
@@ -204,48 +203,16 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
     else{onChange(entry.item.code);closeAndRevert();}
   };
 
-  // Fixed from the input's own screen coordinates (same fix as Menu3 and
-  // AccDropFlat) instead of absolute-relative-to-container — otherwise any
-  // ancestor with overflow:hidden/auto for its own rounded corners (a
-  // scrolling postings table, a clipped card) clips this list to invisible
-  // the moment it opens near that ancestor's edge.
-  //
-  // Also keyboard-aware: on mobile, focusing this field opens the on-screen
-  // keyboard, which (with Capacitor's Keyboard resize:"native") shrinks the
-  // visible viewport reported by visualViewport — but not window.innerHeight,
-  // and not until the keyboard finishes animating in, well after this first
-  // runs. A trigger low on screen (e.g. a posting line's second/third row)
-  // used to get a popup anchored below the trigger with a stale height
-  // budget, landing it partly or wholly behind the keyboard — exactly the
-  // "search box is hidden" report. Recomputing against the CURRENT visible
-  // height, and flipping above the trigger when there isn't room below,
-  // fixes it regardless of trigger position or keyboard state.
-  const MAX_DROP_H=388;
-  const computeDropPos=()=>{
-    if(!inputRef.current)return null;
-    const r=inputRef.current.getBoundingClientRect();
-    const viewportH=(window.visualViewport&&window.visualViewport.height)||window.innerHeight;
-    const width=Math.max(r.width,320);
-    const spaceBelow=viewportH-r.bottom-8;
-    const spaceAbove=r.top-8;
-    if(spaceBelow>=Math.min(MAX_DROP_H,160)||spaceBelow>=spaceAbove){
-      return{top:r.bottom+3,left:r.left,width,maxHeight:Math.max(160,Math.min(MAX_DROP_H,spaceBelow))};
-    }
-    const maxHeight=Math.max(160,Math.min(MAX_DROP_H,spaceAbove));
-    return{top:Math.max(8,r.top-3-maxHeight),left:r.left,width,maxHeight};
-  };
+  // Opens as a centered search overlay (like the reference account-search
+  // window) instead of a list anchored below the trigger — one fixed,
+  // predictable position regardless of where the trigger sits (a cramped
+  // postings-table cell, a sidebar field, low on a mobile screen), so the
+  // old viewport-edge/keyboard collision math (flip above, shrink height,
+  // recompute on resize) is no longer needed at all: centered always fits.
+  const MAX_DROP_H=420;
   const openAndSearch=()=>{
-    setDropPos(computeDropPos());
     setOpen(true);setQ(null);setActiveIdx(-1);
   };
-  useEffect(()=>{
-    if(!open)return;
-    const reposition=()=>setDropPos(computeDropPos());
-    const vv=window.visualViewport;
-    (vv||window).addEventListener("resize",reposition);
-    return()=>(vv||window).removeEventListener("resize",reposition);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[open]);
   const closeAndRevert=()=>{setOpen(false);setQ(null);setActiveIdx(-1);};
   // Blur closes the dropdown — but ONLY when focus is actually leaving the
   // whole component. relatedTarget tells us where focus is going; when the
@@ -304,19 +271,15 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
         style={{...selSm,minHeight:28,cursor:"text",paddingRight:22,...inputStyle}}
       />
       <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:8,color:T.muted,pointerEvents:"none"}}>{open?"▲":"▼"}</span>
-      {open&&dropPos&&(
-        <>
-          <div onClick={closeAndRevert} style={{position:"fixed",inset:0,zIndex:298}}/>
-          {/* maxHeight covers the search box (38) + header row + the
-              scrolling list below (230) + BOTH footer action rows
-              ("+ New account" and "+ New customer/supplier") — it used to
-              cap out at 280, which fit only the first footer row and
-              silently clipped the second one off (overflow:hidden on this
-              same box), so "+ New customer/supplier" never showed even
-              though it was rendering. dropPos.maxHeight shrinks this (and
-              flips the popup above the trigger) when the visible viewport
-              — post-keyboard — doesn't have the full 388px to give. */}
-          <div style={{position:"fixed",top:dropPos.top,left:dropPos.left,width:dropPos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:dropPos.maxHeight||MAX_DROP_H,display:"flex",flexDirection:"column"}}>
+      {open&&(
+        // Centered search overlay (matching the reference account-search
+        // window) instead of a list anchored below the trigger — same
+        // backdrop+centered-card pattern as every other modal in this app
+        // (AccountModal, NewAccountModal, …), so it always has room
+        // regardless of where the trigger sits and needs no per-open
+        // position math.
+        <div onClick={closeAndRevert} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.45)",zIndex:298,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",width:"min(640px, calc(100vw - 40px))",borderRadius:14,boxShadow:"0 24px 70px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:MAX_DROP_H,display:"flex",flexDirection:"column"}}>
             {/* A dedicated search box inside the dropdown itself — the
                 trigger field above already doubles as a search box (typing
                 straight into it filters live), but that wasn't obvious
@@ -393,7 +356,7 @@ function AccDrop({value,onChange,accounts,onCreateAccount,contacts=[],onContactP
               <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:9,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
             )}
           </div>
-        </>
+        </div>
       )}
       {showAccountModal&&(
         <NewAccountModal
@@ -829,14 +792,19 @@ function ThemedSelect({value,onChange,options,placeholder="— Select —",disab
             </div>
           )}
           <div style={{overflowY:"auto"}}>
+            {/* Rows used to each carry their own borderBottom divider —
+                busier than the reference dropdown, where only the selected
+                row stands out (a plain highlight) and unselected rows sit
+                flush against each other with nothing drawn between them.
+                A touch more vertical padding too, to match its spacing. */}
             {allowClear&&(
-              <div onClick={()=>pick("")} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:!value?T.accentLight:"#fff",color:T.muted,fontStyle:"italic",borderBottom:`1px solid ${T.border}`}}>{clearLabel||`— ${placeholder} —`}</div>
+              <div onClick={()=>pick("")} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",background:!value?T.accentLight:"#fff",color:T.muted,fontStyle:"italic"}}>{clearLabel||`— ${placeholder} —`}</div>
             )}
             {groups.map(([g,opts])=>(
               <React.Fragment key={g}>
-                {g&&<div style={{padding:"7px 12px 4px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,background:T.bg}}>{g}</div>}
+                {g&&<div style={{padding:"7px 14px 4px",fontSize:9.5,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,background:T.bg}}>{g}</div>}
                 {opts.map(o=>(
-                  <div key={o.value} onClick={()=>pick(o.value)} style={{padding:"9px 12px",fontSize:12,cursor:"pointer",background:String(o.value)===String(value)?T.accentLight:"#fff",fontWeight:String(o.value)===String(value)?700:400,color:T.text,borderBottom:`1px solid ${T.border}`}}>{o.label}</div>
+                  <div key={o.value} onClick={()=>pick(o.value)} onMouseEnter={e=>{if(String(o.value)!==String(value))e.currentTarget.style.background=T.bg;}} onMouseLeave={e=>{if(String(o.value)!==String(value))e.currentTarget.style.background="#fff";}} style={{padding:"10px 14px",fontSize:12,cursor:"pointer",background:String(o.value)===String(value)?T.accentLight:"#fff",fontWeight:String(o.value)===String(value)?700:400,color:T.text}}>{o.label}</div>
                 ))}
               </React.Fragment>
             ))}
@@ -866,11 +834,14 @@ function parseFlexDate(raw){
   if(isNaN(d.getTime()))return null;
   return iso;
 }
+// ISO (YYYY-MM-DD), matching the reference app's own date convention
+// throughout — was reformatted to "05 Aug 2026" for display while every
+// date field's underlying value (and every date picked from the calendar
+// or typed as digits) was already exactly this ISO string; showing it
+// as-is instead of re-formatting it is both the requested convention and
+// strictly simpler.
 function fmtDateDisplay(iso){
-  if(!iso)return"";
-  const d=new Date(iso+"T00:00:00");
-  if(isNaN(d.getTime()))return iso;
-  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  return iso||"";
 }
 // `style` only ever reached the outer wrapper (for width/flex/position from
 // the caller's layout) — the visible <input> always rendered at `inp`'s full
@@ -1165,21 +1136,13 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
     setOpen(false);setQ("");
   };
   const triggerRef=React.useRef(null);
-  const[pos,setPos]=useState(null);
-  // Rows near the bottom of a scrolling postings table (or any container
-  // with overflow:hidden/auto for its own rounded corners) clipped this
-  // dropdown to invisible the instant it opened past that ancestor's
-  // edge — exactly what looked like "typing but no list shows up".
-  // Same fix as Menu3 elsewhere in this file: position the popup
-  // `fixed` from the trigger's own screen coordinates instead of
-  // `absolute` relative to whatever ancestor happens to clip.
+  // Opens as a centered search overlay (matching the reference account-
+  // search window, and AccDrop's own popup above) instead of a list
+  // anchored below the trigger — always has room regardless of where the
+  // trigger sits in the postings table (including its bottom row, which
+  // used to clip against a scrolling ancestor before this).
   const openDrop=()=>{
     if(open){setOpen(false);return;}
-    const r=triggerRef.current.getBoundingClientRect();
-    // 30% wider than the trigger itself — the trigger column can stay
-    // whatever width the grid gives it, but the popup listing full
-    // account/contact names needs more room than that to stay readable.
-    setPos({top:r.bottom+3,left:r.left,width:r.width*1.3});
     setQ("");setOpen(true);
   };
   const startCreate=()=>{setShowAccountModal(true);setOpen(false);};
@@ -1208,19 +1171,16 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
         {sel?<span style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.code} — {displayName}</span>:<span style={{fontSize:12,color:T.muted}}>— Select Account —</span>}
         <span style={{fontSize:8,color:T.muted,marginLeft:4,flexShrink:0}}>{open?"▲":"▼"}</span>
       </div>
-      {open&&pos&&(
-        <>
-          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:298}}/>
-          {/* maxHeight raised from 220 — too short to fit the search box,
-              the scrolling list, AND both new "+ New account"/"+ New
-              customer/supplier" footer rows; the second footer row was
-              silently clipped invisible at 220, same bug AccDrop's own
-              popup had before it was raised to 350. */}
-          <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:299,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",overflow:"hidden",maxHeight:290}}>
-            <div style={{padding:"6px 8px",borderBottom:`1px solid ${T.border}`}}>
-              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:10,padding:"5px 8px",margin:0}}/>
+      {open&&(
+        // Centered search overlay — same backdrop+centered-card pattern as
+        // AccDrop's own popup above and every other modal in this app,
+        // instead of a list anchored below the trigger.
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.45)",zIndex:298,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",width:"min(560px, calc(100vw - 40px))",borderRadius:14,boxShadow:"0 24px 70px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:420,display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+              <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search… (or a customer/supplier name)" style={{...inp,fontSize:12,padding:"8px 10px",margin:0}}/>
             </div>
-            <div style={{overflowY:"auto",maxHeight:175}}>
+            <div style={{overflowY:"auto",flex:"1 1 auto",minHeight:0}}>
               {/* Pinned so an already-picked account can be deliberately
                   cleared from the dropdown, same as AccDrop. */}
               {!qTrim&&(
@@ -1249,7 +1209,7 @@ function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreate
               <div onMouseDown={e=>{e.preventDefault();startCreateContact();}} style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.blue,cursor:"pointer",borderTop:`1px solid ${T.border}`,textAlign:"left"}}>+ New customer/supplier{q?` "${q}"`:""}</div>
             )}
           </div>
-        </>
+        </div>
       )}
       {showAccountModal&&(
         <NewAccountModal
@@ -1388,9 +1348,11 @@ function ContactSearch({contacts,value,onChange,onCreateContact,flat=false}){
             style={flat?flatField:inp}
           />
           {open&&(q.trim()||creating)&&(
-            <>
-              <div onClick={()=>{setOpen(false);setCreating(false);}} style={{position:"fixed",inset:0,zIndex:199}}/>
-              <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:T.card,border:`1px solid ${T.border}`,borderRadius:12,zIndex:200,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",overflow:"hidden"}}>
+            // Centered search overlay — same backdrop+centered-card pattern
+            // as AccDrop/AccDropFlat's own popups and every other modal in
+            // this app, instead of a list anchored below the trigger.
+            <div onClick={()=>{setOpen(false);setCreating(false);}} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.45)",zIndex:298,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:T.card,width:"min(560px, calc(100vw - 40px))",borderRadius:14,boxShadow:"0 24px 70px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:420,display:"flex",flexDirection:"column"}}>
                 {filtered.map((c,i)=>{
                   const isC=c.type==="customer";
                   return(
@@ -1414,7 +1376,7 @@ function ContactSearch({contacts,value,onChange,onCreateContact,flat=false}){
                   <div onClick={startCreate} style={{padding:"11px 14px",fontSize:12,fontWeight:700,color:T.accent,cursor:"pointer",background:"#fff"}}>+ New customer or supplier{q?` "${q}"`:""}</div>
                 ))}
               </div>
-            </>
+            </div>
           )}
         </>
       )}
@@ -1827,7 +1789,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
       const useForeign=lineCur!==defaultCurrency&&lineBaseAmt>0;
       const amountNum=useForeign?Math.round(lineBaseAmt*100)/100:typedAmount;
       const vc=l.debitVatCode?findVatCode(l.debitVatCode,"input"):l.creditVatCode?findVatCode(l.creditVatCode,"output"):null;
-      const vatAmount=vc?computeVat(amountNum,vc):null;
+      // computeVat always assumes `amount` is VAT-INCLUSIVE (the app's
+      // normal single-row posting model) and extracts the tax back out of
+      // it. A vatSplit line's stored amount is already the NET, post-split
+      // figure (see planVatSplit/vatSplit in vatsplit.js) — running it
+      // through computeVat here treated a net amount as if it were gross,
+      // silently overwriting a correct stored vat_amount with a wrong,
+      // too-low figure on every save, even one where nothing was touched.
+      // Keep the original stored figure for any vatSplit line instead of
+      // recomputing it from an amount basis that no longer applies.
+      const vatAmount=l.vatSplit?(l.vatAmount!=null?parseFloat(l.vatAmount):null):(vc?computeVat(amountNum,vc):null);
       // A line added via "+ Add line" this session (see addGroupLine) only
       // exists in local state so far — never posted to the database, so
       // there's nothing for onSave (an UPDATE by id) to update. It's
@@ -2053,7 +2024,18 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const invOtherSideAccounts=entryModeVal==="customer_invoice"
     ?accounts.filter(a=>a.code.startsWith("3"))
     :accounts.filter(a=>a.code.startsWith("4")||a.code.startsWith("5")||a.code.startsWith("6")||a.code.startsWith("7"));
-  const invArApSideFor=l=>!invArApCode?null:l.debitCode===invArApCode?"debit":l.creditCode===invArApCode?"credit":null;
+  // The auto-generated 27xx VAT-split leg (insertVatLeg in appshell.jsx)
+  // is booked Dr/Cr against the SAME 1500/2400 contact account as the main
+  // line, so it used to match invArApCode too and got misclassified as a
+  // normal Sales/Expense line — its real side (the 27xx settlement
+  // account) doesn't fit invOtherSideAccounts' 3/4-7xxx filter, so it
+  // rendered with a blank, unselectable account. It's marked vatSplit but,
+  // unlike the real main line, never carries its own vat_code — that's the
+  // one reliable way to tell the two apart (both can be vatSplit:true).
+  // Routing it here to `null` sends it into otherRows/genericPostingsGrid
+  // below, which uses the full, unfiltered chart and shows 2710 correctly.
+  const isVatLegRow=l=>!!l.vatSplit&&!l.vatCode;
+  const invArApSideFor=l=>(!invArApCode||isVatLegRow(l))?null:l.debitCode===invArApCode?"debit":l.creditCode===invArApCode?"credit":null;
 
   // The plain Debit/Credit/Amount grid — every non-invoice entry (Advance
   // Voucher) uses this as-is via `postingsGrid` below, unchanged. A
@@ -2079,6 +2061,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         const amt=parseFloat(l.amount)||0;
         if(l.debitCode)totalDebit+=amt;
         if(l.creditCode)totalCredit+=amt;
+        if(l.vatSplit){totalVat+=parseFloat(l.vatAmount)||0;return;}
         const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
         if(vc&&vc.rate&&amt)totalVat+=computeVat(amt,vc);
       });
@@ -2114,12 +2097,22 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 {acc?acc.name:(code==="1500"?"Accounts Receivable":"Accounts Payable")}
               </div>
             );
+            const isVatLeg=isVatLegRow(l);
             return(<React.Fragment key={l.id}>
               <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
                 {/* Date on top, description below — same two-row rhythm as
                     the Advance Voucher screen's own Date/Description column
                     (and as the Debit/Credit columns here: account on top,
                     VAT underneath), not side by side on one row. */}
+                {isVatLeg&&(
+                  // This row is the automatic 27xx VAT leg the split-VAT
+                  // feature adds under the SAME bilag as the line above it
+                  // (see vatsplit.js) — without any marker it just looks
+                  // like an unexplained second, unrelated posting with no
+                  // VAT code of its own, which is exactly what got reported
+                  // as "why does saving one receipt create two lines?".
+                  <span style={{fontSize:8.5,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:5,padding:"1px 6px",alignSelf:"flex-start",textTransform:"uppercase",letterSpacing:0.3}}>Auto · VAT split</span>
+                )}
                 <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
                 <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
@@ -2256,6 +2249,7 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
         const amt=parseFloat(l.amount)||0;
         if(l.debitCode)totalDebit+=amt;
         if(l.creditCode)totalCredit+=amt;
+        if(l.vatSplit){totalVat+=parseFloat(l.vatAmount)||0;return;}
         const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
         if(vc&&vc.rate&&amt)totalVat+=computeVat(amt,vc);
       });
@@ -2279,7 +2273,11 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               // until both are filled in, exactly like the totals footer
               // already does for the whole card.
               const lineVc=otherVatCode?findVatCode(otherVatCode,vatDirection):null;
-              const lineVatAmt=lineVc?computeVat(parseFloat(l.amount)||0,lineVc):0;
+              // Same reasoning as saveGroup's vatAmount fix above — this
+              // line's amount is already net once split, so show the real
+              // stored vat_amount rather than recomputing it as if the
+              // amount were still VAT-inclusive.
+              const lineVatAmt=l.vatSplit?(parseFloat(l.vatAmount)||0):(lineVc?computeVat(parseFloat(l.amount)||0,lineVc):0);
               const setOther=patch=>{
                 if(arApSide==="debit")updateRow(li,{creditCode:"code"in patch?patch.code:l.creditCode,creditVatCode:"vatCode"in patch?patch.vatCode:l.creditVatCode});
                 else updateRow(li,{debitCode:"code"in patch?patch.code:l.debitCode,debitVatCode:"vatCode"in patch?patch.vatCode:l.debitVatCode});

@@ -464,7 +464,7 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
     : "1.7fr 118px 118px 62px 1fr 34px";     // Konto · Debet · Kredit · Valuta · Dimensjon · ✕
 
   return(
-    <div style={{maxWidth:1180}}>
+    <div style={{maxWidth:1600}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
         <div>
           <div style={{fontSize:11,color:T.muted,fontWeight:700}}>Bilag</div>
@@ -577,15 +577,38 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
                     <div style={{...th,...num}}>Beløp</div>
                     <div/>
                   </div>
-                  {list.map(l=>(
-                    <div key={l.rid} style={{display:"grid",gridTemplateColumns:OG,gap:10,padding:"5px 16px",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
-                      <ContactSearch contacts={pickList} value={l.contactId} onChange={v=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,contactId:v}:x))} onCreateContact={ra.contactType==="any"?undefined:handleCreateContact}/>
-                      <input placeholder="—" value={l.invoiceNo} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,invoiceNo:e.target.value}:x))} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
-                      <input type="date" value={l.date} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,date:e.target.value}:x))} style={{...inp,fontSize:11,padding:"6px 8px"}}/>
-                      <input type="number" placeholder="0" value={l.amount} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,amount:e.target.value}:x))} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
-                      <button onClick={()=>setGroup(ra.code,list.length>1?list.filter(x=>x.rid!==l.rid):list)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:13}}/></button>
-                    </div>
-                  ))}
+                  {/* Grouped by contact — same shape as the reference "Åpne
+                      poster" breakdown (a contact's own lines together with
+                      a running "Sum {contact}" underneath), instead of a
+                      flat list where the same customer/supplier repeated
+                      across several lines had no subtotal tying them
+                      together. byContact was already computed above for
+                      exactly this but never actually used to render. */}
+                  {byContact.map(group=>{
+                    const contact=group.cid?pickList.find(c=>c.id===group.cid):null;
+                    const groupSum=group.lines.reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
+                    return(
+                      <div key={group.cid||"unassigned"}>
+                        {group.lines.map(l=>(
+                          <div key={l.rid} style={{display:"grid",gridTemplateColumns:OG,gap:10,padding:"5px 16px",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
+                            <ContactSearch contacts={pickList} value={l.contactId} onChange={v=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,contactId:v}:x))} onCreateContact={ra.contactType==="any"?undefined:handleCreateContact}/>
+                            <input placeholder="—" value={l.invoiceNo} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,invoiceNo:e.target.value}:x))} style={{...inp,fontSize:12,padding:"6px 9px"}}/>
+                            <input type="date" value={l.date} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,date:e.target.value}:x))} style={{...inp,fontSize:11,padding:"6px 8px"}}/>
+                            <input type="number" placeholder="0" value={l.amount} onChange={e=>setGroup(ra.code,list.map(x=>x.rid===l.rid?{...x,amount:e.target.value}:x))} style={{...inp,fontSize:12,padding:"6px 9px",...num}}/>
+                            <button onClick={()=>setGroup(ra.code,list.length>1?list.filter(x=>x.rid!==l.rid):list)} style={{background:"none",border:"none",color:T.red,cursor:"pointer"}}><i className="ti ti-trash" style={{fontSize:13}}/></button>
+                          </div>
+                        ))}
+                        {group.cid&&group.lines.length>0&&(
+                          <div style={{display:"grid",gridTemplateColumns:OG,gap:10,padding:"4px 16px",background:T.bg}}>
+                            <div style={{fontSize:11,color:T.sub,fontWeight:700}}>Sum {contact?contact.name:group.cid}</div>
+                            <div/><div/>
+                            <div style={{...num,fontSize:11,color:T.sub,fontWeight:700}}>{fmt(groupSum)}</div>
+                            <div/>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 16px",background:T.bg}}>
                     <button onClick={()=>{const rest=Math.round((target-allocated)*100)/100;setGroup(ra.code,[...list,{...newOpenLine(),amount:rest>0.009?String(rest):""}]);}} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Legg til åpen post</button>
                     <span style={{fontSize:11.5,fontWeight:800}}>Sum {ra.code} <span style={{...num,display:"inline-block",minWidth:90}}>{fmt(allocated)}</span></span>
@@ -620,7 +643,12 @@ function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projec
         </div>
 
         {attachment&&showPreview&&(
-          <div style={{width:340,flexShrink:0,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:560,position:"sticky",top:16}}>
+          /* Was a fixed 340×560 box — far smaller than the document
+             preview anywhere else in the app, hard to actually read on a
+             real trial-balance export. Sized like the reference: wide and
+             nearly full-height, still sticky so it stays in view while the
+             (often long) reconciliation form scrolls beside it. */
+          <div style={{width:600,flexShrink:0,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:"calc(100vh - 140px)",position:"sticky",top:16}}>
             {/* No filename label here anymore — SignedFileViewer's own
                 toolbar already shows it right below; this bar's only real
                 job is the close button. */}
