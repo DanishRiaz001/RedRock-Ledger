@@ -2569,7 +2569,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   // in Voucher details above (every line always shares one invoice date,
   // no per-line override needed) and each Sales/Costs line already carries
   // its own explicit Description — this bar would just duplicate both.
-  const masterDateRow=isGroup&&!isInvoiceMode?(
+  // A VAT-split entry is isGroup:true (main row + its auto VAT leg are two
+  // real DB rows) but the grid only ever renders the main row — the leg is
+  // filtered out entirely (see isVatLeg above) so it reads as one line, same
+  // as a true single-line entry. Gate on VISIBLE lines, not raw row count,
+  // so this bar doesn't show up floating above what looks like a single row
+  // with nothing else left to "fill in".
+  const visibleLineCount=groupLinesState.filter(l=>!isVatLegRow(l)).length;
+  const masterDateRow=isGroup&&!isInvoiceMode&&visibleLineCount>1?(
     <div style={{border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
       <div style={{padding:14,background:"#fff",display:"grid",gridTemplateColumns:"170px 1fr",gap:20}}>
         <div>

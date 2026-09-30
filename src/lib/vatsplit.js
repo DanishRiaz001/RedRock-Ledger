@@ -52,12 +52,23 @@ export function vatSplit({ debitCode, creditCode, amount, vatCode, vatAmount, de
 
   const net = Math.round((amt - vat) * 100) / 100;
   const isInput = vc.direction === "input";
-  const tag = isInput ? " — inngående mva" : " — utgående mva";
+  const tag = isInput ? VAT_LEG_TAG_INPUT : VAT_LEG_TAG_OUTPUT;
   const vatLeg = isInput
     ? { debitCode: settle, creditCode, amount: vat, description: (description || "") + tag }
     : { debitCode, creditCode: settle, amount: vat, description: (description || "") + tag };
   return { net, vatLeg, settleAccount: settle, direction: vc.direction };
 }
+
+// The " — inngående/utgående mva" suffix above exists only so the pairing
+// logic in the voucher editor (ledger.jsx's genericPostingsGrid) can match a
+// VAT leg back to its main line by description+date. It's internal
+// bookkeeping, not something a user ever typed — reports (General ledger,
+// account statements) show the plain description instead, same as what was
+// written while bookkeeping, via this stripper.
+const VAT_LEG_TAG_INPUT = " — inngående mva";
+const VAT_LEG_TAG_OUTPUT = " — utgående mva";
+const VAT_LEG_TAG_RE = / — (?:inngående|utgående) mva$/;
+export const stripVatLegTag = (description) => String(description || "").replace(VAT_LEG_TAG_RE, "");
 
 // ============================================================================
 // Reverse charge (omvendt avgiftsplikt) — import of goods, foreign services,

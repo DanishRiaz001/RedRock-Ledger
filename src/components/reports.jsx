@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "re
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
+import { stripVatLegTag } from "../lib/vatsplit.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, AccountGroupDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect, NewContactModal } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { MONTH_NAMES, AccountSwitcherDropdown } from "./invoicing.jsx";
@@ -2315,7 +2316,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
                   <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}} className="rr-sidebar-item">
                     <td style={{padding:"11px 0",color:T.accent,fontWeight:700}}>{fmtB(t.bilag)}</td>
                     <td style={{color:T.sub}}>{t.date}</td>
-                    <td style={{color:T.text}}>{t.description}</td>
+                    <td style={{color:T.text}}>{stripVatLegTag(t.description)}</td>
                     <td style={{textAlign:"right",fontWeight:700,color:isIn?T.green:T.text}}>{fmt(t.amount)}</td>
                   </tr>
                 );
@@ -2337,7 +2338,7 @@ function DesktopDashboard({transactions,accounts,contacts,budgets=[],onNavigate,
               <div key={t.id} onClick={()=>clickable&&onOpenEntry(t)} style={{display:"flex",gap:11,alignItems:"flex-start",cursor:clickable?"pointer":"default"}} className={clickable?"rr-sidebar-item":""}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:isIn?T.greenBg:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:isIn?T.green:T.red,fontWeight:700}}><i className={isIn?"ti ti-arrow-down-left":"ti ti-arrow-up-right"} style={{fontSize:15}}/></div>
                 <div style={{minWidth:0,flex:1}}>
-                  <div style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</div>
+                  <div style={{fontSize:12,color:T.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stripVatLegTag(t.description)}</div>
                   <div style={{fontSize:10,color:T.muted,marginTop:2}}>{fmtB(t.bilag)} · {t.date}</div>
                 </div>
                 <div style={{fontSize:12,fontWeight:700,color:isIn?T.green:T.text,flexShrink:0}}>{fmt(t.amount)}</div>
@@ -2939,7 +2940,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   const printLedgerPdf=()=>{
     const rows=shownRows.map(r=>{
       const isClosed=!!(r.matchedWith&&r.matchedAccount===currentCode);
-      return`<tr><td>${r.date}</td><td>${isClosed?"Yes":"No"}</td><td>${fmtB(r.bilag)}</td><td>${r.description}</td><td style="text-align:right">${sign(r.movement)}</td></tr>`;
+      return`<tr><td>${r.date}</td><td>${isClosed?"Yes":"No"}</td><td>${fmtB(r.bilag)}</td><td>${stripVatLegTag(r.description)}</td><td style="text-align:right">${sign(r.movement)}</td></tr>`;
     }).join("");
     const html=`<!DOCTYPE html><html><head><title>${currentAccount.code} ${currentAccount.name}</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
@@ -3075,7 +3076,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
                 </td>
                 <td onClick={()=>setDetailTxn(r)} style={{padding:"7px 6px",textAlign:"center",color:T.accent,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{fmtB(r.bilag)}</td>
                 <td style={{padding:"7px 6px",textAlign:"center",color:T.text,whiteSpace:"nowrap"}}>{r.date}</td>
-                <td style={{padding:"7px 6px",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={r.description}>{r.description}</td>
+                <td style={{padding:"7px 6px",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={stripVatLegTag(r.description)}>{stripVatLegTag(r.description)}</td>
                 <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>{sign(r.movement)}</td>
                 {colPrefs.showVat&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
                 {colPrefs.showContact&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
@@ -5053,7 +5054,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
     const aoa=[...xlsxHeaderRows(companyProfile,"General ledger",`${from} to ${to}`),["Account","Date","Bilag","Description","Movement","Balance"]];
     accountLedgers.forEach(({account,opening,rows,closing})=>{
       aoa.push([`${account.code} ${account.name}`,"","","Opening balance","",opening]);
-      rows.forEach(r=>aoa.push(["",r.date,r.bilag,r.description,r.mv,r.running]));
+      rows.forEach(r=>aoa.push(["",r.date,r.bilag,stripVatLegTag(r.description),r.mv,r.running]));
       aoa.push(["","","","Closing balance","",closing]);
       aoa.push([]);
     });
@@ -5135,7 +5136,7 @@ function GeneralLedgerScreen({accounts,transactions,onOpenLedger,attachedTxnIds=
                     <div>{hasAttachment&&<i className="ti ti-paperclip" title="Has attachment" style={{fontSize:12,color:T.muted}}/>}</div>
                     <div style={{padding:"7px 6px",fontSize:10,fontWeight:700,color:isClosed?T.accent:T.muted}}>{isClosed?"Closed":""}</div>
                     <div onClick={()=>onOpenLedger&&onOpenLedger(account)} style={{padding:"7px 6px",color:T.accent,fontWeight:600,cursor:onOpenLedger?"pointer":"default"}}>{fmtB(r.bilag)}</div>
-                    <div title={r.description} style={{padding:"7px 6px",color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</div>
+                    <div title={stripVatLegTag(r.description)} style={{padding:"7px 6px",color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stripVatLegTag(r.description)}</div>
                     <div style={{padding:"7px 6px",textAlign:"center",color:T.muted,fontSize:11}}>{r.vatCode||""}</div>
                     <div style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:T.text}}>{sign(r.mv)}</div>
                     <div style={{padding:"7px 14px",textAlign:"right",color:T.muted}}>{fmt(r.running)}</div>
@@ -7044,7 +7045,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                         <td style={{width:88,color:T.sub}}>{t.invoiceNo||"—"}</td>
                         <td style={{width:84,color:T.text}}>{t.date}</td>
                         <td style={{width:84,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
-                        <td style={{color:T.text}}>{t.description}</td>
+                        <td style={{color:T.text}}>{stripVatLegTag(t.description)}</td>
                         <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>
                           {/* A line posted in a currency other than the
                               company's own base currency shows both figures
