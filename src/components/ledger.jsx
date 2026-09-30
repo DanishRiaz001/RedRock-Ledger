@@ -2098,21 +2098,29 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               </div>
             );
             const isVatLeg=isVatLegRow(l);
+            // The automatic 27xx VAT leg never shows as its own row at all
+            // now — it's rendered as part of the main line's Amount cell
+            // below (gross in, VAT shown alongside, split back into the two
+            // real rows on save). Was a genuinely separate, unlabeled
+            // second row with no VAT code of its own, which read as a
+            // mystery duplicate posting rather than what it actually is —
+            // the reference app never exposes this split at all; typing a
+            // gross amount with a VAT code is the whole interaction there.
+            if(isVatLeg)return null;
+            // Same tag convention vatsplit.js used to construct this leg's
+            // description (original description + " — inngående/utgående
+            // mva") — the one reliable way to find which leg belongs to
+            // THIS specific line in a voucher that might have several
+            // split lines, since nothing else links them explicitly.
+            const pairedLeg=(l.vatSplit&&l.vatCode)?rows.find(x=>x!==l&&isVatLegRow(x)&&x.date===l.date&&(x.description===`${l.description} — inngående mva`||x.description===`${l.description} — utgående mva`)):null;
+            const pairedLegIdx=pairedLeg?gridRows.indexOf(pairedLeg):-1;
+            const grossAmount=pairedLeg?Math.round(((parseFloat(l.amount)||0)+(parseFloat(pairedLeg.amount)||0))*100)/100:null;
             return(<React.Fragment key={l.id}>
               <div style={{...rowCell,minWidth:0,display:"flex",flexDirection:"column",gap:2}}>
                 {/* Date on top, description below — same two-row rhythm as
                     the Advance Voucher screen's own Date/Description column
                     (and as the Debit/Credit columns here: account on top,
                     VAT underneath), not side by side on one row. */}
-                {isVatLeg&&(
-                  // This row is the automatic 27xx VAT leg the split-VAT
-                  // feature adds under the SAME bilag as the line above it
-                  // (see vatsplit.js) — without any marker it just looks
-                  // like an unexplained second, unrelated posting with no
-                  // VAT code of its own, which is exactly what got reported
-                  // as "why does saving one receipt create two lines?".
-                  <span style={{fontSize:8.5,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:5,padding:"1px 6px",alignSelf:"flex-start",textTransform:"uppercase",letterSpacing:0.3}}>Auto · VAT split</span>
-                )}
                 <FlexDateInput value={l.date} onChange={v=>updateRow(li,{date:v,_dateTouched:true})} inputStyle={{...flatField,fontSize:11,padding:"6px 2px"}}/>
                 <input placeholder={masterDescription||"Description"} value={l.description} onChange={e=>updateRow(li,{description:e.target.value})} style={{background:"transparent",border:"none",borderBottom:`1.5px solid ${T.border}`,borderRadius:0,color:T.sub,padding:"6px 2px",width:"100%",minWidth:0,fontSize:10.5,fontWeight:600,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
               </div>
@@ -2134,7 +2142,27 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               </div>
               <div style={{...rowCell,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:5}}>
-                  <CalcAmountInput value={l.amount} onChange={v=>{
+                  <CalcAmountInput value={pairedLeg?grossAmount:l.amount} onChange={v=>{
+                    if(pairedLeg){
+                      // Re-split the newly-typed GROSS the same way this
+                      // line was split when it was first saved (vatsplit.js)
+                      // — the visible field is gross+VAT, matching the
+                      // reference app, but the two real rows underneath
+                      // still need their own correct net/VAT amounts.
+                      const gross=parseFloat(v)||0;
+                      const vc=findVatCode(l.debitVatCode,"input")||findVatCode(l.creditVatCode,"output");
+                      const vat=vc&&vc.rate?Math.round((gross-(gross/(1+vc.rate/100)))*100)/100:0;
+                      // vatAmount is separate STORED metadata (what the VAT
+                      // totals footer and saveGroup both read directly,
+                      // rather than re-deriving it) — updating only the two
+                      // real amounts and leaving this stale would save a
+                      // vat_amount that no longer matches the actual leg,
+                      // exactly the kind of desync this whole feature exists
+                      // to prevent.
+                      updateRow(li,{amount:String(Math.round((gross-vat)*100)/100),vatAmount:vat});
+                      updateRow(pairedLegIdx,{amount:String(vat)});
+                      return;
+                    }
                     updateRow(li,{amount:v});
                     const lCur=(l.currency||defaultCurrency).toUpperCase();
                     if(lCur!==defaultCurrency&&l.date&&parseFloat(v)>0){
@@ -2160,6 +2188,9 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 </div>
                 {(l.currency||defaultCurrency).toUpperCase()!==defaultCurrency&&(
                   <CalcAmountInput placeholder={defaultCurrency} value={l.amountNok||""} onChange={v=>updateRow(li,{amountNok:v})} style={{...flatField,fontSize:10.5,fontWeight:600,color:T.muted,width:"100%",padding:"4px 2px",textAlign:"right",marginTop:2}}/>
+                )}
+                {pairedLeg&&(
+                  <div style={{fontSize:9.5,color:T.muted,fontWeight:600,textAlign:"right",marginTop:2}}>VAT {fmt(parseFloat(pairedLeg.amount)||0)}</div>
                 )}
               </div>
               <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center",gap:4}}>
@@ -2189,7 +2220,16 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                           const label=!lineHasData?"Delete":confirmDelLine===l.id?"Confirm delete":"Delete";
                           return(
                             <button onClick={()=>{
-                              if(!lineHasData||confirmDelLine===l.id){deleteGroupLine(l.id);setLineMenuOpen(null);return;}
+                              if(!lineHasData||confirmDelLine===l.id){
+                                // Deleting a line that carries a VAT split
+                                // takes its 27xx leg with it — leaving the
+                                // leg behind would post a lone, unexplained
+                                // VAT-only row with no line of its own left
+                                // to belong to.
+                                deleteGroupLine(l.id);
+                                if(pairedLeg)deleteGroupLine(pairedLeg.id);
+                                setLineMenuOpen(null);return;
+                              }
                               setConfirmDelLine(l.id);
                             }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",cursor:"pointer",fontSize:12,color:T.red,borderRadius:6,fontFamily:"inherit",textAlign:"left"}}>
                               <i className="ti ti-trash" style={{fontSize:14}}/>{label}
