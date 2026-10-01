@@ -1882,9 +1882,9 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                       {!f.aiAnalyzed&&getAnthropicKey()&&((f.type||"").startsWith("image")||f.type==="application/pdf")&&<div style={{fontSize:9,color:T.accent,marginTop:1}}>Analyzing…</div>}
                     </div>
                     <div style={{fontSize:11,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.aiSupplier||"—"}</div>
-                    <div style={{fontSize:11.5,fontWeight:700,color:T.text,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
-                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
-                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden"}}>{f.aiDueDate||"—"}</div>
+                    <div style={{fontSize:11.5,fontWeight:700,color:T.text,display:"flex",justifyContent:"flex-end",alignItems:"center",fontVariantNumeric:"tabular-nums"}}>{f.aiAmount!=null?fmt(f.aiAmount):"—"}</div>
+                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
+                    <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.aiDueDate||"—"}</div>
                     {viewMode!=="deleted"&&(
                       <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
                     )}
