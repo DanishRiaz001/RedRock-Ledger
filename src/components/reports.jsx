@@ -3478,7 +3478,14 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           sidesteps that bug entirely — it's the same row-div pattern
           already used for Bank Reconciliation and Reskontro, where this
           gap/blank-header issue never shows up. */}
-      <div id="trialbalance-print-area">
+      {/* Explicit position:relative + zIndex:0 here — belt-and-suspenders
+          on top of the opaque-background fix above. The sticky toolbar's
+          zIndex:51 ought to already win by DOM/paint order alone, but this
+          removes any ambiguity for the compositor to exploit (the exact
+          failure mode described above) by giving the row list its own,
+          explicitly LOWER stacking context instead of leaving it at the
+          default z-index:auto. */}
+      <div id="trialbalance-print-area" style={{position:"relative",zIndex:0}}>
       <ReportPdfHeader companyProfile={companyProfile} title="Trial balance" subtitle={`${filterFrom} to ${filterTo}`}/>
       <div style={{background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden",fontSize:13,marginTop:8}}>
         <div>

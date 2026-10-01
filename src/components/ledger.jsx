@@ -918,7 +918,7 @@ const WEEKDAYS_MON_FIRST=["Mo","Tu","We","Th","Fr","Sa","Su"];
 // browser/WebView support that iOS's WKWebView (the Capacitor app) doesn't
 // reliably provide, so tapping it silently did nothing on mobile. This
 // renders its own popup instead, so it works the same everywhere.
-function CalendarPopup({value,onSelect,onClose,position="below"}){
+function CalendarPopup({value,onSelect,onClose,rect}){
   const seed=value?new Date(value+"T00:00:00"):new Date();
   const[viewYear,setViewYear]=useState(seed.getFullYear());
   const[viewMonth,setViewMonth]=useState(seed.getMonth());
@@ -938,7 +938,7 @@ function CalendarPopup({value,onSelect,onClose,position="below"}){
   return(
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:400}}/>
-      <div style={{position:"absolute",[position==="above"?"bottom":"top"]:"calc(100% + 4px)",left:0,zIndex:401,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,boxShadow:"0 12px 30px rgba(0,0,0,0.18)",padding:12,width:246}}>
+      <div style={{position:"fixed",...(rect.above?{bottom:rect.cssBottom}:{top:rect.top}),left:rect.left,zIndex:401,background:"#fff",borderRadius:12,border:`1px solid ${T.border}`,boxShadow:"0 12px 30px rgba(0,0,0,0.18)",padding:12,width:246}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
           <button type="button" onClick={()=>goMonth(-1)} style={navBtn}>‹</button>
           <div style={{fontSize:13,fontWeight:700,color:T.text}}>{monthLabel} {viewYear}</div>
@@ -973,20 +973,27 @@ function FlexDateInput({value,onChange,style,inputStyle}){
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState("");
   const[showCalendar,setShowCalendar]=useState(false);
-  const[calPos,setCalPos]=useState("below");
+  const[calRect,setCalRect]=useState(null);
   const wrapRef=React.useRef(null);
   const commit=()=>{
     const parsed=parseFlexDate(draft);
     if(parsed)onChange(parsed);
     setEditing(false);
   };
+  // Fixed from the field's own screen coordinates (same fix as AccDrop/
+  // VatDrop/Menu3/the Voucher-details menu and comment popover) instead of
+  // position:absolute relative to this field's own wrapper — a date field
+  // sitting inside any overflow:hidden card (e.g. the Voucher details
+  // panel, clipped for its own rounded corners) otherwise clipped the
+  // calendar to invisible, or cut it off right where the date text sits.
   const openCalendar=()=>{
-    // Flip above the field when there's not enough room below (e.g. a
-    // date field near the bottom of a mobile bottom-sheet form) so the
-    // popup doesn't render off-screen or get clipped.
     if(wrapRef.current){
       const rect=wrapRef.current.getBoundingClientRect();
-      setCalPos(window.innerHeight-rect.bottom<330?"above":"below");
+      // Flip above the field when there's not enough room below (e.g. a
+      // date field near the bottom of a mobile bottom-sheet form) so the
+      // popup doesn't render off-screen.
+      const above=window.innerHeight-rect.bottom<330;
+      setCalRect({left:rect.left,top:rect.bottom+4,cssBottom:window.innerHeight-rect.top+4,above});
     }
     setShowCalendar(true);
   };
@@ -1018,10 +1025,10 @@ function FlexDateInput({value,onChange,style,inputStyle}){
         onClick={openCalendar}
         style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:15,color:T.sub,cursor:"pointer"}}
       />
-      {showCalendar&&(
+      {showCalendar&&calRect&&(
         <CalendarPopup
           value={value}
-          position={calPos}
+          rect={calRect}
           onSelect={iso=>{onChange(iso);setShowCalendar(false);setEditing(false);}}
           onClose={()=>setShowCalendar(false)}
         />
