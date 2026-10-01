@@ -1786,10 +1786,10 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                       ...(selectedImageIds.length>=2?[{label:"Merge",action:mergeSelected}]:[]),
                       {label:"Delete",color:T.red,action:deleteSelected},
                     ]}/>
-                  </>):(
+                  </>):(<>
                     <button onClick={async()=>{setBusy(true);for(const id of selected)await onRestore(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:T.greenBg,border:`1px solid ${T.green}`,color:T.green}}>Restore</button>
                     <button onClick={async()=>{if(!window.confirm(`Permanently delete ${selected.length} file${selected.length===1?"":"s"}? This can't be undone.`))return;setBusy(true);for(const id of selected)await onPermanentDelete(id);setSelected([]);setBusy(false);}} disabled={busy} style={{...btnSm,background:"#FEE2E2",border:`1px solid ${T.red}`,color:T.red}}>Delete permanently</button>
-                  )}
+                  </>)}
                 </div>
               ):(
                 <div style={{position:"relative",flex:1,minWidth:120,maxWidth:260}}>
