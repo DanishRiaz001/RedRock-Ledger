@@ -1106,6 +1106,71 @@ function FileDrop({files,onPick,placeholder}){
   );
 }
 
+// Pick one or more existing Inbox files to attach to an entry — a proper
+// browse-and-preview window instead of the cramped "— or pick an existing
+// Inbox file —" dropdown. Click a row to preview it on the right (same
+// SignedFileViewer every other attachment preview uses); tick its checkbox
+// to mark it for attaching — the two are independent, so you can flip
+// through several files to check what they are before deciding which ones
+// to actually attach. Nothing attaches until "Add attachment(s)" is
+// pressed, so browsing around and closing without picking anything is a
+// no-op, same as cancelling any other picker in the app.
+function InboxAttachModal({files,onClose,onAttach}){
+  const[selected,setSelected]=useState(()=>new Set());
+  const[previewId,setPreviewId]=useState(files[0]?files[0].id:null);
+  const[attaching,setAttaching]=useState(false);
+  const previewFile=files.find(f=>f.id===previewId)||null;
+  const toggle=(id)=>setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  const confirm=async()=>{
+    if(!selected.size||attaching)return;
+    setAttaching(true);
+    // No setAttaching(false) after this — onAttach closes the modal once
+    // done (same as every other confirm action in this file), so this
+    // component is unmounted by the time the await resolves.
+    await onAttach([...selected]);
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.45)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",width:"min(860px, calc(100vw - 40px))",height:"min(620px, calc(100vh - 40px))",borderRadius:16,boxShadow:"0 24px 70px rgba(0,0,0,0.3)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+          <div style={{fontSize:15,fontWeight:800,color:T.text}}>Attach from Inbox</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
+        </div>
+        <div style={{flex:1,minHeight:0,display:"flex"}}>
+          <div style={{width:300,flexShrink:0,borderRight:`1px solid ${T.border}`,overflowY:"auto"}}>
+            {!files.length&&<div style={{textAlign:"center",color:T.muted,padding:"30px 16px",fontSize:12}}>No other files available in the Inbox.</div>}
+            {files.map(f=>{
+              const isSel=selected.has(f.id);
+              const isPreview=previewId===f.id;
+              return(
+                <div key={f.id} onClick={()=>setPreviewId(f.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:isPreview?T.accentLight:"#fff",borderBottom:`1px solid ${T.border}`}}>
+                  <input type="checkbox" checked={isSel} onClick={e=>e.stopPropagation()} onChange={()=>toggle(f.id)} style={{width:15,height:15,accentColor:T.accent,cursor:"pointer",flexShrink:0}}/>
+                  <span style={{fontSize:15,flexShrink:0}}>{(f.type&&f.type.startsWith("image"))?"🖼️":(f.type&&f.type.includes("pdf"))?"📕":"📄"}</span>
+                  <span title={f.name} style={{fontSize:12,color:T.text,fontWeight:isPreview?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{flex:1,minWidth:0,background:"#fafafa"}}>
+            {previewFile?(
+              <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%"}}/>
+            ):(
+              <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted,fontSize:12}}>Select a file to preview it</div>
+            )}
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+          <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{selected.size} selected</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <button onClick={confirm} disabled={!selected.size||attaching} style={{background:T.accent,border:"none",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:700,color:"#fff",cursor:(!selected.size||attaching)?"default":"pointer",opacity:(!selected.size||attaching)?0.5:1,fontFamily:"inherit"}}>{attaching?"Adding…":`Add attachment${selected.size===1?"":"s"}`}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccDropFlat({value,onChange,accounts,contacts=[],onContactPick,onCreateAccount,onCreateContact,contactId,triggerStyle}){
   const[open,setOpen]=useState(false);
   const[q,setQ]=useState("");
@@ -1662,6 +1727,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const[dropHover,setDropHover]=useState(false);
   const[confirmRemoveAtt,setConfirmRemoveAtt]=useState(false);
   const[removingAtt,setRemovingAtt]=useState(false);
+  const[showInboxModal,setShowInboxModal]=useState(false);
+  // onAttachExisting only ever takes one id at a time (it's shared with the
+  // single-click Inbox picker on the TxnCard list view) — the modal below
+  // supports picking several at once, so this just calls it once per
+  // selected id, in order, rather than changing that shared signature.
+  const attachMultipleExisting=async(ids)=>{
+    for(const id of ids)await onAttachExisting(id);
+    setShowInboxModal(false);
+  };
 
   // A P&L account on the debit side takes input VAT (a purchase); one on
   // the credit side takes output VAT (a sale) — the two are independent,
@@ -2729,33 +2803,29 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
           onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
           onDragLeave={()=>setDropHover(false)}
           onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
-          style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
-          <i className="ti ti-file-off" style={{fontSize:28}}/>
-          <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
-          {onUploadFile&&(
-            <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
-              <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-              <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
+          style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:28,textAlign:"center",background:dropHover?T.accentLight:T.bg,transition:"background .1s"}}>
+          {onUploadFile?(
+            <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,width:"100%",maxWidth:300,border:`2px dashed ${dropHover?T.accent:T.border}`,borderRadius:14,padding:"28px 20px",cursor:attUploading?"wait":"pointer",background:"#fff",transition:"border-color .1s"}}>
+              <div style={{width:44,height:44,borderRadius:12,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <i className="ti ti-cloud-upload" style={{fontSize:22,color:T.accent}}/>
+              </div>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>{attUploading?"Uploading…":dropHover?"Drop to attach":"Upload a file"}</div>
+              <div style={{fontSize:11,color:T.muted}}>or drag one here — PDF, JPG, PNG</div>
               <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
             </label>
+          ):(
+            <div style={{fontSize:12,color:T.muted}}>No document attached to this entry yet.</div>
           )}
-          {onAttachExisting&&availableInboxFiles.length>0&&(
-            <div style={{width:"100%",maxWidth:320,marginTop:2,opacity:attUploading?0.6:1,pointerEvents:attUploading?"none":"auto"}}>
-              <FileDrop files={availableInboxFiles} onPick={id=>{
-                // FileDrop's onPick, like the native <select> this
-                // replaces, always comes back as a string — match that
-                // against the (possibly numeric) real id rather than
-                // passing the string straight through, which would
-                // silently fail the same way form.attachmentId's
-                // string/number mismatch did in New Entry (see comment
-                // there).
-                const picked=availableInboxFiles.find(f=>String(f.id)===String(id));
-                if(picked)onAttachExisting(picked.id);
-              }} placeholder="— or pick an existing Inbox file —"/>
-            </div>
-          )}
+          {onAttachExisting&&availableInboxFiles.length>0&&(<>
+            <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>or</div>
+            <button onClick={()=>setShowInboxModal(true)} disabled={attUploading} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 18px",fontSize:12,fontWeight:700,color:T.text,cursor:attUploading?"wait":"pointer",fontFamily:"inherit"}}>
+              <i className="ti ti-inbox" style={{fontSize:15,color:T.accent}}/>
+              Browse Inbox ({availableInboxFiles.length})
+            </button>
+          </>)}
         </div>
       )}
+      {showInboxModal&&<InboxAttachModal files={availableInboxFiles} onClose={()=>setShowInboxModal(false)} onAttach={attachMultipleExisting}/>}
     </div>
   );
 
@@ -2840,29 +2910,32 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
                 onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}
                 onDragLeave={()=>setDropHover(false)}
                 onDrop={e=>{e.preventDefault();setDropHover(false);if(onUploadFile&&!attUploading&&e.dataTransfer.files[0])onUploadFile([e.dataTransfer.files[0]]);}}
-                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
-                <i className="ti ti-file-off" style={{fontSize:28}}/>
-                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
-                {onUploadFile&&(
-                  <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:attUploading?"wait":"pointer",background:T.bg,marginTop:6}}>
-                    <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{attUploading?"Uploading…":"Upload a file, or drag one here"}</span>
+                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:28,textAlign:"center",background:dropHover?T.accentLight:T.bg,transition:"background .1s"}}>
+                {onUploadFile?(
+                  <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,width:"100%",maxWidth:300,border:`2px dashed ${dropHover?T.accent:T.border}`,borderRadius:14,padding:"28px 20px",cursor:attUploading?"wait":"pointer",background:"#fff",transition:"border-color .1s"}}>
+                    <div style={{width:44,height:44,borderRadius:12,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <i className="ti ti-cloud-upload" style={{fontSize:22,color:T.accent}}/>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:T.text}}>{attUploading?"Uploading…":dropHover?"Drop to attach":"Upload a file"}</div>
+                    <div style={{fontSize:11,color:T.muted}}>or drag one here — PDF, JPG, PNG</div>
                     <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={attUploading} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onUploadFile([e.target.files[0]]);}}/>
                   </label>
+                ):(
+                  <div style={{fontSize:12,color:T.muted}}>No document attached to this entry yet.</div>
                 )}
-                {onAttachExisting&&availableInboxFiles.length>0&&(
-                  <div style={{width:"100%",maxWidth:320,marginTop:2,opacity:attUploading?0.6:1,pointerEvents:attUploading?"none":"auto"}}>
-                    <FileDrop files={availableInboxFiles} onPick={id=>{
-                      const picked=availableInboxFiles.find(f=>String(f.id)===String(id));
-                      if(picked)onAttachExisting(picked.id);
-                    }} placeholder="— or pick an existing Inbox file —"/>
-                  </div>
-                )}
+                {onAttachExisting&&availableInboxFiles.length>0&&(<>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>or</div>
+                  <button onClick={()=>setShowInboxModal(true)} disabled={attUploading} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 18px",fontSize:12,fontWeight:700,color:T.text,cursor:attUploading?"wait":"pointer",fontFamily:"inherit"}}>
+                    <i className="ti ti-inbox" style={{fontSize:15,color:T.accent}}/>
+                    Browse Inbox ({availableInboxFiles.length})
+                  </button>
+                </>)}
               </div>
             )}
           </div>
         )}
       />
+      {showInboxModal&&<InboxAttachModal files={availableInboxFiles} onClose={()=>setShowInboxModal(false)} onAttach={attachMultipleExisting}/>}
     </div>
   );
   return(
