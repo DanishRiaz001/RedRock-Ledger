@@ -5586,6 +5586,18 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     // matter most (a brand-new entry) looked and behaved differently from
     // everywhere else a document preview appears in the app.
     const attached=form.attachmentId?inboxFiles.find(f=>String(f.id)===String(form.attachmentId)):null;
+    // Warms getSignedUrl's cache for whichever document Prev/Next would
+    // land on next, so stepping onto one you haven't viewed yet in this
+    // session is already cached by the time you click — not just revisits.
+    // Fire-and-forget: a failed/slow prefetch just means that one neighbor
+    // falls back to the normal on-demand fetch, nothing waits on this.
+    useEffect(()=>{
+      if(!attached)return;
+      const idx=inboxFiles.findIndex(f=>String(f.id)===String(attached.id));
+      if(idx<0)return;
+      if(inboxFiles[idx-1])getSignedUrl(inboxFiles[idx-1].storagePath);
+      if(inboxFiles[idx+1])getSignedUrl(inboxFiles[idx+1].storagePath);
+    },[attached,inboxFiles]);
     return(
       <ResizableSplit
         // No maxWidth here anymore — a fixed 1100px cap left a big blank
