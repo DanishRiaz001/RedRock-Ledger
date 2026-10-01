@@ -5270,7 +5270,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[],companyProfile}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[],companyProfile}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -6598,9 +6598,14 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                             <button onClick={e=>{e.stopPropagation();confirmSuggestion(l,topSuggestion.txn);}} style={{background:T.orange,border:"none",borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>Confirm</button>
                             <button onClick={e=>{e.stopPropagation();dismissSuggestion(l.id);}} style={{background:"none",border:`1px solid ${T.orange}`,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:600,color:T.orange,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                           </>
-                        ):(
-                          <button onClick={e=>{e.stopPropagation();deleteBankStatementLine(l.id);}} disabled={isApproved} title="Delete line" style={{background:"none",border:"none",color:isApproved?T.border:T.muted,cursor:isApproved?"not-allowed":"pointer",fontSize:11}}><i className="ti ti-note"/></button>
-                        )}
+                        ):null /* A bank statement line is the bank's own record, synced from
+                            a CSV/API import — it isn't something the app invented, so it
+                            can't be deleted from here the way a manually-entered line can.
+                            The only sanctioned way to remove a wrongly-imported line is
+                            undoBankImport (the "Undo" offered right after that specific
+                            upload finishes), which this in-list button bypassed entirely
+                            and let a real bank movement disappear from reconciliation at
+                            any later point with no such immediate-undo framing. */}
                       </div>
                     </div>
                   );

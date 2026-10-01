@@ -1521,11 +1521,6 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(proofFileId&&newTxnIds.length)for(const txnId of newTxnIds)await attachFilesToTxnEntry(txnId,[proofFileId]);
     return newTxnIds;
   };
-  const deleteBankStatementLine=async(id)=>{
-    if(!canEdit)return;
-    await sb.from("bank_statement_lines").delete().eq("id",id).eq("user_id",viewingUserId);
-    setBankStatementLines(p=>p.filter(l=>l.id!==id));
-  };
   // "Clean descriptions" — strips bank-generated boilerplate from one or
   // more UNPOSTED statement lines' descriptions. The caller (the preview
   // modal in Bank reconciliation) has already shown the before/after and
@@ -2953,7 +2948,7 @@ If you genuinely cannot read useful information from this file, return every fie
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,
-    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,deleteBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,
+    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus,saveVatTerminStatus,toggleVatControlled,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
