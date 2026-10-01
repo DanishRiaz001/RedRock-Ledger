@@ -1377,7 +1377,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               // row (header included) is guaranteed the exact same columns.
               const gridCols=headers.map(h=>h.w).join(" ");
               return(<>
-                <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:196,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px"}}>
+                <div ref={entriesFixedBarRef} style={{position:"fixed",top:60,left:196,right:0,zIndex:50,background:T.bg,padding:"16px 32px 8px 20px"}}>
                 <div style={{maxWidth:1000}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                   <div style={{fontSize:12,color:T.muted,fontWeight:600}}>{sorted.length} entries</div>
