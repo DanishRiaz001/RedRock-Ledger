@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows, filenameToDescription } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows, filenameToDescription, CURRENCY_CODES } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 import { fetchHistoricalRate } from "../lib/fx.js";
@@ -1676,7 +1676,7 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
   const currentFileId=queue[idx];
   const currentFile=inboxFiles.find(f=>f.id===currentFileId);
 
-  const CURRENCIES=["PKR","USD","EUR","GBP","AED","SAR","NOK"];
+  const CURRENCIES=CURRENCY_CODES;
   const newIncomeLine=()=>({lid:Date.now()+Math.random().toString(36).slice(2),accountCode:incomeAccounts[0]?incomeAccounts[0].code:"",vatCode:"5",amount:"",description:""});
   const defaultForm=(fid)=>{
     const f=inboxFiles.find(x=>x.id===fid);
@@ -4830,7 +4830,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                   // rendered blank ("— Select —") on a fresh line instead of
                   // showing PKR, even though the value passed in above was
                   // already correctly defaulting to defaultCurrency.
-                  options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
+                  options={[defaultCurrency,...CURRENCY_CODES.filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                 </div>
                 <div style={{...rowCell,display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
                   {/* One ⋮ menu instead of a lone delete button — Duplicate
@@ -5239,7 +5239,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                           if(res)setInvAmountNok(String(Math.round((parseFloat(invAmount)||0)*res.rate*100)/100));
                         });
                       }
-                    }} hideChevron triggerStyle={{...lineField,fontSize:12}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
+                    }} hideChevron triggerStyle={{...lineField,fontSize:12}} options={[defaultCurrency,...CURRENCY_CODES.filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                   </div>
                 </div>
               </div>
@@ -5370,7 +5370,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                                   if(res)update({amountNok:String(Math.round((parseFloat(r.amount)||0)*res.rate*100)/100)});
                                 });
                               }
-                            }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={[defaultCurrency,...["NOK","USD","EUR","GBP","SEK","DKK","PKR"].filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
+                            }} hideChevron triggerStyle={{background:"transparent",border:"none",padding:0,minHeight:"auto",flexShrink:0,width:32,justifyContent:"flex-end"}} textStyle={{fontSize:9,color:T.muted,fontWeight:700}} options={[defaultCurrency,...CURRENCY_CODES.filter(c=>c!==defaultCurrency)].map(c=>({value:c,label:c}))}/>
                           </div>
                           {(r.currency||defaultCurrency).toUpperCase()!==defaultCurrency&&(
                             <CalcAmountInput placeholder={`Amount in ${defaultCurrency}`} value={r.amountNok||""} onChange={v=>update({amountNok:v})} style={{...lineField,fontSize:10.5,fontWeight:600,color:T.muted,marginTop:4,textAlign:"left"}}/>

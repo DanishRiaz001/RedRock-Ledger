@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { T, inp } from "../lib/theme.js";
-import { getAnthropicKey, setAnthropicKey, fmt } from "../lib/utils.js";
+import { getAnthropicKey, setAnthropicKey, fmt, CURRENCY_CODES } from "../lib/utils.js";
 import { AccDrop, FlexDateInput, ContactSearch, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 
@@ -299,7 +299,7 @@ function AccountingSettingsScreen({onNavigate}){
 // transaction against a "Opening balance equity" suspense account (2960).
 function OpeningBalanceScreen({accounts,contacts,setContacts,transactions,projects=[],addTransaction,onSave,onBack,uploadInboxFile}){
   const OPENING_BALANCE_CODE="2960";
-  const CURRENCIES=["NOK","USD","EUR","GBP","SEK","DKK","PKR"];
+  const CURRENCIES=CURRENCY_CODES;
   const newRow=()=>({rid:Date.now()+Math.random().toString(36).slice(2),accountCode:"",debit:"",credit:"",currency:"NOK",amountNok:"",projectId:""});
   // NOK value of a row — the NOK field when the currency is foreign, else the debit/credit itself.
   const rowNok=(r)=>{

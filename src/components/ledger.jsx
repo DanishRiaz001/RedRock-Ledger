@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate,computeVat, INCOME_SK, EXPENSE_SK, nextContactId } from "../lib/utils.js";
+import { fmt, fmtB, fmtRs, callClaudeAPI, hasId, openHtmlInNewTab, isIncomeSK, isExpenseSK, vatCodeOptions, findVatCode, vatCodeForRate,computeVat, INCOME_SK, EXPENSE_SK, nextContactId, CURRENCY_CODES } from "../lib/utils.js";
 import { sb, getAdminFeaturesCache, setAdminFeaturesCache, getUserFeaturesCache, setUserFeaturesCache } from "../lib/supabaseClient.js";
 import { getSignedUrl, uploadFileToStorage, deleteFileFromStorage, sanitizeFilename } from "../lib/storage.js";
 import { SignedFileViewer, ResizableSplit, Spinner, UploadDropModal } from "./shell.jsx";
@@ -1505,7 +1505,7 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
     if(!valid)return;
     onSave({id:contactNumber.trim()||undefined,type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
   };
-  const CURRENCIES=["NOK","USD","EUR","GBP","AED","SAR","PKR"];
+  const CURRENCIES=CURRENCY_CODES;
 
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -1699,7 +1699,24 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
     if(acc&&acc.defaultVatCode)setCreditVatCode(acc.defaultVatCode);
   };
 
-  const attached=attachments[0]||null;
+  // Multiple files can be attached to one entry (the "Add another file (N
+  // attached)" button below) but the preview panel only ever showed
+  // attachments[0] — there was no way to even see, let alone open, a
+  // second or third attachment short of removing the first. A small
+  // pager (same idea as a multi-page PDF's own "1 of 2") lets the viewer
+  // step through them; resets to the first whenever the attachment set
+  // itself changes (a different txn opened, or one added/removed) rather
+  // than leaving a stale index pointed at a file that's no longer there.
+  const[attIdx,setAttIdx]=useState(0);
+  useEffect(()=>{setAttIdx(0);},[attachments.length,txn.id]);
+  const attached=attachments[Math.min(attIdx,attachments.length-1)]||null;
+  const attPager=attachments.length>1?(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"6px 10px",background:"#1E2833",flexShrink:0}}>
+      <button onClick={()=>setAttIdx(i=>Math.max(0,i-1))} disabled={attIdx===0} style={{background:"none",border:"none",color:attIdx===0?"#4B5563":"#fff",cursor:attIdx===0?"default":"pointer",fontSize:13,padding:"2px 6px"}}>‹</button>
+      <span style={{fontSize:11,fontWeight:700,color:"#D1D5DB"}}>{attIdx+1} of {attachments.length}</span>
+      <button onClick={()=>setAttIdx(i=>Math.min(attachments.length-1,i+1))} disabled={attIdx===attachments.length-1} style={{background:"none",border:"none",color:attIdx===attachments.length-1?"#4B5563":"#fff",cursor:attIdx===attachments.length-1?"default":"pointer",fontSize:13,padding:"2px 6px"}}>›</button>
+    </div>
+  ):null;
 
   // Same VAT-code derivation the single-line form above uses, generalized
   // to any line — reverse-derives a code from the stored rate when an
@@ -2684,9 +2701,14 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
   const attachmentsTab=(
     <div style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",height:600,background:"#fff"}}>
       {attached?(<>
-        {onRemoveFile&&(
-          <div style={{padding:"6px 14px",background:"#1E2833",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10}}>
-            {confirmRemoveAtt?(
+        {(attPager||onRemoveFile)&&(
+          <div style={{padding:"6px 14px",background:"#1E2833",display:"flex",justifyContent:attPager?"space-between":"flex-end",alignItems:"center",gap:10}}>
+            {attPager&&<div style={{display:"flex",alignItems:"center",gap:10}}>
+              <button onClick={()=>setAttIdx(i=>Math.max(0,i-1))} disabled={attIdx===0} style={{background:"none",border:"none",color:attIdx===0?"#4B5563":"#fff",cursor:attIdx===0?"default":"pointer",fontSize:13,padding:"2px 6px"}}>‹</button>
+              <span style={{fontSize:11,fontWeight:700,color:"#D1D5DB"}}>{attIdx+1} of {attachments.length}</span>
+              <button onClick={()=>setAttIdx(i=>Math.min(attachments.length-1,i+1))} disabled={attIdx===attachments.length-1} style={{background:"none",border:"none",color:attIdx===attachments.length-1?"#4B5563":"#fff",cursor:attIdx===attachments.length-1?"default":"pointer",fontSize:13,padding:"2px 6px"}}>›</button>
+            </div>}
+            {onRemoveFile&&(confirmRemoveAtt?(
               <button disabled={removingAtt} onClick={async()=>{
                 setRemovingAtt(true);
                 const res=await onRemoveFile(attached.id);
@@ -2696,10 +2718,10 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
               }} style={{background:T.red,border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:removingAtt?"wait":"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>{removingAtt?"Removing…":"Confirm remove"}</button>
             ):(
               <button onClick={()=>setConfirmRemoveAtt(true)} title="Remove this document from the entry — the file itself stays in Inbox" style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",padding:"5px 10px",flexShrink:0,fontFamily:"inherit"}}>Remove</button>
-            )}
+            ))}
           </div>
         )}
-        <div style={{height:onRemoveFile?"calc(100% - 33px)":"100%"}}>
+        <div style={{height:(attPager||onRemoveFile)?"calc(100% - 33px)":"100%"}}>
           <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
         </div>
       </>):(
@@ -2804,10 +2826,15 @@ function EditModal({txn,accounts,contacts,onSave,onDelete,onReverse,onClose,mone
             {attached?(
               // SignedFileViewer already renders its own toolbar with the
               // filename (and Download, for images) — this used to repeat
-              // the filename in a second dark header right above it.
-              <div style={{flex:1,minHeight:0}}>
-                <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
-              </div>
+              // the filename in a second dark header right above it. The
+              // pager (only when there's more than one attachment) sits
+              // right above that same toolbar instead.
+              <>
+                {attPager}
+                <div style={{flex:1,minHeight:0}}>
+                  <SignedFileViewer storagePath={attached.storagePath} type={attached.type} name={attached.name} style={{width:"100%",height:"100%"}}/>
+                </div>
+              </>
             ):(
               <div
                 onDragOver={e=>{e.preventDefault();if(onUploadFile&&!attUploading)setDropHover(true);}}

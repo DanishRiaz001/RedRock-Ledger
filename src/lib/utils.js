@@ -483,4 +483,22 @@ const filenameToDescription = (filename) => {
   return base.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription, filenameToDescription };
+// One shared currency list — four different screens (Advance Voucher,
+// Register voucher queue, Company settings, Invoicing) each hand-rolled
+// their own subset (some missing SEK/DKK, some missing PKR/SAR), so which
+// currencies you could pick depended on which screen you happened to be
+// on. This is the union of all of them, same order everywhere.
+const CURRENCIES = [
+  { code: "NOK", name: "Norwegian Krone", symbol: "kr" },
+  { code: "SEK", name: "Swedish Krona", symbol: "kr" },
+  { code: "DKK", name: "Danish Krone", symbol: "kr" },
+  { code: "PKR", name: "Pakistani Rupee", symbol: "Rs" },
+  { code: "USD", name: "US Dollar", symbol: "$" },
+  { code: "EUR", name: "Euro", symbol: "€" },
+  { code: "GBP", name: "British Pound", symbol: "£" },
+  { code: "AED", name: "UAE Dirham", symbol: "د.إ" },
+  { code: "SAR", name: "Saudi Riyal", symbol: "﷼" },
+];
+const CURRENCY_CODES = CURRENCIES.map(c => c.code);
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription, filenameToDescription, CURRENCIES, CURRENCY_CODES };

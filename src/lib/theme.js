@@ -35,7 +35,11 @@ const T = {
   // same complaint that already led to darkening table headers
   // specifically); kept a clear step below `text` so the muted/sub/text
   // hierarchy is still legible, just less washed-out throughout.
-  text:"#1F2937",sub:"#525A68",muted:"#808896",
+  // `text` itself darkened too (was #1F2937, a dark slate but visibly not
+  // black) — the main account/VAT-code values in the voucher entry screens
+  // specifically were called out as needing to read like solid black
+  // (matching the reference app) rather than a dark gray.
+  text:"#111317",sub:"#525A68",muted:"#808896",
   // --- SPACING SCALE (4px grid) — for new/updated components going forward ---
   spacing:{xs:"4px",sm:"8px",md:"12px",lg:"16px",xl:"24px",xxl:"32px"},
   // --- CORNER SCALE ---

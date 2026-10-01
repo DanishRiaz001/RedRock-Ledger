@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription } from "../lib/utils.js";
+import { INCOME_SK, EXPENSE_SK, isIncomeSK, isExpenseSK, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, displayNotes, callClaudeAPI, fmt, fmtB, hasId, openHtmlInNewTab, nextContactId, MVA_CODES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription, CURRENCIES } from "../lib/utils.js";
 import { buildSAFTXml } from "../lib/saft.js";
 import { stripVatLegTag } from "../lib/vatsplit.js";
 import { sign, fmtBal, selSm, SL, Card, BackHeader, DetailModal, MatchDetailModal, MoneySourcesPanel, isBankReconApproved, setBankReconApproved, AccDrop, AccountGroupDrop, VatDrop, ContactSearch, SaveFlashButton, FlexDateInput, CalcAmountInput, NewAccountModal, FileDrop, ThemedSelect, NewContactModal } from "./ledger.jsx";
@@ -790,15 +790,6 @@ function SettingsMenu({accounts,projects=[],onSave,onAddAccount,onUpdateAccount,
     return()=>{if(onWideChange)onWideChange(false);};
   },[screen]);
 
-  const CURRENCIES=[
-    {code:"PKR",name:"Pakistani Rupee",symbol:"Rs"},
-    {code:"USD",name:"US Dollar",symbol:"$"},
-    {code:"EUR",name:"Euro",symbol:"€"},
-    {code:"GBP",name:"British Pound",symbol:"£"},
-    {code:"AED",name:"UAE Dirham",symbol:"د.إ"},
-    {code:"SAR",name:"Saudi Riyal",symbol:"﷼"},
-    {code:"NOK",name:"Norwegian Krone",symbol:"kr"},
-  ];
   const[profileData,setProfileData]=useState(()=>{try{return JSON.parse(localStorage.getItem("rr_profile")||"{}")}catch{return{};}});
   const saveProfile=(updates)=>{const n={...profileData,...updates};setProfileData(n);try{localStorage.setItem("rr_profile",JSON.stringify(n));}catch{}};
   const primaryCurrency=(profileData.currencies||["PKR"])[0];
