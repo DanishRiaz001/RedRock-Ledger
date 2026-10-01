@@ -138,6 +138,14 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // should start in — mirrors the same pattern Reskontro's own
   // Customers/Suppliers sub-items already use (reskontroDefaultType).
   const[newVoucherMode,setNewVoucherMode]=useState("receipt");
+  // Bumped on every "New voucher"/"Supplier Invoice"/"Customer invoice"
+  // sidebar click, folded into NewEntryForm's key below. Clicking one of
+  // these while already on that exact screen (same tab, same mode) is a
+  // same-value setState — React skips the re-render entirely, so without
+  // this NewEntryForm never remounts and whatever was left in an abandoned,
+  // unsaved entry (an attached document included) silently carries over
+  // into what the user expects to be a genuinely blank new voucher.
+  const[newVoucherSeq,setNewVoucherSeq]=useState(0);
   // SettingsMenu has its own internal "screen" sub-navigation (the main
   // menu vs. User access, VAT codes, etc.) that setTab alone can't reset —
   // clicking the sidebar's "Settings" link while ALREADY on the Settings
@@ -1091,7 +1099,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                     {voucherItems.map((it,i)=>{
                       const active=tab===it.tab&&(!it.mode||newVoucherMode===it.mode);
                       const locked=it.requiresWrite&&!canWriteEntries;
-                      const linkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab,it.mode?()=>setNewVoucherMode(it.mode):undefined,it.mode?{mode:it.mode}:undefined);
+                      const linkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab,it.mode?()=>{setNewVoucherMode(it.mode);setNewVoucherSeq(s=>s+1);}:undefined,it.mode?{mode:it.mode}:undefined);
                       return(
                         <a key={it.tab+i} {...linkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
                           <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
@@ -1486,7 +1494,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           // — initialEntryMode alone only seeds useState on first mount, so
           // clicking "Customer invoice" right after "Supplier Invoice"
           // without this would stay stuck on whichever mode mounted first.
-          <NewEntryForm key={newVoucherMode} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
+          <NewEntryForm key={newVoucherMode+"-"+newVoucherSeq} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
         )}
 
         {tab==="VoucherDrafts"&&(

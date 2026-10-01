@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
 import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows, filenameToDescription, CURRENCY_CODES } from "../lib/utils.js";
-import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
+import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect, InboxAttachModal } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 import { fetchHistoricalRate } from "../lib/fx.js";
 
@@ -5586,6 +5586,15 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
     // matter most (a brand-new entry) looked and behaved differently from
     // everywhere else a document preview appears in the app.
     const attached=form.attachmentId?inboxFiles.find(f=>String(f.id)===String(form.attachmentId)):null;
+    const[showInboxModal,setShowInboxModal]=useState(false);
+    // This form only ever holds one attachment (form.attachmentId is a
+    // single id, not a list) — InboxAttachModal supports picking several
+    // at once for the EditModal case, but here only the first checked file
+    // is actually used, same as before this modal existed.
+    const attachFromInbox=(ids)=>{
+      if(ids[0]!=null)setForm(p=>({...p,attachmentId:parseInt(ids[0])}));
+      setShowInboxModal(false);
+    };
     // Warms getSignedUrl's cache for whichever document Prev/Next would
     // land on next, so stepping onto one you haven't viewed yet in this
     // session is already cached by the time you click — not just revisits.
@@ -5629,17 +5638,23 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
                 onDragOver={e=>{e.preventDefault();if(!uploadingReceipt)setDropHover(true);}}
                 onDragLeave={()=>setDropHover(false)}
                 onDrop={e=>{e.preventDefault();setDropHover(false);if(!uploadingReceipt&&e.dataTransfer.files[0])uploadToInbox(e.dataTransfer.files[0]);}}
-                style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,gap:10,padding:24,textAlign:"center",background:dropHover?T.accentLight:"transparent",transition:"background .1s"}}>
-                <i className="ti ti-file-off" style={{fontSize:28}}/>
-                <div style={{fontSize:12}}>{dropHover?"Drop to attach":"No document attached to this entry yet."}</div>
-                <label style={{display:"flex",alignItems:"center",gap:6,border:`1.5px dashed ${dropHover?T.accent:T.border}`,borderRadius:10,padding:"10px 16px",cursor:uploadingReceipt?"wait":"pointer",background:T.bg,marginTop:6}}>
-                  <i className="ti ti-upload" style={{fontSize:14,color:T.accent}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:T.accent}}>{uploadingReceipt?"Uploading…":"Upload a file, or drag one here"}</span>
+                style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:28,textAlign:"center",background:dropHover?T.accentLight:T.bg,transition:"background .1s"}}>
+                <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,width:"100%",maxWidth:300,border:`2px dashed ${dropHover?T.accent:T.border}`,borderRadius:14,padding:"28px 20px",cursor:uploadingReceipt?"wait":"pointer",background:"#fff",transition:"border-color .1s"}}>
+                  <div style={{width:44,height:44,borderRadius:12,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <i className="ti ti-cloud-upload" style={{fontSize:22,color:T.accent}}/>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.text}}>{uploadingReceipt?"Uploading…":dropHover?"Drop to attach":"Upload a file"}</div>
+                  <div style={{fontSize:11,color:T.muted}}>or drag one here — PDF, JPG, PNG</div>
                   <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" disabled={uploadingReceipt} style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadToInbox(e.target.files[0]);}}/>
                 </label>
-                {inboxFiles.length>0&&!uploadingReceipt&&(
-                  <div style={{width:"100%",marginTop:2}}><FileDrop files={inboxFiles} onPick={id=>setForm(p=>({...p,attachmentId:parseInt(id)}))} placeholder="— or pick an existing Inbox file —"/></div>
-                )}
+                {inboxFiles.length>0&&!uploadingReceipt&&(<>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>or</div>
+                  <button onClick={()=>setShowInboxModal(true)} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 18px",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit"}}>
+                    <i className="ti ti-inbox" style={{fontSize:15,color:T.accent}}/>
+                    Browse Inbox ({inboxFiles.length})
+                  </button>
+                </>)}
+                {showInboxModal&&<InboxAttachModal files={inboxFiles} onClose={()=>setShowInboxModal(false)} onAttach={attachFromInbox}/>}
               </div>
             ):(
               <>
