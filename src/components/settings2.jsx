@@ -1748,7 +1748,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
             {viewMode==="deleted"&&(
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
                 <p style={{fontSize:12,color:T.muted,margin:0}}>Deleted files — restore or permanently delete.</p>
-                <button onClick={()=>window.history.back()} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,whiteSpace:"nowrap",marginLeft:10}}>← Back to Inbox</button>
+                <button onClick={()=>{setViewMode("active");setSelected([]);}} style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,whiteSpace:"nowrap",marginLeft:10}}>← Back to Inbox</button>
               </div>
             )}
 
