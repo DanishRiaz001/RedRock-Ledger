@@ -60,8 +60,13 @@ export default function MobileApp(props){
 
   const getFeature=id=>isFeatureOn(id,props.viewingUserId);
   const isNorway=(props.companyProfile.country||"PK")==="NO";
+  // Same rule as FinanceTracker.jsx (desktop): "Whose" doesn't apply to
+  // Norwegian accounting, hidden for Norway books except for the platform
+  // super-admin.
+  const isSuperAdmin=!!(props.user&&props.user.email==="danishriaz001@gmail.com");
+  const whoseAllowed=isSuperAdmin||!isNorway;
   const feat={
-    bank:getFeature("bank"),reskontro:getFeature("reskontro"),whose:getFeature("whose"),
+    bank:getFeature("bank"),reskontro:getFeature("reskontro"),whose:whoseAllowed&&getFeature("whose"),
     budget:getFeature("budget"),sinkingFunds:getFeature("sinkingFunds"),reports:getFeature("reports"),
     import:getFeature("import"),tags:getFeature("tags"),
     calcAmount:getFeature("calcAmount"),vat:isNorway,

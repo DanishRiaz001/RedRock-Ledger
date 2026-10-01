@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { T, SERIES, getSK, inp, btnRed, btnGhost, btnSm } from "../lib/theme.js";
-import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows } from "../lib/utils.js";
+import { isIncomeSK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate,computeVat, vatCodeOptions, findVatCode, accountsForSK, callClaudeAPI, fmt, fmtB, openHtmlInNewTab, nextContactId, seededBankPostingTypes, saveBankPostingTypes, DEFAULT_BANK_POSTING_TYPES, xlsxHeaderRows, filenameToDescription } from "../lib/utils.js";
 import { Card, AccDrop, isDateClosed, getPeriodClose, sign, selSm, FlexDateInput, CalcAmountInput, NewContactModal, VatDrop, SaveFlashButton, FileDrop, ThemedSelect } from "./ledger.jsx";
 import { getSignedUrl } from "../lib/storage.js";
 import { fetchHistoricalRate } from "../lib/fx.js";
@@ -1501,7 +1501,10 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
   const handleUpload=async(file)=>{
     setUploading(true);
     const newFile=await uploadInboxFile(file);
-    if(newFile)setAttachedFileId(newFile.id);
+    if(newFile){
+      setAttachedFileId(newFile.id);
+      setDescription(d=>d||filenameToDescription(file.name));
+    }
     setUploading(false);
   };
 
@@ -4052,7 +4055,7 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
   const uploadToInbox=async(file)=>{
     setUploadingReceipt(true);
     const newFile=await uploadInboxFile(file);
-    if(newFile)setForm(p=>({...p,attachmentId:newFile.id}));
+    if(newFile)setForm(p=>({...p,attachmentId:newFile.id,description:p.description||filenameToDescription(file.name)}));
     setUploadingReceipt(false);
   };
   const getName=code=>((accounts.find(a=>a.code===code))||{name:code}).name;

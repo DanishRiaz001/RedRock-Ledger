@@ -560,10 +560,16 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   // below, so nav filtering, tab routing, and the mobile "off" banner all
   // just work without special-casing VAT anywhere else.
   const isNorway=(companyProfile.country||"PK")==="NO";
+  // "Whose" (which money source a bank movement belongs to) is a Pakistan
+  // concept with no Norwegian-accounting equivalent — hidden outright for
+  // Norway books regardless of the per-user feature toggle below, except for
+  // the platform super-admin, who can still turn it on for himself to
+  // demo/test it on any company.
+  const whoseAllowed=isSuperAdmin||!isNorway;
   const feat={
     bank:getFeature("bank"),
     reskontro:getFeature("reskontro"),
-    whose:getFeature("whose"),
+    whose:whoseAllowed&&getFeature("whose"),
     budget:getFeature("budget"),
     sinkingFunds:getFeature("sinkingFunds"),
     reports:getFeature("reports"),
@@ -1100,7 +1106,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           })()}
           {feat.bank&&(()=>{
             const bankItems=[
-              {tab:"BankWhose",label:"Whose"},
+              {tab:"BankWhose",label:"Whose",featureKey:"whose"},
               {tab:"Bank",label:"Bank reconciliation"},
               {tab:"BankSettings",label:"Settings"},
             ].filter(it=>!it.featureKey||feat[it.featureKey]);

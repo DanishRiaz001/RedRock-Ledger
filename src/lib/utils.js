@@ -473,4 +473,14 @@ const cleanBankDescription = (desc) => {
   return s;
 };
 
-export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription };
+// A reasonable starting Description when a receipt/invoice file is attached
+// before anything's been typed — "IMG_2384.jpg" -> "IMG 2384",
+// "sport-outlet_receipt.pdf" -> "sport outlet receipt". Just a convenience
+// default; the caller only uses it when the description field is still
+// empty, and the user can always retype it.
+const filenameToDescription = (filename) => {
+  const base = String(filename || "").replace(/\.[a-zA-Z0-9]{1,5}$/, "");
+  return base.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+};
+
+export { INCOME_SK, EXPENSE_SK, MVA_CODES, SALES_ACCOUNT_VAT_RATE, vatCodeForRate, computeVat, vatCodeOptions, findVatCode, isIncomeSK, isExpenseSK, accountsForSK, displayNotes, ANTHROPIC_KEY_STORAGE, getAnthropicKey, setAnthropicKey, callClaudeAPI, fmt, fmtRs, bankToDateStr, bankToNum, buildBankRows, fmtB, decodeTextSmart, detectDelimiter, parseDelimitedText, nextContactId, BANK_POSTING_TYPES_KEY, DEFAULT_BANK_POSTING_TYPES, getBankPostingTypes, saveBankPostingTypes, seededBankPostingTypes, xlsxHeaderRows, cleanBankDescription, filenameToDescription };

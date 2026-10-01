@@ -132,7 +132,7 @@ export default function MobileHome({accounts,transactions,profile,companyProfile
       {/* Quick access grid — two rows, sitting below the bank cards now */}
       <div style={{padding:"0 20px",marginBottom:22}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
-          {QUICK_ACCESS.map(q=>(
+          {QUICK_ACCESS.filter(q=>q.overlay!=="Whose"||feat.whose).map(q=>(
             <div key={q.label} onClick={()=>q.overlay?onOpenOverlay({type:q.overlay,...(q.overlayExtra||{})}):onNavigate(q.tab)} style={{background:"#fff",borderRadius:16,padding:"12px 4px",textAlign:"center",boxShadow:"0 2px 10px rgba(20,40,50,0.05)"}}>
               <div style={{width:30,height:30,borderRadius:10,background:q.bg,color:q.fg,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 7px"}}><i className={`ti ${q.icon}`} style={{fontSize:14}}/></div>
               <div style={{fontSize:8.5,fontWeight:700,color:"#3A4750",lineHeight:1.2}}>{q.label}</div>

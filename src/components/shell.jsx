@@ -71,24 +71,75 @@ function SignedFileViewer({storagePath,type,name,style}){
   };
   // Scroll wheel zoom — zooms toward wherever the cursor is, not just the
   // center, so it feels like a real image viewer rather than a fixed-point zoom.
+  // (Trackpad pinch also arrives here as a wheel event with ctrlKey set —
+  // this same handler already covers that gesture.)
   const onWheel=(e)=>{
     e.preventDefault();
     const delta=e.deltaY>0?-0.15:0.15;
     setZoom(z=>Math.max(1,Math.min(4,z+delta)));
   };
-  // React's JSX onWheel is registered as a passive listener in some browser/
-  // version combinations, which silently makes e.preventDefault() above do
-  // nothing — the page (or whole browser) ends up scrolling/zooming right
-  // along with the image. A real, non-passive listener attached directly
-  // guarantees the browser actually honors preventDefault, keeping the zoom
-  // contained to just the image.
+  // Two-finger touch pinch (real touchscreens, not the trackpad gesture
+  // above) — tracks the distance between the two touch points and scales
+  // zoom by how much that distance changes since the pinch started.
+  // pinchRef holds a snapshot taken once at touchstart so this never needs
+  // to read live zoom state mid-gesture. A single finger instead pans, the
+  // same way mouse-drag already does once zoomed in.
+  const pinchRef=React.useRef(null);
+  const touchPanRef=React.useRef(null);
+  const touchDist=(t1,t2)=>Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);
+  const onTouchStart=(e)=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      pinchRef.current={startDist:touchDist(e.touches[0],e.touches[1]),startZoom:zoom};
+      touchPanRef.current=null;
+    }else if(e.touches.length===1&&zoom>1){
+      const t=e.touches[0];
+      touchPanRef.current={startX:t.clientX,startY:t.clientY,startPan:{...pan}};
+    }
+  };
+  const onTouchMove=(e)=>{
+    if(e.touches.length===2&&pinchRef.current){
+      e.preventDefault();
+      const ratio=touchDist(e.touches[0],e.touches[1])/pinchRef.current.startDist;
+      setZoom(Math.max(1,Math.min(4,pinchRef.current.startZoom*ratio)));
+    }else if(e.touches.length===1&&touchPanRef.current){
+      e.preventDefault();
+      const t=e.touches[0];
+      const{startX,startY,startPan}=touchPanRef.current;
+      setPan({x:startPan.x+(t.clientX-startX),y:startPan.y+(t.clientY-startY)});
+    }
+  };
+  const onTouchEnd=(e)=>{
+    if(e.touches.length<2)pinchRef.current=null;
+    if(e.touches.length<1)touchPanRef.current=null;
+  };
+  // React's JSX onWheel/onTouch* are registered as passive listeners in some
+  // browser/version combinations, which silently makes e.preventDefault()
+  // above do nothing — the page (or whole browser) ends up scrolling/zooming
+  // right along with the image. Real, non-passive listeners attached
+  // directly guarantee the browser actually honors preventDefault, keeping
+  // the gesture contained to just the image. zoom/pan are deps here (unlike
+  // a functional setState updater) because onTouchStart's zoom>1 check needs
+  // to see the current value, not whatever it was when the effect last ran.
   useEffect(()=>{
     const el=wheelZoneRef.current;
     if(!el||!isImage)return;
-    const handler=ev=>onWheel(ev);
-    el.addEventListener("wheel",handler,{passive:false});
-    return()=>el.removeEventListener("wheel",handler);
-  },[isImage]);
+    const wheelHandler=ev=>onWheel(ev);
+    const tsHandler=ev=>onTouchStart(ev);
+    const tmHandler=ev=>onTouchMove(ev);
+    el.addEventListener("wheel",wheelHandler,{passive:false});
+    el.addEventListener("touchstart",tsHandler,{passive:false});
+    el.addEventListener("touchmove",tmHandler,{passive:false});
+    el.addEventListener("touchend",onTouchEnd);
+    el.addEventListener("touchcancel",onTouchEnd);
+    return()=>{
+      el.removeEventListener("wheel",wheelHandler);
+      el.removeEventListener("touchstart",tsHandler);
+      el.removeEventListener("touchmove",tmHandler);
+      el.removeEventListener("touchend",onTouchEnd);
+      el.removeEventListener("touchcancel",onTouchEnd);
+    };
+  },[isImage,zoom,pan]);
   const downloadFile=async()=>{
     if(!url)return;
     const a=document.createElement("a");
@@ -103,7 +154,7 @@ function SignedFileViewer({storagePath,type,name,style}){
     <div style={{display:"flex",alignItems:"center",gap:2,background:"#1F2937",padding:"6px 10px",borderRadius:"8px 8px 0 0",flexShrink:0}}>
       {isImage&&(<>
         <button onClick={()=>setZoom(z=>Math.max(1,z-0.25))} title="Zoom out" style={toolbarBtn}><i className="ti ti-zoom-out" style={{fontSize:15}}/></button>
-        <span onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll to zoom too)" style={{fontSize:11,color:"#D1D5DB",padding:"0 6px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{Math.round(zoom*100)}%</span>
+        <span onClick={()=>{setZoom(1);setPan({x:0,y:0});setRotation(0);}} title="Reset zoom (scroll or pinch to zoom, drag to pan)" style={{fontSize:11,color:"#D1D5DB",padding:"0 6px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{Math.round(zoom*100)}%</span>
         <button onClick={()=>setZoom(z=>Math.min(4,z+0.25))} title="Zoom in" style={toolbarBtn}><i className="ti ti-zoom-in" style={{fontSize:15}}/></button>
         <div style={{width:1,height:16,background:"#374151",margin:"0 4px"}}/>
         <button onClick={()=>setRotation(r=>r-90)} title="Rotate" style={toolbarBtn}><i className="ti ti-rotate-2" style={{fontSize:15}}/></button>
@@ -132,7 +183,7 @@ function SignedFileViewer({storagePath,type,name,style}){
   return(
     <div style={{...style,padding:0,display:"flex",flexDirection:"column"}}>
       <Toolbar/>
-      <div ref={wheelZoneRef} style={{position:"relative",overflow:"hidden",background:"#fafafa",flex:1}}>
+      <div ref={wheelZoneRef} style={{position:"relative",overflow:"hidden",background:"#fafafa",flex:1,touchAction:"none"}}>
         <div onMouseDown={startDrag} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",cursor:zoom>1?"grab":"default",overflow:"hidden"}}>
           <img src={url} draggable={false} alt={name||"attachment"} style={{maxWidth:"100%",maxHeight:"100%",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,transformOrigin:"center center",transition:dragRef.current?"none":"transform .15s ease",userSelect:"none"}}/>
         </div>
