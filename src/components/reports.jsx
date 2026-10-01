@@ -2797,7 +2797,7 @@ function BulkEditPostsModal({accounts,contacts,currentCode,rows,onSave,onClose})
   );
 }
 
-function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,projects=[],tagTransaction,fetchEntryComments,addEntryComment,addTransaction}){
+function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFrom:initFrom,filterTo:initTo,onEditTxn,onReverseTxn,onMatchTxns,onUnmatchTxns,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],auditLog=[],profiles=[],currentUserId,onClose,moneySources,projects=[],tagTransaction,fetchEntryComments,addEntryComment,addTransaction,attachedTxnIds=[]}){
   const[currentCode,setCurrentCode]=useState(account.code);
   const[matchDetailGroupId,setMatchDetailGroupId]=useState(null);
   const[filterFrom,setFilterFrom]=useState(initFrom);
@@ -2823,7 +2823,7 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       .map(t=>{const isDr=t.debitCode===currentCode;const movement=isDr?t.amount:-t.amount;running+=movement;return{...t,movement,balance:running};});
   },[transactions,currentCode,filterFrom,filterTo,openingBal,search]);
 
-  const shownRows=entriesMode==="open"?allRows.filter(r=>!(r.matchedWith&&r.matchedAccount===currentCode)):allRows;
+  const shownRows=entriesMode==="open"?allRows.filter(r=>!(r.matchedWith&&r.matchedAccount===currentCode)):entriesMode==="closed"?allRows.filter(r=>!!(r.matchedWith&&r.matchedAccount===currentCode)):allRows;
   const closingBal=allRows.length?allRows[allRows.length-1].balance:openingBal;
   const periodMovement=allRows.reduce((s,r)=>s+r.movement,0);
 
@@ -2870,20 +2870,12 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
   const allSelected=allSelectableIds.length>0&&allSelectableIds.every(id=>selected.includes(id));
   const toggleSelectAll=()=>setSelected(allSelected?[]:allSelectableIds);
 
-  // Excel-style resizable columns — drag the handle on the right edge of any
-  // header cell. Widths persist per-session via colgroup, not per-cell.
-  // Closed folded into the checkbox column (a small padlock replaces the
-  // checkbox on a matched row, rather than its own dedicated column) —
-  // Voucher moves left into the space that freed up.
-  const[colWidths,setColWidths]=useState([36,95,90,300,100,110]);
-  // View settings — matches Tripletex's gear-icon "Visningsvalg" panel on
-  // Hovedbok, scoped to columns this app can actually populate on a
-  // transaction (VAT code, linked customer/supplier, currency) rather than
-  // faking toggles for dimensions (Prosjekt/Produkt/Ansatt) nothing here
-  // tracks yet. Persisted per-browser so the choice sticks between visits.
+  // Columns (Tripletex Hovedbok order):
+  // 0=checkbox 1=clip 2=Lukket 3=Bilagsnr. 4=Dato 5=Beskrivelse 6=Mva-kode 7=Valuta 8=Beløp 9=Saldo
+  const[colWidths,setColWidths]=useState([36,28,60,90,90,300,80,70,100,110]);
   const[viewMenuOpen,setViewMenuOpen]=useState(false);
   const[colPrefs,setColPrefs]=useState(()=>{
-    try{return{showVat:false,showContact:false,showCurrency:false,...JSON.parse(localStorage.getItem("rr_ledger_view_prefs")||"")};}catch{return{showVat:false,showContact:false,showCurrency:false};}
+    try{return{showContact:false,...JSON.parse(localStorage.getItem("rr_ledger_view_prefs")||"")};}catch{return{showContact:false};}
   });
   const toggleColPref=key=>{
     const next={...colPrefs,[key]:!colPrefs[key]};
@@ -2891,11 +2883,9 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
     try{localStorage.setItem("rr_ledger_view_prefs",JSON.stringify(next));}catch{}
   };
   const extraCols=[
-    colPrefs.showVat&&{key:"vat",label:"VAT code",width:110},
-    colPrefs.showContact&&{key:"contact",label:"Customer/Supplier",width:180},
-    colPrefs.showCurrency&&{key:"currency",label:"Currency",width:90},
+    colPrefs.showContact&&{key:"contact",label:"Kunde/Leverandør",width:180},
   ].filter(Boolean);
-  const baseColCount=6,totalColCount=baseColCount+extraCols.length;
+  const baseColCount=10,totalColCount=baseColCount+extraCols.length;
   const resizeDragRef=React.useRef(null);
   const startColResize=(idx,e)=>{
     e.preventDefault();e.stopPropagation();
@@ -2982,8 +2972,8 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
             {viewMenuOpen&&(<>
               <div onClick={()=>setViewMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:390}}/>
               <div style={{position:"absolute",right:0,top:40,background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:400,minWidth:210,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",padding:"10px 0"}}>
-                <div style={{padding:"4px 14px 8px",fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>Columns</div>
-                {[["showVat","VAT code"],["showContact","Customer/Supplier"],["showCurrency","Currency"]].map(([key,label])=>(
+                <div style={{padding:"4px 14px 8px",fontSize:10,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>Kolonner</div>
+                {[["showContact","Kunde/Leverandør"]].map(([key,label])=>(
                   <label key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",fontSize:12.5,color:T.text,cursor:"pointer"}}>
                     <input type="checkbox" checked={!!colPrefs[key]} onChange={()=>toggleColPref(key)}/>{label}
                   </label>
@@ -3032,58 +3022,62 @@ function LedgerDrilldownScreen({account,accounts,contacts,transactions,filterFro
       <table style={{width:"100%",fontSize:11.5,borderCollapse:"collapse",tableLayout:"fixed"}}>
         <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}{extraCols.map(c=><col key={c.key} style={{width:c.width}}/>)}</colgroup>
         <thead><tr style={{color:T.sub,fontSize:10.5,background:T.bg,position:"sticky",top:0,zIndex:2}}>
-          <td style={{padding:"8px 10px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/><ResizeHandle idx={0}/></td>
-          <SortTh label="Voucher" col="bilag" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={1} align="center"/>
-          <SortTh label="Date" col="date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={2} align="center"/>
-          <SortTh label="Description" col="description" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={3} align="left"/>
-          <SortTh label="Amount" col="amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} idx={4} align="center"/>
-          {colPrefs.showVat&&<td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center"}}>VAT code</td>}
-          {colPrefs.showContact&&<SortTh label="Customer/Supplier" col="contact" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="center"/>}
-          {colPrefs.showCurrency&&<td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center"}}>Currency</td>}
-          <td style={{textAlign:"center",padding:"8px 10px",position:"relative"}}>Balance</td>
+          <td style={{padding:"8px 10px",position:"relative"}}><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={!allSelectableIds.length}/></td>
+          <td style={{padding:"8px 4px",textAlign:"center",overflow:"hidden",whiteSpace:"nowrap"}}><i className="ti ti-paperclip" style={{fontSize:11,opacity:0.4}}/></td>
+          <td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"left",fontWeight:700,color:T.sub,position:"relative"}}>Lukket<ResizeHandle idx={2}/></td>
+          <SortTh label="Bilagsnr." col="bilag" idx={3} align="center"/>
+          <SortTh label="Dato" col="date" idx={4} align="center"/>
+          <SortTh label="Beskrivelse" col="description" idx={5} align="left"/>
+          <td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center",position:"relative"}}>Mva-kode<ResizeHandle idx={6}/></td>
+          <td style={{padding:"8px 6px",overflow:"hidden",whiteSpace:"nowrap",textAlign:"center",position:"relative"}}>Valuta<ResizeHandle idx={7}/></td>
+          <SortTh label="Beløp" col="amount" idx={8} align="right"/>
+          {colPrefs.showContact&&<SortTh label="Kunde/Leverandør" col="contact" align="center"/>}
+          <td style={{textAlign:"right",padding:"8px 10px",position:"relative",fontWeight:700,color:T.sub}}>Saldo</td>
         </tr></thead>
         <tbody>
           <tr style={{background:T.bg,borderBottom:`1px solid ${T.border}`}}>
             <td colSpan={totalColCount} style={{padding:"8px 10px",fontWeight:800,color:T.text}}>{currentAccount.code} {currentAccount.name}</td>
           </tr>
           <tr style={{borderBottom:`1px solid ${T.border}`}}>
-            <td colSpan={5+extraCols.length} style={{padding:"8px 10px",color:T.text}}>Opening balance</td>
-            <td style={{textAlign:"center",fontWeight:600,padding:"8px 10px",color:T.text}}>{fmt(openingBal)}</td>
+            <td colSpan={9+extraCols.length} style={{padding:"8px 10px",color:T.text}}>Inngående saldo</td>
+            <td style={{textAlign:"right",fontWeight:600,padding:"8px 10px",color:T.text,fontVariantNumeric:"tabular-nums"}}>{fmt(openingBal)}</td>
           </tr>
           {sortedShownRows.map((r,i)=>{
             const isMatchedHere=!!r.matchedWith&&r.matchedAccount===currentCode;
             const rContact=r.contactId?contacts.find(c=>c.id===r.contactId):null;
+            const hasAttach=hasId(attachedTxnIds,r.id);
             return(
               <tr key={r.id} className="rr-table-row" style={{background:"#fff",borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:"7px 10px",textAlign:"center"}}>
-                  {/* "Closed" no longer has its own column — a small padlock
-                      replaces the checkbox itself on a matched row, still
-                      clickable to see who matched it and when. */}
+                  <input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)} disabled={isMatchedHere}/>
+                </td>
+                <td style={{padding:"7px 4px",textAlign:"center"}}>
+                  {hasAttach&&<i className="ti ti-paperclip" title="Har vedlegg" style={{fontSize:12,color:T.muted}}/>}
+                </td>
+                <td style={{padding:"7px 6px",textAlign:"left"}}>
                   {isMatchedHere?(
-                    <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} title="Closed — click for match details" style={{cursor:"pointer",fontSize:13}}>🔒</span>
-                  ):(
-                    <input type="checkbox" checked={selected.includes(r.id)} onChange={()=>toggleSel(r.id)}/>
-                  )}
+                    <span onClick={()=>setMatchDetailGroupId(r.matchedWith)} title="Lukket — klikk for detaljer" style={{cursor:"pointer",fontSize:11,fontWeight:600,color:T.accent,textDecoration:"underline dotted"}}>Lukket</span>
+                  ):null}
                 </td>
                 <td onClick={()=>setDetailTxn(r)} style={{padding:"7px 6px",textAlign:"center",color:T.accent,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{fmtB(r.bilag)}</td>
                 <td style={{padding:"7px 6px",textAlign:"center",color:T.text,whiteSpace:"nowrap"}}>{r.date}</td>
                 <td style={{padding:"7px 6px",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.text}} title={stripVatLegTag(r.description)}>{stripVatLegTag(r.description)}</td>
-                <td style={{padding:"7px 6px",textAlign:"center",fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>{sign(r.movement)}</td>
-                {colPrefs.showVat&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>}
+                <td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.vatCode!=null&&r.vatCode!==""?`${r.vatCode}${r.vatPct!=null?` (${r.vatPct}%)`:""}`:"—"}</td>
+                <td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.currency||"—"}</td>
+                <td style={{padding:"7px 6px",textAlign:"right",fontWeight:600,color:T.text,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{sign(r.movement)}</td>
                 {colPrefs.showContact&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={rContact?rContact.name:""}>{rContact?rContact.name:"—"}</td>}
-                {colPrefs.showCurrency&&<td style={{padding:"7px 6px",textAlign:"center",color:T.sub,fontSize:11,overflow:"hidden",whiteSpace:"nowrap"}}>{r.currency||"—"}</td>}
-                <td style={{textAlign:"center",color:T.muted,padding:"7px 10px",whiteSpace:"nowrap"}}>{fmt(r.balance)}</td>
+                <td style={{textAlign:"right",color:T.muted,padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{fmt(r.balance)}</td>
               </tr>
             );
           })}
-          {!shownRows.length&&<tr><td colSpan={totalColCount} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"No open entries.":"No entries in this period."}</td></tr>}
+          {!shownRows.length&&<tr><td colSpan={totalColCount} style={{padding:"24px 0",textAlign:"center",color:T.muted}}>{entriesMode==="open"?"Ingen åpne poster.":entriesMode==="closed"?"Ingen lukkede poster.":"Ingen poster i denne perioden."}</td></tr>}
           <tr style={{borderTop:`1px solid ${T.border}`}}>
-            <td colSpan={5+extraCols.length} style={{padding:"7px 0",color:T.text}}>Changes in period</td>
-            <td style={{textAlign:"center",fontWeight:600,color:T.text}}>{sign(periodMovement)}</td>
+            <td colSpan={9+extraCols.length} style={{padding:"7px 10px",color:T.text}}>Endringer i perioden</td>
+            <td style={{textAlign:"right",fontWeight:600,color:T.text,padding:"7px 10px",fontVariantNumeric:"tabular-nums"}}>{sign(periodMovement)}</td>
           </tr>
           <tr style={{borderTop:`2px solid ${T.text}`,fontWeight:800}}>
-            <td colSpan={5+extraCols.length} style={{padding:"8px 0"}}>Closing balance</td>
-            <td style={{textAlign:"center"}}>{fmt(closingBal)}</td>
+            <td colSpan={9+extraCols.length} style={{padding:"8px 10px"}}>Utgående saldo</td>
+            <td style={{textAlign:"right",padding:"8px 10px",fontVariantNumeric:"tabular-nums"}}>{fmt(closingBal)}</td>
           </tr>
         </tbody>
       </table>
