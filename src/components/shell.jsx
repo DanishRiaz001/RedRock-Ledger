@@ -142,9 +142,22 @@ function SignedFileViewer({storagePath,type,name,style}){
   },[isImage,zoom,pan]);
   const downloadFile=async()=>{
     if(!url)return;
-    const a=document.createElement("a");
-    a.href=url;a.download=name||"attachment";a.target="_blank";
-    document.body.appendChild(a);a.click();a.remove();
+    // Fetch as blob so a.download is honoured (cross-origin signed URLs ignore it)
+    const extFromType=(t)=>{if(!t)return"";const map={"image/jpeg":".jpg","image/jpg":".jpg","image/png":".png","image/gif":".gif","image/webp":".webp","image/heic":".heic","application/pdf":".pdf","text/plain":".txt","text/csv":".csv"};return map[t]||"";};
+    const ensureExt=(n,t)=>{if(!n)return"attachment"+(extFromType(t));const ext=extFromType(t);if(!ext)return n;const dot=n.lastIndexOf(".");if(dot!==-1)return n;return n+ext;};
+    try{
+      const resp=await fetch(url);
+      const blob=await resp.blob();
+      const blobUrl=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=blobUrl;a.download=ensureExt(name,type||blob.type);
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
+    }catch{
+      const a=document.createElement("a");
+      a.href=url;a.download=ensureExt(name,type);a.target="_blank";
+      document.body.appendChild(a);a.click();a.remove();
+    }
   };
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#9CA3AF",fontSize:12,...style}}>Loading {name||"file"}…</div>;
   if(!url)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:120,color:"#EF4444",fontSize:12,...style}}>Couldn't load {name||"file"}.</div>;
