@@ -308,6 +308,13 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
   const[toastPanelOpen,setToastPanelOpen]=useState(false);
   const[clientSwitcherOpen,setClientSwitcherOpen]=useState(false);
   const[clientSwitcherSearch,setClientSwitcherSearch]=useState("");
+  const clientSwitcherRef=useRef(null);
+  useEffect(()=>{
+    if(!clientSwitcherOpen)return;
+    const handler=e=>{if(clientSwitcherRef.current&&!clientSwitcherRef.current.contains(e.target)){setClientSwitcherOpen(false);setClientSwitcherSearch("");}};
+    document.addEventListener("mousedown",handler);
+    return()=>document.removeEventListener("mousedown",handler);
+  },[clientSwitcherOpen]);
   const[showInviteClient,setShowInviteClient]=useState(false);
   const[showAddClient,setShowAddClient]=useState(false);
   const[newClientName,setNewClientName]=useState("");
@@ -736,7 +743,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             company's name when it's your own login, or the client's email
             when viewing someone else's), and the one dropdown lets you
             switch either kind of context in the same place. */}
-        <div style={{position:"relative"}}>
+        <div ref={clientSwitcherRef} style={{position:"relative"}}>
           {(()=>{
             const activeCompany=viewingUserId===user.id?companies.find(c=>c.id===activeCompanyId):null;
             // Prefer the real name from Company Information (companyProfile.
