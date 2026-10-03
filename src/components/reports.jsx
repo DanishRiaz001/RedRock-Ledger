@@ -2401,79 +2401,136 @@ function PeriodPickerModal({initialFrom,initialTo,onApply,onClose}){
   const[to,setTo]=useState(initialTo);
   const todayStr=new Date().toISOString().slice(0,10);
   const nowYear=new Date().getFullYear();
+  const nowMonth=new Date().getMonth()+1;
   const[gridYear,setGridYear]=useState(parseInt(initialFrom.slice(0,4))||nowYear);
+  // Range-picking state: null = idle, "from" = waiting for end after first click
+  const[picking,setPicking]=useState(null); // {year,month} of the first click
+  const[hoverM,setHoverM]=useState(null); // {year,month} being hovered
 
   const fromYear=parseInt(from.slice(0,4))||nowYear;
   const fromMonth=parseInt(from.slice(5,7))||1;
+  const toYear=parseInt(to.slice(0,4))||nowYear;
+  const toMonth=parseInt(to.slice(5,7))||1;
   const isWholeYear=from===`${fromYear}-01-01`&&to===`${fromYear}-12-31`;
 
-  // Clicking any month in the grid selects that whole month and applies +
-  // closes immediately — no separate "confirm" step needed for the common
-  // case. Clicking the backdrop (blank space) also applies whatever's
-  // currently selected, rather than silently discarding it.
-  const pickMonth=(y,m)=>{
-    const nf=`${y}-${String(m).padStart(2,"0")}-01`;
-    const nt=new Date(y,m,0).toISOString().slice(0,10);
-    onApply(nf,nt);
-    onClose();
-  };
+  const monthToKey=(y,m)=>y*12+m;
+  const selFrom=picking?monthToKey(picking.year,picking.month):monthToKey(fromYear,fromMonth);
+  const hoverKey=hoverM?monthToKey(hoverM.year,hoverM.month):null;
+  const selTo=picking&&hoverKey?Math.max(hoverKey,selFrom):monthToKey(toYear,toMonth);
+
   const applyAndClose=()=>{onApply(from,to);onClose();};
 
+  const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  const handleMonthClick=(y,m)=>{
+    if(!picking){
+      // First click — start picking range
+      setPicking({year:y,month:m});
+    } else {
+      // Second click — finalize
+      const startKey=monthToKey(picking.year,picking.month);
+      const endKey=monthToKey(y,m);
+      let sy=picking.year,sm=picking.month,ey=y,em=m;
+      if(endKey<startKey){sy=y;sm=m;ey=picking.year;em=picking.month;}
+      const nf=`${sy}-${String(sm).padStart(2,"0")}-01`;
+      const nt=new Date(ey,em,0).toISOString().slice(0,10);
+      setFrom(nf);setTo(nt);
+      setPicking(null);setHoverM(null);
+      onApply(nf,nt);onClose();
+    }
+  };
+
+  const d=new Date();
   const presets=[
     {label:"Today",apply:()=>{onApply(todayStr,todayStr);onClose();}},
     {label:"This month",apply:()=>{
-      const d=new Date();const y=d.getFullYear(),m=d.getMonth();
-      onApply(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));
-      onClose();
+      const y=d.getFullYear(),m=d.getMonth();
+      onApply(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));onClose();
     }},
-    {label:"So far this year",apply:()=>{
-      const d=new Date();
-      onApply(`${d.getFullYear()}-01-01`,todayStr);
-      onClose();
+    {label:"Last month",apply:()=>{
+      const y=d.getFullYear(),m=d.getMonth();
+      const pm=m===0?12:m,py=m===0?y-1:y;
+      onApply(`${py}-${String(pm).padStart(2,"0")}-01`,new Date(py,pm,0).toISOString().slice(0,10));onClose();
     }},
-    {label:"Full year",apply:()=>{onApply(`${gridYear}-01-01`,`${gridYear}-12-31`);onClose();}},
+    {label:"This quarter",apply:()=>{
+      const y=d.getFullYear(),m=d.getMonth();
+      const qs=Math.floor(m/3)*3;
+      onApply(`${y}-${String(qs+1).padStart(2,"0")}-01`,new Date(y,qs+3,0).toISOString().slice(0,10));onClose();
+    }},
+    {label:"Year to date",apply:()=>{onApply(`${d.getFullYear()}-01-01`,todayStr);onClose();}},
+    {label:`Full ${gridYear}`,apply:()=>{onApply(`${gridYear}-01-01`,`${gridYear}-12-31`);onClose();}},
+    {label:`Full ${gridYear-1}`,apply:()=>{onApply(`${gridYear-1}-01-01`,`${gridYear-1}-12-31`);onClose();}},
   ];
-  const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:750,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={applyAndClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-        <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:16}}>Choose period</div>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:750,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>{setPicking(null);setHoverM(null);applyAndClose();}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.22)",overflow:"hidden"}}>
 
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:12}}>
-          <button onClick={()=>setGridYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:14}}>‹</button>
-          <span style={{fontSize:14,fontWeight:800,color:T.text,minWidth:60,textAlign:"center"}}>{gridYear}</span>
-          <button onClick={()=>setGridYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:28,height:28,cursor:"pointer",color:T.sub,fontSize:14}}>›</button>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px 14px"}}>
+          <div style={{fontSize:15,fontWeight:700,color:T.text}}>Select period</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16,padding:2}}><i className="ti ti-x"/></button>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-          {MONTH_NAMES.map((mName,i)=>{
-            const m=i+1;
-            const isSelected=!isWholeYear&&fromYear===gridYear&&fromMonth===m;
-            return(
-              <button key={mName} onClick={()=>pickMonth(gridYear,m)} style={{background:isSelected?T.accent:T.bg,color:isSelected?"#fff":T.text,border:"none",borderRadius:8,padding:"10px 4px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{mName}</button>
-            );
-          })}
-        </div>
-        <button onClick={()=>{onApply(`${gridYear}-01-01`,`${gridYear}-12-31`);onClose();}} style={{width:"100%",background:isWholeYear&&fromYear===gridYear?T.accent:T.bg,color:isWholeYear&&fromYear===gridYear?"#fff":T.text,border:"none",borderRadius:8,padding:"9px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:16}}>Whole year {gridYear}</button>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>From (exact date)</div>
-            <FlexDateInput value={from} onChange={setFrom}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>To (exact date)</div>
-            <FlexDateInput value={to} onChange={setTo}/>
-          </div>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:20}}>
+        {/* Presets */}
+        <div style={{padding:"0 20px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
           {presets.map(p=>(
-            <button key={p.label} onClick={p.apply} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>{p.label}</button>
+            <button key={p.label} onClick={p.apply} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:20,padding:"5px 12px",fontSize:11.5,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{p.label}</button>
           ))}
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={applyAndClose} disabled={to<from} style={{flex:1,background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"11px",fontWeight:700,fontSize:13,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
-          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+
+        {/* Month grid */}
+        <div style={{padding:"0 20px 16px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <button onClick={()=>setGridYear(y=>y-1)} style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:T.sub,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-left"/></button>
+            <span style={{fontSize:14,fontWeight:700,color:T.text}}>{gridYear}</span>
+            <button onClick={()=>setGridYear(y=>y+1)} style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:T.sub,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-right"/></button>
+          </div>
+          {picking&&<div style={{textAlign:"center",fontSize:11.5,color:T.accent,fontWeight:600,marginBottom:8}}>Now click the end month</div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}>
+            {MONTH_NAMES.map((mName,i)=>{
+              const m=i+1;
+              const key=monthToKey(gridYear,m);
+              const effectiveTo=picking&&hoverKey?Math.max(hoverKey,selFrom):selTo;
+              const effectiveFrom=picking&&hoverKey?Math.min(hoverKey,selFrom):selFrom;
+              const inRange=key>=effectiveFrom&&key<=effectiveTo;
+              const isEdge=key===effectiveFrom||key===effectiveTo;
+              const isToday=gridYear===nowYear&&m===nowMonth;
+              return(
+                <button key={mName}
+                  onClick={()=>handleMonthClick(gridYear,m)}
+                  onMouseEnter={()=>picking&&setHoverM({year:gridYear,month:m})}
+                  onMouseLeave={()=>picking&&setHoverM(null)}
+                  style={{
+                    background:isEdge?T.accent:inRange?"#e6f4f2":"transparent",
+                    color:isEdge?"#fff":inRange?T.accent:T.text,
+                    border:isToday&&!isEdge?`1px solid ${T.accent}`:"1px solid transparent",
+                    borderRadius:8,padding:"9px 4px",fontSize:12.5,fontWeight:isEdge?700:500,cursor:"pointer",fontFamily:"inherit",transition:"background 0.1s"
+                  }}>{mName}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Custom date inputs */}
+        <div style={{borderTop:`1px solid ${T.border}`,padding:"14px 20px"}}>
+          <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:0.4}}>Custom range</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:500}}>From</div>
+              <FlexDateInput value={from} onChange={v=>{setFrom(v);setPicking(null);}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:500}}>To</div>
+              <FlexDateInput value={to} onChange={v=>{setTo(v);setPicking(null);}}/>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{display:"flex",gap:8,padding:"12px 20px",borderTop:`1px solid ${T.border}`,background:T.bg}}>
+          <button onClick={onClose} style={{flex:1,background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"10px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={applyAndClose} disabled={to<from} style={{flex:2,background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"10px",fontWeight:700,fontSize:13,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Apply</button>
         </div>
       </div>
     </div>
