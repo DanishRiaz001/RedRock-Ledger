@@ -7206,7 +7206,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                           )}
                         </td>
                         <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{color:T.accent,fontWeight:700,cursor:"pointer",padding:"9px 10px",fontSize:12}}>{fmtB(t.bilag)}</td>
-                        <td style={{color:T.sub,padding:"9px 10px",fontSize:12}}>{t.invoiceNo||"—"}</td>
+                        <td style={{color:T.sub,padding:"9px 10px",fontSize:12}}>{t.invoiceNo||""}</td>
                         <td style={{color:T.sub,padding:"9px 10px",fontVariantNumeric:"tabular-nums",fontSize:12}}>{t.date}</td>
                         <td style={{padding:"9px 10px",fontSize:12}}>
                           {t.dueDate?(
@@ -7214,16 +7214,22 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                               {t.dueDate}
                               {overdue&&(()=>{const days=Math.round((new Date(todayStr)-new Date(t.dueDate))/(86400000));return(<span style={{marginLeft:4,fontSize:9,fontWeight:700,background:T.red+"22",color:T.red,borderRadius:3,padding:"1px 4px"}}>+{days}d</span>);})()}
                             </span>
-                          ):"—"}
+                          ):null}
                         </td>
                         <td style={{color:T.text,padding:"9px 10px",fontSize:12}}>{stripVatLegTag(t.description)}</td>
-                        <td style={{padding:"6px 10px"}}>
-                          <input
-                            value={entryComments[t.id]||""}
-                            onChange={e=>setEntryComments(p=>({...p,[t.id]:e.target.value}))}
-                            placeholder="Add comment…"
-                            style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 6px",fontSize:10,fontFamily:"inherit",color:T.text,background:T.bg,outline:"none"}}
-                          />
+                        <td style={{padding:"6px 10px",textAlign:"center"}}>
+                          {entryComments[t.id]?(
+                            <input
+                              value={entryComments[t.id]}
+                              onChange={e=>setEntryComments(p=>({...p,[t.id]:e.target.value}))}
+                              autoFocus
+                              style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 6px",fontSize:10,fontFamily:"inherit",color:T.text,background:T.bg,outline:"none"}}
+                            />
+                          ):(
+                            <button onClick={()=>setEntryComments(p=>({...p,[t.id]:" "}))} title="Add comment" style={{background:"none",border:"none",cursor:"pointer",color:T.muted,padding:2,display:"inline-flex",alignItems:"center"}}>
+                              <i className="ti ti-message-circle" style={{fontSize:14}}/>
+                            </button>
+                          )}
                         </td>
                         <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text,fontVariantNumeric:"tabular-nums",fontSize:12}}>
                           {/* Base currency amount — the primary figure on the AR/AP ledger;
