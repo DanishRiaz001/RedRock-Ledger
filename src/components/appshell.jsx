@@ -706,10 +706,15 @@ function AppShell({user}){
       setRecurringInvoices((recR.data||[]).map(r=>({id:r.id,customerId:r.customer_id,saleAccount:r.sale_account,monthlyRate:parseFloat(r.monthly_rate),description:r.description,vatPct:parseFloat(r.vat_pct)||0,active:r.active,lastGeneratedPeriod:r.last_generated_period})));
       setEmployees((empR.data||[]).map(e=>({id:e.id,name:e.name,role:e.role,email:e.email,phone:e.phone,startDate:e.start_date,salary:e.salary?parseFloat(e.salary):null,active:e.active,notes:e.notes})));
       setQuotes((qR.data||[]).map(q=>({id:q.id,quoteNo:q.quote_no,customerId:q.customer_id,date:q.date,validUntil:q.valid_until,saleAccount:q.sale_account,lines:q.lines||[],vatPct:parseFloat(q.vat_pct)||0,subtotal:parseFloat(q.subtotal),vatAmount:parseFloat(q.vat_amount),total:parseFloat(q.total),status:q.status,convertedInvoiceId:q.converted_invoice_id})));
-      // voucher_drafts table may not exist yet (migration not run) — treat
-      // a missing-table error the same as "no drafts" rather than crashing
-      // the whole data load.
-      setVoucherDrafts((vdR&&vdR.data||[]).map(d=>({id:d.id,entryMode:d.entry_mode||"receipt",form:d.form||{},label:d.label||"",createdAt:d.created_at,updatedAt:d.updated_at})));
+      // voucher_drafts table may not exist yet — load from localStorage instead.
+      {
+        const lsKey=`rr_vd_${cid||"none"}_${viewingUserId}`;
+        let lsDrafts=[];
+        try{lsDrafts=JSON.parse(localStorage.getItem(lsKey)||"[]");}catch{}
+        const dbDrafts=(vdR&&vdR.data&&!vdR.error)?vdR.data.map(d=>({id:d.id,entryMode:d.entry_mode||"receipt",form:d.form||{},label:d.label||"",createdAt:d.created_at,updatedAt:d.updated_at})):[];
+        const merged=[...lsDrafts,...dbDrafts.filter(d=>!lsDrafts.some(l=>l.id===d.id))];
+        setVoucherDrafts(merged);
+      }
       // vat_termin_status table may not exist yet (migration not run) —
       // same missing-table-is-just-empty treatment as voucher_drafts above.
       // filed/paid/reconciled used to live in localStorage, keyed by NOTHING
@@ -2006,24 +2011,30 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
   // in-progress form as-is, with NO bilag assigned and nothing written to
   // `transactions`. Resuming one from the Drafts list reloads the form;
   // actually posting it (via the real Create button) deletes the draft row.
+  const _vdKey=()=>`rr_vd_${cid||"none"}_${viewingUserId}`;
+  const _vdLoad=()=>{try{return JSON.parse(localStorage.getItem(_vdKey())||"[]");}catch{return[];}};
+  const _vdSave=(drafts)=>{try{localStorage.setItem(_vdKey(),JSON.stringify(drafts));}catch{}};
   const saveVoucherDraft=async(entryMode,form,label)=>{
     if(!canEdit)return null;
-    const row={user_id:viewingUserId,...(cid?{company_id:cid}:{}),entry_mode:entryMode,form,label:label||""};
-    const{data,error}=await sb.from("voucher_drafts").insert([row]).select().single();
-    if(error){alert("Couldn't save draft: "+error.message);return null;}
-    const newDraft={id:data.id,entryMode,form,label:label||"",createdAt:data.created_at,updatedAt:data.updated_at};
+    const id=`ls_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    const now=new Date().toISOString();
+    const newDraft={id,entryMode,form,label:label||"",createdAt:now,updatedAt:now};
+    const existing=_vdLoad();
+    _vdSave([newDraft,...existing]);
     setVoucherDrafts(p=>[newDraft,...p]);
     return newDraft;
   };
   const updateVoucherDraft=async(id,form,label)=>{
     if(!canEdit)return;
-    setVoucherDrafts(p=>p.map(d=>d.id===id?{...d,form,label:label!=null?label:d.label}:d));
-    await sb.from("voucher_drafts").update({form,...(label!=null?{label}:{}),updated_at:new Date().toISOString()}).eq("id",id);
+    const now=new Date().toISOString();
+    setVoucherDrafts(p=>p.map(d=>d.id===id?{...d,form,label:label!=null?label:d.label,updatedAt:now}:d));
+    const drafts=_vdLoad().map(d=>d.id===id?{...d,form,...(label!=null?{label}:{}),updatedAt:now}:d);
+    _vdSave(drafts);
   };
   const deleteVoucherDraft=async(id)=>{
     if(!canEdit)return;
-    await sb.from("voucher_drafts").delete().eq("id",id).eq("user_id",viewingUserId);
     setVoucherDrafts(p=>p.filter(d=>d.id!==id));
+    _vdSave(_vdLoad().filter(d=>d.id!==id));
   };
 
   // Mva-melding filed/paid/reconciled status — was a flat localStorage key

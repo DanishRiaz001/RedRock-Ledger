@@ -2558,6 +2558,10 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
   const todayStr=new Date().toISOString().slice(0,10);
   const trackRef=useRef(null);
   const draggingRef=useRef(null);
+  // Cell-drag state: anchor is where mousedown started, cellHover tracks drag position
+  const cellDragRef=useRef(null); // {year,month} or null
+  const[cellHoverKey,setCellHoverKey]=useState(null); // monthToKey during cell drag
+  const monthToKey=(y,m)=>y*12+m;
 
   // 18-month window: Jan of windowStartYear through June of the next year —
   // matches the reference's ~5-quarter span, shiftable via the arrows.
@@ -2698,9 +2702,44 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
               ))}
             </div>
             <div style={rowStyle}>
-              {months.map((m,i)=>(
-                <div key={i} onClick={()=>{const nf=`${m.year}-${String(m.month).padStart(2,"0")}-01`;const nt=new Date(m.year,m.month,0).toISOString().slice(0,10);pickRange(nf,nt);}} style={{...cellBase,width:m.days*pxPerDay,background:"#fff"}}>{MONTH_SHORT[m.month-1]}</div>
-              ))}
+              {months.map((m,i)=>{
+                const mk=monthToKey(m.year,m.month);
+                // During cell-drag: highlight from anchor to current hover
+                const dragFrom=cellDragRef.current?monthToKey(cellDragRef.current.year,cellDragRef.current.month):null;
+                const isDragActive=!!cellDragRef.current&&cellHoverKey!=null;
+                const dragLo=isDragActive?Math.min(dragFrom,cellHoverKey):null;
+                const dragHi=isDragActive?Math.max(dragFrom,cellHoverKey):null;
+                const isDragRange=isDragActive&&mk>=dragLo&&mk<=dragHi;
+                const isDragEdge=isDragActive&&(mk===dragLo||mk===dragHi);
+                return(
+                  <div key={i}
+                    onMouseDown={e=>{
+                      e.preventDefault();
+                      cellDragRef.current={year:m.year,month:m.month};
+                      setCellHoverKey(mk);
+                      const onUp=()=>{
+                        if(cellDragRef.current){
+                          const a=cellDragRef.current;
+                          const bKey=cellHoverKey??mk;
+                          const aKey=monthToKey(a.year,a.month);
+                          const lo=Math.min(aKey,bKey),hi=Math.max(aKey,bKey);
+                          // Convert keys back to year/month
+                          const loY=Math.floor((lo-1)/12),loM=((lo-1)%12)+1;
+                          const hiY=Math.floor((hi-1)/12),hiM=((hi-1)%12)+1;
+                          const nf=`${loY}-${String(loM).padStart(2,"0")}-01`;
+                          const nt=new Date(hiY,hiM,0).toISOString().slice(0,10);
+                          cellDragRef.current=null;setCellHoverKey(null);
+                          pickRange(nf,nt);
+                        }
+                        window.removeEventListener("mouseup",onUp);
+                      };
+                      window.addEventListener("mouseup",onUp);
+                    }}
+                    onMouseEnter={()=>{if(cellDragRef.current)setCellHoverKey(mk);}}
+                    style={{...cellBase,width:m.days*pxPerDay,background:isDragEdge?T.accent:isDragRange?"#e6f4f2":"#fff",color:isDragEdge?"#fff":isDragRange?T.accent:T.sub,cursor:"pointer",userSelect:"none"}}
+                  >{MONTH_SHORT[m.month-1]}</div>
+                );
+              })}
             </div>
             <div style={{...rowStyle,height:22,borderBottom:"none"}}>
               {weeks.map((w,i)=>(
@@ -2718,8 +2757,8 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
           ))}
         </div>
         <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:12}}>
-          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-          <button onClick={applyAndClose} disabled={to<from} style={{background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"7px 20px",fontWeight:700,fontSize:12,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={applyAndClose} disabled={to<from} style={{background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:10,padding:"9px 28px",fontWeight:800,fontSize:14,cursor:to>=from?"pointer":"default",fontFamily:"inherit",letterSpacing:-0.2}}>Ok</button>
         </div>
       </div>
     </div>
@@ -3343,7 +3382,16 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
       .filter(a=>!activeCategories||activeCategories.has(getSK(a.code)))
       .filter(a=>!reportSearch||a.code.includes(reportSearch)||a.name.toLowerCase().includes(reportSearch.toLowerCase()))
       .map(a=>{
-        const opening=transactions.filter(t=>t.date<filterFrom).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
+        // Norwegian accounting rule: balance sheet accounts (1xxx-2xxx) carry
+        // their historical balance forward into every period. Income/expense
+        // accounts (3xxx-9xxx) reset to zero at the start of each fiscal year
+        // (via year-end closing "tillegpostering"); within a fiscal year their
+        // opening balance is only the accumulation since Jan 1 of that year.
+        const isPL=a.code>="3000";
+        const yearStart=`${filterFrom.slice(0,4)}-01-01`;
+        const opening=transactions
+          .filter(t=>t.date<filterFrom&&(!isPL||t.date>=yearStart))
+          .reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
         const diff=transactions.filter(t=>t.date>=filterFrom&&t.date<=filterTo).reduce((s,t)=>{if(t.debitCode===a.code)return s+t.amount;if(t.creditCode===a.code)return s-t.amount;return s;},0);
         return{code:a.code,name:a.name,opening,diff,closing:opening+diff};
       })
@@ -3561,6 +3609,19 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           ))}
           {!rows.length&&<div style={{padding:"24px 0",textAlign:"center",color:T.muted}}>No account activity matches these filters.</div>}
         </div>
+        {rows.length>0&&(()=>{
+          const totOp=rows.reduce((s,r)=>s+r.opening,0);
+          const totDiff=rows.reduce((s,r)=>s+r.diff,0);
+          const totCl=rows.reduce((s,r)=>s+r.closing,0);
+          return(
+            <div style={{display:"grid",gridTemplateColumns:colWidthsPct.join(" "),background:T.bg,borderTop:`2px solid ${T.border}`}}>
+              <div style={{padding:"13px 14px",fontWeight:800,color:T.text,fontSize:13}}>Total</div>
+              <div style={{textAlign:"right",padding:"13px 14px",fontWeight:700,color:T.text,fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmtBal(totOp)}</div>
+              <div style={{textAlign:"right",padding:"13px 14px",fontWeight:700,color:Math.abs(totDiff)<0.01?T.muted:T.accent,fontVariantNumeric:"tabular-nums",fontSize:13}}>{Math.abs(totDiff)<0.01?"—":fmtBal(totDiff)}</div>
+              <div style={{textAlign:"right",padding:"13px 14px",fontWeight:800,color:T.text,fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmtBal(totCl)}</div>
+            </div>
+          );
+        })()}
       </div>
       </div>
     </div>
