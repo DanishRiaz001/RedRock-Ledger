@@ -18,7 +18,7 @@ import {
   VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen,
   CustomersRegisterScreen, CompanyInfoScreen, RegisterVoucherQueueScreen, InvoiceFormScreen,
   InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen,
-  PayrollScreen, PayrollOverviewScreen, PayslipsScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, NewEntryForm,
+  PayrollScreen, PayrollOverviewScreen, PayslipsScreen, SalaryReportScreen, HolidayPayListScreen, SalarySummaryScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, NewEntryForm,
   SinkingFundsScreen, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen,
   VoucherDraftsScreen, createContactInline,
 } from "./invoicing.jsx";
@@ -219,7 +219,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",AnnualAccounts:"Årsregnskap",Reports:"Financial reports",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"New salary payment",PayrollOverview:"Salary overview",Payslips:"Payslips",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",AnnualAccounts:"Årsregnskap",Reports:"Financial reports",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"New salary payment",PayrollOverview:"Salary overview",Payslips:"Payslips",SalaryReport:"Salary report",HolidayPayList:"Holiday pay list",SalarySummary:"Salary compilation",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -1194,6 +1194,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               {tab:"Payroll",label:"New salary payment",requiresWrite:true},
               {tab:"PayrollOverview",label:"Salary overview"},
               {tab:"Payslips",label:"Payslips"},
+              {tab:"SalaryReport",label:"Salary report"},
+              {tab:"HolidayPayList",label:"Holiday pay list"},
+              {tab:"SalarySummary",label:"Salary compilation"},
             ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
@@ -1724,6 +1727,21 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <PayslipsScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>
           </div>
         )}
+        {tab==="SalaryReport"&&(
+          <div style={{maxWidth:1100}}>
+            <SalaryReportScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>
+          </div>
+        )}
+        {tab==="HolidayPayList"&&(
+          <div style={{maxWidth:900}}>
+            <HolidayPayListScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>
+          </div>
+        )}
+        {tab==="SalarySummary"&&(
+          <div style={{maxWidth:900}}>
+            <SalarySummaryScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>
+          </div>
+        )}
 
         {tab==="POS"&&(
           <div style={{maxWidth:1000}}>
@@ -1968,6 +1986,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="PayrollOverview"&&<PayrollOverviewScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile} deletePayrollRun={deletePayrollRun}/>}
         {tab==="Payslips"&&<PayslipsScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>}
+        {tab==="SalaryReport"&&<SalaryReportScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>}
+        {tab==="HolidayPayList"&&<HolidayPayListScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>}
+        {tab==="SalarySummary"&&<SalarySummaryScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>}
 
         {tab==="Profile"&&(
           <ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/>

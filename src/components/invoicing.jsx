@@ -6732,7 +6732,279 @@ function AgedReskontroScreen({contacts,transactions}){
   );
 }
 
+// Salary report (Lønnsrapport) — per-employee breakdown of pay types,
+// matching Tripletex's Lønnsrapport - ansatte. Shows gross pay, holiday
+// pay accrual, tax deduction, and net, grouped by employee.
+function SalaryReportScreen({payrollRuns=[],employees=[],companyProfile={}}){
+  const[year,setYear]=React.useState(()=>new Date().getFullYear());
+  const[empFilter,setEmpFilter]=React.useState("all");
+  const fmtNo=n=>(n||0).toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const FERIE_SATS=10.2;
+
+  const runsThisYear=payrollRuns.filter(r=>r.period&&r.period.startsWith(String(year)));
+  // Aggregate by employee
+  const byEmp={};
+  runsThisYear.forEach(run=>{
+    (run.lines||[]).forEach(l=>{
+      if(!byEmp[l.employeeId])byEmp[l.employeeId]={name:l.employeeName,gross:0,deductions:0,net:0,count:0};
+      byEmp[l.employeeId].gross+=l.grossPay||0;
+      byEmp[l.employeeId].deductions+=l.deductions||0;
+      byEmp[l.employeeId].net+=l.netPay||0;
+      byEmp[l.employeeId].count+=1;
+    });
+  });
+  const empList=Object.values(byEmp);
+  const filtered=empFilter==="all"?empList:empList.filter(e=>e.name===empFilter);
+
+  return(
+    <div style={{maxWidth:1100}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Salary report — employees</h1>
+          <p style={{fontSize:12,color:T.muted,margin:"2px 0 0"}}>Lønnsrapport - ansatte</p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:T.text,minWidth:44,textAlign:"center"}}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>›</button>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,margin:"14px 0 16px",flexWrap:"wrap"}}>
+        {[{id:"all",label:"(Alle)"},...Object.values(byEmp).map(e=>({id:e.name,label:e.name}))].map(opt=>(
+          <button key={opt.id} onClick={()=>setEmpFilter(opt.id)} style={{background:empFilter===opt.id?T.accent:"#fff",color:empFilter===opt.id?"#fff":T.sub,border:`1px solid ${empFilter===opt.id?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{opt.label}</button>
+        ))}
+      </div>
+      {!filtered.length&&<div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"40px",textAlign:"center",color:T.muted,fontSize:13}}>No salary payments in {year}.</div>}
+      {filtered.map(emp=>{
+        const feriegrunnlag=emp.gross;
+        const ferieOpptjent=feriegrunnlag*(FERIE_SATS/100);
+        const rows=[
+          {lønnsart:"2000 Fastlønn / base salary",ameldingskode:"Trekkpliktig kontantytelse - fastlønn",regnkonto:"5000 Lønn til ansatte",motkonto:"",antall:emp.count,beløp:emp.gross},
+          {lønnsart:`2015 Feriepenger u/skattetrekk (${FERIE_SATS}%)`,ameldingskode:"Trekkpliktig kontantytelse - feriepenger",regnkonto:"2940 Skyldig feriepenger",motkonto:"",antall:1,beløp:ferieOpptjent},
+          {lønnsart:"6000 Skattetrekk",ameldingskode:"Skattetrekk - ordinært",regnkonto:"2600 Forskuddstrekk",motkonto:"",antall:emp.count,beløp:-emp.deductions},
+        ];
+        const sum=rows.reduce((s,r)=>s+r.beløp,0);
+        return(
+          <div key={emp.name} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{background:"#f8fafa"}}>
+                <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Lønnsart</th>
+                <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>A-meldingskode</th>
+                <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Regnskapskonto</th>
+                <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Motkonto</th>
+                <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Antall</th>
+                <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Beløp</th>
+              </tr></thead>
+              <tbody>
+                <tr style={{background:T.accentLight||"#f0fdfc"}}><td colSpan="6" style={{padding:"9px 14px",fontWeight:800,color:T.accent,fontSize:13}}>{emp.name}</td></tr>
+                {rows.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:`1px solid ${T.border}`}}>
+                    <td style={{padding:"9px 14px",color:T.text}}>{r.lønnsart}</td>
+                    <td style={{padding:"9px 14px",color:T.sub,fontSize:11}}>{r.ameldingskode}</td>
+                    <td style={{padding:"9px 14px",color:T.sub,fontSize:11}}>{r.regnkonto}</td>
+                    <td style={{padding:"9px 14px",color:T.muted,fontSize:11}}>{r.motkonto}</td>
+                    <td style={{padding:"9px 14px",textAlign:"right",color:T.sub}}>{r.antall}</td>
+                    <td style={{padding:"9px 14px",textAlign:"right",fontWeight:600,color:r.beløp<0?"#e53e3e":T.text}}>{fmtNo(r.beløp)}</td>
+                  </tr>
+                ))}
+                <tr style={{background:"#f8fafa",borderTop:`2px solid ${T.border}`}}>
+                  <td colSpan="5" style={{padding:"9px 14px",fontWeight:800,color:T.text}}>Sum {emp.name}</td>
+                  <td style={{padding:"9px 14px",textAlign:"right",fontWeight:800,color:T.accent,fontSize:13}}>{fmtNo(sum)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Holiday pay list (Feriepengeliste) — per-employee feriepenger accrual.
+// Norwegian law (ferieloven): 10.2% of previous year's gross wages (25%
+// for employees over 60). Shows grunnlag, opptjent, paid, and remaining.
+function HolidayPayListScreen({payrollRuns=[],employees=[],companyProfile={}}){
+  const[year,setYear]=React.useState(()=>new Date().getFullYear());
+  const fmtNo=n=>(n||0).toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const FERIE_SATS=10.2;
+
+  // Grunnlag = gross wages paid THIS year (ferieloven: opptjening year)
+  const runsThisYear=payrollRuns.filter(r=>r.period&&r.period.startsWith(String(year)));
+  const byEmp={};
+  runsThisYear.forEach(run=>{
+    (run.lines||[]).forEach(l=>{
+      if(!byEmp[l.employeeId])byEmp[l.employeeId]={id:l.employeeId,name:l.employeeName,gross:0};
+      byEmp[l.employeeId].gross+=l.grossPay||0;
+    });
+  });
+  const allEmps=employees.filter(e=>e.active!==false).map(e=>{
+    const agg=byEmp[e.id]||{gross:0};
+    const birthDate=e.birthDate||"";
+    const grunnlag=agg.gross;
+    const sats=FERIE_SATS;
+    const opptjent=grunnlag*(sats/100);
+    return{name:e.name,birthDate,sats,grunnlag,opptjent,utbetaltOpptjeningsår:0,utbetaltTotalt:0,tilGodeIår:opptjent};
+  });
+  const totGrunnlag=allEmps.reduce((s,r)=>s+r.grunnlag,0);
+  const totOpptjent=allEmps.reduce((s,r)=>s+r.opptjent,0);
+  const totTilGode=allEmps.reduce((s,r)=>s+r.tilGodeIår,0);
+
+  return(
+    <div style={{maxWidth:1000}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Holiday pay list {year}</h1>
+          <p style={{fontSize:12,color:T.muted,margin:"2px 0 0"}}>Feriepengeliste — {FERIE_SATS}% of gross wages (ferieloven §10)</p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:T.text,minWidth:44,textAlign:"center"}}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>›</button>
+        </div>
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginTop:16}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr style={{background:"#f8fafa"}}>
+              <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Employee</th>
+              <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Date of birth</th>
+              <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Rate %</th>
+              <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Grunnlag</th>
+              <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Opptjent</th>
+              <th style={{padding:"4px 14px",textAlign:"center",fontWeight:700,color:T.sub,fontSize:11,borderBottom:`1px solid ${T.border}`}} colSpan="2">Utbetalt</th>
+              <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}} rowSpan="2">Til gode i år</th>
+            </tr>
+            <tr style={{background:"#f8fafa"}}>
+              <th style={{padding:"6px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:10}}>i opptjeningsåret</th>
+              <th style={{padding:"6px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:10}}>totalt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allEmps.map(r=>(
+              <tr key={r.name} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"10px 14px",color:T.accent,fontWeight:600,cursor:"pointer"}}>{r.name}</td>
+                <td style={{padding:"10px 14px",color:T.sub}}>{r.birthDate||"—"}</td>
+                <td style={{padding:"10px 14px",textAlign:"right",color:T.text}}>{r.sats}</td>
+                <td style={{padding:"10px 14px",textAlign:"right",color:T.text}}>{fmtNo(r.grunnlag)}</td>
+                <td style={{padding:"10px 14px",textAlign:"right",color:T.text}}>{fmtNo(r.opptjent)}</td>
+                <td style={{padding:"10px 14px",textAlign:"right",color:T.muted}}>0,00</td>
+                <td style={{padding:"10px 14px",textAlign:"right",color:T.muted}}>0,00</td>
+                <td style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.accent}}>{fmtNo(r.tilGodeIår)}</td>
+              </tr>
+            ))}
+            {!allEmps.length&&<tr><td colSpan="8" style={{padding:"28px",textAlign:"center",color:T.muted}}>No employees found.</td></tr>}
+            <tr style={{background:"#f8fafa",borderTop:`2px solid ${T.border}`}}>
+              <td colSpan="3" style={{padding:"10px 14px",fontWeight:800,color:T.text}}>Sum</td>
+              <td style={{padding:"10px 14px",textAlign:"right",fontWeight:800,color:T.text}}>{fmtNo(totGrunnlag)}</td>
+              <td style={{padding:"10px 14px",textAlign:"right",fontWeight:800,color:T.text}}>{fmtNo(totOpptjent)}</td>
+              <td style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.muted}}>0,00</td>
+              <td style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.muted}}>0,00</td>
+              <td style={{padding:"10px 14px",textAlign:"right",fontWeight:800,color:T.accent}}>{fmtNo(totTilGode)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Salary compilation (Lønnssammenstilling) — annual salary summary per
+// employee. In Norway employers must send employees an annual summary
+// (formerly RF-1015) by end of January. Shows total gross, tax, net.
+function SalarySummaryScreen({payrollRuns=[],employees=[],companyProfile={}}){
+  const[year,setYear]=React.useState(()=>new Date().getFullYear());
+  const[sent,setSent]=React.useState({}); // empId -> bool
+  const fmtNo=n=>(n||0).toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const runsThisYear=payrollRuns.filter(r=>r.period&&r.period.startsWith(String(year)));
+  const byEmp={};
+  runsThisYear.forEach(run=>{
+    (run.lines||[]).forEach(l=>{
+      if(!byEmp[l.employeeId])byEmp[l.employeeId]={id:l.employeeId,name:l.employeeName,gross:0,deductions:0,net:0};
+      byEmp[l.employeeId].gross+=l.grossPay||0;
+      byEmp[l.employeeId].deductions+=l.deductions||0;
+      byEmp[l.employeeId].net+=l.netPay||0;
+    });
+  });
+  const empList=employees.filter(e=>e.active!==false).map(e=>byEmp[e.id]||{id:e.id,name:e.name,gross:0,deductions:0,net:0});
+  const printSummary=(emp)=>{
+    const html=`<!DOCTYPE html><html><head><title>Lønnssammenstilling ${year} — ${emp.name}</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
+      h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
+      .sub{font-size:12px;color:#666;margin-bottom:24px;}
+      .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;}
+      .total{display:flex;justify-content:space-between;padding:12px 0;border-top:2px solid #333;font-size:14px;font-weight:bold;}
+      @media print{.noprint{display:none;}}
+    </style></head><body>
+      <h1>${companyProfile.companyName||"Company"}</h1>
+      <div class="sub">Lønnssammenstilling ${year} — ${emp.name}</div>
+      <div class="row"><span>Total gross pay (Brutto lønn)</span><span>${fmtNo(emp.gross)}</span></div>
+      <div class="row"><span>Tax deduction (Skattetrekk)</span><span>−${fmtNo(emp.deductions)}</span></div>
+      <div class="row"><span>Holiday pay accrued (Feriepenger opptjent)</span><span>${fmtNo(emp.gross*0.102)}</span></div>
+      <div class="total"><span>Net pay received (Netto utbetalt)</span><span>${fmtNo(emp.net)}</span></div>
+      <p style="font-size:10px;color:#999;margin-top:24px;">This summary was generated by ${companyProfile.companyName||"RedRock Ledger"} for the income year ${year}.</p>
+      <div class="noprint" style="margin-top:20px;"><button onclick="window.print()" style="padding:10px 20px;background:#0D9488;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+    </body></html>`;
+    const w=window.open("","_blank","width=700,height=500");
+    if(w){w.document.write(html);w.document.close();}
+    setSent(p=>({...p,[emp.id]:true}));
+  };
+  const sentCount=empList.filter(e=>sent[e.id]).length;
+
+  return(
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Salary compilation {year}</h1>
+          <p style={{fontSize:12,color:T.muted,margin:"2px 0 0"}}>Lønnssammenstilling — annual summary per employee</p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:T.text,minWidth:44,textAlign:"center"}}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>›</button>
+        </div>
+      </div>
+      {sentCount>0&&<div style={{background:T.accentLight||"#f0fdfc",border:`1px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",margin:"12px 0",fontSize:12,color:T.accent,fontWeight:600}}>{sentCount} of {empList.length} summaries printed/sent this session.</div>}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginTop:16}}>
+        <div style={{padding:"12px 18px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span style={{fontSize:13,fontWeight:800,color:T.text}}>Lønnssammenstilling {year}</span>
+          <button onClick={()=>empList.forEach(e=>printSummary(e))} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}><i className="ti ti-printer" style={{fontSize:13}}/>Print all</button>
+        </div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr style={{background:"#f8fafa"}}>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}></th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Employee</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Gross pay</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Tax</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Net pay</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Status</th>
+            <th style={{padding:"10px 14px"}}></th>
+          </tr></thead>
+          <tbody>
+            {empList.map((e,i)=>(
+              <tr key={e.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"11px 14px",color:T.muted,fontSize:12}}>{i+1}</td>
+                <td style={{padding:"11px 14px",color:T.accent,fontWeight:600}}>{e.name}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",color:T.text}}>{fmtNo(e.gross)}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",color:"#e53e3e"}}>−{fmtNo(e.deductions)}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",fontWeight:700,color:T.accent}}>{fmtNo(e.net)}</td>
+                <td style={{padding:"11px 14px"}}>
+                  <span style={{background:sent[e.id]?"#d1fae5":"#f3f4f6",color:sent[e.id]?"#065f46":"#6b7280",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{sent[e.id]?"✓ Printed":"Ikke sendt"}</span>
+                </td>
+                <td style={{padding:"11px 14px",textAlign:"right"}}>
+                  <button onClick={()=>printSummary(e)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",color:T.accent}}>Vis</button>
+                </td>
+              </tr>
+            ))}
+            {!empList.length&&<tr><td colSpan="7" style={{padding:"28px",textAlign:"center",color:T.muted,fontSize:12}}>No active employees.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Balance lists (Saldolister) — quick standalone list of every customer,
 // supplier, or employee with a nonzero balance/status.
 
-export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, PayrollOverviewScreen, PayslipsScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline, InfoTip };
+export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, PayrollOverviewScreen, PayslipsScreen, SalaryReportScreen, HolidayPayListScreen, SalarySummaryScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline, InfoTip };
