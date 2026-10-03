@@ -1474,7 +1474,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           // clicking "Customer invoice" right after "Supplier Invoice"
           // without this would stay stuck on whichever mode mounted first.
           <NewEntryForm key={newVoucherMode+"-"+newVoucherSeq} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>{
-              await addTransactionNotified(form);
+              const result=await addTransactionNotified(form);
               try{
                 const q=JSON.parse(localStorage.getItem("rr_pending_queue")||"[]");
                 if(q.length>0){
@@ -1486,6 +1486,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
                   setNewVoucherSeq(s=>s+1);
                 }
               }catch{}
+              return result;
             }} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
         )}
 
