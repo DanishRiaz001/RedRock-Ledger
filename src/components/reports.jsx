@@ -3448,7 +3448,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
         <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 10px"}}>Trial balance</h1>
         <DownloadPromptBar/>
 
-        <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-16,paddingTop:16,marginLeft:-16,paddingLeft:16,marginRight:-16,paddingRight:16}}>
+        <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-20,paddingLeft:20,marginRight:-32,paddingRight:32}}>
           {/* Big, thumb-friendly period stepper — the whole point of the mobile
               fix is that ‹ and › need to be easy to hit and never get cut off
               by the filter row wrapping underneath them. */}
@@ -3546,7 +3546,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           unit makes that class of bug structurally impossible: there is
           only one sticky boundary, so a row is always either fully above
           or fully below it, never sandwiched in a gap between two. */}
-      <div style={{position:"sticky",top:0,zIndex:51,background:T.bg,padding:"16px 0 8px"}}>
+      <div style={{position:"sticky",top:0,zIndex:51,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-20,paddingLeft:20,marginRight:-32,paddingRight:32}}>
         {/* Solid, fully opaque toolbar — was a translucent
             backdrop-filter:blur() glass panel, which is expensive to
             repaint on every scroll frame and is exactly what caused the
@@ -3807,7 +3807,7 @@ function ResultatScreen({accounts,transactions,onOpenLedger,isDesktop=false,proj
           width context (ignoring the scrollbar gutter) than the real table
           below it, causing column drift. Sticky keeps everything in one
           consistent flow, and needs no measured spacer div. */}
-      <div style={{position:"sticky",top:0,zIndex:isDesktop?50:20,background:T.bg,padding:isDesktop?"16px 0 8px":"0 0 8px"}}>
+      <div style={{position:"sticky",top:0,zIndex:isDesktop?50:20,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-20,paddingLeft:20,marginRight:-32,paddingRight:32}}>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",background:"#fff"}}>
             <button onClick={()=>stepMonth(-1)} disabled={fullYear} style={{background:"none",border:"none",cursor:fullYear?"default":"pointer",opacity:fullYear?0.3:1,fontSize:14,color:T.sub}}>‹</button>
@@ -3990,7 +3990,7 @@ function BalanceSheetScreen({accounts,transactions,onOpenLedger,isDesktop=false,
       {/* Sticky, not fixed — see TrialBalanceScreen for why: fixed puts
           this header in a different width context than the real table
           below (ignoring the scrollbar gutter), causing column drift. */}
-      <div style={isDesktop?{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px"}:{}}>
+      <div style={isDesktop?{position:"sticky",top:0,zIndex:50,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-20,paddingLeft:20,marginRight:-32,paddingRight:32}:{}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:10}}>
           <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Balance sheet</h1>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -7096,7 +7096,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           header in a different width context than the real table below it
           (ignoring the scrollbar gutter), which is exactly the kind of gap
           reported here. Sticky needs no measured spacer div either. */}
-      <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,padding:"16px 0 8px"}}>
+      <div style={{position:"sticky",top:0,zIndex:50,background:T.bg,paddingBottom:8,marginTop:-26,paddingTop:26,marginLeft:-20,paddingLeft:20,marginRight:-32,paddingRight:32}}>
         <div style={{maxWidth:1000}}>
         <div style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:9,padding:"8px 10px",marginBottom:10,display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap",boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
           <div style={{display:"flex",gap:6}}>
