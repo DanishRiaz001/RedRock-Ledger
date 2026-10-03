@@ -2604,11 +2604,15 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
   const applyAndClose=()=>{onApply(from,to);onClose();};
   const pickRange=(nf,nt)=>{onApply(nf,nt);onClose();};
 
+  const d0=new Date();
   const presets=[
     {label:"Today",apply:()=>pickRange(todayStr,todayStr)},
-    {label:"This month",apply:()=>{const d=new Date();const y=d.getFullYear(),m=d.getMonth();pickRange(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));}},
-    {label:"So far this year",apply:()=>{const d=new Date();pickRange(`${d.getFullYear()}-01-01`,todayStr);}},
-    {label:"Full year",apply:()=>pickRange(`${windowStartYear}-01-01`,`${windowStartYear}-12-31`)},
+    {label:"This month",apply:()=>{const y=d0.getFullYear(),m=d0.getMonth();pickRange(`${y}-${String(m+1).padStart(2,"0")}-01`,new Date(y,m+1,0).toISOString().slice(0,10));}},
+    {label:"Last month",apply:()=>{const y=d0.getFullYear(),m=d0.getMonth();const pm=m===0?12:m,py=m===0?y-1:y;pickRange(`${py}-${String(pm).padStart(2,"0")}-01`,new Date(py,pm,0).toISOString().slice(0,10));}},
+    {label:"This quarter",apply:()=>{const y=d0.getFullYear(),m=d0.getMonth();const qs=Math.floor(m/3)*3;pickRange(`${y}-${String(qs+1).padStart(2,"0")}-01`,new Date(y,qs+3,0).toISOString().slice(0,10));}},
+    {label:"Year to date",apply:()=>{pickRange(`${d0.getFullYear()}-01-01`,todayStr);}},
+    {label:`Full ${windowStartYear}`,apply:()=>pickRange(`${windowStartYear}-01-01`,`${windowStartYear}-12-31`)},
+    {label:`Full ${windowStartYear-1}`,apply:()=>pickRange(`${windowStartYear-1}-01-01`,`${windowStartYear-1}-12-31`)},
   ];
 
   // Quarter groups: chunks of 3 consecutive months from the window
@@ -2645,13 +2649,17 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
   const cellBase={display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:T.sub,fontWeight:600,borderRight:`1px solid ${T.border}`,cursor:"pointer",flexShrink:0,boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap"};
 
   return(
-    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,boxShadow:"0 16px 40px rgba(20,60,50,0.14)",padding:16,width:TRACK_W+120,maxWidth:"92vw"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,boxShadow:"0 12px 32px rgba(20,60,50,0.12)",padding:"14px 16px 12px",width:TRACK_W+120,maxWidth:"96vw"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <div style={{fontSize:13,fontWeight:800,color:T.text}}>Choose period</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setWindowStartYear(y=>y-1)} title="Shift window back a year" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>‹</button>
-          <span style={{fontSize:12,color:T.muted,minWidth:80,textAlign:"center"}}>{windowStartYear}–{windowStartYear+1}</span>
-          <button onClick={()=>setWindowStartYear(y=>y+1)} title="Shift window forward a year" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13}}>›</button>
+          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{from}</span>
+          <span style={{fontSize:13,color:T.muted}}>→</span>
+          <span style={{fontSize:13,fontWeight:700,color:T.text}}>{to}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setWindowStartYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-left"/></button>
+          <span style={{fontSize:12,color:T.sub,minWidth:80,textAlign:"center",fontWeight:600}}>{windowStartYear} – {windowStartYear+1}</span>
+          <button onClick={()=>setWindowStartYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,width:26,height:26,cursor:"pointer",color:T.sub,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-chevron-right"/></button>
         </div>
       </div>
 
@@ -2703,14 +2711,16 @@ function TimelineRangePicker({initialFrom,initialTo,onApply,onClose}){
         </div>
       </div>
 
-      <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"16px 0"}}>
-        {presets.map(p=>(
-          <button key={p.label} onClick={p.apply} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 12px",fontSize:11,fontWeight:600,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>{p.label}</button>
-        ))}
-      </div>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-        <button onClick={applyAndClose} disabled={to<from} style={{background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,fontSize:12,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {presets.map(p=>(
+            <button key={p.label} onClick={p.apply} style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{p.label}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:12}}>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 14px",fontWeight:600,fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={applyAndClose} disabled={to<from} style={{background:to>=from?T.accent:T.border,color:to>=from?"#fff":T.muted,border:"none",borderRadius:8,padding:"7px 20px",fontWeight:700,fontSize:12,cursor:to>=from?"pointer":"default",fontFamily:"inherit"}}>Ok</button>
+        </div>
       </div>
     </div>
   );
@@ -3476,18 +3486,10 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           <button title="Filters" disabled style={{display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.border}`,borderRadius:8,width:34,height:34,background:"#fff",cursor:"default",fontFamily:"inherit"}}>
             <i className="ti ti-filter" style={{fontSize:14,color:T.muted}}/>
           </button>
-          <div style={{position:"relative"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
-              <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
-              <span onClick={()=>setPeriodPickerOpen(true)} style={{fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",minWidth:80,textAlign:"center"}}>{periodLabel}</span>
-              <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
-            </div>
-            {periodPickerOpen&&(<>
-              <div onClick={()=>setPeriodPickerOpen(false)} style={{position:"fixed",inset:0,zIndex:748}}/>
-              <div style={{position:"absolute",left:0,top:44,zIndex:749}}>
-                <TerminPeriodPicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
-              </div>
-            </>)}
+          <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px"}}>
+            <button onClick={()=>stepReportMonth(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>‹</button>
+            <span onClick={()=>setPeriodPickerOpen(o=>!o)} style={{fontSize:13,fontWeight:700,color:T.text,cursor:"pointer",minWidth:80,textAlign:"center"}}>{periodLabel}</span>
+            <button onClick={()=>stepReportMonth(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:T.sub}}>›</button>
           </div>
           <input placeholder="From account" value={fromAcct} onChange={e=>setFromAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
           <input placeholder="To account" value={toAcct} onChange={e=>setToAcct(e.target.value)} style={{...inp,width:100,background:"#fff"}}/>
@@ -3500,6 +3502,16 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
             <i className="ti ti-settings" style={{fontSize:16}}/>
           </button>
         </div>
+
+        {/* Tripletex-style timeline picker — full-width panel sliding in below toolbar */}
+        {periodPickerOpen&&(
+          <>
+            <div onClick={()=>setPeriodPickerOpen(false)} style={{position:"fixed",inset:0,zIndex:48}}/>
+            <div style={{position:"relative",zIndex:49,marginTop:8,overflowX:"auto"}}>
+              <TimelineRangePicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+            </div>
+          </>
+        )}
 
         {/* Column headers — part of the same sticky block as the toolbar
             above, not a second independently-positioned sticky element. */}
