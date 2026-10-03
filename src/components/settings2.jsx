@@ -5,6 +5,7 @@ import { sb } from "../lib/supabaseClient.js";
 import { Card, BackHeader, Menu3, AccDropFlat, SaveFlashButton, hasBudgetMoved, markBudgetMoved, signRs, getBugs, saveBugsRaw, logBug, ThemedSelect } from "./ledger.jsx";
 import { ResizableSplit, SignedFileViewer, UploadDropModal } from "./shell.jsx";
 import { AccLedgerTable } from "./invoicing.jsx";
+import { PeriodPickerModal } from "./reports.jsx";
 
 function BalanceListsScreen({contacts,transactions,employees=[]}){
   const[type,setType]=useState("customer");
@@ -292,7 +293,7 @@ function ReportsScreen({accounts,transactions,getName,filterFrom,filterTo,onChan
           <PeriodPickerModal initialFrom={rFrom} initialTo={rTo} onApply={(f,t)=>{setRFrom(f);setRTo(t);if(onChangePeriod)onChangePeriod(f,t);setPeriodPickerOpen(false);}} onClose={()=>setPeriodPickerOpen(false)}/>
         )}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
-          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Analytics</h1>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Financial reports</h1>
           <button onClick={()=>setPeriodPickerOpen(true)} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,color:T.text,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-calendar" style={{fontSize:13}}/>{periodLabel}</button>
         </div>
         <div style={{display:"flex",gap:6,marginBottom:20}}>

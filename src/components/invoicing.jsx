@@ -3357,6 +3357,162 @@ function PayrollScreen({employees,payrollRuns,accounts,createPayrollRun,deletePa
   );
 }
 
+// Salary overview — list of all payroll runs with period, employees, total
+// net pay, and actions (print payslips, delete run). Norwegian-style view.
+function PayrollOverviewScreen({payrollRuns=[],employees=[],companyProfile={},deletePayrollRun}){
+  const[year,setYear]=React.useState(()=>new Date().getFullYear());
+  const[search,setSearch]=React.useState("");
+  const runsThisYear=payrollRuns.filter(r=>r.period&&r.period.startsWith(String(year)));
+  const filtered=search?runsThisYear.filter(r=>r.period.includes(search)||(r.lines||[]).some(l=>l.employeeName&&l.employeeName.toLowerCase().includes(search.toLowerCase()))):runsThisYear;
+  const fmt=n=>typeof n==="number"?n.toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2}):"—";
+  const totalNet=runsThisYear.reduce((s,r)=>(r.lines||[]).reduce((ss,l)=>ss+(l.netPay||0),s),0);
+  const totalGross=runsThisYear.reduce((s,r)=>(r.lines||[]).reduce((ss,l)=>ss+(l.grossPay||0),s),0);
+  return(
+    <div style={{maxWidth:1000}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Salary overview</h1>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:T.text,minWidth:44,textAlign:"center"}}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>›</button>
+        </div>
+      </div>
+      {runsThisYear.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+          {[["Payroll runs",runsThisYear.length+" runs",T.accent],["Total gross","PKR "+fmt(totalGross),T.text],["Total net pay","PKR "+fmt(totalNet),T.green||T.accent]].map(([label,val,col])=>(
+            <div key={label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 16px"}}>
+              <div style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>{label}</div>
+              <div style={{fontSize:16,fontWeight:800,color:col}}>{val}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"center"}}>
+          <i className="ti ti-search" style={{color:T.muted,fontSize:13}}/>
+          <input placeholder="Search runs or employee…" value={search} onChange={e=>setSearch(e.target.value)} style={{border:"none",outline:"none",fontSize:12,flex:1,fontFamily:"inherit",color:T.text,background:"transparent"}}/>
+        </div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr style={{background:"#f8fafa"}}>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Period</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Date</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Employees</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Gross pay</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Net pay</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}></th>
+          </tr></thead>
+          <tbody>
+            {filtered.map(r=>{
+              const gross=(r.lines||[]).reduce((s,l)=>s+(l.grossPay||0),0);
+              const net=(r.lines||[]).reduce((s,l)=>s+(l.netPay||0),0);
+              const empCount=new Set((r.lines||[]).map(l=>l.employeeId)).size;
+              return(
+                <tr key={r.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                  <td style={{padding:"11px 14px",fontWeight:700,color:T.text}}>{r.period}</td>
+                  <td style={{padding:"11px 14px",color:T.sub}}>{r.runDate}</td>
+                  <td style={{padding:"11px 14px",color:T.text}}>{empCount} {empCount===1?"employee":"employees"}</td>
+                  <td style={{padding:"11px 14px",textAlign:"right",color:T.text}}>PKR {fmt(gross)}</td>
+                  <td style={{padding:"11px 14px",textAlign:"right",fontWeight:700,color:T.accent}}>PKR {fmt(net)}</td>
+                  <td style={{padding:"11px 14px",textAlign:"right"}}>
+                    {deletePayrollRun&&<button onClick={()=>{if(confirm("Delete this payroll run?"))deletePayrollRun(r.id);}} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:13,fontFamily:"inherit"}}><i className="ti ti-trash"/></button>}
+                  </td>
+                </tr>
+              );
+            })}
+            {!filtered.length&&<tr><td colSpan="6" style={{padding:"28px",textAlign:"center",color:T.muted,fontSize:12}}>No salary payments in {year}.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Payslips — per-employee payslip list with period filter and print button.
+// Matches Norwegian lønnsslipp concept: each employee sees their own line
+// per payroll run, with gross, deductions, net pay, and a print action.
+function PayslipsScreen({payrollRuns=[],employees=[],companyProfile={}}){
+  const[year,setYear]=React.useState(()=>new Date().getFullYear());
+  const[empFilter,setEmpFilter]=React.useState("all");
+  const fmt=n=>typeof n==="number"?n.toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2}):"—";
+  const printPayslip=(run,line)=>{
+    const html=`<!DOCTYPE html><html><head><title>Payslip — ${line.employeeName}</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:36px;}
+      h1{font-size:18px;font-weight:bold;margin-bottom:2px;}
+      .sub{font-size:12px;color:#666;margin-bottom:24px;}
+      .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;}
+      .total{display:flex;justify-content:space-between;padding:12px 0;border-top:2px solid #333;font-size:14px;font-weight:bold;margin-top:8px;}
+      @media print{.noprint{display:none;}}
+    </style></head><body>
+      <h1>${companyProfile.companyName||"Company"}</h1>
+      <div class="sub">Payslip — ${line.employeeName} — ${run.period}</div>
+      <div class="row"><span>Pay period</span><span>${run.period}</span></div>
+      <div class="row"><span>Payment date</span><span>${run.runDate}</span></div>
+      <div class="row"><span>Gross pay</span><span>PKR ${fmt(line.grossPay)}</span></div>
+      <div class="row"><span>Deductions (tax / other)</span><span>−PKR ${fmt(line.deductions)}</span></div>
+      <div class="total"><span>Net pay</span><span>PKR ${fmt(line.netPay)}</span></div>
+      <p style="font-size:10px;color:#999;margin-top:20px;">This payslip was generated by ${companyProfile.companyName||"RedRock Ledger"}.</p>
+      <div class="noprint" style="margin-top:20px;"><button onclick="window.print()" style="padding:10px 20px;background:#0D9488;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Print / Save as PDF</button></div>
+    </body></html>`;
+    const w=window.open("","_blank","width=700,height=600");
+    if(w){w.document.write(html);w.document.close();}
+  };
+  const runsThisYear=payrollRuns.filter(r=>r.period&&r.period.startsWith(String(year)));
+  const allLines=runsThisYear.flatMap(r=>(r.lines||[]).map(l=>({...l,run:r})));
+  const uniqueEmps=[...new Set(allLines.map(l=>l.employeeId))].map(id=>allLines.find(l=>l.employeeId===id));
+  const filtered=empFilter==="all"?allLines:allLines.filter(l=>l.employeeId===empFilter);
+  return(
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Payslips — Lønnsslipper</h1>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setYear(y=>y-1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:T.text,minWidth:44,textAlign:"center"}}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,width:32,height:32,cursor:"pointer",color:T.sub,fontSize:16}}>›</button>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        <button onClick={()=>setEmpFilter("all")} style={{background:empFilter==="all"?T.accent:"#fff",color:empFilter==="all"?"#fff":T.sub,border:`1px solid ${empFilter==="all"?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All employees</button>
+        {uniqueEmps.map(l=>(
+          <button key={l.employeeId} onClick={()=>setEmpFilter(l.employeeId)} style={{background:empFilter===l.employeeId?T.accent:"#fff",color:empFilter===l.employeeId?"#fff":T.sub,border:`1px solid ${empFilter===l.employeeId?T.accent:T.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{l.employeeName}</button>
+        ))}
+      </div>
+      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr style={{background:"#f8fafa"}}>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>No.</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Date</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Employee</th>
+            <th style={{padding:"10px 14px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Period</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Gross</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Deductions</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Net pay</th>
+            <th style={{padding:"10px 14px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Status</th>
+            <th style={{padding:"10px 14px"}}></th>
+          </tr></thead>
+          <tbody>
+            {filtered.map((l,i)=>(
+              <tr key={`${l.run.id}-${l.employeeId}`} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{padding:"11px 14px",color:T.accent,fontWeight:700}}>{i+1}-{year}</td>
+                <td style={{padding:"11px 14px",color:T.sub}}>{l.run.runDate}</td>
+                <td style={{padding:"11px 14px",color:T.text,fontWeight:600}}>{l.employeeName}</td>
+                <td style={{padding:"11px 14px",color:T.sub}}>{l.run.period}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",color:T.text}}>{fmt(l.grossPay)}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",color:T.red||"#e53e3e"}}>−{fmt(l.deductions)}</td>
+                <td style={{padding:"11px 14px",textAlign:"right",fontWeight:800,color:T.accent}}>{fmt(l.netPay)}</td>
+                <td style={{padding:"11px 14px",textAlign:"right"}}><span style={{background:"#d1fae5",color:"#065f46",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:700}}>● Sent</span></td>
+                <td style={{padding:"11px 14px",textAlign:"right"}}>
+                  <button onClick={()=>printPayslip(l.run,l)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-printer" style={{fontSize:11}}/>Print</button>
+                </td>
+              </tr>
+            ))}
+            {!filtered.length&&<tr><td colSpan="9" style={{padding:"28px",textAlign:"center",color:T.muted,fontSize:12}}>No payslips in {year}.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Quote creation — mirrors invoice creation, but nothing here touches the
 // ledger. Only converting a quote to an invoice posts a real transaction.
 function QuoteFormScreen({accounts,contacts,companyProfile,nextQuoteNo,createQuote,onDone}){
@@ -6219,36 +6375,59 @@ function AccLedgerTable({selAcc,transactions,rFrom,rTo,getName}){
 // like the Tripletex reference, linking to every report screen that exists.
 function ReportsHubScreen({onNavigate}){
   const categories=[
-    {label:"Customer",icon:"ti-users",items:[
-      {label:"Sales per customer",tab:"SalesPerCustomer"},
-      {label:"Balance lists",tab:"BalanceLists"},
+    {label:"Accounts",icon:"ti-book-2",color:"#0D9488",items:[
+      {label:"Trial balance",tab:"TrialBalance",desc:"Account balances for a period"},
+      {label:"General ledger",tab:"GeneralLedger",desc:"All transactions by account"},
+      {label:"Balance sheet",tab:"BalanceSheet",desc:"Assets, liabilities and equity"},
+      {label:"Trial balance over 5 years",tab:"TrialBalance",desc:"Multi-year comparison"},
     ]},
-    {label:"Customer/Supplier Ledger",icon:"ti-list-details",items:[
-      {label:"Customer ledger",tab:"Reskontro"},
-      {label:"Aged receivables/payables",tab:"AgedReskontro"},
+    {label:"Profit and loss reports",icon:"ti-chart-line",color:"#0ea5e9",items:[
+      {label:"Income statement",tab:"Resultat",desc:"Revenue vs expenses"},
+      {label:"Monthly overview",tab:"MonthlyOverview",desc:"Month-by-month P&L snapshot"},
+      {label:"Financial reports",tab:"Reports",desc:"Trends, top expenses, insights"},
     ]},
-    {label:"Result reports",icon:"ti-chart-line",items:[
-      {label:"Monthly overview",tab:"MonthlyOverview"},
-      {label:"Income statement",tab:"Resultat"},
-      {label:"Analytics",tab:"Reports"},
+    {label:"Customer",icon:"ti-users",color:"#8b5cf6",items:[
+      {label:"Sales per customer",tab:"SalesPerCustomer",desc:"Revenue breakdown by customer"},
+      {label:"Customer balance list",tab:"BalanceLists",desc:"Outstanding customer balances"},
+      {label:"Customer ledger",tab:"Reskontro",desc:"Transactions per customer"},
+      {label:"Aged receivables",tab:"AgedReskontro",desc:"Overdue invoices by age"},
     ]},
-    {label:"Tax",icon:"ti-receipt-tax",items:[
-      {label:"VAT report",tab:"VATReport"},
+    {label:"Subsidiary ledger",icon:"ti-list-details",color:"#f59e0b",items:[
+      {label:"Customer ledger",tab:"Reskontro",desc:"Per-customer transaction detail"},
+      {label:"Aged receivables/payables",tab:"AgedReskontro",desc:"Aging analysis"},
+      {label:"Supplier balance list",tab:"BalanceLists",desc:"Outstanding supplier balances"},
+    ]},
+    {label:"Tax",icon:"ti-receipt-tax",color:"#ef4444",items:[
+      {label:"VAT report",tab:"VATReport",desc:"MVA report per termin"},
+      {label:"MVA-melding",tab:"VATTermin",desc:"Submit VAT to Skatteetaten"},
+    ]},
+    {label:"Salary",icon:"ti-currency-dollar",color:"#10b981",items:[
+      {label:"Salary overview",tab:"PayrollOverview",desc:"All payroll runs"},
+      {label:"Payslips",tab:"Payslips",desc:"Per-employee pay statements"},
     ]},
   ];
   return(
-    <div style={{maxWidth:1000}}>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 20px"}}>Reports</h1>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+    <div style={{maxWidth:1100}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Standard reports</h1>
+      <p style={{fontSize:13,color:T.muted,margin:"0 0 24px"}}>Select a report to view, export or print.</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
         {categories.map(cat=>(
-          <div key={cat.label} style={{background:"rgba(255,255,255,0.72)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1px solid ${T.borderGlass}`,borderRadius:16,padding:20,boxShadow:"0 10px 30px rgba(20,60,50,0.06)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-              <i className={`ti ${cat.icon}`} style={{fontSize:16,color:T.accent}}/>
-              <span style={{fontSize:14,fontWeight:800,color:T.text}}>{cat.label}</span>
+          <div key={cat.label} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 12px rgba(20,60,50,0.04)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",borderBottom:`1px solid ${T.border}`,background:"#fafcfc"}}>
+              <div style={{width:32,height:32,borderRadius:8,background:cat.color+"18",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <i className={`ti ${cat.icon}`} style={{fontSize:16,color:cat.color}}/>
+              </div>
+              <span style={{fontSize:13,fontWeight:800,color:T.text}}>{cat.label}</span>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{padding:"8px 0"}}>
               {cat.items.map(it=>(
-                <div key={it.tab} onClick={()=>onNavigate(it.tab)} style={{padding:"7px 0",fontSize:13,color:T.accent,cursor:"pointer",fontWeight:500}}>{it.label}</div>
+                <div key={it.tab+it.label} onClick={()=>onNavigate(it.tab)}
+                  style={{padding:"9px 18px",cursor:"pointer",borderRadius:0,transition:"background 0.1s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f0fdfc"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{fontSize:13,color:cat.color,fontWeight:600}}>{it.label}</div>
+                  {it.desc&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{it.desc}</div>}
+                </div>
               ))}
             </div>
           </div>
@@ -6556,4 +6735,4 @@ function AgedReskontroScreen({contacts,transactions}){
 // Balance lists (Saldolister) — quick standalone list of every customer,
 // supplier, or employee with a nonzero balance/status.
 
-export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline, InfoTip };
+export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, PayrollOverviewScreen, PayslipsScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline, InfoTip };

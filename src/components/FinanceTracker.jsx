@@ -18,7 +18,7 @@ import {
   VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen,
   CustomersRegisterScreen, CompanyInfoScreen, RegisterVoucherQueueScreen, InvoiceFormScreen,
   InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen,
-  PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, NewEntryForm,
+  PayrollScreen, PayrollOverviewScreen, PayslipsScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, NewEntryForm,
   SinkingFundsScreen, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen,
   VoucherDraftsScreen, createContactInline,
 } from "./invoicing.jsx";
@@ -219,7 +219,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
       return next;
     });
   },[tab]);
-  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",AnnualAccounts:"Årsregnskap",Reports:"Analytics",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"Payroll",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
+  const TAB_LABELS={NewVoucher:"Advance Voucher",Files:"Inbox",DailyLog:"Daily Log",Transactions:"New entry",Entries:"Voucher overview",AIBookkeeping:"AI bookkeeping",Import:"Import Excel",Accounts:"Account ledger",GeneralLedger:"General ledger",TrialBalance:"Trial balance",Reskontro:"Customer/supplier ledger",Resultat:"Income statement",BalanceSheet:"Balance sheet",VATReport:"VAT report",VATTermin:"Mva-meldinger",AnnualAccounts:"Årsregnskap",Reports:"Financial reports",Budget:"Budget",SinkingFunds:"Sinking funds",InvoiceNew:"New invoice",InvoiceOverview:"Invoice overview",RecurringInvoices:"Recurring invoices",QuoteNew:"New quote",QuoteOverview:"Quotes",CompanyInfo:"Company information",Employees:"Employees",Payroll:"New salary payment",PayrollOverview:"Salary overview",Payslips:"Payslips",POS:"Checkout",POSProducts:"POS products",Bank:"Bank",BankWhose:"Whose",Contacts:"Customers"};
   const searchInputRef=React.useRef(null);
   // Keyboard shortcuts — Ctrl/Cmd+K focuses search, Ctrl/Cmd+N jumps to New
   // Entry, Ctrl/Cmd+I jumps to New Invoice. Skipped entirely while typing in
@@ -1182,18 +1182,22 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             ]},
             {id:"reports",label:"Reports",icon:"ti-chart-bar",items:[
               {tab:"ReportsHub",label:"Reports"},
-              {tab:"Reports",label:"Analytics",featureKey:"reports"},
+              {tab:"Reports",label:"Financial reports",featureKey:"reports"},
               {tab:"SalesPerCustomer",label:"Sales per customer"},
               {tab:"BalanceLists",label:"Balance lists"},
               {tab:"Budget",label:"Budget",featureKey:"budget"},
               {tab:"SinkingFunds",label:"Sinking funds",featureKey:"sinkingFunds"},
             ]},
+            {id:"salary",label:"Salary",icon:"ti-currency-dollar",items:[
+              {tab:"Employees",label:"Employees"},
+              {tab:"EmployeeNew",label:"New employee",requiresWrite:true},
+              {tab:"Payroll",label:"New salary payment",requiresWrite:true},
+              {tab:"PayrollOverview",label:"Salary overview"},
+              {tab:"Payslips",label:"Payslips"},
+            ]},
             {id:"company",label:"Company",icon:"ti-building",items:[
               {tab:"CompanyInfo",label:"Company information"},
               {tab:"AccountPlan",label:"Chart of accounts"},
-              {tab:"Employees",label:"Employees"},
-              {tab:"EmployeeNew",label:"New employee",requiresWrite:true},
-              {tab:"Payroll",label:"Payroll"},
               {tab:"SAFTImport",label:"Import account information",requiresWrite:true},
               {tab:"Settings",label:"Settings"},
             ]},
@@ -1710,6 +1714,16 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <PayrollScreen employees={employees} payrollRuns={payrollRuns} accounts={accounts} createPayrollRun={createPayrollRun} deletePayrollRun={deletePayrollRun} companyProfile={companyProfile}/>
           </div>
         )}
+        {tab==="PayrollOverview"&&(
+          <div style={{maxWidth:1000}}>
+            <PayrollOverviewScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile} deletePayrollRun={deletePayrollRun}/>
+          </div>
+        )}
+        {tab==="Payslips"&&(
+          <div style={{maxWidth:900}}>
+            <PayslipsScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>
+          </div>
+        )}
 
         {tab==="POS"&&(
           <div style={{maxWidth:1000}}>
@@ -1951,6 +1965,9 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             ?<ReportsScreen accounts={accounts} transactions={transactions} getName={getName} filterFrom={filterFrom} filterTo={filterTo} sinkingFunds={sinkingFunds} budgets={budgets} onChangePeriod={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} companyProfile={companyProfile}/>
             :<DisabledScreen title="Reports" onBack={()=>setTab("Dashboard")}/>
         )}
+
+        {tab==="PayrollOverview"&&<PayrollOverviewScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile} deletePayrollRun={deletePayrollRun}/>}
+        {tab==="Payslips"&&<PayslipsScreen payrollRuns={payrollRuns} employees={employees} companyProfile={companyProfile}/>}
 
         {tab==="Profile"&&(
           <ProfileScreen onSignOut={onSignOut} onNavigate={setTab} isAdmin={isAdmin}/>
