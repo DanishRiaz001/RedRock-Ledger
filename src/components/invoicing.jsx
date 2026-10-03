@@ -973,7 +973,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
   // any manually-entered "C001"-style ones — each sort in their own
   // sensible numeric order instead of the arbitrary fetch/insertion order
   // this list had no sort on at all before.
-  const list=contacts.filter(c=>c.type===type&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase())))
+  const list=contacts.filter(c=>(c.type===type||c.type==="both")&&(!search||c.name.toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase())||c.id.toLowerCase().includes(search.toLowerCase())))
     .sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true,sensitivity:"base"}));
   const code=type==="customer"?"1500":"2400";
   const getBalance=cid=>transactions.filter(t=>t.contactId===cid).reduce((s,t)=>t.debitCode===code?s+t.amount:t.creditCode===code?s-t.amount:s,0);
@@ -1177,6 +1177,37 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
     setImporting(false);
   };
 
+  if(showNew||editingId){
+    return(
+      <NewContactModal
+        inline
+        transactions={transactions}
+        defaultType={type}
+        country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
+        initial={editingId?contacts.find(c=>c.id===editingId):null}
+        companyCurrency={companyProfile&&companyProfile.currency}
+        contacts={contacts}
+        onSave={async contact=>{
+          if(editingId){
+            const newId=contact.id&&contact.id!==editingId?contact.id:editingId;
+            if(newId!==editingId){
+              if(!renumberContact){setEditingId(null);return;}
+              const res=await renumberContact(editingId,newId);
+              if(res&&res.error){alert(res.error);return;}
+            }
+            setContacts(contacts.map(c=>c.id===editingId?{...c,...contact,id:newId}:c));
+            setEditingId(null);
+          }else{
+            const newId=contact.id||nextId();
+            if(contacts.some(c=>c.id===newId)){alert("That number is already used by another contact.");return;}
+            setContacts([...contacts,{id:newId,...contact}]);setShowNew(false);
+          }
+        }}
+        onClose={cancelContactModal}
+        onBulkImport={!editingId&&onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
+      />
+    );
+  }
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -1233,38 +1264,6 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         <input placeholder="Search name, number, or email" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:240}}/>
       </div>
 
-      {(showNew||editingId)&&(
-        <NewContactModal
-          defaultType={type}
-          country={companyProfile&&companyProfile.country==="NO"?"NO":"PK"}
-          initial={editingId?contacts.find(c=>c.id===editingId):null}
-          companyCurrency={companyProfile&&companyProfile.currency}
-          onSave={async contact=>{
-            if(editingId){
-              // A changed number means the modal is asking to actually
-              // renumber this contact (e.g. onto the 20000-series) rather
-              // than just edit its other details — that needs every past
-              // transaction's contactId reassigned too, which plain
-              // setContacts doesn't do on its own.
-              const newId=contact.id&&contact.id!==editingId?contact.id:editingId;
-              if(newId!==editingId){
-                if(!renumberContact){setEditingId(null);return;}
-                const res=await renumberContact(editingId,newId);
-                if(res&&res.error){alert(res.error);return;}
-              }
-              setContacts(contacts.map(c=>c.id===editingId?{...c,...contact,id:newId}:c));
-              setEditingId(null);
-            }
-            else{
-              const newId=contact.id||nextId();
-              if(contacts.some(c=>c.id===newId)){alert("That number is already used by another contact.");return;}
-              setContacts([...contacts,{id:newId,...contact}]);setShowNew(false);
-            }
-          }}
-          onClose={cancelContactModal}
-          onBulkImport={!editingId&&onNavigateImport?()=>{setShowNew(false);onNavigateImport();}:undefined}
-        />
-      )}
 
       {/* Number / Name / Org number / Address — was also showing Contact
           (email/phone), Terms, and Balance. Row still opens the full edit
@@ -1277,7 +1276,7 @@ function CustomersRegisterScreen({contacts,setContacts,transactions,mergeContact
         </div>
         {list.map(c=>(
           <div key={c.id} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",display:"grid",gridTemplateColumns:"70px 1.6fr 1fr 1.6fr 28px",gap:8,alignItems:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
-            <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content",fontVariantNumeric:"tabular-nums"}}>{c.id}</div>
+            <div style={{fontSize:11,fontWeight:800,color:T.accent,background:T.accentLight,borderRadius:6,padding:"3px 7px",width:"fit-content",fontVariantNumeric:"tabular-nums"}}>{type==="supplier"&&c.type==="both"?(c.secondaryId||c.id):c.id}</div>
             {/* Opens this contact's own settings/details — it used to jump
                 straight to their ledger, which meant there was no way to
                 just look at or fix a supplier's details without going
@@ -1578,9 +1577,15 @@ function NewVoucherScreen({accounts,contacts,inboxFiles,uploadInboxFile,addTrans
                     </div>
                   </div>
                   {vatRate>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
-                      <span>Net: {fmt(netAmount)}</span>
-                      <span>VAT: {fmt(vatAmount)}</span>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
+                      <div>
+                        <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Net amount (ekskl. mva)</div>
+                        <div style={{...inp,background:T.bg,color:T.text,fontSize:12,padding:"8px 10px"}}>{fmt(netAmount)}</div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Mva-beløp</div>
+                        <div style={{...inp,background:T.accentLight,color:T.accent,fontWeight:700,fontSize:12,padding:"8px 10px"}}>{fmt(vatAmount)}</div>
+                      </div>
                     </div>
                   )}
                   <div>
@@ -1968,8 +1973,15 @@ function RegisterVoucherQueueScreen({fileIds,inboxFiles,accounts,contacts,addTra
               </div>
               {(()=>{const acc=accounts.find(a=>a.code===form.expenseAccount);return acc&&acc.notes?<div style={{fontSize:10,color:T.muted,marginTop:-4}}>ℹ️ {acc.notes}</div>:null;})()}
               {vatRate>0&&(
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T.muted}}>
-                  <span>Net: {fmt(netAmount)}</span><span>VAT: {fmt(vatAmount)}</span>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,paddingTop:8,borderTop:`1px solid ${T.border}`}}>
+                  <div>
+                    <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Net (ekskl. mva)</div>
+                    <div style={{...inp,background:T.bg,color:T.text,fontSize:11,padding:"6px 8px"}}>{fmt(netAmount)}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:T.sub,marginBottom:3,fontWeight:600}}>Mva-beløp</div>
+                    <div style={{...inp,background:T.accentLight,color:T.accent,fontWeight:700,fontSize:11,padding:"6px 8px"}}>{fmt(vatAmount)}</div>
+                  </div>
                 </div>
               )}
               <div>
@@ -3851,12 +3863,10 @@ function NewEntryForm({accounts,setAccounts,contacts,setContacts,nextBilag,onSav
       try{localStorage.removeItem("rr_pending_attachment");}catch{}
       const suggestion=getPendingSuggestion();
       return{
-        ...emptyTxn,attachmentId:pending,
+        ...emptyTxn,
+        // attachmentId intentionally omitted — PDFs are not auto-attached to bilags;
+        // the user can attach manually from the form if needed.
         amount:suggestion&&suggestion.amount!=null?String(suggestion.amount):emptyTxn.amount,
-        // Prefer the AI's own reading of what the expense actually is
-        // (from the document's line items / Beskrivelse) — falls back to
-        // the supplier's name, same as before, when no description was
-        // extracted.
         description:suggestion&&(suggestion.description||suggestion.supplier)?(suggestion.description||suggestion.supplier):emptyTxn.description,
         invoiceNo:suggestion&&suggestion.invoiceNo?suggestion.invoiceNo:"",
         date:suggestion&&suggestion.invoiceDate?suggestion.invoiceDate:emptyTxn.date,
@@ -6546,4 +6556,4 @@ function AgedReskontroScreen({contacts,transactions}){
 // Balance lists (Saldolister) — quick standalone list of every customer,
 // supplier, or employee with a nonzero balance/status.
 
-export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline };
+export { VATCodesScreen, BankSettingsScreen, POSSettingsScreen, SAFTImportScreen, CustomerSettingsScreen, CustomersRegisterScreen, CompanyInfoScreen, NewVoucherScreen, RegisterVoucherQueueScreen, InvoicePrintView, InvoiceFormScreen, InvoiceOverviewScreen, RecurringInvoicesScreen, EmployeesScreen, POSScreen, POSProductsScreen, PayrollScreen, QuoteFormScreen, QuoteOverviewScreen, AuditLogScreen, AccDropReskontro, AccountSwitcherDropdown, ContactSearchInline, NewEntryForm, SinkingFundsScreen, AccLedgerTable, ReportsHubScreen, MonthlyOverviewScreen, SalesPerCustomerScreen, AgedReskontroScreen, VoucherDraftsScreen, MONTH_NAMES, createContactInline, InfoTip };

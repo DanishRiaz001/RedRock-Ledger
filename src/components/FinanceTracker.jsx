@@ -28,9 +28,8 @@ import {
 } from "./settings2.jsx";
 import { AdminPanel, AIBookkeepingScreen, MENU, SIDEBAR } from "./admin.jsx";
 import { CustomerImportScreen, VoucherSettingsScreen, InvoiceSettingsScreen, AccountingSettingsScreen, OpeningBalanceScreen, ProjectTrackingScreen } from "./settings3.jsx";
-import DailyLogScreen from "./dailylog.jsx";
 
-function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus={},saveVatTerminStatus,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],myOwnCompanies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,isAtHome=false,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,requestCompanyDeletion,confirmCompanyDeletion,cancelCompanyDeletion,fetchArchivedCompanies}){
+function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,setContacts,transactions,addTransaction,saveEdit,deleteTxn,reverseTransaction,matchTransactions,unmatchTransactions,sinkingFunds,saveSinkingFunds,moneySources,saveMoneySources,tagTransaction,budgets,saveBudget,restoreBudgets,saveBudgetSurplusSetting,sweepBudgetSurplus,inboxFiles,attachedTxnIds,attachedFileIds,uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,deleteBankMonth,postBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts=[],saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus={},saveVatTerminStatus,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,nextBilag,onSignOut,isAdmin,canEdit,profiles,viewingUserId,setViewingUserId,myClientAccess=[],currentAccessLevel="full",profile,user,onToggleActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,fetchEntryComments,addEntryComment,mergeContacts,renumberContact,postBankStatementLinesBulk,getInvoicePaid,projects=[],saveProjects,tagTransactionProject,reconciliationStatus=[],saveReconciliationStatus,reconciliationFiles=[],attachReconciliationFile,removeReconciliationFile,mergeAccounts,companies=[],myOwnCompanies=[],activeCompanyId,setActiveCompanyId,createCompany,renameCompany,isAtHome=false,inviteUserToCompany,fetchAccessInvitesFor,revokeAccessInvite,fetchCompanyAccessGrants,revokeCompanyAccessGrant,requestCompanyDeletion,confirmCompanyDeletion,cancelCompanyDeletion,fetchArchivedCompanies}){
   // "Add a company" used to be gated on the general isAdmin flag — but
   // that's granted per-books (any user who owns/administers a set of
   // books), not "may create new companies on this platform". Letting any
@@ -1079,13 +1078,15 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
             <span style={{fontSize:12,fontWeight:tab==="Dashboard"?700:400,color:tab==="Dashboard"?T.accent:T.sub}}>Home</span>
           </a>
           {!isAtHome&&(<>
+          <a {...navProps("Files")} className="rr-nav-link" style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:tab==="Files"?`3px solid ${T.accent}`:"3px solid transparent",background:tab==="Files"?T.accentLight:"transparent"}}>
+            <div style={{width:24,height:24,borderRadius:8,background:tab==="Files"?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-inbox" style={{fontSize:13,color:tab==="Files"?"#fff":T.sub}}/></div>
+            <span style={{fontSize:12,fontWeight:tab==="Files"?700:400,color:tab==="Files"?T.accent:T.sub}}>Inbox</span>
+          </a>
           {(()=>{
             const voucherItems=[
               {tab:"NewVoucher",label:"New voucher",mode:"receipt"},
               {tab:"NewVoucher",label:"Supplier Invoice",mode:"supplier"},
               {tab:"NewVoucher",label:"Customer invoice",mode:"customer"},
-              {tab:"Files",label:"Inbox"},
-              {tab:"DailyLog",label:"Daily Log"},
               {tab:"VoucherDrafts",label:"Drafts",requiresWrite:true},
               {tab:"Entries",label:"Voucher overview"},
               {tab:"AIBookkeeping",label:"AI bookkeeping",featureKey:"aiBookkeeping",requiresWrite:true},
@@ -1098,7 +1099,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               <div>
                 <div onClick={()=>setExpandedCat(e=>e==="voucher"?null:"voucher")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:voucherActive&&!voucherExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:voucherActive&&!voucherExpanded?T.accentLight:"transparent"}}>
                   <div style={{width:24,height:24,borderRadius:8,background:voucherActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-receipt-2" style={{fontSize:13,color:voucherActive?"#fff":T.sub}}/></div>
-                  <span style={{fontSize:12,fontWeight:voucherActive?700:400,color:voucherActive?T.accent:T.sub,flex:1}}>Voucher</span>
+                  <span style={{fontSize:12,fontWeight:voucherActive?700:400,color:voucherActive?T.accent:T.sub,flex:1}}>Vouchers</span>
                   <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:voucherExpanded?"rotate(180deg)":"none"}}/>
                 </div>
                 {voucherExpanded&&(
@@ -1149,49 +1150,7 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               </div>
             );
           })()}
-          {(()=>{
-            const custItems=[
-              {tab:"Contacts",label:"Customers/Suppliers"},
-              {tab:"ContactNew",label:"New customer/supplier",requiresWrite:true},
-              {tab:"CustomerSettings",label:"Settings"},
-            ];
-            const custExpanded=expandedCat==="customers";
-            const custActive=custItems.some(it=>it.tab===tab);
-            return(
-              <div>
-                <div onClick={()=>setExpandedCat(e=>e==="customers"?null:"customers")} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 16px 7px 13px",cursor:"pointer",borderLeft:custActive&&!custExpanded?`3px solid ${T.accent}`:"3px solid transparent",background:custActive&&!custExpanded?T.accentLight:"transparent"}}>
-                  <div style={{width:24,height:24,borderRadius:8,background:custActive?"linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)":"linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-users" style={{fontSize:13,color:custActive?"#fff":T.sub}}/></div>
-                  <span style={{fontSize:12,fontWeight:custActive?700:400,color:custActive?T.accent:T.sub,flex:1}}>Customers</span>
-                  <i className="ti ti-chevron-down" style={{fontSize:12,color:T.muted,transform:custExpanded?"rotate(180deg)":"none"}}/>
-                </div>
-                {custExpanded&&(
-                  <div style={{marginLeft:22,paddingLeft:10,borderLeft:`1px solid ${T.border}`,marginBottom:2}}>
-                    {custItems.map(it=>{
-                      const active=tab===it.tab;
-                      const locked=it.requiresWrite&&!canWriteEntries;
-                      const linkProps=locked?{href:undefined,onClick:e=>e.preventDefault()}:navProps(it.tab);
-                      return(
-                        <a key={it.tab} {...linkProps} title={locked?"You don't have entry access for these books":undefined} className="rr-sidebar-item" style={{padding:"6px 12px",cursor:locked?"default":"pointer",borderRadius:8,display:"flex",alignItems:"center",gap:6,opacity:locked?0.5:1}}>
-                          <span style={{fontSize:11.5,color:active?T.accent:T.sub,fontWeight:active?700:400,flex:1}}>{it.label}</span>
-                          {locked&&<i className="ti ti-lock" style={{fontSize:11,color:T.muted}}/>}
-                        </a>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {[
-            {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
-              {tab:"InvoiceNew",label:"New invoice",requiresWrite:true},
-              {tab:"InvoiceOverview",label:"Invoice overview"},
-              {tab:"RecurringInvoices",label:"Recurring invoices"},
-              {tab:"QuoteNew",label:"New quote",requiresWrite:true},
-              {tab:"QuoteOverview",label:"Quotes"},
-              {tab:"InvoiceSettings",label:"Settings"},
-            ]},
             {id:"accounting",label:"Accounting",icon:"ti-book",items:[
               {tab:"GeneralLedger",label:"General ledger"},
               {tab:"TrialBalance",label:"Trial balance"},
@@ -1207,6 +1166,19 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
               {tab:"VATCodes",label:"VAT codes",featureKey:"vat"},
               {tab:"AnnualAccounts",label:"Årsregnskap"},
               {tab:"AccountingSettings",label:"Settings"},
+            ]},
+            {id:"customers",label:"Customers",icon:"ti-users",items:[
+              {tab:"Contacts",label:"Customers/Suppliers"},
+              {tab:"ContactNew",label:"New customer/supplier",requiresWrite:true},
+              {tab:"CustomerSettings",label:"Settings"},
+            ]},
+            {id:"invoicing",label:"Invoice",icon:"ti-file-invoice",items:[
+              {tab:"InvoiceNew",label:"New invoice",requiresWrite:true},
+              {tab:"InvoiceOverview",label:"Invoice overview"},
+              {tab:"RecurringInvoices",label:"Recurring invoices"},
+              {tab:"QuoteNew",label:"New quote",requiresWrite:true},
+              {tab:"QuoteOverview",label:"Quotes"},
+              {tab:"InvoiceSettings",label:"Settings"},
             ]},
             {id:"reports",label:"Reports",icon:"ti-chart-bar",items:[
               {tab:"ReportsHub",label:"Reports"},
@@ -1501,7 +1473,20 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
           // — initialEntryMode alone only seeds useState on first mount, so
           // clicking "Customer invoice" right after "Supplier Invoice"
           // without this would stay stuck on whichever mode mounted first.
-          <NewEntryForm key={newVoucherMode+"-"+newVoucherSeq} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>await addTransactionNotified(form)} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
+          <NewEntryForm key={newVoucherMode+"-"+newVoucherSeq} initialEntryMode={newVoucherMode} accounts={accounts} setAccounts={setAccounts} contacts={contacts} setContacts={setContacts} nextBilag={nextBilag} feat={feat} sinkingFunds={sinkingFunds} saveSinkingFunds={saveSinkingFunds} inboxFiles={inboxFiles} uploadInboxFile={uploadInboxFile} transactions={transactions} moneySources={effectiveMoneySources} tagTransaction={tagTransaction} isDesktop={true} projects={projects} trackProjects={!!companyProfile.trackProjects} splitVat={companyProfile.splitVat!==false} saveProjects={saveProjects} onSave={async(form)=>{
+              await addTransactionNotified(form);
+              try{
+                const q=JSON.parse(localStorage.getItem("rr_pending_queue")||"[]");
+                if(q.length>0){
+                  const[nextId,...rest]=q;
+                  if(rest.length>0)localStorage.setItem("rr_pending_queue",JSON.stringify(rest));
+                  else localStorage.removeItem("rr_pending_queue");
+                  localStorage.setItem("rr_pending_attachment",String(nextId));
+                  localStorage.setItem("rr_pending_entry_mode","supplier");
+                  setNewVoucherSeq(s=>s+1);
+                }
+              }catch{}
+            }} addEntryComment={addEntryComment} onOpenEntry={t=>{setEntriesDetailTxn(t);setTab("Entries");}} saveVoucherDraft={saveVoucherDraft} updateVoucherDraft={updateVoucherDraft} deleteVoucherDraft={deleteVoucherDraft} companyProfile={companyProfile}/>
         )}
 
         {tab==="VoucherDrafts"&&(
@@ -1614,13 +1599,10 @@ function FinanceTracker({accounts,setAccounts,addAccount,updateAccount,contacts,
 
         {tab==="Bank"&&(
           feat.bank
-            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} cleanBankStatementLineDescriptions={cleanBankStatementLineDescriptions} restoreBankStatementLineDescription={restoreBankStatementLineDescription} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds} attachedFileIds={attachedFileIds} companyProfile={companyProfile}/>
+            ?<BankReconciliationScreen accounts={accounts} contacts={contacts} transactions={transactions} bankStatementLines={bankStatementLines} uploadBankStatement={uploadBankStatement} parseBankStatementFile={parseBankStatementFile} parseBankStatementPDF={parseBankStatementPDF} commitBankStatementRows={commitBankStatementRows} undoBankImport={undoBankImport} deleteBankMonth={deleteBankMonth} postBankStatementLine={postBankStatementLine} postBankStatementLinesBulk={postBankStatementLinesBulk} matchBankStatementLine={matchBankStatementLine} unmatchBankStatementLine={unmatchBankStatementLine} cleanBankStatementLineDescriptions={cleanBankStatementLineDescriptions} restoreBankStatementLineDescription={restoreBankStatementLineDescription} toggleReconciled={toggleReconciled} onEditTxn={saveEdit} onDeleteTxn={deleteTxn} onReverseTxn={reverseTransaction} fetchTxnAttachments={fetchTxnAttachments} uploadInboxFile={uploadInboxFile} attachFilesToTxnEntry={attachFilesToTxnEntry} onRemoveAttachment={removeTxnAttachmentEntry} onCreateAccount={createAccountQuick} onCreateContact={createContactQuick} inboxFiles={inboxFiles} fetchEntryComments={fetchEntryComments} addEntryComment={addEntryComment} auditLog={auditLog} profiles={profiles} currentUserId={user?user.id:null} moneySources={effectiveMoneySources} projects={projects} tagTransaction={tagTransaction} attachments={bankAttachments} onAttach={attachBankStatement} onRemoveAttach={removeBankStatement} addTransaction={addTransactionNotified} onSaveAccounts={setAccounts} onNavigate={setTab} attachedTxnIds={attachedTxnIds} attachedFileIds={attachedFileIds} companyProfile={companyProfile}/>
             :<DisabledScreen title="Bank" onBack={()=>setTab("Dashboard")}/>
         )}
 
-        {tab==="DailyLog"&&(
-          <DailyLogScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab}/>
-        )}
         {tab==="Files"&&(
           <FilesScreen onBack={()=>setTab("Dashboard")} onNavigate={setTab} files={inboxFiles} attachedFileIds={attachedFileIds} onUpload={uploadInboxFile} onDelete={deleteInboxFileEntry} onRestore={restoreInboxFileEntry} onPermanentDelete={permanentlyDeleteInboxFileEntry} onRename={renameInboxFileEntry} onMove={moveInboxFileEntry} onCopy={copyInboxFileEntry} onMerge={mergeInboxFilesEntry} isDesktop={true} onStartRegistration={setRegistrationQueue}/>
         )}

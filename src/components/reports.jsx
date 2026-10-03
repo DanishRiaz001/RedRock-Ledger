@@ -5262,7 +5262,7 @@ function BankAccountDetailsModal({account,initial,onSave,onClose}){
   );
 }
 
-function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,postBankStatementLinesBulk,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[],companyProfile}){
+function BankReconciliationScreen({accounts,contacts,transactions,bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,deleteBankMonth,postBankStatementLine,postBankStatementLinesBulk,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,toggleReconciled,onEditTxn,onDeleteTxn,onReverseTxn,fetchTxnAttachments,uploadInboxFile,attachFilesToTxnEntry,onRemoveAttachment,onCreateAccount,onCreateContact,inboxFiles=[],fetchEntryComments,addEntryComment,auditLog,profiles,currentUserId,moneySources,projects=[],tagTransaction,attachments={},onAttach,onRemoveAttach,addTransaction,onSaveAccounts,onNavigate,attachedTxnIds=[],attachedFileIds=[],companyProfile}){
   // "Bank" reconciliation only makes sense for accounts with a real external bank
   // statement. Respects the manual "Show in Bank Reconciliation" toggle from Bank
   // Settings when someone's explicitly set it; falls back to "not cash AND
@@ -6089,9 +6089,21 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                     <i className="ti ti-eraser" style={{fontSize:14,color:T.sub}}/>Clean descriptions…
                   </div>
                 )}
-                <div onClick={()=>{setMoreMenuOpen(false);setExportScope("period");setShowExportModal(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer"}}>
+                <div onClick={()=>{setMoreMenuOpen(false);setExportScope("period");setShowExportModal(true);}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.text,cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
                   <i className="ti ti-download" style={{fontSize:14,color:T.sub}}/>Send or download file
                 </div>
+                {deleteBankMonth&&(
+                  <div onClick={async()=>{
+                    setMoreMenuOpen(false);
+                    const MONTH_NAMES_SHORT=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                    const [y,m]=month.split("-");
+                    const label=`${MONTH_NAMES_SHORT[parseInt(m,10)-1]} ${y}`;
+                    if(!window.confirm(`Delete ALL bank data for ${label}?\n\nThis will remove every statement line AND every transaction created from bank posting for this month. This cannot be undone.`))return;
+                    await deleteBankMonth(selectedAccount,month);
+                  }} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",fontSize:12,fontWeight:600,color:T.red,cursor:"pointer"}}>
+                    <i className="ti ti-trash" style={{fontSize:14,color:T.red}}/>Delete {(()=>{const[y,m]=month.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m,10)-1]+" "+y;})()}…
+                  </div>
+                )}
               </div>
             </>)}
           </div>
@@ -6777,6 +6789,8 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
   const[selected,setSelected]=useState({}); // {contactId: [txnIds]}
   const[collapsedIds,setCollapsedIds]=useState(new Set());
   const toggleCollapse=(id)=>setCollapsedIds(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
+  const[entryComments,setEntryComments]=useState({});
+  const todayStr=new Date().toISOString().slice(0,10);
 
   // "code" is the series bucket ("1500" or "2400"), not one literal
   // account — a company can have several accounts in that range (1500
@@ -6980,15 +6994,16 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
           </div>
         </div>
         <table style={{width:"100%",tableLayout:"fixed",fontSize:13,borderCollapse:"collapse",background:"#fff",border:`1px solid ${T.border}`,borderTop:"none"}}>
-          <colgroup><col style={{width:32}}/><col style={{width:76}}/><col style={{width:88}}/><col style={{width:84}}/><col style={{width:84}}/><col/><col style={{width:120}}/></colgroup>
-          <tbody><tr style={{color:T.sub,fontSize:11,background:T.bg}}>
-            <td style={{padding:"9px 14px",width:32}}></td>
-            <td style={{width:76}}>Bilag</td>
-            <td style={{width:88}}>Invoice no.</td>
-            <td style={{width:84}}>Date</td>
-            <td style={{width:84}}>Due date</td>
-            <td>Description</td>
-            <td style={{textAlign:"right",padding:"9px 14px",width:120}}>Amount</td>
+          <colgroup><col style={{width:32}}/><col style={{width:72}}/><col style={{width:86}}/><col style={{width:82}}/><col style={{width:96}}/><col/><col style={{width:108}}/><col style={{width:108}}/></colgroup>
+          <tbody><tr style={{color:T.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:".4px",background:T.bg}}>
+            <td style={{padding:"8px 12px"}}></td>
+            <td style={{padding:"8px 10px"}}>Bilag</td>
+            <td style={{padding:"8px 10px"}}>Fakturanr.</td>
+            <td style={{padding:"8px 10px"}}>Dato</td>
+            <td style={{padding:"8px 10px"}}>Forfallsdato</td>
+            <td style={{padding:"8px 10px"}}>Beskrivelse</td>
+            <td style={{padding:"8px 10px"}}>Kommentar</td>
+            <td style={{textAlign:"right",padding:"8px 14px"}}>Beløp</td>
           </tr></tbody>
         </table>
         </div>
@@ -7001,7 +7016,7 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
       </div>
       <div style={{background:"#fff",border:`1px solid ${T.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",marginTop:-1}}>
         <table style={{width:"100%",tableLayout:"fixed",fontSize:13,borderCollapse:"collapse"}}>
-          <colgroup><col style={{width:32}}/><col style={{width:76}}/><col style={{width:88}}/><col style={{width:84}}/><col style={{width:84}}/><col/><col style={{width:120}}/></colgroup>
+          <colgroup><col style={{width:32}}/><col style={{width:72}}/><col style={{width:86}}/><col style={{width:82}}/><col style={{width:96}}/><col/><col style={{width:108}}/><col style={{width:108}}/></colgroup>
           <tbody>
             {groups.map(({contact,txns,total})=>{
               const sel=selected[contact.id]||[];
@@ -7010,19 +7025,30 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               return(
                 <React.Fragment key={contact.id}>
                   <tr>
-                    <td style={{padding:"7px 14px 4px",background:T.bg,width:32}}>
+                    <td style={{padding:"8px 12px 5px",background:T.bg,borderTop:`1.5px solid ${T.border}`}}>
                       {selectableIds.length>0&&(
                         <input type="checkbox" checked={allGroupSelected} onChange={()=>toggleSelectAllForContact(contact.id,selectableIds)} title="Select all open items for this contact"/>
                       )}
                     </td>
-                    <td colSpan="6" style={{padding:"7px 14px 4px",background:T.bg}}>
-                      <div style={{display:"inline-flex",alignItems:"center",gap:8}}>
-                        <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:700,color:T.accent,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    <td colSpan="7" style={{padding:"8px 10px 5px",background:T.bg,borderTop:`1.5px solid ${T.border}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div onClick={()=>printStatement(contact,txns,total)} title="Click for printable statement" style={{fontSize:13,fontWeight:800,color:T.text,cursor:"pointer"}}>
                           {contact.name}
                         </div>
+                        {contact.id&&<span style={{fontSize:10,color:T.muted,fontWeight:500}}>({type==="supplier"?"Lev.":"Kund."} {contact.id})</span>}
                         <button onClick={()=>setEditingContactId(contact.id)} title={`Edit ${contact.name}`} style={{background:"none",border:"none",padding:2,cursor:"pointer",color:T.muted,display:"inline-flex"}}>
-                          <i className="ti ti-pencil" style={{fontSize:13}}/>
+                          <i className="ti ti-pencil" style={{fontSize:12}}/>
                         </button>
+                        {(()=>{const ov=txns.filter(t=>!(!!t.matchedWith&&t.matchedAccount===code)&&t.dueDate&&t.dueDate<todayStr).length;return ov>0?(<span style={{fontSize:9,fontWeight:700,background:T.red+"22",color:T.red,borderRadius:4,padding:"2px 6px"}}>{ov} overdue</span>):null;})()}
+                        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+                          {selectedAny&&activeSelContactId===contact.id&&(
+                            <span style={{fontSize:10,color:T.sub}}>Net: <b style={{color:Math.abs(selAnySum)<1?T.green:T.red}}>{sign(selAnySum)}</b></span>
+                          )}
+                          {selectedAny&&activeSelContactId===contact.id&&(
+                            <button onClick={doMatchAny} disabled={Math.abs(selAnySum)>=1} style={{background:Math.abs(selAnySum)<1?T.accent:T.border,color:Math.abs(selAnySum)<1?"#fff":T.muted,border:"none",borderRadius:6,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:Math.abs(selAnySum)<1?"pointer":"default",fontFamily:"inherit"}}>Match ✓</button>
+                          )}
+                          <span style={{fontSize:12,fontWeight:800,color:total<0?T.red:T.green,fontVariantNumeric:"tabular-nums"}}>{sign(total)}</span>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -7031,34 +7057,36 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                     const overdue=!isMatchedHere&&t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10);
                     return(
                       <tr key={t.id} className="rr-table-row" style={{background:isMatchedHere?T.greenBg:"#fff",borderBottom:`1px solid ${T.border}`}}>
-                        <td style={{padding:"9px 14px",width:32}}>
+                        <td style={{padding:"9px 12px"}}>
                           {isMatchedHere?(
-                            <button onClick={()=>setMatchDetailGroupId(t.matchedWith)} title="Matched — click for details" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800}}>✓</button>
+                            <button onClick={()=>setMatchDetailGroupId(t.matchedWith)} title="Matched — click for details" style={{background:"none",border:"none",cursor:"pointer",color:T.green,fontWeight:800,fontSize:14}}>●</button>
                           ):(
                             <input type="checkbox" checked={sel.includes(t.id)} onChange={()=>toggleSel(contact.id,t.id)}/>
                           )}
                         </td>
-                        <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{width:76,color:T.accent,fontWeight:700,cursor:"pointer"}}>{fmtB(t.bilag)}</td>
-                        <td style={{width:88,color:T.sub}}>{t.invoiceNo||"—"}</td>
-                        <td style={{width:84,color:T.text}}>{t.date}</td>
-                        <td style={{width:84,color:overdue?T.red:T.sub,fontWeight:overdue?700:400}}>{t.dueDate||"—"}</td>
-                        <td style={{color:T.text}}>{stripVatLegTag(t.description)}</td>
-                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",width:120,color:T.text}}>
-                          {/* A line posted in a currency other than the
-                              company's own base currency shows both figures
-                              — the base amount actually on the ledger (main,
-                              bold) and the original invoiced/entered amount
-                              in its own currency (below) — so it's clear at
-                              a glance which currency the AR/AP balance is
-                              actually tracked in versus what the customer/
-                              supplier was billed. Both are now explicitly
-                              labeled with their own currency code — the
-                              main figure used to show as a bare number with
-                              no code at all, reading as ambiguous (or
-                              silently assumed to be whichever currency the
-                              line's OWN tag said, when it's actually always
-                              the base currency) the moment a second figure
-                              sat right underneath it. */}
+                        <td onClick={()=>setDetailTxn(t)} title="Open this entry" style={{color:T.accent,fontWeight:700,cursor:"pointer",padding:"9px 10px",fontSize:12}}>{fmtB(t.bilag)}</td>
+                        <td style={{color:T.sub,padding:"9px 10px",fontSize:12}}>{t.invoiceNo||"—"}</td>
+                        <td style={{color:T.sub,padding:"9px 10px",fontVariantNumeric:"tabular-nums",fontSize:12}}>{t.date}</td>
+                        <td style={{padding:"9px 10px",fontSize:12}}>
+                          {t.dueDate?(
+                            <span style={{color:overdue?T.red:T.sub,fontWeight:overdue?700:400,fontVariantNumeric:"tabular-nums"}}>
+                              {t.dueDate}
+                              {overdue&&(()=>{const days=Math.round((new Date(todayStr)-new Date(t.dueDate))/(86400000));return(<span style={{marginLeft:4,fontSize:9,fontWeight:700,background:T.red+"22",color:T.red,borderRadius:3,padding:"1px 4px"}}>+{days}d</span>);})()}
+                            </span>
+                          ):"—"}
+                        </td>
+                        <td style={{color:T.text,padding:"9px 10px",fontSize:12}}>{stripVatLegTag(t.description)}</td>
+                        <td style={{padding:"6px 10px"}}>
+                          <input
+                            value={entryComments[t.id]||""}
+                            onChange={e=>setEntryComments(p=>({...p,[t.id]:e.target.value}))}
+                            placeholder="Add comment…"
+                            style={{width:"100%",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 6px",fontSize:10,fontFamily:"inherit",color:T.text,background:T.bg,outline:"none"}}
+                          />
+                        </td>
+                        <td style={{textAlign:"right",fontWeight:600,padding:"9px 14px",color:T.text,fontVariantNumeric:"tabular-nums",fontSize:12}}>
+                          {/* Base currency amount — the primary figure on the AR/AP ledger;
+                              when a foreign currency was used, both are shown. */}
                           {sign(mv(t))}{t.currency&&t.currencyAmount!=null?` ${defaultCurrency}`:""}
                           {t.currency&&t.currencyAmount!=null&&(
                             <div style={{fontSize:10,fontWeight:500,color:T.muted,marginTop:2}}>{fmt(t.currencyAmount)} {t.currency}</div>
@@ -7068,14 +7096,14 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
                     );
                   })}
                   <tr style={{borderBottom:`1px solid ${T.border}`}}>
-                    <td colSpan="6" style={{padding:"7px 14px",fontWeight:700,color:T.sub,fontSize:12}}>Sum</td>
-                    <td style={{textAlign:"right",padding:"7px 14px",fontWeight:700,color:T.text,fontSize:12}}>{sign(total)}</td>
+                    <td colSpan="7" style={{padding:"6px 12px",fontWeight:600,color:T.muted,fontSize:11,background:T.bg}}>Sum {contact.name}</td>
+                    <td style={{textAlign:"right",padding:"6px 14px",fontWeight:800,color:total<0?T.red:T.green,fontSize:12,background:T.bg,fontVariantNumeric:"tabular-nums"}}>{sign(total)}</td>
                   </tr>
                 </React.Fragment>
               );
             })}
             {!groups.length&&(
-              <tr><td colSpan="7" style={{textAlign:"center",color:T.muted,padding:30,fontSize:12}}>
+              <tr><td colSpan="8" style={{textAlign:"center",color:T.muted,padding:30,fontSize:12}}>
                 {!relevantContacts.length?(
                   <div>
                     <div>No {type==="customer"?"customers":"suppliers"} yet — add one first.</div>
@@ -7096,9 +7124,18 @@ function ReskontroDesktopScreen({contacts,setContacts,transactions,accounts,matc
               </td></tr>
             )}
             {groups.length>0&&(
-              <tr style={{borderTop:`2px solid ${T.border}`}}>
-                <td colSpan="6" style={{padding:"12px 14px",fontWeight:800,color:T.text}}>Total — Closing balance</td>
-                <td style={{textAlign:"right",padding:"12px 14px",fontWeight:800,color:T.text}}>{sign(groups.reduce((s,g)=>s+g.total,0))}</td>
+              <tr>
+                <td colSpan="8" style={{padding:0,borderTop:`2px solid ${T.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.text,color:"#fff",padding:"11px 16px",borderRadius:"0 0 11px 11px"}}>
+                    <div>
+                      <div style={{fontSize:10,fontWeight:600,opacity:.6,textTransform:"uppercase",letterSpacing:".4px",marginBottom:2}}>
+                        {groups.length} {type==="customer"?"customers":"suppliers"} · {totalEntryCount} {entriesView==="closed"?"closed":"open"} entries
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700}}>Total — Closing balance</div>
+                    </div>
+                    <div style={{fontSize:18,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{sign(groups.reduce((s,g)=>s+g.total,0))}</div>
+                  </div>
+                </td>
               </tr>
             )}
           </tbody>

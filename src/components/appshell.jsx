@@ -1384,6 +1384,30 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     setBankStatementLines(p=>p.filter(l=>!ids.includes(l.id)));
   };
 
+  const deleteBankMonth=async(accountCode,month)=>{
+    if(!canEdit)return;
+    const monthLines=bankStatementLines.filter(l=>l.accountCode===accountCode&&l.date&&l.date.slice(0,7)===month);
+    if(!monthLines.length){alert("No bank statement lines found for this month.");return;}
+    const postedLines=monthLines.filter(l=>l.posted&&l.postedTxnId);
+    // Delete all transactions that were created by bank posting for this month
+    const txnIdsToDelete=[];
+    for(const line of postedLines){
+      const txn=transactions.find(t=>t.id===line.postedTxnId);
+      if(!txn)continue;
+      // Include this transaction and any VAT-split legs on the same bilag
+      const legs=transactions.filter(t=>t.id===line.postedTxnId||(t.bilag===txn.bilag&&t.vatSplit&&txn.vatSplit));
+      legs.forEach(t=>{if(!txnIdsToDelete.includes(t.id))txnIdsToDelete.push(t.id);});
+    }
+    if(txnIdsToDelete.length){
+      const{error}=await sb.from("transactions").delete().in("id",txnIdsToDelete);
+      if(error){alert("Failed to delete posted transactions: "+error.message);return;}
+      setTransactionsState(p=>p.filter(t=>!txnIdsToDelete.includes(t.id)));
+    }
+    const lineIds=monthLines.map(l=>l.id);
+    await sb.from("bank_statement_lines").delete().in("id",lineIds);
+    setBankStatementLines(p=>p.filter(l=>!lineIds.includes(l.id)));
+  };
+
   const uploadBankStatement=async(accountCode,file)=>{
     if(!canEdit)return;
     try{
@@ -1477,9 +1501,9 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     const svs=planVatSplit({debitCode,creditCode,amount,vatCode,vatAmount,description:line.description});
     const rc=svs.vatSplit?null:planReverseCharge({debitCode,amount,vatCode,description:line.description});
     const mainVatSplit=svs.vatSplit||!!rc;
-    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:svs.mainAmount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,vat_split:mainVatSplit,contact_id:contactId||null}]).select().single();
+    const{data,error}=await sb.from("transactions").insert([{user_id:viewingUserId,...(cid?{company_id:cid}:{}),bilag:bilagNum,date:line.date,debit_code:debitCode,credit_code:creditCode,description:line.description,amount:svs.mainAmount,vat_code:vatCode,vat_pct:vatPct,vat_amount:vatAmount,vat_split:mainVatSplit,contact_id:contactId||null,entry_mode:"bank_post"}]).select().single();
     if(error){alert("Post failed: "+error.message);return null;}
-    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount:svs.mainAmount,vatCode,vatPct,vatAmount,vatSplit:mainVatSplit,contactId:contactId||null}]);
+    setTransactionsState(p=>[...p,{id:data.id,bilag:bilagNum,date:line.date,debitCode,creditCode,description:line.description,amount:svs.mainAmount,vatCode,vatPct,vatAmount,vatSplit:mainVatSplit,contactId:contactId||null,entryMode:"bank_post"}]);
     await insertVatLeg(svs.vatLeg,bilagNum,line.date);
     await insertReverseChargeLeg(rc,bilagNum,line.date);
     if(groupRef)appendGroupLine(groupRef,{id:data.id,bilag:bilagNum,description:line.description,amount:svs.mainAmount,debitCode,creditCode});
@@ -1586,8 +1610,21 @@ Skip subtotal/balance-only rows, headers, and footers. If a row's direction (in 
     if(error){alert("Unmatch failed: "+error.message);return;}
     setBankStatementLines(p=>p.map(l=>l.id===line.id?{...l,posted:false,postedTxnId:null}:l));
     if(txnId){
-      setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:false}:t));
-      await sb.from("transactions").update({reconciled:false}).eq("id",txnId);
+      const txn=transactions.find(t=>t.id===txnId);
+      if(txn&&txn.entryMode==="bank_post"){
+        // This transaction was CREATED by bank posting — delete it so re-posting
+        // doesn't leave behind a ghost entry that doubles the Reskontro balance.
+        // Include any VAT-split legs that share the same bilag.
+        const idsToDelete=transactions
+          .filter(t=>t.id===txnId||(t.bilag===txn.bilag&&t.vatSplit&&txn.vatSplit))
+          .map(t=>t.id);
+        await sb.from("transactions").delete().in("id",idsToDelete);
+        setTransactionsState(p=>p.filter(t=>!idsToDelete.includes(t.id)));
+      }else{
+        // Transaction was LINKED (already existed) — just clear the reconciled flag.
+        setTransactionsState(p=>p.map(t=>t.id===txnId?{...t,reconciled:false}:t));
+        await sb.from("transactions").update({reconciled:false}).eq("id",txnId);
+      }
     }
   };
   const toggleReconciled=async(txnId,value)=>{
@@ -2948,7 +2985,7 @@ If you genuinely cannot read useful information from this file, return every fie
     uploadInboxFile,deleteInboxFileEntry,restoreInboxFileEntry,permanentlyDeleteInboxFileEntry,
     renameInboxFileEntry,mergeInboxFilesEntry,moveInboxFileEntry,copyInboxFileEntry,
     attachFilesToTxnEntry,removeTxnAttachmentEntry,fetchTxnAttachments,
-    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,postBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,
+    bankStatementLines,uploadBankStatement,parseBankStatementFile,parseBankStatementPDF,commitBankStatementRows,undoBankImport,deleteBankMonth,postBankStatementLine,matchBankStatementLine,unmatchBankStatementLine,cleanBankStatementLineDescriptions,restoreBankStatementLineDescription,
     invoices,createInvoice,updateInvoiceStatus,deleteInvoice,registerInvoicePayment,createCreditNote,toggleReconciled,nextInvoiceNo,companyProfile,saveCompanyProfile,recurringInvoices,createRecurringInvoice,updateRecurringInvoice,deleteRecurringInvoice,generateRecurringInvoicesForMonth,employees,createEmployee,updateEmployee,deleteEmployee,quotes,nextQuoteNo,createQuote,updateQuoteStatus,deleteQuote,convertQuoteToInvoice,voucherDrafts,saveVoucherDraft,updateVoucherDraft,deleteVoucherDraft,vatTerminStatus,saveVatTerminStatus,toggleVatControlled,auditLog,logUsageEvent,posProducts,createPosProduct,updatePosProduct,deletePosProduct,completeSale,payrollRuns,createPayrollRun,deletePayrollRun,
     nextBilag,onSignOut:signOut,onToggleActive:toggleUserActive,fetchClientAccessFor,grantClientAccess,revokeClientAccess,fetchCompaniesFor,requestRedrockAccess,fetchAccessRequests,dismissAccessRequest,resolveAccessRequestAsGranted,
     fetchEntryComments,addEntryComment,mergeContacts,renumberContact,mergeAccounts,postBankStatementLinesBulk,getInvoicePaid,
