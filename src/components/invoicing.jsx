@@ -235,11 +235,18 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
     onSaveAccounts([...accounts,newAcct]);
     setAddingBank(false);
   };
+  const[bsTab,setBsTab]=useState("bankavtaler");
+  const tabStyle=(active)=>({fontSize:13,fontWeight:active?700:500,color:active?T.accent:T.sub,padding:"10px 0",marginRight:28,cursor:"pointer",borderBottom:active?`2px solid ${T.accent}`:"2px solid transparent",background:"none",border:"none",borderBottom:active?`2px solid ${T.accent}`:"2px solid transparent",fontFamily:"inherit"});
   return(
-    <div style={{maxWidth:800}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Bank settings</h1>
-        <button onClick={()=>setAddingBank(true)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add bank account</button>
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:0}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Bankinnstillinger</h1>
+        {bsTab==="bankavtaler"&&<button onClick={()=>setAddingBank(true)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Opprett</button>}
+      </div>
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:20}}>
+        <button style={tabStyle(bsTab==="bankavtaler")} onClick={()=>setBsTab("bankavtaler")}>Bankavtaler</button>
+        <button style={tabStyle(bsTab==="betaling")} onClick={()=>setBsTab("betaling")}>Betaling</button>
       </div>
       {editingAccount&&(
         <BankAccountDetailsModal account={editingAccount} initial={bankDetailsFor(editingAccount)} onSave={details=>saveBankDetails(editingAccount.code,details)} onClose={()=>setEditingAccount(null)}/>
@@ -250,84 +257,176 @@ function BankSettingsScreen({accounts,onSaveAccounts}){
         for(let c=1922;c<1999;c++){if(!used.has(String(c))){suggestedCode=String(c);break;}}
         return<AddBankAccountModal onSave={addBankAccount} onClose={()=>setAddingBank(false)} suggestedCode={suggestedCode||"1922"} usedCodes={used}/>;
       })()}
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
-        <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-          <thead><tr style={{background:T.bg,color:T.sub}}><td style={{padding:"10px 16px",fontWeight:700}}>Account</td><td style={{fontWeight:700}}>Bank</td><td style={{fontWeight:700}}>Kontonummer</td><td style={{fontWeight:700}}>In reconciliation</td><td style={{fontWeight:700,padding:"10px 16px"}}></td></tr></thead>
-          <tbody>
-            {bankAccounts.map(a=>{
-              const d=bankDetailsFor(a);
-              return(
-                <tr key={a.code} onClick={()=>setEditingAccount(a)} style={{borderBottom:`1px solid ${T.border}`,cursor:"pointer"}}>
-                  <td style={{padding:"10px 16px",color:T.text,fontWeight:600}}>{a.code} {a.name}</td>
-                  <td style={{color:T.sub}}>{d.bankName||<span style={{color:T.muted}}>—</span>}</td>
-                  <td style={{color:T.sub,fontSize:11}}>{d.accountNumber||<span style={{color:T.muted}}>—</span>}</td>
-                  <td style={{padding:"10px 16px"}}>
-                    <span style={{fontSize:11,fontWeight:700,color:d.visibleInReconciliation?T.green:T.muted,background:d.visibleInReconciliation?T.greenBg:T.bg,padding:"3px 9px",borderRadius:8}}>{d.visibleInReconciliation?"Visible":"Hidden"}</span>
-                  </td>
-                  <td style={{padding:"10px 16px",textAlign:"right",color:T.accent,fontSize:12,fontWeight:600}}>Edit ›</td>
-                </tr>
-              );
-            })}
-            {!bankAccounts.length&&<tr><td colSpan="5" style={{padding:"20px",textAlign:"center",color:T.muted}}>No bank accounts yet — click "+ Add bank account" above.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"14px 16px",fontSize:11,color:T.muted,marginBottom:24}}>
-        Direct bank connections (auto-approving payments, live balance sync) need a real bank API agreement — that's a separate integration to set up per bank, not something to fake here. Statement import via CSV/Excel already works from Bank → Bank reconciliation.
-      </div>
 
-      {/* Payment types — the "Post as" shortlist in Bank reconciliation.
-          A named type (Bankgebyr, Renteinntekter, …) mapped to a real
-          account, so the common cases post in one pick. Redesigned as two
-          side-by-side columns (out/in, matching the statement's own money-
-          out/money-in split visually instead of two stacked full-width
-          sections) with each row as its own small card — the delete "✕"
-          only appears on hover instead of sitting there permanently, so a
-          short list doesn't read as cluttered as a long one. Every edit
-          still saves immediately (unchanged — this genuinely is reliable,
-          just per-browser by design), but a real Save button gives an
-          explicit confirmation moment instead of trusting silent autosave. */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div>
-          <h2 style={{fontSize:15,fontWeight:800,color:T.text,margin:0}}>Payment types</h2>
-          <div style={{fontSize:11,color:T.muted,marginTop:2}}>Shown in Bank reconciliation's "Post as" dropdown when booking a statement line straight to an account.</div>
-        </div>
-        <button onClick={resetPT} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Reset to defaults</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-        {[["out","Ut av konto","money out",T.red],["in","Inn på konto","money in",T.green]].map(([dir,label,sub,accent])=>(
-          <div key={dir} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:accent,flexShrink:0}}/>
-              <div>
-                <div style={{fontSize:11.5,fontWeight:800,color:T.text}}>{label}</div>
-                <div style={{fontSize:9.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>{sub}</div>
+      {/* ── BANKAVTALER TAB ─────────────────────────────── */}
+      {bsTab==="bankavtaler"&&(
+        <>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",marginBottom:16}}>
+            <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+              <thead>
+                <tr style={{background:T.bg}}>
+                  <td style={{padding:"10px 16px",fontWeight:700,color:T.sub,fontSize:11}}>Betalingskonto</td>
+                  <td style={{fontWeight:700,color:T.sub,fontSize:11}}>Beskrivelse</td>
+                  <td style={{fontWeight:700,color:T.sub,fontSize:11}}>Regnskapskonto</td>
+                  <td style={{fontWeight:700,color:T.sub,fontSize:11}}>BIC</td>
+                  <td style={{fontWeight:700,color:T.sub,fontSize:11}}>Status</td>
+                  <td style={{fontWeight:700,color:T.sub,fontSize:11,padding:"10px 16px"}}>Aktiv</td>
+                  <td style={{padding:"10px 16px"}}></td>
+                </tr>
+              </thead>
+              <tbody>
+                {bankAccounts.map(a=>{
+                  const d=bankDetailsFor(a);
+                  return(
+                    <tr key={a.code} style={{borderBottom:`1px solid ${T.border}`}}>
+                      <td style={{padding:"10px 16px",color:T.sub,fontSize:11}}>{d.accountNumber||<span style={{color:T.muted}}>—</span>}</td>
+                      <td style={{color:T.text,fontWeight:600}}>{d.bankName||a.name}</td>
+                      <td style={{color:T.accent,fontWeight:600,fontSize:12}}>{a.code}</td>
+                      <td style={{color:T.sub,fontSize:11}}>DABAN022</td>
+                      <td>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:d.visibleInReconciliation?T.green||"#10B981":T.muted}}>
+                          <span style={{width:7,height:7,borderRadius:"50%",background:d.visibleInReconciliation?T.green||"#10B981":T.muted,display:"inline-block"}}/>
+                          {d.visibleInReconciliation?"Aktiv":"Inaktiv"}
+                        </span>
+                      </td>
+                      <td style={{padding:"10px 16px"}}>
+                        <label style={{position:"relative",display:"inline-block",width:36,height:20}}>
+                          <input type="checkbox" checked={d.visibleInReconciliation!==false} onChange={e=>{const upd={...d,visibleInReconciliation:e.target.checked};saveBankDetails(a.code,upd);}} style={{opacity:0,width:0,height:0}}/>
+                          <span style={{position:"absolute",inset:0,background:d.visibleInReconciliation!==false?T.accent:T.border,borderRadius:20,cursor:"pointer",transition:"background .15s"}}/>
+                          <span style={{position:"absolute",top:3,left:d.visibleInReconciliation!==false?19:3,width:14,height:14,background:"#fff",borderRadius:"50%",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                        </label>
+                      </td>
+                      <td style={{padding:"10px 16px",textAlign:"right"}}>
+                        <button onClick={()=>setEditingAccount(a)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Rediger</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!bankAccounts.length&&<tr><td colSpan="7" style={{padding:"24px",textAlign:"center",color:T.muted,fontSize:12}}>Ingen bankkontoer ennå — klikk "+ Opprett" øverst til høyre.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div style={{background:T.bg,border:`1px dashed ${T.border}`,borderRadius:10,padding:"12px 16px",fontSize:11,color:T.muted,marginBottom:24}}>
+            Direkte bankforbindelser (AutoPay, live saldosynkronisering) krever en separat bankkoblings-avtale. Kontoutdrag-import via CSV/Excel fungerer allerede fra Bank → Bankavstemming.
+          </div>
+
+          {/* Payment types */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div>
+              <h2 style={{fontSize:15,fontWeight:800,color:T.text,margin:0}}>Betalingstyper</h2>
+              <div style={{fontSize:11,color:T.muted,marginTop:2}}>Vises i "Poster som"-nedtrekkslisten i Bankavstemming.</div>
+            </div>
+            <button onClick={resetPT} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>Tilbakestill</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            {[["out","Ut av konto","money out",T.red],["in","Inn på konto","money in",T.green]].map(([dir,label,sub,accent])=>(
+              <div key={dir} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:accent,flexShrink:0}}/>
+                  <div>
+                    <div style={{fontSize:11.5,fontWeight:800,color:T.text}}>{label}</div>
+                    <div style={{fontSize:9.5,color:T.muted,textTransform:"uppercase",letterSpacing:0.3}}>{sub}</div>
+                  </div>
+                </div>
+                <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                  {postingTypes.filter(t=>t.direction===dir).map(t=>(
+                    <div key={t.id} className="rr-pt-row" style={{border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",opacity:t.inactive?0.55:1,position:"relative"}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                        <input value={t.name} onChange={e=>updPT(t.id,{name:e.target.value})} placeholder={dir==="out"?"e.g. Bankgebyr":"e.g. Renteinntekter"} style={{...inp,fontSize:12,padding:"6px 9px",flex:1}}/>
+                        <button onClick={()=>delPT(t.id)} title="Fjern" className="rr-pt-remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,flexShrink:0,opacity:0,transition:"opacity .12s"}}>✕</button>
+                      </div>
+                      <AccDrop value={t.accountCode} onChange={v=>updPT(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={ptCreateAccount}/>
+                      <label style={{display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:10.5,color:T.muted,cursor:"pointer"}}>
+                        <input type="checkbox" checked={!!t.inactive} onChange={e=>updPT(t.id,{inactive:e.target.checked})}/>Inaktiv
+                      </label>
+                    </div>
+                  ))}
+                  {!postingTypes.some(t=>t.direction===dir)&&<div style={{fontSize:11.5,color:T.muted,padding:"4px 0"}}>Ingen ennå.</div>}
+                  <button onClick={()=>addPT(dir)} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:9,color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>+ Ny rad</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <style>{".rr-pt-row:hover .rr-pt-remove{opacity:1}"}</style>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:10.5,color:T.muted}}>Tomme rader ignoreres. Lagres per nettleser.</div>
+            <SaveFlashButton onClick={()=>saveBankPostingTypes(postingTypes)} label="Lagre endringer" style={{padding:"8px 16px",fontSize:12}}/>
+          </div>
+        </>
+      )}
+
+      {/* ── BETALING TAB ─────────────────────────────────── */}
+      {bsTab==="betaling"&&(()=>{
+        const[bDays,setBDays]=useState("7");
+        const[bBankID,setBBankID]=useState(true);
+        const[bCurrWarn,setBCurrWarn]=useState(true);
+        const[bMerge,setBMerge]=useState(false);
+        const[bMergeKU,setBMergeKU]=useState(false);
+        return(
+          <>
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"20px 24px",marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+                <h2 style={{fontSize:14,fontWeight:800,color:T.text,margin:0}}>Betalingsinnstillinger</h2>
+                <button style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Lagre</button>
+              </div>
+              <div style={{background:T.bg,borderRadius:10,padding:"12px 16px",marginBottom:20,fontSize:12,color:T.sub,display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{color:T.accent,flexShrink:0,marginTop:1}}>ⓘ</span>
+                <span>Du kan nå sette opp antall godkjennere for hver bankkonto som er integrert med AutoPay. Dette gjøres på bankavtalene under Bankavtaler-fanen.</span>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:T.sub,marginBottom:8}}>Antall dager før en betaling fjernes fra betalingsoversikten</div>
+                  <input type="number" value={bDays} onChange={e=>setBDays(e.target.value)} min="1" max="90" style={{...inp,width:100,fontSize:14}}/>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  {[
+                    [bCurrWarn,setBCurrWarn,"Få en advarsel når du er i ferd med å betale i en annen valuta enn den i bankavtalen"],
+                    [bBankID,setBBankID,"Godkjenn betalinger og signer bankavtaler med BankID"],
+                    [bMerge,setBMerge,"Slå sammen utbetalinger (sumposter)"],
+                    [bMergeKU,setBMergeKU,"Kontoutdrag – slå sammen posteringer til sumposter"],
+                  ].map(([val,setter,label],i)=>(
+                    <label key={i} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",fontSize:12,color:T.sub}}>
+                      <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{marginTop:2,accentColor:T.accent,width:14,height:14,flexShrink:0}}/>
+                      {label}
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
-            <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
-              {postingTypes.filter(t=>t.direction===dir).map(t=>(
-                <div key={t.id} className="rr-pt-row" style={{border:`1px solid ${T.border}`,borderRadius:9,padding:"8px 10px",opacity:t.inactive?0.55:1,position:"relative"}}>
-                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                    <input value={t.name} onChange={e=>updPT(t.id,{name:e.target.value})} placeholder={dir==="out"?"e.g. Bankgebyr":"e.g. Renteinntekter"} style={{...inp,fontSize:12,padding:"6px 9px",flex:1}}/>
-                    <button onClick={()=>delPT(t.id)} title="Remove" className="rr-pt-remove" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,flexShrink:0,opacity:0,transition:"opacity .12s"}}>✕</button>
-                  </div>
-                  <AccDrop value={t.accountCode} onChange={v=>updPT(t.id,{accountCode:v})} accounts={accounts} contacts={[]} onCreateAccount={ptCreateAccount}/>
-                  <label style={{display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:10.5,color:T.muted,cursor:"pointer"}}>
-                    <input type="checkbox" checked={!!t.inactive} onChange={e=>updPT(t.id,{inactive:e.target.checked})}/>Inaktiv
-                  </label>
-                </div>
-              ))}
-              {!postingTypes.some(t=>t.direction===dir)&&<div style={{fontSize:11.5,color:T.muted,padding:"4px 0"}}>None yet.</div>}
-              <button onClick={()=>addPT(dir)} style={{background:"none",border:`1px dashed ${T.border}`,borderRadius:9,color:T.accent,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>+ Ny rad</button>
+
+            {/* Betalingstilgang */}
+            <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:"20px 24px"}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Betalingstilgang</div>
+              <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                <thead>
+                  <tr style={{borderBottom:`2px solid ${T.border}`}}>
+                    <td style={{padding:"8px 0",fontWeight:700,color:T.sub,fontSize:11}}>Navn</td>
+                    <td style={{fontWeight:700,color:T.sub,fontSize:11}}>E-postadresse</td>
+                    <td style={{fontWeight:700,color:T.sub,fontSize:11,padding:"8px 12px"}}>Tilgang ⓘ</td>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {name:"Din RegnskapsFører",email:"",access:"Full"},
+                  ].map((u,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${T.border}`}}>
+                      <td style={{padding:"12px 0",display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:T.accent,flexShrink:0}}>
+                          {u.name.split(" ").map(w=>w[0]).join("").slice(0,2)}
+                        </div>
+                        <span style={{color:T.text,fontWeight:600}}>{u.name}</span>
+                      </td>
+                      <td style={{color:T.sub}}>{u.email||<span style={{color:T.muted}}>—</span>}</td>
+                      <td style={{padding:"12px 12px",color:T.sub}}>{u.access}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{fontSize:11,color:T.muted,marginTop:12}}>Bruker tilgang administreres under Selskap → Brukere og roller.</div>
             </div>
-          </div>
-        ))}
-      </div>
-      <style>{".rr-pt-row:hover .rr-pt-remove{opacity:1}"}</style>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{fontSize:10.5,color:T.muted}}>Blank rows are ignored. Kept per browser, alongside the other bank-reconciliation settings.</div>
-        <SaveFlashButton onClick={()=>saveBankPostingTypes(postingTypes)} label="Save changes" style={{padding:"8px 16px",fontSize:12}}/>
-      </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

@@ -5353,13 +5353,123 @@ function BankDashboardScreen({accounts,transactions,invoices,contacts,onOpenLedg
   const today=new Date().toISOString().slice(0,10);
   const yearStart=`${today.slice(0,4)}-01-01`;
 
+  // Stats for the dashboard cards
+  const totalBalance=bankAccounts.reduce((s,a)=>s+getBal(a.code),0);
+  const thisYear=today.slice(0,4);
+  const yearTxns=transactions.filter(t=>t.date&&t.date.startsWith(thisYear));
+  const totalIn=yearTxns.filter(t=>bankAccounts.some(a=>a.code===t.debitCode)).reduce((s,t)=>s+t.amount,0);
+  const totalOut=yearTxns.filter(t=>bankAccounts.some(a=>a.code===t.creditCode)).reduce((s,t)=>s+t.amount,0);
+  const totalFlow=totalIn+totalOut||1;
+  const inPct=Math.round((totalIn/totalFlow)*100);
+  const outPct=100-inPct;
+  // Donut SVG constants
+  const R=34,C=2*Math.PI*R;
+  const inDash=C*(inPct/100);
+
   return(
-    <div style={{maxWidth:1000}}>
-      <div style={{marginBottom:18}}>
-        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Whose</h1>
-        <div style={{fontSize:12,color:T.muted}}>Track which money source each bank movement belongs to.</div>
+    <div style={{maxWidth:1100}}>
+      <div style={{marginBottom:20}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 4px"}}>Bank</h1>
+        <div style={{fontSize:12,color:T.muted}}>Overview of accounts, balances, and transactions.</div>
       </div>
 
+      {/* ── TOP CARDS (Tripletex-style) ───────────────────── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+
+        {/* Bokført saldo */}
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"18px 20px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text}}>Bokført saldo</div>
+            <div style={{fontSize:11,color:T.accent,fontWeight:600,cursor:"pointer"}}>Overfør →</div>
+          </div>
+          {bankAccounts.length===0&&(
+            <div style={{fontSize:12,color:T.muted,padding:"10px 0"}}>No bank accounts configured — add one in Bank → Settings.</div>
+          )}
+          {bankAccounts.map(a=>{
+            const bal=getBal(a.code);
+            const d=bankDetailsFor(a);
+            return(
+              <div key={a.code} onClick={()=>onOpenLedger&&onOpenLedger(a.code,yearStart,today)} style={{background:T.bg,borderRadius:10,padding:"12px 14px",marginBottom:8,cursor:"pointer",transition:"background .15s"}}>
+                <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:500}}>{a.code} {d.bankName||a.name} {d.accountNumber&&<span style={{color:T.muted}}>· {d.accountNumber}</span>}</div>
+                <div style={{fontSize:22,fontWeight:800,color:T.text,fontVariantNumeric:"tabular-nums"}}>NOK {fmt(Math.abs(bal),0)}{bal<0?" (negativ)":""}</div>
+                <div style={{fontSize:10,color:T.muted,marginTop:3}}>{today}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Sammendrag + Donut */}
+        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"18px 20px",display:"flex",flexDirection:"column",gap:0}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Sammendrag {thisYear}</div>
+          <div style={{display:"flex",alignItems:"center",gap:20}}>
+            {/* Donut */}
+            <svg width="80" height="80" viewBox="0 0 80 80" style={{flexShrink:0}}>
+              <circle cx="40" cy="40" r={R} fill="none" stroke={T.border} strokeWidth="12"/>
+              <circle cx="40" cy="40" r={R} fill="none" stroke={T.green||"#10B981"} strokeWidth="12"
+                strokeDasharray={`${inDash} ${C}`} strokeDashoffset={C*0.25} strokeLinecap="round" style={{transition:"stroke-dasharray .4s"}}/>
+              <circle cx="40" cy="40" r={R} fill="none" stroke={T.red||"#EF4444"} strokeWidth="12"
+                strokeDasharray={`${C*(outPct/100)} ${C}`} strokeDashoffset={C*0.25-inDash} strokeLinecap="round"/>
+              <text x="40" y="44" textAnchor="middle" fontSize="11" fontWeight="700" fill={T.text}>{inPct}%</text>
+            </svg>
+            <div style={{flex:1,fontSize:12,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:T.sub,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:T.green||"#10B981",display:"inline-block"}}/>Penger inn ({inPct}%)</span>
+                <span style={{fontWeight:700,color:T.text,fontVariantNumeric:"tabular-nums"}}>NOK {fmt(totalIn,0)}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:T.sub,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:T.red||"#EF4444",display:"inline-block"}}/>Penger ut ({outPct}%)</span>
+                <span style={{fontWeight:700,color:T.text,fontVariantNumeric:"tabular-nums"}}>NOK {fmt(totalOut,0)}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{marginTop:16,borderTop:`1px solid ${T.border}`,paddingTop:14,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+              <span style={{color:T.sub}}>Sum – utestående betalinger</span>
+              <span style={{fontWeight:700,color:T.text,fontVariantNumeric:"tabular-nums"}}>NOK {fmt(totalOut-totalIn>0?totalOut-totalIn:0,0)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+              <span style={{color:T.sub}}>Sum – forfalte betalinger</span>
+              <span style={{fontWeight:700,color:T.text,fontVariantNumeric:"tabular-nums"}}>NOK 0,00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent transactions */}
+      {yearTxns.length>0&&(()=>{
+        const bankTxns=yearTxns.filter(t=>bankAccounts.some(a=>a.code===t.debitCode||a.code===t.creditCode)).slice(-12).reverse();
+        return(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:14,padding:"18px 20px",marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:14}}>Siste transaksjoner</div>
+            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+              <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
+                <th style={{padding:"6px 10px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Dato</th>
+                <th style={{padding:"6px 10px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Beskrivelse</th>
+                <th style={{padding:"6px 10px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>Konto</th>
+                <th style={{padding:"6px 10px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>Beløp (NOK)</th>
+              </tr></thead>
+              <tbody>
+                {bankTxns.map((t,i)=>{
+                  const isIn=bankAccounts.some(a=>a.code===t.debitCode);
+                  return(
+                    <tr key={t.id||i} style={{borderBottom:`1px solid ${T.border}`}}>
+                      <td style={{padding:"8px 10px",color:T.sub,whiteSpace:"nowrap"}}>{t.date}</td>
+                      <td style={{padding:"8px 10px",color:T.text,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"—"}</td>
+                      <td style={{padding:"8px 10px",color:T.sub}}>{isIn?t.debitCode:t.creditCode}</td>
+                      <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,fontVariantNumeric:"tabular-nums",color:isIn?(T.green||"#10B981"):(T.red||"#EF4444")}}>
+                        {isIn?"+":"-"}{fmt(t.amount,2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* Money sources panel */}
+      <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>Money sources (Whose)</div>
       <MoneySourcesPanel moneySources={moneySources} saveMoneySources={saveMoneySources} transactions={transactions} accounts={accounts} tagTransaction={tagTransaction} bankAccounts={bankAccounts} getBal={getBal} bankDetailsFor={bankDetailsFor} onOpenLedger={onOpenLedger} onEditBankAccount={onSaveAccounts?setEditingBankAccount:null} yearStart={yearStart} today={today}/>
 
       {editingBankAccount&&(()=>{
