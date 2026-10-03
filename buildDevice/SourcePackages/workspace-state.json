@@ -13,13 +13,13 @@
           "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
           "name" : "capacitor-swift-pm"
         },
-        "path" : "/Users/danishriaz001/Downloads/Redrock FInancials/Redrock WebApp/redrock-real/buildDevice/SourcePackages/artifacts/capacitor-swift-pm/Cordova/Cordova.xcframework",
+        "path" : "/Users/danishriaz001/Downloads/Redrock FInancials/Redrock WebApp/redrock-real/buildDevice/SourcePackages/artifacts/capacitor-swift-pm/Capacitor/Capacitor.xcframework",
         "source" : {
-          "checksum" : "a3dc72b5a559948d548f0ee2926b989492acc1023a0c86a1bf85477587f83a10",
+          "checksum" : "357220fe6dad73cb78bc1dc83e16e89d59c3d7dac8f9b17545a5be64bba25130",
           "type" : "remote",
-          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Cordova.xcframework.zip"
+          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Capacitor.xcframework.zip"
         },
-        "targetName" : "Cordova"
+        "targetName" : "Capacitor"
       },
       {
         "kind" : {
@@ -33,13 +33,13 @@
           "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
           "name" : "capacitor-swift-pm"
         },
-        "path" : "/Users/danishriaz001/Downloads/Redrock FInancials/Redrock WebApp/redrock-real/buildDevice/SourcePackages/artifacts/capacitor-swift-pm/Capacitor/Capacitor.xcframework",
+        "path" : "/Users/danishriaz001/Downloads/Redrock FInancials/Redrock WebApp/redrock-real/buildDevice/SourcePackages/artifacts/capacitor-swift-pm/Cordova/Cordova.xcframework",
         "source" : {
-          "checksum" : "357220fe6dad73cb78bc1dc83e16e89d59c3d7dac8f9b17545a5be64bba25130",
+          "checksum" : "a3dc72b5a559948d548f0ee2926b989492acc1023a0c86a1bf85477587f83a10",
           "type" : "remote",
-          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Capacitor.xcframework.zip"
+          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Cordova.xcframework.zip"
         },
-        "targetName" : "Capacitor"
+        "targetName" : "Cordova"
       }
     ],
     "dependencies" : [

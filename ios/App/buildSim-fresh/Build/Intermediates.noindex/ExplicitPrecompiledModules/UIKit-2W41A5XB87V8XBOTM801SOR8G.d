@@ -1,0 +1,26 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-5K838WANMMICAMHME8E1KE0VQ.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/DarwinFoundation1.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreFoundation.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UIUtilities-6LUEA8SMNF31ZQCZDUB05YOSU.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/SubFrameworks/UIUtilities.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreGraphics-B4ZPRK39UBP8SRB2H0JSF8WFL.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreGraphics.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreText-65370UGNFSP7S74OGXQVO6C7S.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreText.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreImage-8B6LHMJVY1FG1ENVYK566L9M7.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreImage.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-DATIQCS9SZO0Q6R7B3OCBMOOP.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/QuartzCore.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreLocation-4ZY9A3ETU4NUTGNWSJ527KAGO.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreLocation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreMotion-7FYWD4JU10GZQEJUS89Q4UWT9.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreMotion.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-4USKSTJVSZKRMR8NOSHX2P3QT.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Symbols.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/FileProvider-DG9E4BOB9VDY9XBEYV1S1X741.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/FileProvider.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UserNotifications-37IPAHHLCWS45D9B2HT1NF8BH.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/UserNotifications.framework/Modules/module.modulemap

@@ -1,0 +1,26 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-DGKK8WMO9ZY98377GU58KCE60.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/usr/include/DarwinFoundation1.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreFoundation.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UIUtilities-A1MW2784XPHBBFHEUP0S5499.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/SubFrameworks/UIUtilities.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreGraphics-724UM3XVNGWW3K3RJ7X5IKCVO.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreGraphics.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreText-DM1Y0SYXLZ7RCOFCRMEBKJ22P.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreText.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreImage-EDT86ZX3BW7N0N8PXK8YAEOP0.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreImage.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-ASPTLX6D7GZ9LMXQZ5RTR1DCQ.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/QuartzCore.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreLocation-1KI24YHYPNX3HO60EZCX20B8C.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreLocation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreMotion-R4V0UPH90FBAVFA99QWZANTR.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreMotion.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-56O5UIEH5CF0PX7VKQK1APQW6.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/Symbols.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/FileProvider-6DJF3WB3E3VKH4Q5Y9RW3WEA0.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/FileProvider.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UserNotifications-CYU8YD9EKWUTG0A1RZUUZ2SQK.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/UserNotifications.framework/Modules/module.modulemap

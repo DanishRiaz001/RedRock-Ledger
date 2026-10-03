@@ -1704,8 +1704,12 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
   // each selected file) instead of only registering the first one.
   const startRegistration=()=>{
     if(!selected.length)return;
-    if(onStartRegistration)onStartRegistration(selected);
-    else registerEntry(selected[0]);
+    const[first,...rest]=selected;
+    try{
+      if(rest.length>0)localStorage.setItem("rr_pending_queue",JSON.stringify(rest));
+      else localStorage.removeItem("rr_pending_queue");
+    }catch{}
+    registerEntry(first);
   };
 
   if(isDesktop){
@@ -1724,7 +1728,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
             what someone actually scans first). ~30% of the real window
             width instead, still bounded by the same min/max so it's never
             unreasonably cramped or huge on any screen size. */}
-        <ResizableSplit defaultRightWidth={Math.min(1100,Math.max(380,Math.round(window.innerWidth*0.3)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
+        <ResizableSplit defaultRightWidth={Math.min(1100,Math.max(480,Math.round(window.innerWidth*0.45)))} minRightWidth={380} maxRightWidth={1100} collapsible collapseLabel="Hide attachment" expandLabel="Show attachment" left={(
           <div style={{paddingRight:16,minWidth:0,height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexShrink:0}}>
               <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0}}>Voucher inbox</h1>
@@ -1886,7 +1890,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                     <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.aiInvoiceDate||f.date||`${f.month||""} ${f.year||""}`.trim()||"—"}</div>
                     <div style={{fontSize:10.5,color:T.sub,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.aiDueDate||"—"}</div>
                     {viewMode!=="deleted"&&(
-                      <button onClick={e=>{e.stopPropagation();if(onStartRegistration)onStartRegistration([f.id]);else registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
+                      <button onClick={e=>{e.stopPropagation();registerEntry(f.id);}} title={hasSuggestion(f)?"Register with AI-extracted details pre-filled":"Register this file as a new voucher"} style={hasSuggestion(f)?{justifySelf:"end",background:T.accent,border:`1px solid ${T.accent}`,color:"#fff",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}:{justifySelf:"end",background:"#F3F4F6",border:"1px solid #D1D5DB",color:"#374151",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{hasSuggestion(f)?"Post":"Register"}</button>
                     )}
                     <Menu3 items={viewMode==="deleted"?[
                       {label:"Restore",color:T.green,action:()=>restoreFile(f.id)},
@@ -1946,8 +1950,8 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                 {/* Was justifyContent:"flex-end" — the one thing that made this
                     preview pane look mis-aligned next to Register-voucher's
                     (and New Entry's) matching panel, which both center it. */}
-                <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",background:"#fafafa"}}>
-                  <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%"}}/>
+                <div style={{flex:1,minHeight:0,display:"flex",overflow:"hidden",background:"#fff"}}>
+                  <SignedFileViewer storagePath={previewFile.storagePath} type={previewFile.type} name={previewFile.name} style={{width:"100%",height:"100%",display:"block"}}/>
                 </div>
               </>
             ):(
@@ -2029,7 +2033,7 @@ function FilesScreen({onBack,onNavigate,files,attachedFileIds=new Set(),onUpload
                     <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
                     <div style={{fontSize:10,color:T.muted,marginTop:2}}>{f.month} {f.year}</div>
                   </div>
-                  <button onClick={()=>{if(onStartRegistration)onStartRegistration([f.id]);else registerEntry(f.id);}} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Register</button>
+                  <button onClick={()=>registerEntry(f.id)} style={{background:"none",border:`1px solid ${T.accent}`,color:T.accent,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Register</button>
                   <Menu3 items={[
                     {label:"View",action:()=>setViewing(f)},
                     {label:"Rename",action:()=>renameFile(f.id)},

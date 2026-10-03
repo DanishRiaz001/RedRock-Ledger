@@ -3312,8 +3312,14 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   const ResizeHandle=({idx})=>(
     <div onMouseDown={e=>startColResize(idx,e)} style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:3}}/>
   );
-  const[filterFrom,setFilterFrom]=useState(`${today.slice(0,4)}-01-01`);
-  const[filterTo,setFilterTo]=useState(`${today.slice(0,4)}-12-31`);
+  const TB_LS_KEY="rr_tb_period";
+  const _tbInit=(key,fallback)=>{try{const s=localStorage.getItem(TB_LS_KEY);if(s){const p=JSON.parse(s);if(p[key])return p[key];}}catch{}return fallback;};
+  const[filterFrom,setFilterFromRaw]=useState(()=>_tbInit("from",`${today.slice(0,4)}-01-01`));
+  const[filterTo,setFilterToRaw]=useState(()=>_tbInit("to",`${today.slice(0,4)}-12-31`));
+  const[downloadPrompt,setDownloadPrompt]=useState(null); // {from,to,label} after period picked
+  const setFilterFrom=(v)=>{setFilterFromRaw(v);try{const p=JSON.parse(localStorage.getItem(TB_LS_KEY)||"{}");localStorage.setItem(TB_LS_KEY,JSON.stringify({...p,from:v}));}catch{}};
+  const setFilterTo=(v)=>{setFilterToRaw(v);try{const p=JSON.parse(localStorage.getItem(TB_LS_KEY)||"{}");localStorage.setItem(TB_LS_KEY,JSON.stringify({...p,to:v}));}catch{}};
+  const applyPeriod=(f,t)=>{setFilterFrom(f);setFilterTo(t);setDownloadPrompt({from:f,to:t});};
   const[fromAcct,setFromAcct]=useState("");
   const[toAcct,setToAcct]=useState("");
   const[periodPickerOpen,setPeriodPickerOpen]=useState(false);
@@ -3413,13 +3419,34 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
     });
   },[rows,filterFrom,filterTo,registerExcelExport,companyProfile]);
 
+  const doExcelDownload=(f,t)=>{
+    const subset=rows; // already filtered to current filterFrom/filterTo which matches f,t
+    const aoa=[...xlsxHeaderRows(companyProfile,"Trial balance",`${f} to ${t}`),["Account","Opening balance","Difference","Closing balance"],...rows.map(r=>[`${r.code} ${r.name}`,r.opening,r.diff,r.closing])];
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,"Trial balance");
+    XLSX.writeFile(wb,`TrialBalance_${f}_${t}.xlsx`);
+    setDownloadPrompt(null);
+  };
+  const DownloadPromptBar=()=>downloadPrompt?(
+    <div style={{display:"flex",alignItems:"center",gap:10,background:T.accentLight,border:`1px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",marginBottom:10,flexWrap:"wrap"}}>
+      <i className="ti ti-calendar-check" style={{color:T.accent,fontSize:16}}/>
+      <span style={{fontSize:13,fontWeight:600,color:T.accent,flex:1}}>Period changed to <b>{downloadPrompt.from} – {downloadPrompt.to}</b></span>
+      <button onClick={()=>doExcelDownload(downloadPrompt.from,downloadPrompt.to)} style={{background:T.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+        <i className="ti ti-download" style={{fontSize:13}}/> Download Excel
+      </button>
+      <button onClick={()=>setDownloadPrompt(null)} style={{background:"none",border:"none",color:T.sub,cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+    </div>
+  ):null;
+
   if(!isDesktop){
     return(
       <div style={{paddingBottom:24}}>
         {periodPickerOpen&&(
-          <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+          <PeriodPickerModal initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{applyPeriod(f,t);setPeriodPickerOpen(false);}} onClose={()=>setPeriodPickerOpen(false)}/>
         )}
         <h1 style={{fontSize:18,fontWeight:800,color:T.text,margin:"0 0 10px"}}>Trial balance</h1>
+        <DownloadPromptBar/>
 
         <div style={{position:"sticky",top:0,zIndex:20,background:T.bg,paddingBottom:8,marginTop:-16,paddingTop:16,marginLeft:-16,paddingLeft:16,marginRight:-16,paddingRight:16}}>
           {/* Big, thumb-friendly period stepper — the whole point of the mobile
@@ -3507,6 +3534,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
   return(
     <div style={{maxWidth:isDesktop?1100:"100%"}}>
       <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Trial balance</h1>
+      <DownloadPromptBar/>
 
       {/* The filter toolbar AND the column-header row live in ONE sticky
           block now, not two independently-stickied elements with a
@@ -3556,7 +3584,7 @@ function TrialBalanceScreen({accounts,transactions,onOpenLedger,onSaveAccounts,r
           <>
             <div onClick={()=>setPeriodPickerOpen(false)} style={{position:"fixed",inset:0,zIndex:48}}/>
             <div style={{position:"relative",zIndex:49,marginTop:8,overflowX:"auto"}}>
-              <TimelineRangePicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{setFilterFrom(f);setFilterTo(t);}} onClose={()=>setPeriodPickerOpen(false)}/>
+              <TimelineRangePicker initialFrom={filterFrom} initialTo={filterTo} onApply={(f,t)=>{applyPeriod(f,t);setPeriodPickerOpen(false);}} onClose={()=>setPeriodPickerOpen(false)}/>
             </div>
           </>
         )}

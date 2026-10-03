@@ -1,0 +1,19 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation1-E6MGMXVDU1UMVZVM2YXQE4F2A.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/DarwinFoundation1.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdbool-CA2C6UOIZX6MVCUFLTJG2NJSP.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdint-BPH51QZ6TUHZRZHMWJ4A7PSMW.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreGraphics-B4ZPRK39UBP8SRB2H0JSF8WFL.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/ObjectiveC.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreGraphics.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-5K838WANMMICAMHME8E1KE0VQ.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreVideo-1L1AJZHJ01GWNHCWCSG0D91X3.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/IOSurface.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/OpenGLES.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Metal.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreVideo.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-5M34NXJ4JXVI7ER5U1B51PZCS.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/ImageIO.framework/Modules/module.modulemap

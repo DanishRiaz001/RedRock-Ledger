@@ -1,0 +1,19 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation1-45YDKCLFQVLG733208H1GRFDN.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/usr/include/DarwinFoundation1.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdbool-F2FBDHXI3G0HTSZ4A5FT7N2F2.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdint-4GSBTSGVBD1SNU9CBU4FLPXBS.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreGraphics-724UM3XVNGWW3K3RJ7X5IKCVO.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/usr/include/ObjectiveC.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreGraphics.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-DGKK8WMO9ZY98377GU58KCE60.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreVideo-8GKTBBM4OMQKIWP0J7GV74KRD.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/IOSurface.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/OpenGLES.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/Metal.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/CoreVideo.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildDevice-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-5UDUKRMFW2MABDNDQW0FIAOYM.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/ImageIO.framework/Modules/module.modulemap

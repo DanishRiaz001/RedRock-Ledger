@@ -1,0 +1,25 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CapacitorCordova.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UIKit-2W41A5XB87V8XBOTM801SOR8G.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/UIKit.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/AppDelegate.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVViewController.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDV.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVAvailability.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVPlugin.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVPluginResult.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVCommandDelegate.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVInvokedUrlCommand.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/WebKit-9LUF6OAEYJFZC9S8NU6NWUN2A.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/WebKit.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVURLProtocol.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVScreenOrientationDelegate.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVWebViewProcessPoolFactory.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVAvailabilityDeprecated.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVCommandDelegateImpl.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVPluginManager.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVConfigParser.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/CDVPlugin+Resources.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Headers/NSDictionary+CordovaPreferences.h

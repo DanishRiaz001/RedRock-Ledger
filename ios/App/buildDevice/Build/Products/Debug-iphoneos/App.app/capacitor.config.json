@@ -1,0 +1,32 @@
+{
+	"appId": "com.redrockdanria.ledger",
+	"appName": "RedRock Ledger",
+	"webDir": "dist",
+	"backgroundColor": "#FFFFFF",
+	"ios": {
+		"backgroundColor": "#FFFFFF",
+		"contentInset": "never"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 700,
+			"backgroundColor": "#FFFFFF",
+			"androidScaleType": "CENTER_CROP",
+			"showSpinner": false
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#FFFFFF"
+		},
+		"Keyboard": {
+			"resize": "native",
+			"resizeOnFullScreen": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"KeyboardPlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin"
+	]
+}

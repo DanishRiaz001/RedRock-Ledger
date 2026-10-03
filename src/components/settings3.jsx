@@ -148,51 +148,216 @@ function CustomerImportScreen({contacts,setContacts}){
   );
 }
 
-// Customer settings — auto-numbering prefixes (informational, since we use
-// C001/S001 rather than a raw numeric series) and default terms applied to
-// every new customer/supplier going forward.
-// Voucher settings — how vouchers get received and split, matching the
-// Bilagsinnstillinger reference. Approval/attestation workflow is a genuine
-// scaffolding note since it needs a real multi-user routing decision.
+const DEFAULT_SERIES=[
+  {id:"s1",navn:"Manuelle bilag",nummer:0,inaktiv:false},
+  {id:"s2",navn:"Elektroniske bilag",nummer:50000,inaktiv:false},
+  {id:"s3",navn:"Utgående faktura",nummer:100000,inaktiv:false},
+];
+const DEFAULT_CATEGORIES=[
+  {id:"c1",navn:"Årsoppgjør",nummerserie:"s1",sekvens:0,inaktiv:false},
+  {id:"c2",navn:"Utgående faktura",nummerserie:"s3",sekvens:1,inaktiv:false},
+  {id:"c3",navn:"Leverandørfaktura",nummerserie:"s2",sekvens:2,inaktiv:false},
+  {id:"c4",navn:"Purring",nummerserie:"s2",sekvens:3,inaktiv:false},
+  {id:"c5",navn:"Betaling",nummerserie:"s1",sekvens:4,inaktiv:false},
+  {id:"c6",navn:"Lønnsbilag",nummerserie:"s1",sekvens:5,inaktiv:false},
+  {id:"c7",navn:"Terminoppgave",nummerserie:"s1",sekvens:6,inaktiv:false},
+  {id:"c8",navn:"Mva-melding",nummerserie:"s1",sekvens:7,inaktiv:false},
+  {id:"c9",navn:"OCR giro",nummerserie:"s2",sekvens:8,inaktiv:false},
+  {id:"c10",navn:"Remittering",nummerserie:"s1",sekvens:9,inaktiv:false},
+  {id:"c11",navn:"Bankavstemming",nummerserie:"s1",sekvens:10,inaktiv:false},
+  {id:"c12",navn:"Reiseregning",nummerserie:"s1",sekvens:11,inaktiv:false},
+  {id:"c13",navn:"Ansattutlegg",nummerserie:"s1",sekvens:12,inaktiv:false},
+  {id:"c14",navn:"Åpningsbalanse",nummerserie:"s1",sekvens:13,inaktiv:false},
+  {id:"c15",navn:"Tolldeklarasjon",nummerserie:"s2",sekvens:14,inaktiv:false},
+  {id:"c16",navn:"Obligatorisk tjenestepensjon",nummerserie:"s1",sekvens:15,inaktiv:false},
+  {id:"c17",navn:"Refusjon av sykepenger",nummerserie:"s1",sekvens:16,inaktiv:false},
+  {id:"c18",navn:"Øreavrunding",nummerserie:"s1",sekvens:17,inaktiv:false},
+];
+function loadLS(key,def){try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch{return def;}}
+function saveLS(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
+
 function VoucherSettingsScreen({companyProfile}){
+  const[tab,setTab]=useState("innstillinger");
   const[splitElectronic,setSplitElectronic]=useState(()=>{try{return localStorage.getItem("rr_voucher_split")==="1";}catch{return false;}});
   const[emailNoAttachment,setEmailNoAttachment]=useState(()=>{try{return localStorage.getItem("rr_voucher_email_no_att")==="1";}catch{return false;}});
-  const[apiKey,setApiKeyState]=useState(()=>getAnthropicKey());
-  const[showKey,setShowKey]=useState(false);
-  const[keySaved,setKeySaved]=useState(false);
-  const saveKey=()=>{setAnthropicKey(apiKey.trim());setKeySaved(true);setTimeout(()=>setKeySaved(false),1800);};
+  const[series,setSeries]=useState(()=>loadLS("rr_num_series",DEFAULT_SERIES));
+  const[categories,setCategories]=useState(()=>loadLS("rr_vou_cats",DEFAULT_CATEGORIES));
+  const[standardSerie,setStandardSerie]=useState(()=>{try{return localStorage.getItem("rr_standard_serie")||"auto";}catch{return"auto";}});
+  const[saved,setSaved]=useState(false);
   const inboxEmail=companyProfile&&companyProfile.companyName?`${companyProfile.companyName.toLowerCase().replace(/[^a-z0-9]/g,"")}@redrock-inbox.com`:"yourcompany@redrock-inbox.com";
+
+  const updateSerie=(id,field,val)=>setSeries(prev=>prev.map(s=>s.id===id?{...s,[field]:val}:s));
+  const deleteSerie=(id)=>setSeries(prev=>prev.filter(s=>s.id!==id));
+  const addSerie=()=>setSeries(prev=>[...prev,{id:"s"+Date.now(),navn:"",nummer:0,inaktiv:false}]);
+  const updateCat=(id,field,val)=>setCategories(prev=>prev.map(c=>c.id===id?{...c,[field]:val}:c));
+  const deleteCat=(id)=>setCategories(prev=>prev.filter(c=>c.id!==id));
+  const addCat=()=>setCategories(prev=>[...prev,{id:"c"+Date.now(),navn:"",nummerserie:series[0]?.id||"",sekvens:prev.length,inaktiv:false}]);
+
+  const handleSave=()=>{
+    saveLS("rr_num_series",series);
+    saveLS("rr_vou_cats",categories);
+    try{localStorage.setItem("rr_standard_serie",standardSerie);}catch{}
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+
+  const tabStyle=(active)=>({
+    padding:"10px 20px",fontSize:13,fontWeight:active?700:500,
+    color:active?T.accent:T.sub,
+    borderBottom:active?`2px solid ${T.accent}`:"2px solid transparent",
+    background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",
+    whiteSpace:"nowrap",
+  });
+  const thStyle={fontSize:11,fontWeight:700,color:T.sub,padding:"8px 12px",textAlign:"left",borderBottom:`1px solid ${T.border}`,background:T.bg};
+  const tdStyle={fontSize:13,color:T.text,padding:"7px 12px",borderBottom:`1px solid ${T.border}`};
+
   return(
-    <div style={{maxWidth:800}}>
-      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 16px"}}>Voucher settings</h1>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
-        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>AI features</div>
-        <p style={{fontSize:12,color:T.muted,marginBottom:12}}>"Extract text from image", AI Bookkeeping, and the Assistant chat all call Anthropic's API directly from your browser — that needs your own Anthropic API key. It's stored only in this browser (never sent to us or to Supabase), so each device/team member needs to add their own once. Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style={{color:T.accent}}>console.anthropic.com</a>.</p>
-        <div style={{display:"flex",gap:8,marginBottom:6}}>
-          <input type={showKey?"text":"password"} placeholder="sk-ant-…" value={apiKey} onChange={e=>setApiKeyState(e.target.value)} style={{...inp,flex:1,fontFamily:"monospace",fontSize:12}}/>
-          <button onClick={()=>setShowKey(s=>!s)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"0 12px",fontSize:12,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>{showKey?"Hide":"Show"}</button>
-          <button onClick={saveKey} style={{background:keySaved?T.green:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"0 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{keySaved?"✓ Saved":"Save"}</button>
-        </div>
-        {getAnthropicKey()&&<div style={{fontSize:11,color:T.green,fontWeight:600}}>✓ A key is set on this browser.</div>}
+    <div style={{maxWidth:900}}>
+      <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 0px"}}>Voucher settings</h1>
+      <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:20,marginTop:8}}>
+        <button style={tabStyle(tab==="innstillinger")} onClick={()=>setTab("innstillinger")}>Bilagsinnstillinger</button>
+        <button style={tabStyle(tab==="nummerserier")} onClick={()=>setTab("nummerserier")}>Nummerserier/bilagskategorier</button>
       </div>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
-        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Voucher inbox</div>
-        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:12}}>
-          <input type="checkbox" checked={splitElectronic} onChange={e=>{setSplitElectronic(e.target.checked);try{localStorage.setItem("rr_voucher_split",e.target.checked?"1":"0");}catch{}}}/>
-          Split multi-page electronic vouchers automatically
-        </label>
-        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:14}}>
-          <input type="checkbox" checked={emailNoAttachment} onChange={e=>{setEmailNoAttachment(e.target.checked);try{localStorage.setItem("rr_voucher_email_no_att",e.target.checked?"1":"0");}catch{}}}/>
-          Allow emails to be received without an attachment
-        </label>
-        <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Email address for receiving invoices and vouchers</div>
-        <div style={{...inp,background:T.bg,color:T.sub}}>{inboxEmail}</div>
-        <p style={{fontSize:11,color:T.muted,marginTop:6}}>Forward supplier invoices to this address and they'll land directly in your Inbox — this is scaffolding for now since it needs a real inbound-email service wired up.</p>
-      </div>
-      <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
-        <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>Approval workflow</div>
-        <p style={{fontSize:12,color:T.muted}}>Requiring a second person to approve a voucher before it posts needs a real decision about who approves what — this is a genuine feature to plan, not something to fake with a checkbox. Worth a proper conversation once the accountant-portal work (multiple staff, multiple clients) is further along.</p>
-      </div>
+
+      {tab==="innstillinger"&&(
+        <>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20,marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:16}}>Voucher inbox</div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:12}}>
+              <input type="checkbox" checked={splitElectronic} onChange={e=>{setSplitElectronic(e.target.checked);try{localStorage.setItem("rr_voucher_split",e.target.checked?"1":"0");}catch{}}}/>
+              Split multi-page electronic vouchers automatically
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",marginBottom:14}}>
+              <input type="checkbox" checked={emailNoAttachment} onChange={e=>{setEmailNoAttachment(e.target.checked);try{localStorage.setItem("rr_voucher_email_no_att",e.target.checked?"1":"0");}catch{}}}/>
+              Allow emails to be received without an attachment
+            </label>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Email address for receiving invoices and vouchers</div>
+            <div style={{...inp,background:T.bg,color:T.sub}}>{inboxEmail}</div>
+            <p style={{fontSize:11,color:T.muted,marginTop:6}}>Forward supplier invoices to this address and they'll land directly in your Inbox.</p>
+          </div>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:20}}>
+            <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:8}}>Approval workflow</div>
+            <p style={{fontSize:12,color:T.muted}}>Multi-user approval routing requires the accountant-portal work to be further along. Worth planning once multiple staff accounts are in place.</p>
+          </div>
+        </>
+      )}
+
+      {tab==="nummerserier"&&(
+        <>
+          {/* Nummerserier */}
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+            <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.text}}>Nummerserier</div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Navn <span style={{color:T.red}}>*</span></th>
+                    <th style={thStyle}>Nummer</th>
+                    <th style={{...thStyle,textAlign:"center"}}>Inaktiv</th>
+                    <th style={{...thStyle,width:36}}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {series.map(s=>(
+                    <tr key={s.id}>
+                      <td style={tdStyle}>
+                        <input value={s.navn} onChange={e=>updateSerie(s.id,"navn",e.target.value)}
+                          style={{...inp,padding:"5px 8px",fontSize:13,minWidth:160}}/>
+                      </td>
+                      <td style={tdStyle}>
+                        <input type="number" value={s.nummer} onChange={e=>updateSerie(s.id,"nummer",parseInt(e.target.value)||0)}
+                          style={{...inp,padding:"5px 8px",fontSize:13,width:100}}/>
+                      </td>
+                      <td style={{...tdStyle,textAlign:"center"}}>
+                        <input type="checkbox" checked={s.inaktiv} onChange={e=>updateSerie(s.id,"inaktiv",e.target.checked)}/>
+                      </td>
+                      <td style={{...tdStyle,textAlign:"center"}}>
+                        <button onClick={()=>deleteSerie(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:16,padding:2,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{padding:"10px 14px",borderTop:`1px solid ${T.border}`}}>
+              <button onClick={addSerie} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:600,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+                + Ny rad
+              </button>
+            </div>
+          </div>
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,padding:16,marginBottom:20,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,whiteSpace:"nowrap"}}>Standard nummerserie</div>
+            <select value={standardSerie} onChange={e=>setStandardSerie(e.target.value)}
+              style={{...inp,padding:"6px 10px",fontSize:13,minWidth:180}}>
+              <option value="auto">(Automatisk)</option>
+              {series.map(s=><option key={s.id} value={s.id}>{s.navn||"(uten navn)"}</option>)}
+            </select>
+            <p style={{fontSize:11,color:T.muted,margin:0,flex:1,minWidth:200}}>
+              Automatisk velger nummerserie basert på bilagstype. Du kan overstyre dette ved å velge en spesifikk serie.
+            </p>
+          </div>
+
+          {/* Bilagskategorier */}
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+            <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.text}}>Bilagskategorier</div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Navn <span style={{color:T.red}}>*</span></th>
+                    <th style={thStyle}>Nummerserie</th>
+                    <th style={thStyle}>Sekvens</th>
+                    <th style={{...thStyle,textAlign:"center"}}>Inaktiv</th>
+                    <th style={{...thStyle,width:36}}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map(c=>(
+                    <tr key={c.id}>
+                      <td style={tdStyle}>
+                        <input value={c.navn} onChange={e=>updateCat(c.id,"navn",e.target.value)}
+                          style={{...inp,padding:"5px 8px",fontSize:13,minWidth:160}}/>
+                      </td>
+                      <td style={tdStyle}>
+                        <select value={c.nummerserie} onChange={e=>updateCat(c.id,"nummerserie",e.target.value)}
+                          style={{...inp,padding:"5px 8px",fontSize:13,minWidth:140}}>
+                          {series.map(s=><option key={s.id} value={s.id}>{s.navn||"(uten navn)"}</option>)}
+                        </select>
+                      </td>
+                      <td style={tdStyle}>
+                        <input type="number" value={c.sekvens} onChange={e=>updateCat(c.id,"sekvens",parseInt(e.target.value)||0)}
+                          style={{...inp,padding:"5px 8px",fontSize:13,width:70}}/>
+                      </td>
+                      <td style={{...tdStyle,textAlign:"center"}}>
+                        <input type="checkbox" checked={c.inaktiv} onChange={e=>updateCat(c.id,"inaktiv",e.target.checked)}/>
+                      </td>
+                      <td style={{...tdStyle,textAlign:"center"}}>
+                        <button onClick={()=>deleteCat(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:16,padding:2,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{padding:"10px 14px",borderTop:`1px solid ${T.border}`}}>
+              <button onClick={addCat} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:600,cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+                + Ny rad
+              </button>
+            </div>
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",gap:14,marginTop:8}}>
+            <button onClick={handleSave} style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"10px 28px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Lagre
+            </button>
+            {saved&&<span style={{fontSize:12,color:T.green,fontWeight:600}}>Lagret ✓</span>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

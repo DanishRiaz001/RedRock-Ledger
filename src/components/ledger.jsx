@@ -1463,7 +1463,7 @@ function ContactSearch({contacts,value,onChange,onCreateContact,flat=false}){
 // has, and a fake/non-functional "check credit" button would be worse than
 // not having one. Org number only shows for Norway-based books, since it's
 // meaningless for Pakistan-side clients and would just be visual noise there.
-function NewContactModal({defaultType="customer",country="PK",initial=null,companyCurrency="",contacts=[],onSave,onClose,onBulkImport}){
+function NewContactModal({defaultType="customer",country="PK",initial=null,companyCurrency="",contacts=[],transactions=[],onSave,onClose,onBulkImport,inline=false}){
   const editing=!!initial;
   const[type,setType]=useState(initial?initial.type:defaultType);
   const[name,setName]=useState(initial?initial.name||"":"");
@@ -1493,6 +1493,11 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   // Blank on a NEW contact means "let the register auto-assign one" — only
   // fill this in to deliberately pick a specific number instead.
   const[contactNumber,setContactNumber]=useState(initial?initial.id:"");
+  const[secondaryId,setSecondaryId]=useState(initial?initial.secondaryId||"":"");
+  const[detailTab,setDetailTab]=useState("details");
+  const hasTransactions=editing&&transactions.some(t=>t.contactId===initial.id);
+  const nextCustomerNum=()=>{const base=10000;const nums=contacts.filter(c=>c.type==="customer"||c.type==="both").map(c=>parseInt(c.id,10)).filter(n=>!isNaN(n)&&n>=base&&n<base+10000);return String((nums.length?Math.max(...nums):base-1)+1);};
+  const nextSupplierNum=()=>{const base=20000;const nums=contacts.filter(c=>c.type==="supplier"||c.type==="both").map(c=>parseInt(c.type==="both"?(c.secondaryId||c.id):c.id,10)).filter(n=>!isNaN(n)&&n>=base&&n<base+10000);return String((nums.length?Math.max(...nums):base-1)+1);};
 
   // Brønnøysundregisteret (Norwegian business registry) name search — live,
   // debounced, public API (no key, CORS-open). Only offered for NO companies
@@ -1568,37 +1573,34 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
   const valid=name.trim().length>0;
   const submit=()=>{
     if(!valid)return;
-    onSave({id:contactNumber.trim()||undefined,type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
+    onSave({id:contactNumber.trim()||undefined,...(type==="both"?{secondaryId:secondaryId.trim()||undefined}:{}),type,name:name.trim(),orgNumber:orgNumber.trim(),email:email.trim(),phone:phone.trim(),address:address.trim(),accountNo:accountNo.trim(),paymentTermsDays:parseInt(paymentTermsDays)||0,creditLimit:creditLimit?parseFloat(creditLimit):null,isCompany,category:category.trim(),currency:currency.trim(),inactive});
   };
   const CURRENCIES=CURRENCY_CODES;
 
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
-        <div style={{position:"sticky",top:0,background:"#fff",zIndex:1,padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:16,fontWeight:800,color:T.text}}>{editing?"Customer / supplier details":"New customer / supplier"}</div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            {onBulkImport&&<button onClick={onBulkImport} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bulk import instead →</button>}
-            <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
-          </div>
-        </div>
-
-        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+  const formBody=(
+    <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
           <div style={{fontSize:11,color:T.muted,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>Customer / supplier details</div>
           <div style={{display:"flex",gap:8}}>
-            {["customer","supplier"].map(t=>(
-              <button key={t} onClick={()=>setType(t)} style={{flex:1,background:type===t?(t==="customer"?T.blueBg:T.redLight):"#fff",color:type===t?(t==="customer"?T.blue:T.red):T.sub,border:`1.5px solid ${type===t?(t==="customer"?T.blue:T.red):T.border}`,borderRadius:8,padding:"9px",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{t}</button>
+            {[["customer","Customer"],["both","Kunde/Leverandør"],["supplier","Supplier"]].map(([t,label])=>(
+              <button key={t} onClick={()=>!hasTransactions&&setType(t)} style={{flex:1,background:type===t?(t==="customer"?T.blueBg:t==="both"?T.accentLight:T.redLight):"#fff",color:type===t?(t==="customer"?T.blue:t==="both"?T.accent:T.red):T.sub,border:`1.5px solid ${type===t?(t==="customer"?T.blue:t==="both"?T.accent:T.red):T.border}`,borderRadius:8,padding:"9px",fontWeight:700,fontSize:12,cursor:hasTransactions?"not-allowed":"pointer",fontFamily:"inherit",opacity:hasTransactions?0.7:1}}>{label}</button>
             ))}
           </div>
+          {hasTransactions&&<div style={{fontSize:10,color:"#D97706",marginTop:4}}>⚠ Type locked — this contact has existing transactions.</div>}
 
           <div>
-            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{type==="customer"?"Customer":"Supplier"} number</div>
+            <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>{type==="supplier"?"Supplier":"Customer"} number</div>
             {/* Shows the REAL next available number for this type as the
                 placeholder (not just a generic "e.g. 10000" hint) — leaving
                 this blank still auto-assigns exactly that number on save. */}
-            <input value={contactNumber} onChange={e=>setContactNumber(e.target.value)} placeholder={!editing?`${nextContactId(contacts,type)} (auto-assigned if left blank)`:type==="customer"?"e.g. 10000":"e.g. 20000"} style={inp}/>
+            <input value={contactNumber} onChange={e=>setContactNumber(e.target.value)} placeholder={!editing?`${type==="supplier"?nextSupplierNum():nextCustomerNum()} (auto-assigned if left blank)`:type==="supplier"?"e.g. 20000":"e.g. 10000"} style={inp}/>
             {editing&&<div style={{fontSize:10,color:T.muted,marginTop:4}}>Changing this moves every past entry for this contact onto the new number.</div>}
           </div>
+          {type==="both"&&(
+            <div>
+              <div style={{fontSize:11,color:T.sub,marginBottom:4,fontWeight:600}}>Supplier number</div>
+              <input value={secondaryId} onChange={e=>setSecondaryId(e.target.value)} placeholder={!editing?`${nextSupplierNum()} (auto-assigned if left blank)`:"e.g. 20000"} style={inp}/>
+            </div>
+          )}
 
           <div style={{display:"flex",gap:16}}>
             {[[true,"Company"],[false,"Individual"]].map(([val,label])=>(
@@ -1695,6 +1697,73 @@ function NewContactModal({defaultType="customer",country="PK",initial=null,compa
             <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 18px",fontWeight:600,fontSize:13,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           </div>
         </div>
+  );
+  if(inline){
+    const contactTxns=transactions.filter(t=>t.contactId===initial?.id);
+    return(
+      <div style={{maxWidth:720}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:3,padding:0}}>
+            <i className="ti ti-chevron-left" style={{fontSize:12}}/>Back to list
+          </button>
+          <h1 style={{fontSize:20,fontWeight:800,color:T.text,margin:0,flex:1}}>{editing?"Customer / supplier details":"New customer / supplier"}</h1>
+          {onBulkImport&&<button onClick={onBulkImport} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bulk import instead →</button>}
+        </div>
+        {editing&&(
+          <div style={{display:"flex",gap:0,marginBottom:16,borderBottom:`2px solid ${T.border}`}}>
+            {[["details","Details"],["reskontro",`Reskontro (${contactTxns.length})`]].map(([tid,label])=>(
+              <button key={tid} onClick={()=>setDetailTab(tid)} style={{background:"none",border:"none",borderBottom:detailTab===tid?`2px solid ${T.accent}`:"2px solid transparent",marginBottom:-2,padding:"8px 16px",fontWeight:detailTab===tid?700:500,fontSize:13,color:detailTab===tid?T.accent:T.sub,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+            ))}
+          </div>
+        )}
+        {(!editing||detailTab==="details")?(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            {formBody}
+          </div>
+        ):(
+          <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+            {contactTxns.length===0?(
+              <div style={{padding:32,textAlign:"center",color:T.muted,fontSize:13}}>No transactions recorded for this contact yet.</div>
+            ):(
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+                  <thead><tr style={{background:T.bg,fontSize:11,color:T.sub}}>
+                    <td style={{padding:"9px 16px",fontWeight:700}}>Date</td>
+                    <td style={{fontWeight:700}}>Description</td>
+                    <td style={{fontWeight:700}}>Invoice no.</td>
+                    <td style={{fontWeight:700}}>Due date</td>
+                    <td style={{fontWeight:700,textAlign:"right",padding:"9px 16px"}}>Amount</td>
+                  </tr></thead>
+                  <tbody>
+                    {contactTxns.sort((a,b)=>a.date<b.date?1:-1).map(t=>(
+                      <tr key={t.id} style={{borderTop:`1px solid ${T.border}`}}>
+                        <td style={{padding:"8px 16px",color:T.muted,fontSize:11,fontVariantNumeric:"tabular-nums"}}>{t.date}</td>
+                        <td style={{color:T.text,paddingRight:8,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"—"}</td>
+                        <td style={{color:T.muted}}>{t.invoiceNo||"—"}</td>
+                        <td style={{color:t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10)?"#DC2626":T.muted}}>{t.dueDate||"—"}</td>
+                        <td style={{padding:"8px 16px",textAlign:"right",fontWeight:600,color:T.text,fontVariantNumeric:"tabular-nums"}}>{fmt(t.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.28)"}}>
+        <div style={{position:"sticky",top:0,background:"#fff",zIndex:1,padding:"18px 20px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:16,fontWeight:800,color:T.text}}>{editing?"Customer / supplier details":"New customer / supplier"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {onBulkImport&&<button onClick={onBulkImport} style={{background:"none",border:"none",color:T.accent,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bulk import instead →</button>}
+            <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
+          </div>
+        </div>
+        {formBody}
       </div>
     </div>
   );

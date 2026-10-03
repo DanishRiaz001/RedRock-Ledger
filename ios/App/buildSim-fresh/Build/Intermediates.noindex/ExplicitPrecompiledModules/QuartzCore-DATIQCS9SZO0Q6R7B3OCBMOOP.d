@@ -1,0 +1,21 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/SDKSettings.json \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/Darwin.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdbool-CA2C6UOIZX6MVCUFLTJG2NJSP.pcm \
+  /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stddef-D2GFUN57KID7T9OQKKNJN5NTN.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdint-BPH51QZ6TUHZRZHMWJ4A7PSMW.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/DarwinFoundation1.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreFoundation-6XNYDJ4HD1VFF2NKLOZ7PCACE.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/ObjectiveC.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreFoundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreGraphics-B4ZPRK39UBP8SRB2H0JSF8WFL.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreGraphics.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-5K838WANMMICAMHME8E1KE0VQ.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/OpenGLES-9DAUANQMENZTAF9MGKSSDGGB0.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/OpenGLES.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Metal-3M1CKL63C97GYM5MH6F75RDE6.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Metal.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreVideo-1L1AJZHJ01GWNHCWCSG0D91X3.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/CoreVideo.framework/Modules/module.modulemap

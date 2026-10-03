@@ -1,0 +1,21 @@
+moduledependenciestarget: \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/SDKSettings.json \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/Capacitor.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/UIKit-2W41A5XB87V8XBOTM801SOR8G.pcm \
+  /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/DarwinFoundation2.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/usr/include/ObjectiveC.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/Foundation.framework/Modules/module.modulemap \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/UIKit.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPPlugin.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/WebKit-9LUF6OAEYJFZC9S8NU6NWUN2A.pcm \
+  /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/WebKit.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPPluginCall.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPBridgedPlugin.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPPluginMethod.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPInstanceDescriptor.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Intermediates.noindex/ExplicitPrecompiledModules/Cordova-1804YWW0BSZ4HEI3J2EL992XT.pcm \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Cordova.framework/Modules/module.modulemap \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/CAPInstanceConfiguration.h \
+  /Users/danishriaz001/Desktop/RedRock-Ledger/ios/App/buildSim-fresh/Build/Products/Debug-iphonesimulator/Capacitor.framework/Headers/Capacitor-Swift.h
