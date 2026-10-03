@@ -6335,47 +6335,35 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
         const accountOptions=offsetOptions.map(a=>({value:a.code,label:`${a.code} — ${a.name}`,group:"All accounts"}));
         const topValue=bulkOffsetContactId?`contact:${bulkOffsetContactId}`:(activeType?activeType.id:(bulkOffsetCode||""));
         return(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.5)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,0.28)",overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,32,0.45)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={closeModal}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.22)",overflow:"hidden"}}>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"20px 20px 0"}}>
               <div>
-                <div style={{fontSize:15,fontWeight:800,color:T.text}}>Post {selectedLines.length} transaction{selectedLines.length===1?"":"s"}</div>
-                <div style={{fontSize:11,color:T.muted,marginTop:2}}>Net {fmtBal(selLinesTotal)} · each posts as its own entry{currentAttachment?", with the bank statement kept as proof":""}</div>
+                <div style={{fontSize:16,fontWeight:700,color:T.text,letterSpacing:-0.2}}>Post {selectedLines.length} transaction{selectedLines.length===1?"":"s"}</div>
+                <div style={{fontSize:12,color:T.muted,marginTop:3}}>Net {fmtBal(selLinesTotal)}{currentAttachment?" · bank statement attached as proof":""}</div>
               </div>
-              <button onClick={closeModal} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+              <button onClick={closeModal} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:16,lineHeight:1,padding:2,marginTop:2}}><i className="ti ti-x"/></button>
             </div>
 
-            <div style={{padding:20}}>
-              {/* Which lines are about to post — a quick sanity check, not
-                  a full editor. */}
+            <div style={{padding:"16px 20px 20px"}}>
+              {/* Transaction list */}
               {selectedLines.length>0&&(
-                <div style={{border:`1px solid ${T.border}`,borderRadius:10,maxHeight:132,overflowY:"auto",marginBottom:16}}>
+                <div style={{borderRadius:8,maxHeight:120,overflowY:"auto",marginBottom:16,background:T.bg}}>
                   {selectedLines.map((l,i)=>(
-                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 12px",borderTop:i>0?`1px solid ${T.border}`:"none",fontSize:11.5}}>
-                      <span style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.date} · {l.description||"—"}</span>
-                      <span style={{fontWeight:700,color:l.amount>=0?T.green:T.red,flexShrink:0}}>{fmtBal(l.amount)}</span>
+                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"6px 10px",borderTop:i>0?`1px solid ${T.border}`:"none",fontSize:12}}>
+                      <span style={{color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.date}{l.description?` · ${l.description}`:""}</span>
+                      <span style={{fontWeight:600,color:l.amount>=0?T.green:T.red,flexShrink:0}}>{fmtBal(l.amount)}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
-                <div style={{fontSize:10.5,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4}}>Post as *</div>
-                {/* A real link that opens in a NEW tab (the icon always
-                    implied this, but it used to just navigate away in the
-                    same tab via onNavigate — closing this reconciliation
-                    session's whole context, selected lines and all, just to
-                    glance at or tweak a payment type). Deep-links via the
-                    same ?tab= param FinanceTracker's own tab state already
-                    reads on load. */}
-                {onNavigate&&<a href={`${window.location.origin}${window.location.pathname}?tab=BankSettings`} target="_blank" rel="noopener noreferrer" style={{background:"none",border:"none",color:T.accent,fontSize:10.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}>Manage payment types <i className="ti ti-external-link" style={{fontSize:10}}/></a>}
+              {/* Post as */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:11.5,color:T.sub,fontWeight:600}}>Post as</div>
+                {onNavigate&&<a href={`${window.location.origin}${window.location.pathname}?tab=BankSettings`} target="_blank" rel="noopener noreferrer" style={{color:T.accent,fontSize:11,fontWeight:600,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>Payment types <i className="ti ti-external-link" style={{fontSize:10}}/></a>}
               </div>
-              {/* Curated payment-type shortlist — the common cases (bank
-                  fees, interest, open items) as one click, each mapped to
-                  a real account, instead of an account search every time.
-                  "Manage payment types" jumps to Bank → Settings where the
-                  list is edited; the advanced section below still reaches
-                  any account or contact. */}
               <ThemedSelect
                 searchable
                 value={topValue}
@@ -6388,13 +6376,11 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                   }
                   const t=postingTypes.find(x=>x.id===id);
                   if(t){setBulkOffsetCode(t.accountCode);setBulkOffsetContactId("");setBulkPostingTypeId(t.id);setAdvancedPickerOpen(false);return;}
-                  // Not a curated type or a contact — a plain account code,
-                  // picked straight out of the full chart-of-accounts group.
                   const acc=offsetOptions.find(a=>a.code===id);
                   if(acc){setBulkOffsetCode(acc.code);setBulkOffsetContactId("");setBulkPostingTypeId("");setAdvancedPickerOpen(false);return;}
                   setBulkOffsetCode("");setBulkOffsetContactId("");setBulkPostingTypeId("");
                 }}
-                placeholder="— Search a payment type, account, customer, or supplier —"
+                placeholder="Search payment type, account, customer, or supplier…"
                 triggerStyle={{...inp,fontSize:12.5,cursor:"pointer"}}
                 options={[
                   ...[leadDir,leadDir==="out"?"in":"out"].flatMap(dir=>typesFor(dir).map(t=>({value:t.id,label:`${t.name} — ${acctName(t.accountCode)}`,group:dir==="out"?"Ut av konto (money out)":"Inn på konto (money in)"}))),
@@ -6403,13 +6389,10 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 ]}
               />
 
-              <div style={{marginTop:10}}>
-                <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.sub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
-                  <i className={advancedPickerOpen?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:12}}/>
-                  {/* Every account, customer, and supplier now searches
-                      straight from "Post as" above — this stays open only
-                      for creating a brand-new account or contact on the
-                      spot, which the searchable list can't do. */}
+              {/* Advanced picker */}
+              <div style={{marginTop:8}}>
+                <button onClick={()=>setAdvancedPickerOpen(o=>!o)} style={{background:"none",border:"none",color:T.muted,fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:3}}>
+                  <i className={advancedPickerOpen?"ti ti-chevron-down":"ti ti-chevron-right"} style={{fontSize:11}}/>
                   {pickedAcc||pickedContact?"Or post against a different account":"Create a new account, customer, or supplier"}
                 </button>
                 {advancedPickerOpen&&(
@@ -6419,28 +6402,28 @@ function BankReconciliationScreen({accounts,contacts,transactions,bankStatementL
                 )}
               </div>
 
-              {/* What VAT this account carries, so you know before posting
-                  rather than finding out in the VAT report later. */}
-              <div style={{marginTop:12,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",fontSize:11.5}}>
-                {!pickedAcc?(
-                  <span style={{color:T.muted}}>Pick a payment type or account to see its VAT treatment.</span>
-                ):pickedContact?(
-                  <span style={{color:T.sub}}>Routes to <b style={{color:T.text}}>{bulkOffsetCode}</b> · linked to <b style={{color:T.text}}>{pickedContact.name}</b> in the sub-ledger. VAT is set on the invoice, not here.</span>
-                ):pickedAcc.defaultVatCode?(
-                  <span style={{color:T.sub}}>MVA-kode <b style={{color:T.text}}>{pickedAcc.defaultVatCode}</b>{vatRate!=null?` · ${vatRate}%`:""}{vc?` · ${vc.name}`:""}{pickedAcc.vatLocked?" · locked":""} — applied automatically.</span>
-                ):(
-                  <span style={{color:T.sub}}>No default VAT on <b style={{color:T.text}}>{bulkOffsetCode} {pickedAcc.name}</b> — posts without VAT. Set one in Chart of accounts if it should carry VAT.</span>
-                )}
-              </div>
+              {/* VAT info */}
+              {pickedAcc&&(
+                <div style={{marginTop:12,borderRadius:8,padding:"9px 12px",fontSize:11.5,background:T.bg,color:T.sub}}>
+                  {pickedContact?(
+                    <>Routes to <b style={{color:T.text}}>{bulkOffsetCode}</b> · linked to <b style={{color:T.text}}>{pickedContact.name}</b> in sub-ledger. VAT is set on the invoice.</>
+                  ):pickedAcc.defaultVatCode?(
+                    <>MVA-kode <b style={{color:T.text}}>{pickedAcc.defaultVatCode}</b>{vatRate!=null?` · ${vatRate}%`:""}{vc?` · ${vc.name}`:""}{pickedAcc.vatLocked?" · locked":""} — applied automatically.</>
+                  ):(
+                    <>No default VAT on <b style={{color:T.text}}>{bulkOffsetCode} {pickedAcc.name}</b> — posts without VAT.</>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 20px",borderTop:`1px solid ${T.border}`,background:T.bg}}>
+            {/* Footer */}
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 20px",borderTop:`1px solid ${T.border}`}}>
               {onNavigate&&(
-                <button onClick={()=>{closeModal();onNavigate("AccountPlan");}} title="Open Chart of accounts to add or edit GL accounts" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}><i className="ti ti-settings" style={{fontSize:12,marginRight:5}}/>Account settings</button>
+                <button onClick={()=>{closeModal();onNavigate("AccountPlan");}} title="Open Chart of accounts" style={{background:"none",border:"none",padding:"8px 4px",fontSize:11,fontWeight:600,color:T.muted,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-settings" style={{fontSize:12}}/>Accounts</button>
               )}
               <div style={{flex:1}}/>
-              <button onClick={closeModal} style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:11,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{background:bulkOffsetCode&&!bulkPosting?T.accent:T.border,color:bulkOffsetCode&&!bulkPosting?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:700,cursor:bulkOffsetCode&&!bulkPosting?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):`Post ${selectedLines.length}`}</button>
+              <button onClick={closeModal} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={runBulkPost} disabled={!bulkOffsetCode||bulkPosting} style={{background:bulkOffsetCode&&!bulkPosting?T.accent:T.border,color:bulkOffsetCode&&!bulkPosting?"#fff":T.muted,border:"none",borderRadius:8,padding:"9px 22px",fontSize:12,fontWeight:700,cursor:bulkOffsetCode&&!bulkPosting?"pointer":"default",fontFamily:"inherit"}}>{bulkPosting?(uploadingProof?"Attaching proof…":"Posting…"):`Post ${selectedLines.length}`}</button>
             </div>
           </div>
         </div>
